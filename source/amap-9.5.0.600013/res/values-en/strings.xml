@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Amap Auto</string>
+    <string name="ca_hour">Hr</string>
+    <string name="ca_minute">Min</string>
+    <string name="child_process_name_location">:locationservice</string>
+    <string name="go_company_about">About %1$s to work</string>
+    <string name="go_home_about">About %1$s to home</string>
+    <string name="permission_audio">Mic</string>
+    <string name="permission_cancel">Cancel</string>
+    <string name="permission_carinfo_instructions">Car info: access remaining battery or fuel</string>
+    <string name="permission_confirm">Accept</string>
+    <string name="permission_dot">、</string>
+    <string name="permission_ignore">Close</string>
+    <string name="permission_location">Location</string>
+    <string name="permission_location_instructions">Positioning permission: locate vehicle position and navigation</string>
+    <string name="permission_mic_instructions">Microphone: used for group intercom</string>
+    <string name="permission_phone">Phone</string>
+    <string name="permission_setting">Go To Set</string>
+    <string name="permission_settings">Settings</string>
+    <string name="permission_storage">Storage</string>
+    <string name="permission_storage_instructions">Storage permission: used to save/read offline map data on the car and save traffic, to ensure the continued use in disconnected network</string>
+    <string name="permission_tel_instructions">Phone permission: used to identify the uniqueness of the device, to ensure account security</string>
+    <string name="permission_tips">Amap Maps Require %1$s Permissions. Do You Want To Set Them?</string>
+    <string name="permission_title">Amap will apply for the following permissions to provide you with services</string>
+    <string name="prediction_go_company">Good morning. Check the traffic to work？</string>
+    <string name="prediction_go_home">Good evening. Check the traffic back home?</string>
+    <string name="service_notification_content">amap auto is running</string>
+    <string name="service_notification_title">amapauto</string>
+</resources>

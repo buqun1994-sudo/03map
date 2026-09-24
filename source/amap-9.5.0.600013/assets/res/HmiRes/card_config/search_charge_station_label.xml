@@ -1,0 +1,11 @@
+<div id='search_charge_label' style='width:auto;height:auto;display:flex;flex-direction:row;justify-content:center;align-items:flex-start;'>
+  <div id='charge_fast' style='background-image:global_image_station_fast_2_day_night;flex-direction:row;justify-content:flex-start;align-items:center;margin-top:10px;margin-left:10px;margin-right:0px;'>
+    <label id='fast_first' style='color:#FFFFFFFF;font-size:18px;justify-content:flex-start;margin-left:8px;' text='fastfree'/>
+    <label id='fast_second' style='color:#7FFFFFFF;font-size:18px;justify-content:flex-start;margin-right:2px;' text='/fasttotal'/>
+  </div>
+  <div id='charge_slow' style='background-image:global_image_station_slow_2_day_night;flex-direction:row;justify-content:flex-start;align-items:center;margin-top:10px;margin-left:0px;margin-right:10px;'>
+    <label id='slow_first' style='color:#FFFFFFFF;font-size:18px;justify-content:flex-start;margin-left:2px;' text='slowfree'/>
+    <label id='slow_second' style='color:#7FFFFFFF;font-size:18px;justify-content:flex-start;margin-right:2px;' text='/slowtotal'/>
+  </div>
+  <image id='best_icon' style='position:absolute;left:0px;top:0px;display:flex;' src='global_image_beststation_day_night'/>
+</div>

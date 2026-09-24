@@ -1,0 +1,417 @@
+{
+  "moreWords": [
+    {
+      "name": "搜索目的地",
+      "more": "开始搜索;发起搜索;打开搜索;点击搜索"
+    },
+    {
+      "name": "回主页",
+      "more": "回桌面"
+    },
+    {
+      "name": "放大地图",
+      "more": "地图放大"
+    },
+    {
+      "name": "缩小地图",
+      "more": "地图缩小"
+    },
+    {
+      "name": "回家",
+      "more": "我要回家;我想回家;导航回家",
+      "type": "1"
+    },
+    {
+      "name": "去公司",
+      "more": "我要去公司;我想去公司;导航去公司",
+      "type": "1"
+    },
+    {
+      "name": "翻页",
+      "more": "",
+      "type": "1"
+    },
+    {
+      "name": "上一页",
+      "more": "前一页"
+    },
+    {
+      "name": "下一页",
+      "more": "后一页;翻页"
+    },
+    {
+      "name": "去这里",
+      "more": "开始导航;发起导航;马上导航"
+    },
+    {
+      "name": "算路",
+      "more": "去这里;开始导航;发起导航;马上导航",
+      "type": "1"
+    },
+    {
+      "name": "加入",
+      "more": "去这里;开始导航;发起导航;马上导航"
+    },
+    {
+      "name": "切换",
+      "more": ""
+    },
+    {
+      "name": "刷新",
+      "more": "刷新路线;路线刷新",
+      "type": "1"
+    },
+    {
+      "name": "进入全览",
+      "more": "全览模式"
+    },
+    {
+      "name": "退出全览",
+      "more": ""
+    },
+    {
+      "name": "进入AR导航",
+      "more": "打开AR导航;开始AR导航"
+    },
+    {
+      "name": "退出AR导航",
+      "more": "关闭AR导航"
+    },
+    {
+      "name": "在主路",
+      "more": "切主路",
+      "type": "1"
+    },
+    {
+      "name": "在辅路",
+      "more": "切辅路",
+      "type": "1"
+    },
+    {
+      "name": "在桥上",
+      "more": "切桥上",
+      "type": "1"
+    },
+    {
+      "name": "在桥下",
+      "more": "切桥下",
+      "type": "1"
+    }
+  ],
+  "fragment": [
+    {
+      "name": "CGTopFragment",
+      "overlay": "1",
+      "layout_id": "cl_common_notifier",
+      "desc": "弹条",
+      "action": [
+        {
+          "desc": "positiveBtn",
+          "name": "",
+          "clickPath": "cl_notifier/cl_content/cl_left_btn",
+          "textPath": "cl_notifier/cl_content/cl_left_btn/stv_text_left_btn"
+        },
+        {
+          "desc": "negativeBtn",
+          "name": "忽略",
+          "clickPath": "cl_notifier/cl_content/cl_right_btn"
+        }
+      ]
+    },
+    {
+      "name": "GAgroupVoiceCommFragment",
+      "overlay": "1"
+    },
+    {
+      "name": "GFragmentIntentCard",
+      "overlay": "1"
+    },
+    {
+      "name": "CGLogSuspensionWindowFragment",
+      "overlay": "1"
+    },
+    {
+      "name": "GTripodWarnFragment",
+      "overlay": "1"
+    },
+    {
+      "name": "FragmentMap",
+      "overlay": "1"
+    },
+    {
+      "name": "CGIndexFragment",
+      "layout_id": "fl_mainscreen",
+      "desc": "主页",
+      "action": [
+        {
+          "name": "",
+          "priority": "1",
+          "clickPath": "vp_status/cl_status_detail"
+        },
+        {
+          "name": "搜索目的地",
+          "clickPath": "fl_mainscreen_content/mgs_search/fl_div_search"
+        },
+        {
+          "name": "回主页",
+          "clickPath": "fl_div_7cd/ma_actionmap/fl_mainscreen_actionmap/fl_group_up/ms_statusbar/fl_mapbtn_statusbar/fl_div_home"
+        },
+        {
+          "name": "放大地图",
+          "clickPath": "fl_div_7cd/ma_actionmap/fl_mainscreen_actionmap/fl_group_down/fl_div_groupbtn/fl_div_mapcontrol/fl_group_mapcontrol/mz_zoombtn2/fl_mapbtn_zoombtn2/fl_map_zoomout"
+        },
+        {
+          "name": "缩小地图",
+          "clickPath": "fl_div_7cd/ma_actionmap/fl_mainscreen_actionmap/fl_group_down/fl_div_groupbtn/fl_div_mapcontrol/fl_group_mapcontrol/mz_zoombtn2/fl_mapbtn_zoombtn2/fl_map_zoomin"
+        },
+        {
+          "name": "回家",
+          "clickPath": "fl_mainscreen_content/vp_intentcard/fl_intent_card/slv_wb/:2/fl_mainscreen_gusywant_poilist/fl_group_homework/fl_group_home"
+        },
+        {
+          "name": "去公司",
+          "clickPath": "fl_mainscreen_content/vp_intentcard/fl_intent_card/slv_wb/:2/fl_mainscreen_gusywant_poilist/fl_group_homework/fl_group_work"
+        },
+        {
+          "desc": "查看",
+          "clickPath": "fl_div_7cd/ma_actionmap/fl_mainscreen_actionmap/fl_group_down/fl_div_backcar/marb_backcar/fl_div_i8u/siv_bg",
+          "textPath": "fl_div_7cd/ma_actionmap/fl_mainscreen_actionmap/fl_group_down/fl_div_backcar/marb_backcar/fl_div_i8u/stv_text"
+        },
+        {
+          "name": "查看",
+          "clickPath": "fl_div_push/plv_push/fpd_default2/fl_feedback_push_default2/fl_div_content"
+        },
+        {
+          "name": "去这里",
+          "clickPath": "fl_mainscreen_content/ias_small/fl_indepthinfo_addinfo_small/bps_small"
+        }
+      ]
+    },
+    {
+      "name": "CGSearchHomeFragment",
+      "layout_id": "cl_search_home",
+      "desc": "搜索主页",
+      "action": [
+        {
+          "desc": "历史目的地",
+          "name": "",
+          "listType": "listTopOrder",
+          "listTag": "第?个;第?条",
+          "clickPath": "cl_bottom_content/slv_search_list"
+        },
+        {
+          "name": "加油站",
+          "clickPath": "cl_quick_search/cl_gas_stations"
+        },
+        {
+          "name": "洗车",
+          "clickPath": "cl_quick_search/cl_car_wash"
+        },
+        {
+        "name": "美食",
+        "clickPath": "cl_quick_search/cl_food"
+        },
+        {
+          "name": "停车场",
+          "clickPath": "cl_quick_search/cl_parking"
+        },
+        {
+          "desc": "收藏夹列表",
+          "name": "",
+          "priority": "1",
+          "clickPath": "ct_search_favorite_list_view_layout/cl_search_favorite_list_content"
+        }
+      ]
+    },
+    {
+      "name": "GFragmentSearchResult",
+      "layout_id": "fl_pagewithmappro",
+      "desc": "搜索结果页",
+      "action": [
+        {
+          "name": "翻页",
+          "listType": "container;go",
+          "listTag": "第?个;第?条",
+          "clickPath": "fl_pagewithmappro_content/fl_search_result_card/fl_div_qec/slv_result_list",
+          "selectItemPath": "spd_1",
+          "subClickPath": "spd_1/fl_search_poiinfo_default/fl_btn_go"
+        },
+        {
+          "name": "去这里",
+          "clickPath": "fl_pagewithmappro_content/vp_poi_detail/fl_poi_deep_info/abp_poiinfo/fl_actionbar_btnbar_poiinfo/fl_btn_primary"
+        },
+        {
+          "name": "放大地图",
+          "clickPath": "sad_mapview/fl_search_actionmap_default/fl_div_cu5/fl_group_mapcontrol/mz_zoombtn2/fl_mapbtn_zoombtn2/fl_map_zoomout"
+        },
+        {
+          "name": "缩小地图",
+          "clickPath": "sad_mapview/fl_search_actionmap_default/fl_div_cu5/fl_group_mapcontrol/mz_zoombtn2/fl_mapbtn_zoombtn2/fl_map_zoomin"
+        }
+      ]
+    },
+    {
+      "name": "CGFragmentPoiCard",
+      "layout_id": "fl_pagewithmappro",
+      "desc": "poi卡片",
+      "overlay": "1",
+      "action": [
+        {
+          "name": "去这里",
+          "clickPath": "abp_poiinfo/fl_actionbar_btnbar_poiinfo/fl_btn_primary"
+        }
+      ]
+    },
+    {
+      "name": "CGRouteCarResultFragment",
+      "layout_id": "cl_routecarresult",
+      "desc": "路线规划页",
+      "action": [
+        {
+          "name": "",
+          "priority": "1",
+          "clickPath": "vp_status/cl_status_detail"
+        },
+        {
+          "name": "",
+          "priority": "1",
+          "clickPath": "ct_extras_container/cl_route_navi_more"
+        },
+        {
+          "name": "去这里",
+          "clickPath": "ac_bottom_left_home_position/cl_no_home_bottom_left/cl_startnavi_btn"
+        },
+        {
+          "desc": "选择路线",
+          "name": "",
+          "listType": "container;go",
+          "listTag": "第?个;第?条",
+          "clickPath": "ct_route_car_result_container/ct_auto_route_panel_content",
+          "selectItemPath": "cl_auto_route_panel_content_detail"
+        },
+        {
+          "desc": "搜索途经点",
+          "name": "",
+          "clickPath": "ct_along_card/cl_along_search_card",
+          "group": "ct_route_car_result_container/ct_auto_route_panel_content;ac_bottom_left_home_position/cl_no_home_bottom_left/cl_startnavi_btn"
+        },
+        {
+          "name": "放大地图",
+          "clickPath": "cbc_zoom_btn/cl_enlarge"
+        },
+        {
+          "name": "缩小地图",
+          "clickPath": "cbc_zoom_btn/cl_narrow"
+        },
+        {
+          "name": "天气",
+          "clickPath": "cl_longtrip/cl_longtrip1"
+        },
+        {
+          "name": "服务区",
+          "clickPath": "cl_longtrip/cl_longtrip2"
+        },
+        {
+          "name": "途经路",
+          "clickPath": "cl_longtrip/cl_longtrip3"
+        },
+        {
+          "name": "刷新",
+          "clickPath": "cl_refresh_btn"
+        }
+      ]
+    },
+    {
+      "name": "CGNaviFragment",
+      "layout_id": "fl_navi_root",
+      "desc": "导航沉浸态页",
+      "action": [
+        {
+          "name": "",
+          "priority": "1",
+          "clickPath": "vp_status/cl_status_detail"
+        },
+        {
+          "name": "进入全览",
+          "clickPath": "?/mc_route"
+        },
+        {
+          "name": "退出全览",
+          "clickPath": "?/mc_backnav"
+        },
+        {
+          "desc": "主辅路切换",
+          "name": "",
+          "clickPath": "cvp_main/fl_navigation/ta_actionmap/fl_trip_actionmap/fl_group_down/fl_div_roadcontrol/fl_div_maincontrol/fl_div_switch/mc_road",
+          "textPath": "?/stv_text_name"
+        },
+        {
+          "desc": "桥上下切换",
+          "name": "",
+          "clickPath": "cvp_main/fl_navigation/ta_actionmap/fl_trip_actionmap/fl_group_down/fl_div_roadcontrol/fl_div_maincontrolfl_div_switch/mc_bridge",
+          "textPath": "?/stv_text_name"
+        },
+        {
+          "desc": "提醒对话框",
+          "clickPath": "vp_main/fl_navigation/ta_actionmap/fl_trip_actionmap/fl_group_down/fl_div_roadcontrol/fl_div_maincontrol/fl_div_switch/mc_road",
+          "textPath": "cl_navi_normal_state/ct_second_info/cl_auto_navi_info_panel_dialog_double/cl_switch/stv_text_switch"
+        },
+        {
+          "name": "忽略",
+          "clickPath": "cl_navi_normal_state/ct_second_info/cl_auto_navi_info_panel_dialog_double/cl_ignore/cbw_ignore"
+        },
+        {
+          "desc": "组队",
+          "name": "去这里",
+          "clickPath": "cl_navi_normal_state/ct_second_info/cl_auto_navi_agroup_destination/cbm_search"
+        },
+        {
+          "name": "忽略",
+          "clickPath": "cl_navi_normal_state/ct_second_info/cl_auto_navi_agroup_destination/cbw_ignore"
+        },
+        {
+          "name": "进入AR导航",
+          "clickPath": "cl_navi_normal_state/cl_ar_btn"
+        }
+      ]
+    },
+    {
+      "name": "CGFragmentNaviEnd",
+      "layout_id": "fl_dest_card",
+      "desc": "目的地卡片",
+      "action": [
+        {
+          "desc": "停车场推荐",
+          "name": "去这里",
+          "listType": "container;go",
+          "listTag": "第?个;第?条",
+          "clickPath": "fl_pagewithmap/fl_pagewithmap_content/vp_rj/fl_dest_card_detail/slv_2i",
+          "subClickPath": "fl_trip_travelinfo_poi/fl_div_right/fl_div_main/bps_small"
+        },
+        {
+          "name": "返程",
+          "clickPath": "fl_pagewithmap/fl_pagewithmap_content/tti_iconbar/fl_trip_travelinfo_iconbar/fl_item1"
+        },
+        {
+          "name": "反馈",
+          "clickPath": "fl_pagewithmap/fl_pagewithmap_content/tti_iconbar/fl_trip_travelinfo_iconbar/fl_item2"
+        },
+        {
+          "name": "评分",
+          "clickPath": "fl_pagewithmap/fl_pagewithmap_content/tti_iconbar/fl_trip_travelinfo_iconbar/fl_item3"
+        }
+      ]
+    },
+    {
+      "name": "CGArNaviFragment",
+      "layout_id": "cl_ar_container",
+      "desc": "AR导航页",
+      "action": [
+        {
+          "name": "退出AR导航",
+          "clickPath": "ct_navi_ar/cl_navi_normal_state_split/ct_split/cl_navi_normal_state/cl_switch_mode"
+        }
+      ]
+    }
+  ]
+}

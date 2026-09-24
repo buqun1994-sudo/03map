@@ -1,0 +1,4 @@
+interface:
+  display_name: "规则发现"
+  short_description: "沉淀地图 APK 工作流中的可复用规则和验证边界"
+  default_prompt: "Use $rule-discovery to classify reusable rules and preserve version-specific evidence safely."

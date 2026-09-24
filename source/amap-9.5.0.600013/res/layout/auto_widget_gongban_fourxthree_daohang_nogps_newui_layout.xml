@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/widget_daohang_nogps_container" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <ProgressBar android:id="@id/widget_daohang_nogps_progress_icon" android:layout_width="@dimen/auto_dimen2_50" android:layout_height="@dimen/auto_dimen2_50" android:layout_marginLeft="@dimen/auto_dimen2_18" android:indeterminateDrawable="@drawable/auto_widget_nogps_progressbar" />
+    <TextView android:textSize="@dimen/auto_font_size_20" android:textColor="@color/widget_color_gps_loading_newui" android:id="@id/widget_daohang_gps_loading" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_19" android:text="@string/widget_daohang_no_tbt_loading" />
+</LinearLayout>

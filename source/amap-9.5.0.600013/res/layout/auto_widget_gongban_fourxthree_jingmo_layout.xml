@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+        <LinearLayout android:orientation="horizontal" android:background="@drawable/widget_shape_jingmo_background" android:layout_width="match_parent" android:layout_height="match_parent">
+            <LinearLayout android:gravity="center_vertical" android:orientation="vertical" android:background="@color/widget_transparency" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_weight="1.0" />
+            <FrameLayout android:id="@id/gongban_right_blank_container_parent" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_weight="1.0" android:layout_alignParentRight="true">
+                <include layout="@layout/auto_widget_gongban_fourxthree_right_blank_layout" />
+            </FrameLayout>
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="match_parent">
+            <RelativeLayout android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_weight="1.0">
+                <ImageView android:background="@drawable/auto_widget_background_weather_info" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/auto_widget_dimen_silence_weather_bg_top_margin" android:scaleType="center" />
+                <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
+                    <LinearLayout android:gravity="center_vertical" android:id="@id/widget_jingmo_title_container_parent" android:layout_width="match_parent" android:layout_height="@dimen/auto_dimen2_30">
+                        <include layout="@layout/auto_widget_gongban_fourxthree_jingmo_title_layout" />
+                    </LinearLayout>
+                    <LinearLayout android:id="@id/widget_cards_container" android:visibility="visible" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_marginLeft="@dimen/auto_widget_dimen_silence_common_margin" android:layout_marginTop="@dimen/auto_widget_dimen_silence_common_margin" android:layout_marginRight="@dimen/auto_widget_dimen_silence_common_margin" android:layout_weight="1.3145">
+                        <LinearLayout android:id="@id/widget_cards_container_parent" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent">
+                            <include layout="@layout/auto_widget_gongban_fourxthree_jingmo_cards_layout" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout android:gravity="center_vertical" android:layout_gravity="center_vertical" android:id="@id/widget_set_destination_container_parent" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_marginLeft="@dimen/auto_widget_dimen_silence_common_margin" android:layout_marginRight="@dimen/auto_widget_dimen_silence_common_margin" android:layout_weight="1.0">
+                        <include layout="@layout/auto_widget_gongban_fourxthree_jingmo_search_destination_layout" />
+                    </LinearLayout>
+                    <LinearLayout android:gravity="center_vertical" android:layout_gravity="center_vertical" android:id="@id/widget_park_oil_container_parent" android:layout_weight="0.7731" style="@style/widget_jingmo_rect_margin_style">
+                        <include layout="@layout/auto_widget_gongban_fourxthree_jingmo_park_oil_layout" />
+                    </LinearLayout>
+                    <LinearLayout android:gravity="center_vertical" android:layout_gravity="center_vertical" android:id="@id/widget_gohome_gocompany_container_parent" android:layout_marginBottom="@dimen/auto_widget_dimen_silence_common_margin" android:layout_weight="0.7731" style="@style/widget_jingmo_rect_margin_style">
+                        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+                            <include layout="@layout/auto_widget_gongban_fourxthree_jingmo_gohome_gocompany_setted_layout" />
+                            <include layout="@layout/auto_widget_gongban_fourxthree_jingmo_gohome_gocompany_unset_layout" />
+                        </FrameLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </RelativeLayout>
+            <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:background="@android:color/transparent" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_weight="1.0">
+                <TextView android:background="@drawable/auto_widget_shadow_backgroud" android:layout_width="@dimen/auto_dimen2_6" android:layout_height="match_parent" />
+                <include layout="@layout/auto_widget_gongban_fourxthree_right_layout" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

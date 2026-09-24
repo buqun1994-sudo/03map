@@ -1,0 +1,8 @@
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>1.如何查看GPS卫星情况？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>在图面上，点击右上角的信息栏，可展开快捷面板查看GPS定位状态，点击GPS选项可查看详细的卫星颗数和信号情况。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>2.如何显示路况信息？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>在图面上，点击右侧“路况”图标即可开启实时路况，此功能需要车机联网。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>3.导航中实时路况的颜色分别代表什么意思？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>实时路况共有五种颜色，分别代表的含义是：绿色-畅通；黄色-缓慢；红色-拥堵；深红色-严重拥堵；蓝色-该路段无路况信息。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>4.如何退出高德地图车镜版？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>点击车镜物理返回按钮2次，即可关闭并退出高德地图车镜版。</Paragraph></TextColor></TextSize>

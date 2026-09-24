@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:background="@android:color/black" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:background="@drawable/widget_drawable_twoxthree_xunhang_background" android:layout_width="match_parent" android:layout_height="match_parent">
+        <LinearLayout android:orientation="horizontal" android:id="@id/widget_twoxthree_xunhang_road_line_container" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_1" android:layout_marginTop="@dimen/auto_dimen2_15" android:layout_marginRight="@dimen/auto_dimen2_1" android:layout_alignParentTop="true" android:layout_centerHorizontal="true">
+            <ImageView android:id="@id/widget_twoxthree_xunhang_road_line" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout android:gravity="center_vertical" android:id="@id/widget_twoxthree_xunhang_camera_container" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_15" android:layout_marginTop="@dimen/auto_dimen2_12" android:layout_below="@id/widget_twoxthree_xunhang_road_line_container" android:layout_alignParentLeft="true">
+            <FrameLayout android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <TextView android:textSize="@dimen/auto_font_size_22" android:textStyle="bold" android:textColor="@color/widget_color_black" android:gravity="center" android:layout_gravity="center_vertical" android:id="@id/widget_twoxthree_xunhang_camera_speed" android:background="@drawable/widget_drawable_auto_ic_edog_limit_speed_loading" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="80" android:layout_alignParentLeft="true" android:layout_centerVertical="true" />
+                <ImageView android:layout_gravity="center_vertical" android:id="@id/widget_twoxthree_xunhang_camera" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/widget_drawable_auto_ic_edog_camera_loading" android:layout_alignParentLeft="true" android:layout_centerVertical="true" />
+            </FrameLayout>
+        </LinearLayout>
+        <TextView android:id="@id/widget_twoxthree_xunhang_current_road_name" android:visibility="invisible" android:text="@string/widget_current_road_name" android:layout_alignParentBottom="true" android:layout_centerHorizontal="true" style="@style/widget_current_road_layout_style" />
+        <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.247" />
+            <FrameLayout android:layout_gravity="center" android:layout_width="wrap_content" android:layout_height="0.0dp" android:layout_weight="2.5">
+                <ImageView android:layout_gravity="center" android:id="@id/widget_twoxthree_xunhang_car_icon" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/navi_direction_inside" android:scaleType="center" />
+                <ImageView android:layout_gravity="center" android:id="@id/widget_twoxthree_xunhang_car_direction_icon" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/navi_direction_outside" android:scaleType="center" />
+            </FrameLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="0.1647" />
+        </LinearLayout>
+    </RelativeLayout>
+</LinearLayout>

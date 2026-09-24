@@ -1,0 +1,90 @@
+.class public Lfk0;
+.super Lec;
+.source "SourceFile"
+
+# interfaces
+.implements Lld;
+.implements Lo2;
+
+
+# instance fields
+.field public d:I
+
+
+# direct methods
+.method public constructor <init>(I)V
+    .locals 0
+
+    .line 1
+    invoke-direct {p0}, Lec;-><init>()V
+
+    .line 2
+    iput p1, p0, Lfk0;->d:I
+
+    return-void
+.end method
+
+.method public constructor <init>(Lcom/autonavi/amapauto/protocol/model/service/ReqGetVehicleStateModel;)V
+    .locals 0
+
+    .line 3
+    invoke-direct {p0}, Lec;-><init>()V
+
+    .line 4
+    invoke-virtual {p1}, Lcom/autonavi/amapauto/protocol/model/service/ReqGetVehicleStateModel;->getType()I
+
+    move-result p1
+
+    iput p1, p0, Lfk0;->d:I
+
+    return-void
+.end method
+
+
+# virtual methods
+.method public b()Lcom/autonavi/amapauto/protocol/model/base/ProtocolBaseModel;
+    .locals 2
+
+    .line 1
+    new-instance v0, Lcom/autonavi/amapauto/protocol/model/service/ReqGetVehicleStateModel;
+
+    .line 3
+    iget v1, p0, Lfk0;->d:I
+
+    .line 5
+    invoke-direct {v0, v1}, Lcom/autonavi/amapauto/protocol/model/service/ReqGetVehicleStateModel;-><init>(I)V
+
+    .line 8
+    return-object v0
+.end method
+
+.method public c()Landroid/content/Intent;
+    .locals 3
+
+    .line 1
+    new-instance v0, Landroid/content/Intent;
+
+    .line 3
+    invoke-direct {v0}, Landroid/content/Intent;-><init>()V
+
+    .line 6
+    const-string v1, "KEY_TYPE"
+
+    .line 8
+    const/16 v2, 0x2720
+
+    .line 10
+    invoke-virtual {v0, v1, v2}, Landroid/content/Intent;->putExtra(Ljava/lang/String;I)Landroid/content/Intent;
+
+    .line 13
+    const-string v1, "EXTRA_TYPE"
+
+    .line 15
+    iget v2, p0, Lfk0;->d:I
+
+    .line 17
+    invoke-virtual {v0, v1, v2}, Landroid/content/Intent;->putExtra(Ljava/lang/String;I)Landroid/content/Intent;
+
+    .line 20
+    return-object v0
+.end method

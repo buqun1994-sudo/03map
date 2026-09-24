@@ -1,0 +1,10 @@
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>1.公众版和适配版有什么区别，应该安装哪个版本？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>适配版是软件与车厂进行过匹配，并在出厂时内置在车镜里的软件，跟原车更加兼容。公众版面向大部分安卓4.0以上的车镜，适用于多种车镜，更新更快。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>2.如何升级数据和软件？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>登录官网（www.amapauto.com），下载最新公众版，可根据您的需要下载地图数据和语音包，并按照安装说明进行安装即可。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>3.从1.x/2.x版本升级到3.x/4.0版本，必须要重新下载数据吗？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>是的，从3.0版本开始软件做了全面升级，数据进行了优化，必须要下载新数据。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>4.车镜版扫一扫功能如何使用？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>车镜联网之后，进入车镜版的登录页面，打开手机版高德地图工具箱功能，选择【扫一扫】，可快速登录高德地图车镜版。车镜登录账户后，可使用手机发送位置到汽车、收藏夹同步等功能。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>5.在哪可以下载产品的使用说明书？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>登录官网进入产品下载页——安装说明页，即可选择下载最新版本的产品说明书。</Paragraph></TextColor></TextSize>

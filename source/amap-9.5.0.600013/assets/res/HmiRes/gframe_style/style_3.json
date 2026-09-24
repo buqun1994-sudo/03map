@@ -1,0 +1,25 @@
+{
+	"marker_info": {
+	},
+	"default": {
+		"eagle_configure_style": {
+			"width": "210",
+			"height": "210",
+			"delta": "28",
+			"delta_height": "28",
+			"zoom_scale": "1.5",
+			"text_scale": "2.0",
+			"screen_scale": "2.0",
+			"alpha": "0.8f",
+			"blue": "0.45882353f",
+			"green": "0.43529412f",
+			"red": "0.42352941f",
+			"alpha_night": "0.8f",
+			"blue_night": "0.36470588f",
+			"green_night": "0.28627451f",
+			"red_night": "0.27843137f",
+			"endpreview_length": "0xFFFFFFFF",
+			"background_res": "hawkeyemap_bg.png"
+		}
+	}		
+}

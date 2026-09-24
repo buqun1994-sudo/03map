@@ -1,0 +1,10 @@
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>1.如何搜索？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>在图面上，点击【目的地】，在弹出页点击搜索框，可直接输入目的地进行搜索。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>2.如何查周边？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>可通过在搜索结果卡片或者移动图面在弹出卡片上点击【查周边】，弹出页上显示查周边的分类，同时也可以通过手动搜索来查找周边目的地。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>3.如何设置回家/去公司？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>在图面上，点击【目的地】，在弹出页的右侧，可设置回家/去公司，也可在收藏的点中进行快捷导航。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>4.如何添加收藏点？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>可通过搜索信息点添加收藏点，也可移动图面在弹出的卡片信息点中添加收藏点，收藏的信息点可进行查周边和导航。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>5.搜索支持手写吗？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>支持手写，输入法增加联想功能。</Paragraph></TextColor></TextSize>

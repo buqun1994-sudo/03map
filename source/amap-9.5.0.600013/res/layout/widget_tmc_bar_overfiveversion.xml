@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:layout_width="wrap_content" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_alignParentRight="true">
+        <LinearLayout android:gravity="center_horizontal" android:orientation="vertical" android:id="@id/bg_top_4space" android:visibility="invisible" android:layout_width="@dimen/auto_dimen2_26" android:layout_height="wrap_content" android:layout_centerHorizontal="true" />
+        <RelativeLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_centerHorizontal="true">
+            <RelativeLayout android:id="@id/tmc_bar_container" android:background="@drawable/auto_bg_navi_tmc_afterfive" android:layout_width="@dimen/auto_dimen2_22" android:layout_height="wrap_content">
+                <com.autonavi.amapauto.widget.views.WidgetTmcBarViewAFV android:id="@id/tmc_bar_view" android:layout_width="match_parent" android:layout_height="@dimen/auto_dimen2_200" android:layout_marginLeft="@dimen/auto_dimen2_4" android:layout_marginTop="@dimen/auto_dimen2_4" android:layout_marginRight="@dimen/auto_dimen2_4" android:layout_marginBottom="@dimen/auto_dimen2_4" android:layout_centerInParent="true" />
+            </RelativeLayout>
+        </RelativeLayout>
+        <RelativeLayout android:id="@id/navi_tmc_cursor_container" android:layout_width="@dimen/auto_dimen2_32" android:layout_height="match_parent" android:layout_below="@id/bg_top_4space" android:layout_centerHorizontal="true">
+            <ImageView android:id="@id/navi_tmc_cursor" android:visibility="visible" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/auto_dimen2_358" android:src="@drawable/auto_ic_navi_tmc_icon" android:layout_alignParentTop="true" android:layout_centerHorizontal="true" />
+        </RelativeLayout>
+    </RelativeLayout>
+</RelativeLayout>

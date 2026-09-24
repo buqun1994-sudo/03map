@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:id="@id/cards_container" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:id="@id/cards_unset_container" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <TextView android:textSize="@dimen/auto_widget_dimen_silence_weather_text_size" android:textColor="@color/widget_color_cards_rigth_title" android:id="@id/cards_unset_left_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" android:layout_alignParentRight="true" />
+    </RelativeLayout>
+    <RelativeLayout android:id="@id/cards_setted_container" android:visibility="visible" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <RelativeLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+            <LinearLayout android:gravity="center_vertical" android:layout_gravity="left|center" android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_toLeftOf="@id/cards_right_container" android:layout_alignParentLeft="true">
+                <RelativeLayout android:id="@id/cards_left_container" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                    <TextView android:textSize="@dimen/auto_widget_dimen_silence_location_hint_text_size" android:textColor="@color/widget_color_cards_current_location_hint" android:id="@id/cards_left_content" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/widget_cards_left_title_default" android:singleLine="true" android:layout_alignParentLeft="true" android:layout_centerHorizontal="true" />
+                    <TextView android:textSize="@dimen/auto_widget_dimen_silence_location_text_size" android:textColor="@color/widget_color_cards_left_title" android:ellipsize="end" android:id="@id/cards_left_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/auto_widget_dimen_silence_location_hint_margin" android:text="@string/widget_cards_left_content_default" android:maxLines="2" android:layout_below="@id/cards_left_content" android:layout_alignParentLeft="true" android:layout_centerHorizontal="true" />
+                </RelativeLayout>
+            </LinearLayout>
+            <LinearLayout android:id="@id/cards_right_container" android:visibility="visible" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_alignParentRight="true">
+                <RelativeLayout android:gravity="center_vertical" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                    <TextView android:textSize="@dimen/auto_widget_dimen_silence_weather_text_size" android:textColor="@color/widget_color_cards_rigth_title" android:id="@id/cards_rigth_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" />
+                </RelativeLayout>
+            </LinearLayout>
+        </RelativeLayout>
+    </RelativeLayout>
+</FrameLayout>

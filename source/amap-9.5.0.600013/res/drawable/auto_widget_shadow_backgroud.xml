@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <size android:height="@dimen/auto_dimen2_6" />
+            <padding android:right="@dimen/auto_dimen2_6" />
+            <gradient android:startColor="@color/widget_color_jingmo_shadow_backgroud" android:endColor="@android:color/transparent" android:angle="0.0" android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

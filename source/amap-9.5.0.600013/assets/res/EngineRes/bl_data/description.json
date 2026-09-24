@@ -1,0 +1,216 @@
+{
+    "description.json": {
+        "path": "description.json", 
+        "type": 0, 
+        "version": "9.950.328208.0.572"
+    }, 
+    "GLndsConfig.xml": {
+        "path": "GLndsConfig.xml", 
+        "type": 3, 
+        "update": "Content"
+    }, 
+    "GNaviConfig.xml": {
+        "path": "GNaviConfig.xml", 
+        "type": 3, 
+        "update": "Content"
+    }, 
+    "GRestConfig.ini": {
+        "path": "GRestConfig.ini", 
+        "type": 2, 
+        "channel": true
+    }, 
+    "GblConfig.json": {
+        "path": "GblConfig.json", 
+        "type": 2, 
+        "channel": true
+    }, 
+    "LogSceneConfig.json": {
+        "type": 2, 
+        "path": "LogSceneConfig.json"
+    }, 
+    "GuideConfig.json": {
+        "path": "GuideConfig.json", 
+        "type": 2
+    }, 
+    "PerfConfig.json": {
+        "path": "PerfConfig.json", 
+        "type": 2
+    }, 
+    "localization": {
+        "path": "localization", 
+        "type": 2, 
+        "subfiles": [
+            "/values-zh-cn/bl_strings.xml", 
+            "/values-zh-tr/bl_strings.xml", 
+            "/values-en/bl_strings.xml"
+        ]
+    }, 
+    "opencc_conf": {
+        "path": "opencc_conf", 
+        "type": 0, 
+        "write": true, 
+        "subfiles": [
+            "/STCharacters.ocd2", 
+            "/s2t.json", 
+            "/STPhrases.ocd2"
+        ]
+    }, 
+    "network_conf": {
+        "path": "network_conf", 
+        "type": 0, 
+        "subfiles": [
+            "/autorz.crt", 
+            "/NoSign.dat"
+        ]
+    }, 
+    "EhpConfig.dat": {
+        "path": "EhpConfig.dat", 
+        "type": 2, 
+        "channel": true
+    }, 
+    "IdcConfig.dat": {
+        "path": "IdcConfig.dat", 
+        "type": 2, 
+        "channel": true
+    }, 
+    "global.db": {
+        "path": "res/global.db", 
+        "type": 0, 
+        "write": true, 
+        "version": "1608820241"
+    }, 
+    "global_e.db": {
+        "path": "res/global_e.db", 
+        "type": 0, 
+        "write": true, 
+        "version": "1635907287"
+    }, 
+    "font": {
+        "path": "font", 
+        "type": 0, 
+        "subfiles": [
+            "/SDK_Font_medium.ttf", 
+            "/SDK_Font_bold.ttf"
+        ]
+    }, 
+    "res": {
+        "path": "res", 
+        "type": 2
+    }, 
+    "MapAsset": {
+        "path": "MapAsset", 
+        "type": 2
+    }, 
+    "LayerAsset": {
+        "path": "LayerAsset", 
+        "type": 2
+    }, 
+    "MapViewAsset": {
+        "path": "MapViewAsset", 
+        "type": 2
+    }, 
+    "offline_conf": {
+        "path": "offline_conf", 
+        "type": 3, 
+        "write": true, 
+        "update": "EmptySize", 
+        "subfiles": [
+            "/all_city_compile_v2.json"
+        ]
+    }, 
+    "voice_conf": {
+        "path": "voice_conf", 
+        "type": 3, 
+        "write": true, 
+        "update": "EmptySize", 
+        "subfiles": [
+            "/voicedata.json"
+        ]
+    }, 
+    "theme_conf": {
+        "path": "theme_conf", 
+        "type": 3, 
+        "write": true, 
+        "update": "EmptySize", 
+        "subfiles": [
+            "/themedata2.json"
+        ]
+    }, 
+    "tts_conf": {
+        "path": "tts_conf", 
+        "type": 0, 
+        "subfiles": []
+    }, 
+    "arres": {
+        "path": "arres", 
+        "type": 2
+    }, 
+    "md-cfg-vdms-adas-vps-gps": {
+        "path": "arres/config/md-cfg/md-cfg-vdms-adas-vps-gps.db", 
+        "type": 0
+    }, 
+    "LaneLayerAsset": {
+        "path": "LaneLayerAsset", 
+        "type": 2
+    }, 
+    "LaneResource": {
+        "path": "LaneResource", 
+        "type": 2
+    }, 
+    "LaneCarSRResource": {
+        "path": "LaneCarSRResource", 
+        "type": 2
+    }, 
+    "MultipleScreen.json": {
+        "path": "MultipleScreen.json", 
+        "type": 2
+    }, 
+    "LaneConfig.json": {
+        "path": "LaneConfig.json", 
+        "type": 2
+    }, 
+    "MapToolAsset": {
+        "path": "MapToolAsset", 
+        "type": 2
+    }, 
+    "MapAnimationAsset": {
+        "path": "MapAnimationAsset", 
+        "type": 2
+    }, 
+    "LayerTool": {
+        "path": "LayerTool", 
+        "type": 2
+    }, 
+    "squirrel_conf": {
+        "path": "squirrel_conf", 
+        "type": 2
+    }, 
+    "model": {
+        "path": "model", 
+        "type": 2
+    }, 
+    "DefaultTheme": {
+        "path": "DefaultTheme", 
+        "type": 2
+    }, 
+    "MapProjectAsset": {
+        "path": "MapProjectAsset", 
+        "type": 2
+    }, 
+    "123.png": {
+        "path": "123.png", 
+        "type": 0
+    }, 
+    "LaneLayerImages": {
+        "path": "LaneLayerImages", 
+        "type": 2
+    }, 
+    "LayerImages": {
+        "path": "LayerImages", 
+        "type": 2
+    }, 
+    "MapConfig.json": {
+        "path": "MapConfig.json", 
+        "type": 2
+    }
+}

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:id="@id/gongban_right_blank_container" android:background="@color/widget_color_jingmo_right_blank_shadow_newui" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <ImageView android:id="@id/jingmo_widget_image" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/widget_drawable_whole_backgroud" android:scaleType="centerCrop" />
+</RelativeLayout>

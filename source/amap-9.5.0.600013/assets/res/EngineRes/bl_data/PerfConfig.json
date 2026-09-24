@@ -1,0 +1,1094 @@
+{
+  "nvwa_config_1_high": {
+    "eagleeye_fps_ctrl": {
+      "enable": 1, 
+      "fps": 2
+    },
+    "build_animation": {
+      "duration": 330,
+      "enable": 1,
+      "map_state": [
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 0
+        },
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 1
+        }
+      ]
+    },
+    "building_collision_hide_animation": {
+      "alpha": 0.1,
+      "fadein_time": 1500,
+      "fadeout_time": 2000,
+      "hide_animation_type": 1
+    },
+    "building_lod_display": {
+      "enable": false,
+      "lod0MinH": 0,
+      "lod1": 0.2,
+      "lod1MinH": 0,
+      "lod2": 0.1,
+      "lod2MinH": 0,
+      "max_level": 19,
+      "min_level": 16,
+      "min_pitch": 30,
+      "no_round_lod": true
+    },
+    "building_poi_height_scale": [
+      {
+        "mapmode": 0,
+        "mapstate": 0,
+        "scale": 0.5
+      },
+      {
+        "mapmode": 0,
+        "mapstate": 4,
+        "scale": 0.5
+      }
+    ],
+    "building_round_corner": {
+      "factor_a": 0.15,
+      "factor_b": 0.15,
+      "is_all": 0,
+      "is_open": 1,
+      "param_4": 15
+    },
+    "config_param": {
+      "build3dObjPBR": false,
+      "buildCollideIndoorPark": false,
+      "buildDissolution": false,
+      "buildForSolid": true,
+      "buildHightLightOn": true,
+      "buildHightLimite": 0,
+      "buildRaiseIn2D": false,
+      "buildSidelineType": 0,
+      "buildingPlanarShadow": false,
+      "buildingReflection": true,
+      "buildingType": 1,
+      "dynamicSky": false,
+      "earth_on": false,
+      "enmapReadOnLineData": false,
+      "fontUseMips": false,
+      "grassLine": false,
+      "heightScale": 0.7,
+      "i18nRoadTextScale": 1,
+      "isNakeEye": false,
+      "nakeEyeMode": 1,
+      "postFx": false,
+      "regionPBR": 0,
+      "simple3DShowLevel": 17,
+      "simple3DShowType": true,
+      "smartMap": false,
+      "textureTimeLimite": 0,
+      "topographyMaxLevel": 10,
+      "topographyMinLevel": 3
+    },
+    "is_POI_fly": [
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 0,
+        "maxzoom": 22,
+        "minzoom": 16
+      },
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 4,
+        "maxzoom": 22,
+        "minzoom": 16
+      },
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 22,
+        "maxzoom": 22,
+        "minzoom": 16
+      }
+    ],
+    "is_POI_special": [
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 0,
+        "maxnum": 7,
+        "maxzoom": 22,
+        "minzoom": 16,
+        "pitch": 15
+      }
+    ],
+    "level_scale": {
+      "mode": 1,
+      "onoff": true
+    },
+    "light": {
+      "enable_light": 1
+    },
+    "poi_collide_with_building": [
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 0
+      },
+      {
+        "is_open": 0,
+        "mapmode": 0,
+        "mapstate": 4
+      }
+    ],
+    "roadname_collide_with_building": [
+      {
+        "is_open": 0,
+        "mapmode": 0,
+        "mapstate": 0,
+        "pitch": 15
+      }
+    ],
+    "roof2d_optim": {
+      "day_2d_color_scale": 1.02,
+      "day_3d_color_scale": 1,
+      "map_state": [
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 0
+        },
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 1
+        }
+      ],
+      "max_height_scale": 1,
+      "min_height_scale": 0.5,
+      "night_2d_color_scale": 0.8,
+      "night_3d_color_scale": 1,
+      "onoff": 1,
+      "pitch_range": 15
+    },
+    "senior_indoor": {
+      "boutique": {
+        "enable": true,
+        "model": [
+          0
+        ],
+        "state": [
+          0,
+          4
+        ]
+      },
+      "generalize": {
+        "enable": false,
+        "model": [
+          0
+        ],
+        "state": [
+          0,
+          4
+        ]
+      }
+    },
+    "serialize": {
+      "enable": 1,
+      "standard": {
+        "enable": 1,
+        "max_count": 1000,
+        "recycle_ratio": 0.1
+      },
+      "roads": {
+        "enable": 1,
+        "max_count": 200,
+        "recycle_ratio": 0.1
+      },
+      "vector_building": {
+        "enable": 1,
+        "max_count": 100,
+        "recycle_ratio": 0.1
+      },
+      "vm": {
+        "enable": 1,
+        "max_count": 100,
+        "recycle_ratio": 0.1
+      }
+    },
+    "ssao": {
+      "enable_ssao": true
+    },
+    "dem": false
+  },
+  "nvwa_config_1_middle": {
+    "eagleeye_fps_ctrl": {
+      "enable": 1, 
+      "fps": 2
+    }, 
+    "build_animation": {
+      "duration": 330,
+      "enable": 0,
+      "map_state": [
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 0
+        },
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 1
+        }
+      ]
+    },
+    "building_collision_hide_animation": {
+      "alpha": 0.1,
+      "fadein_time": 1500,
+      "fadeout_time": 2000,
+      "hide_animation_type": 1
+    },
+    "building_lod_display": {
+      "enable": false,
+      "lod0MinH": 0,
+      "lod1": 0.2,
+      "lod1MinH": 0,
+      "lod2": 0.1,
+      "lod2MinH": 0,
+      "max_level": 19,
+      "min_level": 16,
+      "min_pitch": 30,
+      "no_round_lod": true
+    },
+    "building_poi_height_scale": [
+      {
+        "mapmode": 0,
+        "mapstate": 0,
+        "scale": 0.5
+      },
+      {
+        "mapmode": 0,
+        "mapstate": 4,
+        "scale": 0.5
+      }
+    ],
+    "building_round_corner": {
+      "factor_a": 0.15,
+      "factor_b": 0.15,
+      "is_all": 0,
+      "is_open": 1,
+      "param_4": 15
+    },
+    "config_param": {
+      "build3dObjPBR": false,
+      "buildCollideIndoorPark": false,
+      "buildDissolution": false,
+      "buildForSolid": true,
+      "buildHightLightOn": true,
+      "buildHightLimite": 0,
+      "buildRaiseIn2D": false,
+      "buildSidelineType": 0,
+      "buildingPlanarShadow": false,
+      "buildingReflection": false,
+      "buildingType": 1,
+      "dynamicSky": false,
+      "earth_on": false,
+      "enmapReadOnLineData": false,
+      "fontUseMips": false,
+      "grassLine": false,
+      "heightScale": 1,
+      "i18nRoadTextScale": 1,
+      "isNakeEye": false,
+      "nakeEyeMode": 1,
+      "postFx": false,
+      "regionPBR": 0,
+      "simple3DShowLevel": 17,
+      "simple3DShowType": true,
+      "smartMap": false,
+      "textureTimeLimite": 0,
+      "topographyMaxLevel": 10,
+      "topographyMinLevel": 3
+    },
+    "is_POI_fly": [
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 0,
+        "maxzoom": 22,
+        "minzoom": 16
+      },
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 4,
+        "maxzoom": 22,
+        "minzoom": 16
+      },
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 22,
+        "maxzoom": 22,
+        "minzoom": 16
+      }
+    ],
+    "is_POI_special": [
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 0,
+        "maxnum": 7,
+        "maxzoom": 22,
+        "minzoom": 16,
+        "pitch": 15
+      }
+    ],
+    "level_scale": {
+      "mode": 1,
+      "onoff": false
+    },
+    "light": {
+      "enable_light": 0
+    },
+    "poi_collide_with_building": [
+      {
+        "is_open": 0,
+        "mapmode": 0,
+        "mapstate": 0
+      },
+      {
+        "is_open": 0,
+        "mapmode": 0,
+        "mapstate": 4
+      }
+    ],
+    "roadname_collide_with_building": [
+      {
+        "is_open": 0,
+        "mapmode": 0,
+        "mapstate": 0,
+        "pitch": 15
+      }
+    ],
+    "roof2d_optim": {
+      "day_2d_color_scale": 1.02,
+      "day_3d_color_scale": 1,
+      "map_state": [
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 0
+        },
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 1
+        }
+      ],
+      "max_height_scale": 1,
+      "min_height_scale": 0.5,
+      "night_2d_color_scale": 0.8,
+      "night_3d_color_scale": 1,
+      "onoff": 0,
+      "pitch_range": 15
+    },
+    "senior_indoor": {
+      "boutique": {
+        "enable": true,
+        "model": [
+          0
+        ],
+        "state": [
+          0,
+          4
+        ]
+      },
+      "generalize": {
+        "enable": false,
+        "model": [
+          0
+        ],
+        "state": [
+          0,
+          4
+        ]
+      }
+    },
+    "serialize": {
+      "enable": 1,
+      "standard": {
+        "enable": 1,
+        "max_count": 1000,
+        "recycle_ratio": 0.1
+      },
+      "roads": {
+        "enable": 1,
+        "max_count": 200,
+        "recycle_ratio": 0.1
+      },
+      "vector_building": {
+        "enable": 1,
+        "max_count": 100,
+        "recycle_ratio": 0.1
+      },
+      "vm": {
+        "enable": 1,
+        "max_count": 100,
+        "recycle_ratio": 0.1
+      }
+    },
+    "ssao": {
+      "enable_ssao": false
+    },
+    "dem": false
+  },
+  "nvwa_config_1_low": {
+    "eagleeye_fps_ctrl": {
+      "enable": 1, 
+      "fps": 2
+    }, 
+    "build_animation": {
+      "duration": 330,
+      "enable": 0,
+      "map_state": [
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 0
+        },
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 1
+        }
+      ]
+    },
+    "building_collision_hide_animation": {
+      "alpha": 0.1,
+      "fadein_time": 1500,
+      "fadeout_time": 2000,
+      "hide_animation_type": 1
+    },
+    "building_lod_display": {
+      "enable": false,
+      "lod0MinH": 0,
+      "lod1": 0.2,
+      "lod1MinH": 0,
+      "lod2": 0.1,
+      "lod2MinH": 0,
+      "max_level": 19,
+      "min_level": 16,
+      "min_pitch": 30,
+      "no_round_lod": true
+    },
+    "building_poi_height_scale": [
+      {
+        "mapmode": 0,
+        "mapstate": 0,
+        "scale": 0.7
+      },
+      {
+        "mapmode": 0,
+        "mapstate": 4,
+        "scale": 0.5
+      }
+    ],
+    "building_round_corner": {
+      "factor_a": 0.15,
+      "factor_b": 0.15,
+      "is_all": 0,
+      "is_open": 0,
+      "param_4": 15
+    },
+    "config_param": {
+      "build3dObjPBR": false,
+      "buildCollideIndoorPark": false,
+      "buildDissolution": false,
+      "buildForSolid": true,
+      "buildHightLightOn": true,
+      "buildHightLimite": 0,
+      "buildRaiseIn2D": false,
+      "buildSidelineType": 0,
+      "buildingPlanarShadow": false,
+      "buildingReflection": false,
+      "buildingType": 1,
+      "dynamicSky": false,
+      "earth_on": false,
+      "enmapReadOnLineData": false,
+      "fontUseMips": false,
+      "grassLine": false,
+      "heightScale": 1,
+      "i18nRoadTextScale": 1,
+      "isNakeEye": false,
+      "nakeEyeMode": 1,
+      "postFx": false,
+      "regionPBR": 0,
+      "simple3DShowLevel": 17,
+      "simple3DShowType": true,
+      "smartMap": false,
+      "textureTimeLimite": 0,
+      "topographyMaxLevel": 10,
+      "topographyMinLevel": 3
+    },
+    "is_POI_fly": [
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 0,
+        "maxzoom": 22,
+        "minzoom": 16
+      },
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 4,
+        "maxzoom": 22,
+        "minzoom": 16
+      },
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 22,
+        "maxzoom": 22,
+        "minzoom": 16
+      }
+    ],
+    "is_POI_special": [
+      {
+        "is_open": 1,
+        "mapmode": 0,
+        "mapstate": 0,
+        "maxnum": 7,
+        "maxzoom": 22,
+        "minzoom": 16,
+        "pitch": 15
+      }
+    ],
+    "level_scale": {
+      "mode": 1,
+      "onoff": false
+    },
+    "light": {
+      "enable_light": 0
+    },
+    "poi_collide_with_building": [
+      {
+        "is_open": 0,
+        "mapmode": 0,
+        "mapstate": 0
+      },
+      {
+        "is_open": 0,
+        "mapmode": 0,
+        "mapstate": 4
+      }
+    ],
+    "roadname_collide_with_building": [
+      {
+        "is_open": 0,
+        "mapmode": 0,
+        "mapstate": 0,
+        "pitch": 15
+      }
+    ],
+    "roof2d_optim": {
+      "day_2d_color_scale": 1.02,
+      "day_3d_color_scale": 1,
+      "map_state": [
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 0
+        },
+        {
+          "mode": 0,
+          "state": 0,
+          "time": 1
+        }
+      ],
+      "max_height_scale": 1,
+      "min_height_scale": 0.5,
+      "night_2d_color_scale": 0.8,
+      "night_3d_color_scale": 1,
+      "onoff": 0,
+      "pitch_range": 15
+    },
+    "senior_indoor": {
+      "boutique": {
+        "enable": true,
+        "model": [
+          0
+        ],
+        "state": [
+          0,
+          4
+        ]
+      },
+      "generalize": {
+        "enable": false,
+        "model": [
+          0
+        ],
+        "state": [
+          0,
+          4
+        ]
+      }
+    },
+    "serialize": {
+      "enable": 1,
+      "standard": {
+        "enable": 1,
+        "max_count": 1000,
+        "recycle_ratio": 0.1
+      },
+      "roads": {
+        "enable": 1,
+        "max_count": 200,
+        "recycle_ratio": 0.1
+      },
+      "vector_building": {
+        "enable": 1,
+        "max_count": 100,
+        "recycle_ratio": 0.1
+      },
+      "vm": {
+        "enable": 1,
+        "max_count": 100,
+        "recycle_ratio": 0.1
+      }
+    },
+    "ssao": {
+      "enable_ssao": false
+    },
+    "dem": false
+  },
+  "perf_config_1_high": {
+    "actionGroup": "high",
+    "actionId": 1,
+    "actionName": "perf1",
+    "dem": [
+      {
+        "animation": true,
+        "enable": true,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0,
+        "tile_max_level": 9,
+        "tile_min_level": 3
+      },
+      {
+        "animation": true,
+        "enable": true,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1,
+        "tile_max_level": 9,
+        "tile_min_level": 3
+      }
+    ],
+    "landmark": [
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0,
+        "max_lod": 4,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1,
+        "max_lod": 4,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 1,
+        "max_lod": 4,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 1,
+        "map_state": 22,
+        "map_time": 0,
+        "max_lod": 4,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 10,
+        "map_time": 0,
+        "max_lod": 4,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      }
+    ],
+    "light": {
+      "bloom": false,
+      "enable": true,
+      "fog": false,
+      "part_light": false,
+      "point": false,
+      "prez": true,
+      "reflection": true,
+      "shadow": true,
+      "spot": true,
+      "ssao": true
+    },
+    "mapviewid": 1,
+    "model": {
+      "enable": 1
+    },
+    "performance": {
+      "fps": 50,
+      "2d_raise_building": true,
+      "poi_depth_culling": true,
+      "building_animation": true,
+      "building_corner": true,
+      "quad_tree": true,
+      "tree_animation": true
+    },
+    "treeDisplayConfig": [
+      {
+        "enable": 1,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0
+      },
+      {
+        "enable": 1,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1
+      },
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 0
+      },
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 1
+      }
+    ]
+  },
+  "perf_config_1_middle": {
+    "actionGroup": "middle",
+    "actionId": 1,
+    "actionName": "perf1",
+    "dem": [
+      {
+        "animation": false,
+        "enable": false,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0,
+        "tile_max_level": 9,
+        "tile_min_level": 6
+      },
+      {
+        "animation": false,
+        "enable": false,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1,
+        "tile_max_level": 9,
+        "tile_min_level": 6
+      }
+    ],
+    "landmark": [
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 1,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 1,
+        "map_state": 22,
+        "map_time": 0,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 1,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 10,
+        "map_time": 0,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      }
+    ],
+    "light": {
+      "bloom": false,
+      "enable": false,
+      "fog": false,
+      "part_light": false,
+      "point": false,
+      "prez": false,
+      "reflection": false,
+      "shadow": false,
+      "spot": false,
+      "ssao": false
+    },
+    "mapviewid": 1,
+    "model": {
+      "enable": 1
+    },
+    "performance": {
+      "fps": 50,
+      "2d_raise_building": false,
+      "poi_depth_culling": false,
+      "building_animation": false,
+      "building_corner": false,
+      "quad_tree": false,
+      "tree_animation": false
+    },
+    "treeDisplayConfig": [
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0
+      },
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1
+      },
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 0
+      },
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 1
+      }
+    ]
+  },
+  "perf_config_1_low": {
+    "actionGroup": "low",
+    "actionId": 1,
+    "actionName": "perf1",
+    "dem": [
+      {
+        "animation": false,
+        "enable": false,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0,
+        "tile_max_level": 9,
+        "tile_min_level": 6
+      },
+      {
+        "animation": false,
+        "enable": false,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1,
+        "tile_max_level": 9,
+        "tile_min_level": 6
+      }
+    ],
+    "landmark": [
+      {
+        "enable": 0,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 0,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 0,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 1,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 0,
+        "index_model": 1,
+        "map_mode": 1,
+        "map_state": 22,
+        "map_time": 0,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      },
+      {
+        "enable": 0,
+        "index_model": 1,
+        "map_mode": 0,
+        "map_state": 10,
+        "map_time": 0,
+        "max_lod": 2,
+        "min_lod": 1,
+        "obj_model": 1,
+        "vector_model": true,
+        "vector_model_box": true,
+        "vector_model_eave": true
+      }
+    ],
+    "light": {
+      "bloom": false,
+      "enable": false,
+      "fog": false,
+      "part_light": false,
+      "point": false,
+      "prez": false,
+      "reflection": false,
+      "shadow": false,
+      "spot": false,
+      "ssao": false
+    },
+    "mapviewid": 1,
+    "model": {
+      "enable": 1
+    },
+    "performance": {
+      "fps": 50,
+      "2d_raise_building": false,
+      "poi_depth_culling": false,
+      "building_animation": false,
+      "building_corner": false,
+      "quad_tree": false,
+      "tree_animation": false
+    },
+    "treeDisplayConfig": [
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 0
+      },
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 0,
+        "map_time": 1
+      },
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 0
+      },
+      {
+        "enable": 0,
+        "map_mode": 0,
+        "map_state": 22,
+        "map_time": 1
+      }
+    ]
+  }
+}

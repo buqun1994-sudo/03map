@@ -1,0 +1,13 @@
+{
+ "version": 1,
+ "local_version": "1.0.0.5",
+ "enabled": true,
+ "expired": 0,
+ "model": {
+  "engine": "mnn",
+  "file": "light_calc_micnn.mnn",
+  "type": "module",
+  "format": "NCHW",
+  "features": []
+ }
+}

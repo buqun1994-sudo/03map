@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:id="@id/gongban_right_container" android:background="@color/widget_transparency" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <ImageView android:id="@id/widget_silence_close" android:layout_width="@dimen/auto_dimen2_88" android:layout_height="@dimen/auto_dimen2_52" android:layout_marginTop="@dimen/auto_dimen2_12" android:layout_marginRight="@dimen/auto_dimen2_9" android:src="@drawable/auto_widget_jingmo_close_btn_day_selector" android:scaleType="centerInside" android:layout_alignParentTop="true" android:layout_alignParentRight="true" />
+    <TextView android:textSize="@dimen/auto_font_size_16" android:textColor="@color/widget_color_common_text" android:id="@id/widget_silence_logo" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="@dimen/auto_dimen2_10" android:layout_marginBottom="@dimen/auto_dimen2_10" android:text="@string/widget_silence_logo" android:layout_alignParentRight="true" android:layout_alignParentBottom="true" />
+</RelativeLayout>

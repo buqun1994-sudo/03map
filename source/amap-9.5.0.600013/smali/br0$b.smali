@@ -1,0 +1,86 @@
+.class public Lbr0$b;
+.super Lzv0;
+.source "SourceFile"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lbr0;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x9
+    name = "b"
+.end annotation
+
+
+# instance fields
+.field public a:Z
+
+.field public b:Ljava/lang/String;
+
+
+# direct methods
+.method public constructor <init>()V
+    .locals 0
+
+    .line 1
+    invoke-direct {p0}, Lzv0;-><init>()V
+
+    .line 4
+    return-void
+.end method
+
+
+# virtual methods
+.method public d(ILru0;)Z
+    .locals 2
+
+    .line 1
+    const/16 v0, 0x8
+
+    .line 3
+    const/4 v1, 0x1
+
+    .line 4
+    if-eq p1, v0, :cond_1
+
+    .line 6
+    const/16 v0, 0x12
+
+    .line 8
+    if-eq p1, v0, :cond_0
+
+    .line 10
+    invoke-virtual {p2, p1}, Lru0;->p(I)Z
+
+    .line 13
+    return v1
+
+    .line 14
+    :cond_0
+    invoke-virtual {p2}, Lru0;->r()Ljava/lang/String;
+
+    .line 17
+    move-result-object p1
+
+    .line 18
+    iput-object p1, p0, Lbr0$b;->b:Ljava/lang/String;
+
+    .line 20
+    goto :goto_0
+
+    .line 21
+    :cond_1
+    invoke-virtual {p2}, Lru0;->t()Z
+
+    .line 24
+    move-result p1
+
+    .line 25
+    iput-boolean p1, p0, Lbr0$b;->a:Z
+
+    .line 27
+    :goto_0
+    return v1
+.end method

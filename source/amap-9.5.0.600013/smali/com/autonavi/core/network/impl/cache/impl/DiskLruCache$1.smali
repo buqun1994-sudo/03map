@@ -1,0 +1,141 @@
+.class Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;
+.super Ljava/lang/Object;
+.source "SourceFile"
+
+# interfaces
+.implements Ljava/util/concurrent/Callable;
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x1
+    name = null
+.end annotation
+
+.annotation system Ldalvik/annotation/Signature;
+    value = {
+        "Ljava/lang/Object;",
+        "Ljava/util/concurrent/Callable<",
+        "Ljava/lang/Void;",
+        ">;"
+    }
+.end annotation
+
+
+# instance fields
+.field final synthetic this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+
+# direct methods
+.method public constructor <init>(Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;)V
+    .locals 0
+
+    .line 1
+    iput-object p1, p0, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+    .line 3
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    .line 6
+    return-void
+.end method
+
+
+# virtual methods
+.method public bridge synthetic call()Ljava/lang/Object;
+    .locals 1
+    .annotation system Ldalvik/annotation/Throws;
+        value = {
+            Ljava/lang/Exception;
+        }
+    .end annotation
+
+    .line 1
+    invoke-virtual {p0}, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->call()Ljava/lang/Void;
+
+    move-result-object v0
+
+    return-object v0
+.end method
+
+.method public call()Ljava/lang/Void;
+    .locals 4
+    .annotation system Ldalvik/annotation/Throws;
+        value = {
+            Ljava/lang/Exception;
+        }
+    .end annotation
+
+    .line 2
+    iget-object v0, p0, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+    monitor-enter v0
+
+    .line 3
+    :try_start_0
+    iget-object v1, p0, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+    invoke-static {v1}, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;->access$000(Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;)Ljava/io/Writer;
+
+    move-result-object v1
+
+    const/4 v2, 0x0
+
+    if-nez v1, :cond_0
+
+    .line 4
+    monitor-exit v0
+
+    return-object v2
+
+    .line 5
+    :cond_0
+    iget-object v1, p0, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+    invoke-static {v1}, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;->access$100(Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;)V
+
+    .line 6
+    iget-object v1, p0, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+    invoke-static {v1}, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;->access$200(Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;)V
+
+    .line 7
+    iget-object v1, p0, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+    invoke-static {v1}, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;->access$300(Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;)Z
+
+    move-result v1
+
+    if-eqz v1, :cond_1
+
+    .line 8
+    iget-object v1, p0, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+    invoke-static {v1}, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;->access$400(Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;)V
+
+    .line 9
+    iget-object v1, p0, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache$1;->this$0:Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;
+
+    const/4 v3, 0x0
+
+    invoke-static {v1, v3}, Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;->access$502(Lcom/autonavi/core/network/impl/cache/impl/DiskLruCache;I)I
+
+    .line 10
+    :cond_1
+    monitor-exit v0
+
+    return-object v2
+
+    :catchall_0
+    move-exception v1
+
+    monitor-exit v0
+    :try_end_0
+    .catchall {:try_start_0 .. :try_end_0} :catchall_0
+
+    throw v1
+.end method

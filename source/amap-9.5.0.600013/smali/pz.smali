@@ -1,0 +1,61 @@
+.class public abstract Lpz;
+.super Lic;
+.source "SourceFile"
+
+
+# static fields
+.field public static final a:[[Lfq;
+
+
+# direct methods
+.method public static constructor <clinit>()V
+    .locals 3
+
+    .line 1
+    const/4 v0, 0x4
+
+    .line 2
+    new-array v0, v0, [[Lfq;
+
+    .line 4
+    const/4 v1, 0x0
+
+    .line 5
+    sget-object v2, Lud0;->b:[Lud0$a0;
+
+    .line 7
+    aput-object v2, v0, v1
+
+    .line 9
+    const/4 v1, 0x1
+
+    .line 10
+    sget-object v2, Lpk;->b:[Loz$a;
+
+    .line 12
+    aput-object v2, v0, v1
+
+    .line 14
+    const/4 v1, 0x2
+
+    .line 15
+    sget-object v2, Lzz;->a:[Loz$b;
+
+    .line 17
+    aput-object v2, v0, v1
+
+    .line 19
+    const/4 v1, 0x3
+
+    .line 20
+    sget-object v2, Lwf0;->b:[Loz$d;
+
+    .line 22
+    aput-object v2, v0, v1
+
+    .line 24
+    sput-object v0, Lpz;->a:[[Lfq;
+
+    .line 26
+    return-void
+.end method

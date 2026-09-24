@@ -1,0 +1,13 @@
+{
+    "version": 1,
+    "local_version": "7.0.19.1",
+    "enabled": true,
+    "expired": 0,
+    "model": {
+        "engine": "mnn",
+        "file": "client_model.mnn",
+        "type": "module",
+        "format": "NCHW",
+        "features": []
+    }
+}

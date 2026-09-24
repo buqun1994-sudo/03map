@@ -1,0 +1,38 @@
+# 本机上下文与密钥
+.codex/local-context.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
+# APK / DEX / 解包和构建产物
+*.apk
+*.aab
+*.apks
+*.jar
+*.zip
+*.dex
+*.vdex
+*.odex
+apk-work/
+work/
+out/
+build/
+.tmp/
+apk-archive/
+
+# APKTool 解包快照中的 0 字节路径占位，不是可安装 APK
+!source/amap-9.5.0.600013/assets/SignatureKiller/origin.apk
+
+# 运行证据与日志
+*.log
+screenshots/
+screencaps/
+reports/
+
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/
+*.swp

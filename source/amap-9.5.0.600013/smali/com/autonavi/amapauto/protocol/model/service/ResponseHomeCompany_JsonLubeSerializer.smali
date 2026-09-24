@@ -1,0 +1,264 @@
+.class public final Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany_JsonLubeSerializer;
+.super Ljava/lang/Object;
+.source "SourceFile"
+
+# interfaces
+.implements Ljava/io/Serializable;
+
+
+# direct methods
+.method public constructor <init>()V
+    .locals 0
+
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    return-void
+.end method
+
+.method public static serialize(Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;)Lorg/json/JSONObject;
+    .locals 5
+    .annotation system Ldalvik/annotation/Throws;
+        value = {
+            Lorg/json/JSONException;
+        }
+    .end annotation
+
+    .line 1
+    if-nez p0, :cond_0
+
+    .line 3
+    const/4 p0, 0x0
+
+    .line 4
+    return-object p0
+
+    .line 5
+    :cond_0
+    new-instance v0, Lorg/json/JSONObject;
+
+    .line 7
+    invoke-direct {v0}, Lorg/json/JSONObject;-><init>()V
+
+    .line 10
+    const-string v1, "packageName"
+
+    .line 12
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/base/ProtocolBaseModel;->getPackageName()Ljava/lang/String;
+
+    .line 15
+    move-result-object v2
+
+    .line 16
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+
+    .line 19
+    const-string v1, "clientPackageName"
+
+    .line 21
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/base/ProtocolBaseModel;->getClientPackageName()Ljava/lang/String;
+
+    .line 24
+    move-result-object v2
+
+    .line 25
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+
+    .line 28
+    const-string v1, "callbackId"
+
+    .line 30
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/base/ProtocolBaseModel;->getCallbackId()I
+
+    .line 33
+    move-result v2
+
+    .line 34
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;I)Lorg/json/JSONObject;
+
+    .line 37
+    const-string v1, "timeStamp"
+
+    .line 39
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/base/ProtocolBaseModel;->getTimeStamp()J
+
+    .line 42
+    move-result-wide v2
+
+    .line 43
+    invoke-virtual {v0, v1, v2, v3}, Lorg/json/JSONObject;->put(Ljava/lang/String;J)Lorg/json/JSONObject;
+
+    .line 46
+    const-string v1, "var1"
+
+    .line 48
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/base/ProtocolBaseModel;->getVar1()Ljava/lang/String;
+
+    .line 51
+    move-result-object v2
+
+    .line 52
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+
+    .line 55
+    const-string v1, "strEta"
+
+    .line 57
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->v()Ljava/lang/String;
+
+    .line 60
+    move-result-object v2
+
+    .line 61
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+
+    .line 64
+    const-string v1, "isTop"
+
+    .line 66
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->s()Z
+
+    .line 69
+    move-result v2
+
+    .line 70
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;Z)Lorg/json/JSONObject;
+
+    .line 73
+    const-string v1, "type"
+
+    .line 75
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->getType()I
+
+    .line 78
+    move-result v2
+
+    .line 79
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;I)Lorg/json/JSONObject;
+
+    .line 82
+    const-string v1, "isPrediction"
+
+    .line 84
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->y()Z
+
+    .line 87
+    move-result v2
+
+    .line 88
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;Z)Lorg/json/JSONObject;
+
+    .line 91
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->r()F
+
+    .line 94
+    move-result v1
+
+    .line 95
+    float-to-double v1, v1
+
+    .line 96
+    const-string v3, "eta"
+
+    .line 98
+    invoke-virtual {v0, v3, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;D)Lorg/json/JSONObject;
+
+    .line 101
+    const-string v1, "size"
+
+    .line 103
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->u()I
+
+    .line 106
+    move-result v2
+
+    .line 107
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;I)Lorg/json/JSONObject;
+
+    .line 110
+    const-string v1, "totaldistance"
+
+    .line 112
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->x()I
+
+    .line 115
+    move-result v2
+
+    .line 116
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;I)Lorg/json/JSONObject;
+
+    .line 119
+    const-string v1, "mainroadinfo"
+
+    .line 121
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->t()Ljava/lang/String;
+
+    .line 124
+    move-result-object v2
+
+    .line 125
+    invoke-virtual {v0, v1, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+
+    .line 128
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->w()[Lcom/autonavi/amapauto/protocol/model/service/RouteTMCSegment;
+
+    .line 131
+    move-result-object v1
+
+    .line 132
+    if-eqz v1, :cond_3
+
+    .line 134
+    new-instance v1, Lorg/json/JSONArray;
+
+    .line 136
+    invoke-direct {v1}, Lorg/json/JSONArray;-><init>()V
+
+    .line 139
+    invoke-virtual {p0}, Lcom/autonavi/amapauto/protocol/model/service/ResponseHomeCompany;->w()[Lcom/autonavi/amapauto/protocol/model/service/RouteTMCSegment;
+
+    .line 142
+    move-result-object p0
+
+    .line 143
+    array-length v2, p0
+
+    .line 144
+    const/4 v3, 0x0
+
+    .line 145
+    :goto_0
+    if-ge v3, v2, :cond_2
+
+    .line 147
+    aget-object v4, p0, v3
+
+    .line 149
+    if-eqz v4, :cond_1
+
+    .line 151
+    invoke-static {v4}, Lcom/autonavi/amapauto/protocol/model/service/RouteTMCSegment_JsonLubeSerializer;->serialize(Lcom/autonavi/amapauto/protocol/model/service/RouteTMCSegment;)Lorg/json/JSONObject;
+
+    .line 154
+    move-result-object v4
+
+    .line 155
+    invoke-virtual {v1, v4}, Lorg/json/JSONArray;->put(Ljava/lang/Object;)Lorg/json/JSONArray;
+
+    .line 158
+    :cond_1
+    add-int/lit8 v3, v3, 0x1
+
+    .line 160
+    goto :goto_0
+
+    .line 161
+    :cond_2
+    const-string p0, "tmcSegments"
+
+    .line 163
+    invoke-virtual {v0, p0, v1}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+
+    .line 166
+    :cond_3
+    return-object v0
+.end method

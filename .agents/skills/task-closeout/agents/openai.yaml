@@ -1,0 +1,4 @@
+interface:
+  display_name: "地图任务收尾"
+  short_description: "汇总 APK 归档、代码地图和验证证据后安全交接"
+  default_prompt: "Use $task-closeout to close out this map APK task with evidence, gates, and a minimal manual handoff."

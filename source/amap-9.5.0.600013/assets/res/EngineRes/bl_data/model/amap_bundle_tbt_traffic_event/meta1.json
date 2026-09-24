@@ -1,0 +1,13 @@
+{
+ "version": 1,
+ "local_version": "1.2.0.8",
+ "enabled": true,
+ "expired": 0,
+ "model": {
+  "engine": "mnn",
+  "file": "perception_model.mnn",
+  "type": "module",
+  "format": "NHWC",
+  "features": []
+ }
+}

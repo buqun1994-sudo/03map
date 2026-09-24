@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html class="release">
+
+<head>
+    <meta charset="utf-8">
+    <title>高德地图</title>
+    <meta name="viewport"
+        content="width=device-width,initial-scale=1,user-scalable=0,minimum-scale=0.9999,maximum-scale=1">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="stylesheet" href="index_1636683324329.css">
+</head>
+
+<body class="apage apage-bg-gray">
+    <div class="apage-body">
+        <div class="atext atext-color-transparentBlack">
+            <h4 id="2d5wT"
+                style="color:#FFFFFF;font-family: &quot;sans serif&quot;, tahoma, verdana, helvetica; font-size：26px;">
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">附件二：高德集成第三方<span
+                                lang="EN-US">SDK</span>列表</span></b><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left" style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; text-indent: 24pt; line-height: 21px;"><span lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;"><o:p>&nbsp;</o:p></span></p>
+                <p class="MsoNormal" align="left" style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; text-indent: 24pt; line-height: 21px;"><span style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">为保障高德地图<span lang="EN-US">APP</span>的稳定运行或实现相关功能，我们可能会接入由第三方提供的软件开发包（<span lang="EN-US">SDK</span>）实现前述目的。我们会尽到审慎义务，对合作方获取信息的软件工具开发包（<span lang="EN-US">SDK</span>）进行严格的安全监测，以保护数据安全。<span lang="EN-US"><o:p></o:p></span></span></p>
+                <p class="MsoNormal" align="left" style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; text-indent: 24pt; line-height: 21px;"><span style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">我们接入的第三方<span lang="EN-US">SDK</span>主要服务于您以及其他的用户的需求，因此在满足新的服务需求及业务功能变更时，我们可能会调整我们接入的第三方<span lang="EN-US">SDK</span>。我们会及时在本说明中向您公开说明接入第三方<span lang="EN-US">SDK</span>的最新情况。目前手机高德地图<span lang="EN-US">App</span>接入的第三方<span lang="EN-US">SDK</span>列明如下：<span lang="EN-US"><o:p></o:p></span></span></p>
+                <p class="MsoNormal" align="left" style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">一、登录分享类<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">1</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、中国移动<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin:0cm;font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px; word-break: break-all;">
+                    <span style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：中移互联网有限公司</span><span
+                        lang="EN-US" style="font-size：22pt; line-height:24px;color:#FFFFFF;font-family: 宋体;"><br></span><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：识别用户的手机号码快速登录<span
+                            lang="EN-US"><br></span>收集个人信息类型：当前手机号码的掩码、设备信息（<span lang="EN-US">IMEI</span>、<span
+                            lang="EN-US">IMSI</span>）、应用列表<span lang="EN-US"><br></span>隐私权政策链接：<span lang="EN-US"><a
+                                href="https://wap.cmpassport.com/resources/html/contract.html" target="_blank"
+                                style="color:#FFFFFF; text-decoration-line: underline;"><span style="color:#FFFFFF;">https://wap.cmpassport.com/resources/html/contract.html</span></a>
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">&nbsp;<o:p></o:p></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">2</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、中国联通<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：中国联合网络通信有限公司</span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：识别用户的手机号码快速登录<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：当前手机号码的掩码、设备信息（<span
+                            lang="EN-US">IMEI</span>、<span lang="EN-US">IMSI</span>、<span
+                            lang="EN-US">MAC</span>地址）、应用列表<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal"
+                    style="margin: 0cm; text-align: justify; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px; word-break: break-all;">
+                    <span style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私政策链接：<span lang="EN-US"
+                            style="color:#FFFFFF;"><a
+                                href="https://opencloud.wostore.cn/authz/resource/html/disclaimer.html?spm=a1zaa.8153814.0.0.4c22e7a3tVgU93&amp;fromsdk=true"
+                                style="color:#FFFFFF; text-decoration-line: underline;">https://opencloud.wostore.cn/authz/resource/html/disclaimer.html?spm=a1zaa.8153814.0.0.4c22e7a3tVgU93&amp;fromsdk=true</a></span></span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">&nbsp;<o:p></o:p></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">3</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、中国电信<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：世纪龙信息网络有限责任公司</span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：识别用户的手机号码快速登录<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：当前手机号码的掩码<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px; word-break: break-all;">
+                    <span style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私政策链接：<u><span lang="EN-US"
+                                style="color:#FFFFFF;"><a
+                                    href="https://e.189.cn/sdk/agreement/content.do?type=main&amp;appKey=&amp;hidetop=true&amp;returnUrl="
+                                    style="color:#FFFFFF;">https://e.189.cn/sdk/agreement/content.do?type=main&amp;appKey=&amp;hidetop=true&amp;returnUrl=</a></span></u><span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p>&nbsp;</o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">4</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">、淘宝<span
+                                lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 3.75pt 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：浙江淘宝网络有限公司、淘宝（中国）软件有限公司<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 3.75pt 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：帮助用户使用淘宝账号登录、帮助用户扫描二维码<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 3.75pt 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：应用程序信息、应用列表、剪切板信息、设备信息<span
+                            lang="EN-US">(IMSI</span>、<span lang="EN-US">IMEI</span><span
+                            lang="EN-US">)</span>、通话状态<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 3.75pt 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：</span><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;"><a
+                            href="https://terms.alicdn.com/legal-agreement/terms/suit_bu1_taobao/suit_bu1_taobao201703241622_61002.html?spm=a21bo.2017.1997523009.39.319b11d9wOV0o3"
+                            style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                style="color:#FFFFFF; text-decoration-line: none;">https://terms.alicdn.com/legal-agreement/terms/suit_bu1_taobao/suit_bu1_taobao201703241622_61002.html?spm=a21bo.2017.1997523009.39.319b11d9wOV0o3</span></a>
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p>&nbsp;</o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 0cm 0cm 21pt; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; text-indent: -21pt; line-height: 21px;">
+                    <b><span lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">5</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、支付宝<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：支付宝（中国）网络技术有限公司</span><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p></o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：使用支付宝账号登录、用户帮助用户完成付款及提供安全认证服务、二维码扫码<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：存储信息、蓝牙<span
+                            lang="EN-US">mac</span>地址、设备信息<span lang="EN-US">(IMSI</span>、<span
+                            lang="EN-US">SIM</span>卡序列号、<span lang="EN-US">MAC</span>地址、<span
+                            lang="EN-US">AndrioidID</span>、<span lang="EN-US">BSSID</span>、<span
+                            lang="EN-US">SSID</span>、序列码、<span lang="EN-US">IMEI</span><span
+                            lang="EN-US">)</span>、通话状态<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：<span lang="EN-US"><a
+                                href="https://render.alipay.com/p/c/k2cx0tg8" target="_blank"
+                                style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                    style="color:#FFFFFF;">https://render.alipay.com/p/c/k2cx0tg8</span></a>
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p>&nbsp;</o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">6</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、新浪<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：北京微梦创科网络技术有限公司</span><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p></o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：用于帮助用户使用新浪账号登录、将信息分享至微博<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备信息（<span
+                            lang="EN-US">IMSI</span>、<span lang="EN-US">IMEI</span>、<span
+                            lang="EN-US">MAC</span>地址）、应用列表、存储信息、通话状态<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：<span lang="EN-US"><a
+                                href="https://weibo.com/signup/v5/privacy" target="_blank"
+                                style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                    style="color:#FFFFFF;">https://weibo.com/signup/v5/privacy</span></a>
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p>&nbsp;</o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p>&nbsp;</o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;">
+                    <b><span lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">7</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">、微信<span
+                                lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：深圳市腾讯计算机系统有限公司</span><span
+                        lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：用于帮助用户将信息分享至微信，微信联合登录<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备信息（<span
+                            lang="EN-US">SIM</span>卡序列号、<span lang="EN-US">IMEI</span>、<span
+                            lang="EN-US">MAC</span>地址、<span lang="EN-US">Android_ID</span>）、应用列表、位置信息、存储信息<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：</span><u><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;"><a
+                                href="https://weixin.qq.com/cgi-bin/readtemplate?spm=a1zaa.8153814.0.0.67abe7a3ddAz0R&amp;lang=zh_CN&amp;t=weixin_agreement&amp;s=privacy"
+                                style="color:#FFFFFF;">https://weixin.qq.com/cgi-bin/readtemplate?spm=a1zaa.8153814.0.0.67abe7a3ddAz0R&amp;lang=zh_CN&amp;t=weixin_agreement&amp;s=privacy</a></span></u><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">&nbsp;</span><span
+                        lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;">
+                    <b><span lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">8</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">、<span
+                                lang="EN-US">QQ<o:p></o:p></span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：深圳市腾讯计算机系统有限公司<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：用于帮助用户将信息分享至<span
+                            lang="EN-US">QQ</span>，<span lang="EN-US">QQ </span>联合登录<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备标识符（<span
+                            lang="EN-US">SIM</span>卡序列号、<span lang="EN-US">IMEI</span>、<span
+                            lang="EN-US">MAC</span>地址、<span lang="EN-US">Android_ID</span>）、应用列表、位置信息、存储信息<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：</span><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;"><a href="https://privacy.qq.com/"
+                            style="color:#FFFFFF; text-decoration-line: underline;">https://privacy.qq.com/</a><span
+                            style="color:#FFFFFF;">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p>&nbsp;</o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">9</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、钉钉<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：钉钉（中国）信息技术有限公司、钉钉科技有限公司</span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：帮助用户分享内容至钉钉，提供即时通讯服务<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备信息（<span
+                            lang="EN-US">BSSID</span>、<span lang="EN-US">SSID</span>、设备序列码）、存储信息、账号信息、<span
+                            lang="EN-US">WIFI</span>地址、聊天信息<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：<u><span lang="EN-US"
+                                style="color:#FFFFFF;"><a
+                                    href="https://terms.alicdn.com/legal-agreement/terms/suit_bu1_dingtalk/suit_bu1_dingtalk202010070946_49604.html?spm=a213l2.13146415.4929779444.164.7f151d5acLyf24"
+                                    style="color:#FFFFFF;">https://terms.alicdn.com/legal-agreement/terms/suit_bu1_dingtalk/suit_bu1_dingtalk202010070946_49604.html?spm=a213l2.13146415.4929779444.164.7f151d5acLyf24</a></span></u><span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p>&nbsp;</o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">10</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、友盟<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：友盟同欣（北京）科技有限公司</span><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p></o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：用于帮助用户将信息分享至第三方应用<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备信息（<span
+                            lang="EN-US">IMEI</span>、<span lang="EN-US">android ID</span>、<span
+                            lang="EN-US">IDFA</span>、<span lang="EN-US">OPENUDID</span>、<span
+                            lang="EN-US">GUID</span>、<span lang="EN-US">IMSI</span>、<span
+                            lang="EN-US">Mac</span>地址）<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：<span lang="EN-US"><a
+                                href="https://www.umeng.com/policy" target="_blank"
+                                style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                    style="color:#FFFFFF;">https://www.umeng.com/policy</span></a>
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p>&nbsp;</o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">二、推送类<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">1</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、华为<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：华为终端有限公司<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：用于手机高德地图<span
+                            lang="EN-US">App</span>向使用华为设备的用户以及集成<span lang="EN-US">HMS PUSH SDK
+                        </span>的其他品牌设备的用户推送消息<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备信息<span
+                            lang="EN-US">(</span>序列码、<span lang="EN-US">Android ID</span>、<span
+                            lang="EN-US">IMEI</span><span lang="EN-US">)</span>、位置信息、应用列表<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：<span lang="EN-US"><a
+                                href="https://consumer.huawei.com/cn/privacy/privacy-policy/" target="_blank"
+                                style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                    style="color:#FFFFFF;">https://consumer.huawei.com/cn/privacy/privacy-policy/</span></a>
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">2</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、小米<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：北京小米移动软件有限公司</span><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p></o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：用于高德地图<span
+                            lang="EN-US">App</span>向小米手机用户推送消息<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备信息（<span
+                            lang="EN-US">IMEI</span>、<span lang="EN-US">Android ID</span>、<span
+                            lang="EN-US">BSSID</span>、<span lang="EN-US">SSID</span>、序列码）、应用列表、存储信息、通话状态<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：<span lang="EN-US"><a
+                                href="https://dev.mi.com/console/doc/detail?pId=1822" target="_blank"
+                                style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                    style="color:#FFFFFF;">https://dev.mi.com/console/doc/detail?pId=1822</span></a>
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">3</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、<span lang="EN-US">OPPO<o:p>
+                                </o:p></span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：<span lang="EN-US">OPPO
+                        </span>广东移动通信有限公司</span><b><span lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p></o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：用于高德地图<span
+                            lang="EN-US">App</span>向<span lang="EN-US">OPPO</span>手机用户推送消息<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备标识符、运营商信息、应用列表<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：<span lang="EN-US"><a
+                                href="https://www.oppo.com/cn/privacy/"
+                                style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                    style="color:#FFFFFF;">https://www.oppo.com/cn/privacy/</span></a>
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">4</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">、<span
+                                lang="EN-US">VIVO<o:p></o:p></span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：维沃移动通信有限公司</span><span
+                        lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的<span
+                            style="color:#FFFFFF;">：用于高德地图向<span lang="EN-US">VIVO</span>手机用户推送消息<span
+                                lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">收集个人信息类型：应用程序信息、应用列表、存储信息、通话状态<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">隐私权政策链接：</span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;"><a
+                            href="https://www.vivo.com.cn/about-vivo/privacy-policy" target="_blank"
+                            style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                style="color:#FFFFFF; text-decoration-line: none;">https://www.vivo.com.cn/about-vivo/privacy-policy</span></a>
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">5</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">、淘宝<span
+                                lang="EN-US">Agoo</span>推送</span></b><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: Calibri, sans-serif;">﻿</span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：浙江淘宝网络有限公司、淘宝（中国）软件有限公司</span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;"><br></span><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的<span
+                            style="color:#FFFFFF;">：用于向用户推送消息</span><span lang="EN-US"><br></span><span
+                            style="color:#FFFFFF;">收集个人信息类型：设备</span>信息<span
+                            style="color:#FFFFFF;">（<span lang="EN-US">IMSI</span>、<span
+                                lang="EN-US">IMEI</span>）、应用列表、通话状态<span lang="EN-US">&nbsp;</span></span><span
+                            lang="EN-US"><br></span><span style="color:#FFFFFF;">隐私权政策链</span>接：</span></p><a
+                    href="https://terms.alicdn.com/legal-agreement/terms/suit_bu1_taobao/suit_bu1_taobao201703241622_61002.html?spm=a21bo.2017.1997523009.39.319b11d9wOV0o3"
+                    style="background-color:#FFFFFF;color:#FFFFFF; text-decoration-line: underline;color:#FFFFFF;font-family: 宋体;"><span
+                        style="color:#FFFFFF; text-decoration-line: none;">https://terms.alicdn.com/legal-agreement/terms/suit_bu1_taobao/suit_bu1_taobao201703241622_61002.html?spm=a21bo.2017.1997523009.39.319b11d9wOV0o3</span></a>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">6</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">、荣耀<span
+                                lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：荣耀终端有限公司</span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的<span
+                            style="color:#FFFFFF;">：用于手机高德地图<span
+                                lang="EN-US">App</span>向荣耀手机用户推送消息</span><span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">收集个人信息类型：</span><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">设备信息<span
+                            lang="EN-US">(</span>序列码、<span lang="EN-US">Android ID</span>、<span
+                            lang="EN-US">IMEI</span><span lang="EN-US">)</span>、位置信息、应用列表<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left" style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian;"><span
+                        style="font-size：22pt;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：</span><span lang="EN-US"
+                        style="font-size：22pt;"><a href="https://www.hihonor.com/cn/privacy/privacy-policy/"
+                            style="color:#FFFFFF; text-decoration-line: underline;">https://www.hihonor.com/cn/privacy/privacy-policy/</a>
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">三、数据统计类<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">1</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、<span lang="EN-US">QuestMobile
+                                <o:p></o:p></span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：北京贵士信息科技有限公司<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：用于整体有效数据统计或无效流量鉴别，以便为用户提供更好的服务<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：设备信息（<span
+                            lang="EN-US">Android ID</span>、<span lang="EN-US">SSID</span>、<span
+                            lang="EN-US">IMEI</span>、<span lang="EN-US">IMSI</span>、<span
+                            lang="EN-US">MAC</span>地址）<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私政策链接：<span
+                            lang="EN-US">&nbsp;</span></span><span lang="EN-US"><a
+                            href="https://www.questmobile.com.cn/privacy" target="_blank"
+                            style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">https://www.questmobile.com.cn/privacy</span></a></span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">&nbsp;<o:p></o:p>
+                        </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">四、其他类<span lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">1</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、<span lang="EN-US">UC<o:p>
+                                </o:p></span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：优视科技（中国）有限公司</span><b><span
+                            lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                            <o:p></o:p>
+                        </span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：帮助用户浏览<span
+                            lang="EN-US">H5</span>页面、提供播放器能力<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：应用列表、位置信息、存储信息<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：<span lang="EN-US"><a
+                                href="https://open-uc.uc.cn/agreement/secret"
+                                style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                    style="color:#FFFFFF; text-decoration-line: none;">https://open-uc.uc.cn/agreement/secret</span></a>
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><b><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">2</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">、<span
+                                lang="EN-US">Mtop</span></span></b><span lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：浙江淘宝网络有限公司、淘宝（中国）软件有限公司</span><u><span
+                            lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;"><br></span></u><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的<span
+                            style="color:#FFFFFF;">：淘宝开放平台技术服务</span><span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">收集个人信息类型：设备信息（</span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">BSSID</span><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">、<span
+                            lang="EN-US">SSID</span><span style="color:#FFFFFF;">）</span><span
+                            lang="EN-US"><br></span><span style="color:#FFFFFF;">隐私权政策链接：</span></span><span
+                        lang="EN-US"><a
+                            href="https://terms.alicdn.com/legal-agreement/terms/suit_bu1_taobao/suit_bu1_taobao201703241622_61002.html?spm=a1zaa.8153814.0.0.4c22e7a3FDJLku"
+                            style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF; text-decoration-line: none;">https://terms.alicdn.com/legal-agreement/terms/suit_bu1_taobao/suit_bu1_taobao201703241622_61002.html?spm=a1zaa.8153814.0.0.4c22e7a3FDJLku</span></a></span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        lang="EN-US"
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;">
+                    <b><span lang="EN-US"
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">3</span></b><b><span
+                            style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;color:#FFFFFF;">、阿里巴巴<span
+                                lang="EN-US">
+                                <o:p></o:p>
+                            </span></span></b></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">公司名称：杭州阿里巴巴广告有限公司、阿里巴巴（中国）网络技术有限公司<span
+                            lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">接入目的：为高德地图<span
+                            lang="EN-US">App</span>提供小程序能力，便于使用高德地图小程序时进行功能预览、使用小程序服务</span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">收集个人信息类型：应用列表、存储信息、设备信息<span
+                            lang="EN-US">(IMSI</span>、<span lang="EN-US">BSSID</span>、<span
+                            lang="EN-US">SSID</span>、<span lang="EN-US">Android ID</span>、<span
+                            lang="EN-US">mac</span>地址、<span lang="EN-US">IMEI</span><span
+                            lang="EN-US">)</span>、通话状态、<span lang="EN-US">Wi-Fi</span>列表<span lang="EN-US">
+                            <o:p></o:p>
+                        </span></span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">隐私权政策链接：</span><span
+                        lang="EN-US"><a
+                            href="https://terms.alicdn.com/legal-agreement/terms/suit_bu1_b2b/suit_bu1_b2b201703271337_94551.html"
+                            style="color:#FFFFFF; text-decoration-line: underline;"><span
+                                style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">https://terms.alicdn.com/legal-agreement/terms/suit_bu1_b2b/suit_bu1_b2b201703271337_94551.html</span></a></span><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p></o:p>
+                    </span></p>
+                <p class="MsoNormal" align="left"
+                    style="margin: 0cm 12pt 0cm 0cm; font-size：20.5pt;color:#FFFFFF;font-family: DengXian; line-height: 21px;"><span
+                        lang="EN-US" style="font-size：22pt; line-height: 24px;color:#FFFFFF;font-family: 宋体;">
+                        <o:p>&nbsp;</o:p>
+                    </span></p>
+            </h4>
+        </div>
+    </div>
+    <script src="//webapi.amap.com/maps?v=1.3&key=30fe18ce2e28035ffa407f70d2917d23"></script>
+    <script src="index_1636683324329.js"></script>
+</body>
+
+</html>

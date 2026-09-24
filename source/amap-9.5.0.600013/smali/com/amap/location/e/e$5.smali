@@ -1,0 +1,84 @@
+.class Lcom/amap/location/e/e$5;
+.super Lcom/amap/location/support/nl/NetworkLocationListener;
+.source "SourceFile"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lcom/amap/location/e/e;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x1
+    name = null
+.end annotation
+
+
+# instance fields
+.field final synthetic a:Lcom/amap/location/e/e;
+
+
+# direct methods
+.method public constructor <init>(Lcom/amap/location/e/e;I)V
+    .locals 0
+
+    .line 1
+    iput-object p1, p0, Lcom/amap/location/e/e$5;->a:Lcom/amap/location/e/e;
+
+    .line 3
+    invoke-direct {p0, p2}, Lcom/amap/location/support/nl/NetworkLocationListener;-><init>(I)V
+
+    .line 6
+    return-void
+.end method
+
+
+# virtual methods
+.method public onLocationChanged(Lcom/amap/location/support/bean/location/AmapLocationNetwork;Lcom/amap/location/support/bean/AmapFps;)V
+    .locals 2
+
+    .line 1
+    if-eqz p1, :cond_1
+
+    .line 3
+    invoke-virtual {p1}, Lcom/amap/location/support/bean/location/AmapLocationNetwork;->isCorrect()Z
+
+    .line 6
+    move-result p2
+
+    .line 7
+    if-nez p2, :cond_0
+
+    .line 9
+    goto :goto_0
+
+    .line 10
+    :cond_0
+    iget-object p2, p0, Lcom/amap/location/e/e$5;->a:Lcom/amap/location/e/e;
+
+    .line 12
+    invoke-static {p2, p1}, Lcom/amap/location/e/e;->a(Lcom/amap/location/e/e;Lcom/amap/location/support/bean/location/AmapLocation;)Lcom/amap/location/support/bean/location/AmapLocation;
+
+    .line 15
+    iget-object p1, p0, Lcom/amap/location/e/e$5;->a:Lcom/amap/location/e/e;
+
+    .line 17
+    invoke-static {}, Lcom/amap/location/support/AmapContext;->getPlatformStatus()Lcom/amap/location/support/common/IPlatformStatus;
+
+    .line 20
+    move-result-object p2
+
+    .line 21
+    invoke-interface {p2}, Lcom/amap/location/support/common/IPlatformStatus;->getElapsedRealtime()J
+
+    .line 24
+    move-result-wide v0
+
+    .line 25
+    invoke-static {p1, v0, v1}, Lcom/amap/location/e/e;->a(Lcom/amap/location/e/e;J)J
+
+    .line 28
+    :cond_1
+    :goto_0
+    return-void
+.end method

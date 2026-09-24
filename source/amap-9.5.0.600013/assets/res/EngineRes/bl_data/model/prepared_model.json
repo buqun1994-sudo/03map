@@ -1,0 +1,28 @@
+{
+  "modelList": [
+    {
+      "name": "amap_bundle_tbt_dnn_model",
+      "version": "7.0.19.1"
+    },
+    {
+      "name": "amap_bundle_tbt_intersection",
+      "version": "1.0.0.5"
+    },
+    {
+      "name": "amap_bundle_tbt_start_reminder",
+      "version": "1.0.0.3"
+    },
+    {
+      "name": "amap_bundle_tbt_traffic",
+      "version": "3.0.10.7"
+    },
+    {
+      "name": "amap_bundle_tbt_traffic_event",
+      "version": "1.2.0.8"
+    },
+    {
+      "name": "auto_bundle_loc_pos_fusion",
+      "version": "4.6"
+    }
+  ]
+}

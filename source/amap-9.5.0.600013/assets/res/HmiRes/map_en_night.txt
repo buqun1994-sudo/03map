@@ -1,0 +1,8 @@
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>1. How to check the GPS satellite situation?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>On the map, click the information bar in the upper right corner to expand the shortcut panel to view the GPS positioning status, and click the GPS option to view the detailed satellite number and signal status.</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>2. How to display traffic information?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>Click the status bar to expand the status panel, and click the "road conditions" icon to turn on real-time road conditions. This function requires networking.</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>3. What do the colors of real-time road conditions in navigation mean?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>There are five colors for real-time road conditions, which respectively represent the meanings: green-unblocked; yellow-slow; red-congested; dark red-severely congested; blue-there is no road condition information on this section.</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>4. How to exit the amapauto?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,40>Click the car physical return button twice to close and exit the amapauto.</Paragraph></TextColor></TextSize>

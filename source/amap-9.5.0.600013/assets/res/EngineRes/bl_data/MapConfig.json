@@ -1,0 +1,41 @@
+{
+	"style_sky_texture":
+	{
+		"note": "天空纹理 两时态参数配置，无自定义参数",
+		"type": 0
+	},
+	"style_sky_scroll":
+	{
+		"note": "2D卷轴天空 六时态参数配置",
+		"type": 1,
+		"render_param":
+		{
+			"dawn_1": {
+				"frog_color": "0xb36c69b7"
+			},
+			"dawn_2": {
+				"frog_color": "0xb358539e"
+			},
+			"day": {
+				"frog_color": "0xb3f0f8fe"
+			},
+			"dusk_1": {
+				"frog_color": "0xb3666980"
+			},
+			"dusk_2": {
+				"frog_color": "0xb3423d43"
+			},
+			"night": {
+				"frog_color": "0xb32b2a37"
+			}
+		}
+	},
+	"style_sky_dynamic":
+	{
+		"note": "动态天空 全时态参数配置，无自定义参数",
+		"type": 2
+	},
+	"mapping": [
+		{ "EngineID": 1, "sky_config": ["style_sky_texture", "style_sky_scroll", "style_sky_dynamic"] }
+	]
+}

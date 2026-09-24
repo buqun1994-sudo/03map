@@ -1,0 +1,63 @@
+.class public abstract Lq80;
+.super Ljava/lang/Object;
+.source "SourceFile"
+
+
+# static fields
+.field public static final A:I = 0x7f060287
+
+.field public static final B:I = 0x7f0602af
+
+.field public static final C:I = 0x7f0602b1
+
+.field public static final a:I = 0x7f06004f
+
+.field public static final b:I = 0x7f060066
+
+.field public static final c:I = 0x7f060092
+
+.field public static final d:I = 0x7f0600a8
+
+.field public static final e:I = 0x7f0600be
+
+.field public static final f:I = 0x7f0600bf
+
+.field public static final g:I = 0x7f0600e1
+
+.field public static final h:I = 0x7f0600eb
+
+.field public static final i:I = 0x7f06010a
+
+.field public static final j:I = 0x7f060117
+
+.field public static final k:I = 0x7f06012d
+
+.field public static final l:I = 0x7f06012f
+
+.field public static final m:I = 0x7f060144
+
+.field public static final n:I = 0x7f06015a
+
+.field public static final o:I = 0x7f060170
+
+.field public static final p:I = 0x7f060186
+
+.field public static final q:I = 0x7f06018b
+
+.field public static final r:I = 0x7f06019c
+
+.field public static final s:I = 0x7f06019d
+
+.field public static final t:I = 0x7f0601b3
+
+.field public static final u:I = 0x7f0601c9
+
+.field public static final v:I = 0x7f0601cb
+
+.field public static final w:I = 0x7f0601e1
+
+.field public static final x:I = 0x7f0601ed
+
+.field public static final y:I = 0x7f06021a
+
+.field public static final z:I = 0x7f060232

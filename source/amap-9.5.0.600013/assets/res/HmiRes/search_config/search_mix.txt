@@ -1,0 +1,565 @@
+{
+    "common_quick_search": [
+        {
+            "category": "",
+            "name": "卫生间",
+            "name_EN": "Toilet",
+            "pic": "icon_bathroom",
+            "keyword":""
+        },
+        {
+            "category": "",
+            "name": "加油站",
+            "name_EN": "Fuel",
+            "pic": "icon_gas_station",
+            "keyword":""
+        },
+        {
+            "category": "",
+            "name": "停车场",
+            "name_EN": "Parking",
+            "pic": "icon_parking",
+            "keyword":""
+        },
+        {
+            "category": "",
+            "name": "洗车",
+            "name_EN": "CarWash",
+            "pic": "icon_vehicle_cleaning",
+            "keyword":""
+        },
+        {
+            "category": "011100",
+            "name": "充电站",
+            "name_EN": "Charging",
+            "pic": "icon_charing_station",
+            "keyword":""
+        },
+        {
+            "category": "",
+            "name": "美食",
+            "name_EN": "Restaurant",
+            "pic": "icon_restaurant",
+            "keyword":""
+        },
+        {
+            "category": "",
+            "name": "更多",
+            "name_EN": "More",
+            "pic": "icon_more",
+            "keyword":""
+        }
+    ],
+    "search": {
+        "content": [
+            {
+                "type": "常用",
+                "typeEN": "Popular",
+                "words": [
+                    {
+                        "category": "",
+                        "name": "卫生间",
+                        "name_EN": "Toilet",
+                        "pic": "icon_bathroom",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "加油站",
+                        "name_EN": "Gas station",
+                        "pic": "icon_gas_station",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "停车场",
+                        "name_EN": "Parking",
+                        "pic": "icon_parking",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "美食",
+                        "name_EN": "Food",
+                        "pic": "icon_restaurant",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "酒店",
+                        "name_EN": "Hotel",
+                        "pic": "icon_hotel",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "洗车",
+                        "name_EN": "Car wash",
+                        "pic": "icon_vehicle_cleaning",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "汽车维修",
+                        "name_EN": "Repair",
+                        "pic": "icon_maintenance",
+                        "keyword":""
+                    },
+                    {
+                        "category": "011100",
+                        "name": "充电站",
+                        "name_EN": "Charging",
+                        "pic": "icon_charing_station",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "银行",
+                        "name_EN": "Bank",
+                        "pic": "icon_bank",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "购物",
+                        "name_EN": "Shopping",
+                        "pic": "icon_shopping",
+                        "keyword":""
+                    }
+                ]
+            },
+            {
+                "type": "出行",
+                "typeEN": "Transport",
+                "words": [
+                    {
+                        "category": "",
+                        "name": "加油站",
+                        "name_EN": "Gas station",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "洗车",
+                        "name_EN": "Car wash",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "汽车维修",
+                        "name_EN": "Repair",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "服务区",
+                        "name_EN": "Service area",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "4S店",
+                        "name_EN": "4S shop",
+                        "keyword": ""
+                    },
+                    {
+                        "category": "",
+                        "name": "加气站",
+                        "name_EN": "LNG",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "汽车站",
+                        "name_EN": "Bus station",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "火车站",
+                        "name_EN": "Rail station",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "飞机场",
+                        "name_EN": "Airport",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "中石化",
+                        "name_EN": "Sinopec",
+                        "keyword":""
+                    }
+                ]
+            },
+            {
+                "type": "餐饮",
+                "typeEN": "Dining",
+                "words": [
+                    {
+                        "category": "",
+                        "name": "中餐",
+                        "name_EN": "Chinese",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "快餐",
+                        "name_EN": "Fast food",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "火锅",
+                        "name_EN": "Hotpot",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "西餐",
+                        "name_EN": "Western",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "咖啡厅",
+                        "name_EN": "Cafe",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "美食",
+                        "name_EN": "Food",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "川菜",
+                        "name_EN": "Sichuan",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "韩国料理",
+                        "name_EN": "Korean",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "日本料理",
+                        "name_EN": "Japanese",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "小吃",
+                        "name_EN": "Bistro",
+                        "keyword":""
+                    }
+                ]
+            },
+            {
+                "type": "住宿",
+                "typeEN": "Accommodation",
+                "words": [
+                    {
+                        "category": "",
+                        "name": "宾馆",
+                        "name_EN": "Inn",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "星级酒店",
+                        "name_EN": "Star hotel",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "酒店",
+                        "name_EN": "Hotel",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "快捷酒店",
+                        "name_EN": "Express Inn",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "三星级",
+                        "name_EN": "3 star",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "四星级",
+                        "name_EN": "4 star",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "五星级",
+                        "name_EN": "5 star",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "汉庭酒店",
+                        "name_EN": "Hanting",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "如家酒店",
+                        "name_EN": "Rujia",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "七天酒店",
+                        "name_EN": "7days Inn",
+                        "keyword":""
+                    }
+                ]
+            },
+            {
+                "type": "出游",
+                "typeEN": "Travel",
+                "words": [
+                    {
+                        "category": "",
+                        "name": "风景名胜",
+                        "name_EN": "Attraction",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "公园广场",
+                        "name_EN": "Park plaza",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "游乐场",
+                        "name_EN": "Playground",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "动物园",
+                        "name_EN": "Zoo",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "博物馆",
+                        "name_EN": "Museum",
+                        "keyword":""
+                    }
+                ]
+            },
+            {
+                "type": "购物",
+                "typeEN": "Shopping",
+                "words": [
+                    {
+                        "category": "",
+                        "name": "超市",
+                        "name_EN": "Supermarket",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "商场",
+                        "name_EN": "Mall",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "药店",
+                        "name_EN": "Pharmacy",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "便利店",
+                        "name_EN": "Convenience",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "步行街",
+                        "name_EN": "Pedestrian",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "花店",
+                        "name_EN": "Flower shop",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "五金店",
+                        "name_EN": "Hardware",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "家具建材",
+                        "name_EN": "Furniture",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "万达广场",
+                        "name_EN": "Wanda Plaza",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "苏宁",
+                        "name_EN": "Suning",
+                        "keyword":""
+                    }
+                ]
+            },
+            {
+                "type": "娱乐",
+                "typeEN": "Entertainment",
+                "words": [
+                    {
+                        "category": "",
+                        "name": "网吧",
+                        "name_EN": "Internet bar",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "KTV",
+                        "name_EN": "KTV",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "电影院",
+                        "name_EN": "Movie",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "洗浴",
+                        "name_EN": "SPA",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "足疗",
+                        "name_EN": "Foot bath",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "台球",
+                        "name_EN": "Billiards",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "酒吧",
+                        "name_EN": "Bar",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "夜店",
+                        "name_EN": "Pub",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "体育馆",
+                        "name_EN": "Stadium",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "按摩",
+                        "name_EN": "Massage",
+                        "keyword":""
+                    }
+                ]
+            },
+            {
+                "type": "生活",
+                "typeEN": "Services",
+                "words": [
+                    {
+                        "category": "",
+                        "name": "银行",
+                        "name_EN": "Bank",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "ATM",
+                        "name_EN": "ATM",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "医院",
+                        "name_EN": "Hospital",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "药店",
+                        "name_EN": "Pharmacy",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "卫生间",
+                        "name_EN": "Toilet",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "邮局",
+                        "name_EN": "Post office",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "快递",
+                        "name_EN": "Express",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "美容美发",
+                        "name_EN": "Beauty",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "电讯营业厅",
+                        "name_EN": "Telecom",
+                        "keyword":""
+                    },
+                    {
+                        "category": "",
+                        "name": "宠物",
+                        "name_EN": "Pets",
+                        "keyword":""
+                    }
+                ]
+            }
+        ]
+    }
+}

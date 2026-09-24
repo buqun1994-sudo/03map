@@ -1,0 +1,78 @@
+{
+  "default": {
+    "moreWords": [
+      {
+        "name": "查找",
+        "more": "找加油站;搜索加油站",
+        "type": "1"
+      },
+      {
+        "name": "加油",
+        "more": "找加油站;搜索加油站",
+        "type": "1"
+      }
+    ],
+    "fragment": [
+      {
+        "name": "CGAutoNaviFragment",
+        "action": [
+        ]
+      }
+    ]
+  },
+  "1": {
+    "desc" : "E_VEHICLE_ENERGY_ELECTRIC",
+    "moreWords": [
+      {
+        "name": "查找",
+        "more": "找充电站;搜索充电站;一键找电",
+        "type": "1"
+      }
+    ],
+    "fragment": [
+      {
+        "name": "CGIndexFragment",
+        "action": [
+          {
+            "name": "查找",
+            "clickPath": "cl_map_button/cl_chargeing"
+          },
+          {
+            "name": "查找",
+            "clickPath": "ct_guessyouwant/cl_guessyouwant/slv_intention/cl_charging_station_card/cl_button/stv_find"
+          },
+          {
+            "name": "忽略",
+            "clickPath": "ct_guessyouwant/cl_guessyouwant/slv_intention/cl_charging_station_card/cl_button/stv_ignore"
+          }
+        ]
+      },
+      {
+        "name": "CGRouteCarResultFragment",
+        "action": [
+          {
+            "name": "查找",
+            "clickPath": "cl_search_change"
+          },
+          {
+            "name": "查找",
+            "clickPath": "cl_search_change_top"
+          }
+        ]
+      },
+      {
+        "name": "CGAutoNaviFragment",
+        "action": [
+          {
+            "name": "查找",
+            "clickPath": "cl_navi_normal_state/ct_second_info/cl_auto_navi_info_panel_battery/cl_search/cbm_search"
+          },
+          {
+            "name": "忽略",
+            "clickPath": "cl_navi_normal_state/ct_second_info/cl_auto_navi_info_panel_battery/cl_ignore/cbw_ignore"
+          }
+        ]
+      }
+    ]
+  }
+}

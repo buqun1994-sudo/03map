@@ -1,0 +1,10 @@
+<div id='along_route_pop_label' style='display:flex;width:auto;height:auto;flex-direction:row;justify-content:flex-start;align-items:flex-start;'>
+  <div id='bg_div' style='display:flex;width:auto;height:auto;flex-direction:column;justify-content:center;align-items:flex-start;background-image:global_image_along_bubble_left_top_day_night;'>
+    <label id='name_text' style='color:#000000;font-size:20px;justify-content:flex-start;margin-left:2px;' text='中国石油加油站'/>
+    <div id='eta_div' style='display:flex;flex-direction:row;justify-content:flex-start;align-items:center;margin-top:2px;margin-left:2px;'>
+      <label id='time_diff_text' style='color:#000000;font-size:16px;justify-content:flex-start;' text='+4分钟'/>
+      <label id='distance_diff_text' style='color:#000000;font-size:16px;margin-left:6px;justify-content:flex-start;' text='+493米'/>
+      <image id='label_image' style='margin-left:6px;' src='global_image_along_bubble_best_way_day_night'/>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,702 @@
+{
+    "Name":"RouteTipsStyleInfo",
+    "Version":"Ver_20191119_20191119",
+    "Tips":{
+        "TipsCount":33,
+        "TipsVersion":"Ver_20191119",
+        "TipsDetailInfo":[
+            {
+                "TipType":1,
+                "TipInfo":{
+                    "TipsDescribe":"SetLicensePlate",
+                    "TextInfo":"设置车牌,避开%s限行",
+                    "OperateButton":"设置",
+                    "CloseButton":"关闭",
+                    "TipStyle":1,
+                    "TipPriority":3.2,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}
+
+            },
+            {
+                "TipType":2,
+                "TipInfo":{
+                    "TipsDescribe":"OpenRestriction",
+                    "TextInfo":"是否避开%s限行",
+                    "OperateButton":"开启",
+                    "CloseButton":"关闭",
+                    "TipStyle":1,
+                    "TipPriority":3.2,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}
+            },
+            {
+                "TipType":3,
+                "TipInfo":{
+                    "TipsDescribe":"AvoidRestrictAreaSuccess",
+                    "TextInfo":"已为您避开限行区域",
+                    "OperateButton":"查看",                
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":2,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}
+            },
+            {
+                "TipType":4,
+                "TipInfo":{
+                    "TipsDescribe":"StartPointInRestrictArea",
+                    "TextInfo":"起点在限行路段,已无法避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3.1,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}
+            },
+            {
+                "TipType":5,
+                "TipInfo":{
+                    "TipsDescribe":"EndPointInRestrictArea",
+                    "TextInfo":"终点在限行路段,已无法避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3.1,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}
+            },
+            {
+                "TipType":6,
+                "TipInfo":{
+                    "TipsDescribe":"ViaInRestrictArea",
+                    "TextInfo":"途经点在限行路段,已无法避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3.1,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}          
+            },
+            {
+                "TipType":7,
+                "TipInfo":{
+                    "TipsDescribe":"ThroughRestrictArea",
+                    "TextInfo":"途经限行路段,已无法避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3.1,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}       
+            },
+            {
+                "TipType":8,
+                "TipInfo":{
+                    "TipsDescribe":"RestrictGoingToBeHappend",
+                    "TextInfo":"限行即将开始,已为您避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":2.2,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}         
+            }, 
+            {
+                "TipType":9,
+                "TipInfo":{
+                    "TipsDescribe":"RestrictGoingToBeClosed",
+                    "TextInfo":"限行即将结束,可正常通行",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":2.1,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}          
+            }, 
+            {
+                "TipType":10,
+                "TipInfo":{
+                    "TipsDescribe":"AvoidRestrictFailedByTrhoughTime",
+                    "TextInfo":"%s,已无法避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3.06,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}      
+            }, 
+            {
+                "TipType":11,
+                "TipInfo":{
+                    "TipsDescribe":"AvoidRestrictSuccessByTrhoughTime",
+                    "TextInfo":"%s,已为您避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":2.05,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":1}     
+            }, 
+            {
+                "TipType":21,
+                "TipInfo":{
+                    "TipsDescribe":"StartPointInRoadClosure",
+                    "TextInfo":"起点在封闭路段,请合理安排出行",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3,
+                    "TipDetail":1,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}         
+            },
+            {
+                "TipType":22,
+                "TipInfo":{
+                    "TipsDescribe":"ViaInRoadClosure",
+                    "TextInfo":"途经点在封闭路段,请合理安排出行",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3,
+                    "TipDetail":1,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}      
+            },
+            {
+                "TipType":23,
+                "TipInfo":{
+                    "TipsDescribe":"EndPointInRoadClosure",
+                    "TextInfo":"终点在封闭路段,请合理安排出行",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3,
+                    "TipDetail":1,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}           
+            }, 
+            {
+                "TipType":24,
+                "TipInfo":{
+                    "TipsDescribe":"OthersInRoadClosure",
+                    "TextInfo":"%s,已无法避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3,
+                    "TipDetail":1,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}        
+            }, 
+            {
+                "TipType":25,
+                "TipInfo":{
+                    "TipsDescribe":"AvoidRoadClosureSuccess",
+                    "TextInfo":"%s,已为您避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":1.2,
+                    "TipDetail":1,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}         
+            },
+            {
+                "TipType":26,
+                "TipInfo":{
+                    "TipsDescribe":"RoutePathInterpose",
+                    "TextInfo":"%s",
+                    "OperateButton":"",
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":1.9,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}     
+            },
+            {
+                "TipType":27,
+                "TipInfo":{
+                    "TipsDescribe":"EndPointInterpose",
+                    "TextInfo":"%s",
+                    "OperateButton":"",
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":1.8,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}           
+            }, 
+            {
+                "TipType":41,
+                "TipInfo":{
+                    "TipsDescribe":"AvoidJamSuccess",
+                    "TextInfo":"已避开%s%s,长度%s,约%s通过",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":1.1,
+                    "TipDetail":1,
+                    "TipPoint":0,
+                    "TipLine":1,
+                    "TipArea":0}         
+            }, 
+            {
+                "TipType":61,
+                "TipInfo":{
+                    "TipsDescribe":"AvoidPathForbiddenSuccess",
+                    "TextInfo":"沿途有禁行,已无法避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3.05,
+                    "TipDetail":1,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}         
+            },
+            {
+                "TipType":62,
+                "TipInfo":{
+                   "TipsDescribe":"AvoidPathForbiddenFailed",
+                    "TextInfo":"沿途有禁行,已为您避开",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":2,
+                    "TipPriority":1.15,
+                    "TipDetail":1,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}            
+            },
+            {
+                "TipType":63,
+                "TipInfo":{
+                   "TipsDescribe":"AvoidPathDieselTruck",
+                    "TextInfo":"",
+                    "OperateButton":"查看",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":3.05,
+                    "TipDetail":1,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}            
+            },
+            {
+                "TipType":81,
+                "TipInfo":{
+                    "TipsDescribe":"HighWayFreeOnHoliday",
+                    "TextInfo":"高速路段,节假日免费",
+                    "OperateButton":"",
+                    "CloseButton":"",
+                    "TipStyle":2,
+                    "TipPriority":1.05,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}           
+            },
+            {
+                "TipType":82,
+                "TipInfo":{
+                    "TipsDescribe":"ArriveBusinessClosed",
+                    "TextInfo":"到达时终点不营业,营业时间%s",
+                    "OperateButton":"",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":1.07,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}        
+            },   
+            {
+                "TipType":83,
+                "TipInfo":{
+                    "TipsDescribe":"ArriveBusinessWillClosed",
+                    "TextInfo":"到达时终点即将休息,营业时间%s",
+                    "OperateButton":"",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":1.08,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}          
+            },   
+            {
+                "TipType":84,
+                "TipInfo":{
+                    "TipsDescribe":"BusinessNotOpen",
+                    "TextInfo":"到达当日终点不营业",
+                    "OperateButton":"",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":0,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}           
+            }, 
+            {
+                "TipType":89,
+                "TipInfo":{
+                    "TipsDescribe":"ExistLaneInPath",
+                    "TextInfo":"当前路线存在窄路,请注意行车安全",
+                    "OperateButton":"",
+                    "CloseButton":"关闭",
+                    "TipStyle":1,
+                    "TipPriority":1.06,
+                    "TipDetail":0,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}            
+            },   
+            {
+                "TipType":201,
+                "TipInfo":{
+                    "TipsDescribe":"OilLow",
+                    "TextInfo":"油量低于1/4，请尽快加油",
+                    "OperateButton":"加油",
+                    "CloseButton":"关闭",
+                    "TipStyle":1,
+                    "TipPriority":10,
+                    "TipDetail":0,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}            
+            },  
+            {
+                "TipType":202,
+                "TipInfo":{
+                    "TipsDescribe":"OilWarm",
+                    "TextInfo":"油量告警，请尽快加油",
+                    "OperateButton":"加油",
+                    "CloseButton":"关闭",
+                    "TipStyle":1,
+                    "TipPriority":10,
+                    "TipDetail":0,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}            
+            },  
+            {
+                "TipType":203,
+                "TipInfo":{
+                    "TipsDescribe":"OilUnreachable",
+                    "TextInfo":"剩余油量最多可行驶%.1f公里，可能无法到达目的地",
+                    "OperateButton":"加油",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":10,
+                    "TipDetail":0,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}            
+            },		
+            {
+                "TipType":204,
+                "TipInfo":{
+                    "TipsDescribe":"ElectricityLow",
+                    "TextInfo":"电量不足，请尽快充电",
+                    "OperateButton":"充电",
+                    "CloseButton":"关闭",
+                    "TipStyle":1,
+                    "TipPriority":10,
+                    "TipDetail":0,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}            
+            },		
+            {
+                "TipType":205,
+                "TipInfo":{
+                    "TipsDescribe":"ElectricityUnreachable",
+                    "TextInfo":"电量不可到达终点，请尽快充电",
+                    "OperateButton":"充电",
+                    "CloseButton":"关闭",
+                    "TipStyle":3,
+                    "TipPriority":10,
+                    "TipDetail":0,
+                    "TipPoint":1,
+                    "TipLine":0,
+                    "TipArea":0}            
+            },			
+			{
+                "TipType":301,
+                "TipInfo":{
+                    "TipsDescribe":"DynamicDataRouteTipPriority",
+                    "TextInfo":"动态类型文言由服务器下发!!",
+                    "OperateButton":"",
+                    "CloseButton":"关闭",
+                    "TipStyle":1,
+                    "TipPriority":1,
+                    "TipDetail":0,
+                    "TipPoint":0,
+                    "TipLine":0,
+                    "TipArea":0}            
+            }
+        ]
+    },
+    "Point":{
+        "PointsCount":13,
+        "PointsVersion":"Ver_20191119",
+        "PointsDetailInfo":[
+            {
+                "PointType":1,
+                "PointInfo":{
+                    "TipsDescribe":"Water_event",
+                    "TextInfo":"积水事件",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_water"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_water"
+                            }
+                        }
+                    }
+                }                    
+            },
+            {
+                "PointType":2,
+                "PointInfo":{
+                    "TipsDescribe":"Normal_event",
+                    "TextInfo":"封路事件",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_close"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_close"
+                            }
+                        }
+                    }
+                }                    
+            },    
+            {
+                "PointType":3,
+                "PointInfo":{
+                    "TipsDescribe":"Construction_event",
+                    "TextInfo":"施工事件",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_project"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_project"
+                            }
+                        }
+                    }    
+                }                    
+            },
+            {
+                "PointType":4,
+                "PointInfo":{
+                    "TipsDescribe":"Accident_event",
+                    "TextInfo":"事故事件",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_accident"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_accident"
+                            }
+                        }
+                    }                      
+                }            
+            },
+            {
+                "PointType":21,
+                "PointInfo":{
+                    "TipsDescribe":"High_limit",
+                    "TextInfo":"限高",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_restricted_height"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_restricted_height"
+                            }
+                        }
+                    }  
+                }            
+            },
+            {
+                "PointType":22,
+                "PointInfo":{
+                    "TipsDescribe":"Width_limit",
+                    "TextInfo":"限宽",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_restricted_width"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_restricted_width"
+                            }
+                        }
+                    } 
+                }            
+            },  
+            {
+                "PointType":23,
+                "PointInfo":{
+                    "TipsDescribe":"Weight_limit",
+                    "TextInfo":"限重",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_restricted_weight"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_restricted_weight"
+                            }
+                        }
+                    } 
+                }            
+            },
+            {
+                "PointType":24,
+                "PointInfo":{
+                    "TipsDescribe":"Left_forbidden",
+                    "TextInfo":"禁左",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_left"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_left"
+                            }
+                        }
+                    }                     
+                }            
+            },   
+            {
+                "PointType":25,
+                "PointInfo":{
+                    "TipsDescribe":"Right_forbidden",
+                    "TextInfo":"禁右",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_right"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_right"
+                            }
+                        }
+                    }                       
+
+                }            
+            },
+            {
+                "PointType":26,
+                "PointInfo":{
+                    "TipsDescribe":"LeftBack_forbidden",
+                    "TextInfo":"禁左掉头",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_backleft"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_backleft"
+                            }
+                        }
+                    }                          
+                }            
+            },   
+            {
+                "PointType":27,
+                "PointInfo":{
+                    "TipsDescribe":"RightBack_forbidden",
+                    "TextInfo":"禁右掉头",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_backright"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_backright"
+                            }
+                        }
+                    }                      
+
+                }            
+            },
+            {
+                "PointType":28,
+                "PointInfo":{
+                    "TipsDescribe":"GoAhead_forbidden",
+                    "TextInfo":"禁直行",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_zhixing"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_zhixing"
+                            }
+                        }
+                    }                                           
+                }            
+            },
+            {
+                "PointType":41,
+                "PointInfo":{
+                    "TipsDescribe":"Jam_Line",
+                    "TextInfo":"拥堵线",
+                    "styleInfo": {
+                        "point_layer_item_style": {
+                            "normal_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_jam"
+                            },
+                            "focus_style": {
+                                "poi_marker_id": "global_image_auto_ic_navi_traffic_event_jam"
+                            }
+                        }
+                    }                                           
+                }            
+            }              
+        ]
+    }
+}

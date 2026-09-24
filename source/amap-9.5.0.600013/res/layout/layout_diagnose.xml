@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:gravity="left" android:background="#ffffff" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:id="@id/lay_diagnose1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/auto_dimen2_6" android:layout_alignParentTop="true">
+        <Button android:gravity="center" android:id="@id/btn_network_diagnose" android:layout_width="@dimen/auto_dimen2_180" android:layout_height="wrap_content" android:text="网络诊断" />
+        <Button android:gravity="center" android:id="@id/btn_gps_diagnose" android:layout_width="@dimen/auto_dimen2_180" android:layout_height="wrap_content" android:text="GPS诊断" />
+        <Button android:gravity="center" android:id="@id/btn_disk_diagnose" android:layout_width="@dimen/auto_dimen2_180" android:layout_height="wrap_content" android:text="磁盘诊断" />
+    </LinearLayout>
+    <LinearLayout android:orientation="horizontal" android:id="@id/layout_diagnose2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/auto_dimen2_6" android:layout_below="@id/lay_diagnose1">
+        <Button android:gravity="center" android:id="@id/btn_tts_diagnose" android:layout_width="@dimen/auto_dimen2_180" android:layout_height="wrap_content" android:text="tts诊断" />
+        <Button android:gravity="center" android:id="@id/btn_ar_diagnose" android:layout_width="@dimen/auto_dimen2_180" android:layout_height="wrap_content" android:text="AR诊断" />
+    </LinearLayout>
+    <LinearLayout android:orientation="vertical" android:id="@id/lay_diagnose_tts" android:padding="@dimen/auto_dimen2_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_10" android:layout_marginTop="@dimen/auto_dimen2_10" android:layout_marginRight="@dimen/auto_dimen2_10" android:layout_marginBottom="@dimen/auto_dimen2_10" android:layout_below="@id/layout_diagnose2" android:layout_marginStart="@dimen/auto_dimen2_10" android:layout_marginEnd="@dimen/auto_dimen2_10">
+        <TextView android:textSize="@dimen/auto_dimen2_20" android:textColor="@android:color/holo_blue_dark" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="请帮忙尝试播放以下Tts语音，并反馈播放效果" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_6" android:layout_marginRight="@dimen/auto_dimen2_6">
+            <TextView android:textSize="@dimen/auto_dimen2_24" android:textStyle="bold" android:textColor="@android:color/black" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="播报文本:沿当前道路,继续行驶一点四公里" />
+            <Button android:id="@id/btn_play" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_30" android:text="播报" />
+        </LinearLayout>
+        <TextView android:textSize="@dimen/auto_dimen2_22" android:textColor="@android:color/holo_blue_dark" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="请选择播报效果" />
+        <RadioGroup android:orientation="horizontal" android:id="@id/radio_group_playresult" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <RadioButton android:textSize="@dimen/auto_dimen2_20" android:textColor="@android:color/holo_blue_dark" android:id="@id/radio_btn1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="播报正常" />
+            <RadioButton android:textSize="@dimen/auto_dimen2_20" android:textColor="@android:color/holo_blue_dark" android:id="@id/radio_btn2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="声音滞后" />
+            <RadioButton android:textSize="@dimen/auto_dimen2_20" android:textColor="@android:color/holo_blue_dark" android:id="@id/radio_btn3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="声音卡顿" />
+            <RadioButton android:textSize="@dimen/auto_dimen2_20" android:textColor="@android:color/holo_blue_dark" android:id="@id/radio_btn4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="播报无音" />
+        </RadioGroup>
+        <Button android:layout_gravity="center_horizontal" android:id="@id/btn_submit" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="提交" />
+    </LinearLayout>
+    <TextView android:textColor="@android:color/holo_red_light" android:id="@id/text_result_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/auto_dimen2_6" android:text="诊断结论:" android:layout_below="@id/lay_diagnose_tts" />
+    <Button android:id="@id/btn_close" android:layout_width="@dimen/auto_dimen2_180" android:layout_height="wrap_content" android:layout_marginBottom="@dimen/auto_dimen2_15" android:text="退出" android:layout_alignParentBottom="true" android:layout_centerHorizontal="true" />
+    <ScrollView android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginTop="@dimen/auto_dimen2_6" android:layout_marginBottom="@dimen/auto_dimen2_6" android:layout_above="@id/btn_close" android:layout_below="@id/text_result_title">
+        <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
+            <TextView android:id="@id/text_result" android:paddingLeft="@dimen/auto_dimen2_6" android:paddingTop="@dimen/auto_dimen2_6" android:paddingRight="@dimen/auto_dimen2_6" android:paddingBottom="@dimen/auto_dimen2_6" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="@dimen/auto_dimen2_6" android:layout_marginTop="@dimen/auto_dimen2_6" android:text="网络正常" android:singleLine="false" />
+        </LinearLayout>
+    </ScrollView>
+</RelativeLayout>

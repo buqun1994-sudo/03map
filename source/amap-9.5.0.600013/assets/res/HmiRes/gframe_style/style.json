@@ -1,0 +1,107 @@
+{
+"marker_info": {
+},
+	"layer_item_info": {
+		"point_agroup": {
+			"point_layer_item_style": {
+				"normal_style": {
+					"poi_marker_id": "id_dynamic"
+				},
+				"focus_style": {
+					"poi_marker_id": "id_dynamic_focus"
+				}
+			}
+		},
+		"point_agroup_end": {
+			"point_layer_item_style": {
+				"normal_style": {
+					"poi_marker_id": "restdistance"
+				}
+			}
+		},
+        "point_car_team_arrow": {
+            "point_layer_item_style": {
+                "normal_style": {
+                    "poi_marker_id": "id_dynamic"
+                }
+            }
+        },
+        "point_car_team_avatar": {
+            "point_layer_item_style": {
+                "normal_style": {
+                    "poi_marker_id": "id_dynamic"
+                }
+            }
+        }
+	},
+    "dynamic_item_info": {
+        "car_team_avatar":
+        {
+            "marker_id":"id_car_team_avatar",
+            "icon_res":"global_image_car_team_head",
+            "label_res":"global_image_car_team_name",
+            "label_res_default":"global_image_car_team_name_def",
+            "text_size":"18",
+            "text_color":"0xff000000",
+            "label_top_blank":"8",
+            "label_bottom_blank":"15",
+            "label_num_left_blank":"8",
+            "label_num_right_blank":"86",
+            "label_name_left_blank":"45",
+            "label_name_right_blank":"8"
+        }
+    },
+    "default": {
+        "eagle_configure_style": {
+          "width": "210",
+          "delta": "28",
+          "zoom_scale": "1.5",
+          "text_scale": "2.0",
+          "screen_scale": "2.0",
+          "alpha": "0.8f",
+          "blue": "0.745098f",
+          "green": "0.698039f",
+          "red": "0.678431f",
+          "alpha_night": "0.9f",
+          "blue_night": "0.180392f",
+          "green_night": "0.145098f",
+          "red_night": "0.145098f",
+          "endpreview_length": "0xFFFFFFFF",
+          "background_res": "hawkeyemap_bg.png"
+        },
+		"arnavi_eagle_configure_style": {
+			"width": "210",
+			"delta": "28",
+			"zoom_scale": "1.5",
+			"text_scale": "2.0",
+			"screen_scale": "2.0",
+			"alpha": "0.5f",
+			"blue": "0.301960784f",
+			"green": "0.301960784f",
+			"red": "0.301960784f",
+			"alpha_night": "0.5f",
+			"blue_night": "0.301960784f",
+			"green_night": "0.301960784f",
+			"red_night": "0.301960784f",
+			"endpreview_length": "0xFFFFFFFF",
+			"background_res": "hawkeyemap_bg.png"
+		},
+		"search_eagle_configure_style": {
+			"width": "210",
+			"delta": "28",
+			"zoom_scale": "1.5",
+			"text_scale": "2.0",
+			"screen_scale": "2.0",
+			"alpha": "0.8f",
+			"blue": "0.06666666f",
+			"green": "0.06274509f",
+			"red": "0.06274509f",
+			"alpha_night": "0.8f",
+			"blue_night": "0.06666666f",
+			"green_night": "0.06274509f",
+			"red_night": "0.06274509f",
+			"endpreview_length": "0xFFFFFFFF",
+			"background_res": "search_hawkeyemap_bg.png"
+		}
+	}	
+}

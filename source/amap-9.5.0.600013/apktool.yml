@@ -1,0 +1,20 @@
+version: 3.0.3
+apkFileName: 高德地图车机版_共存_悬浮_保时捷字体_默认全屏_DPI125%_9.5.0.600013.apk
+usesFramework:
+  ids:
+  - 1
+sdkInfo:
+  minSdkVersion: 21
+  targetSdkVersion: 24
+versionInfo:
+  versionCode: 26000001
+  versionName: 9.5.0.600013
+resourcesInfo:
+  packageId: 127
+doNotCompress:
+- arsc
+- jpg
+- png
+- so
+- wav
+- assets/SignatureKiller/origin.apk

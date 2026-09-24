@@ -1,0 +1,5 @@
+<TextSize=28><TextColor=255,255,255,230><Paragraph=0,0,0,16>账号绑定服务协议</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,16>为了实现车机系统、车企应用程序和高德地图协同向您提供服务，您同意并授权车机系统、车企应用程序和高德地图通过技术方式实现如下操作：</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,16>1、高德地图将获取您的车机系统、车企应用程序中车企账号的相关信息（包括账号名、手机号码、昵称、头像、收藏夹、设备ID等）；</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,16>2、车机系统和车企应用程序将获取您的高德账号的相关信息（包括账号名、昵称、头像、收藏夹 、设备ID等）；</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=255,255,255,153><Paragraph=0,0,0,16>高德地图会严格按照《高德服务条款》、《高德隐私权政策》和相关法律的规定使用和保护个人信息；车机系统和车企应用程序对个人信息的使用和保护事宜，请您阅读其相关服务条款或隐私政策。</Paragraph></TextColor></TextSize>

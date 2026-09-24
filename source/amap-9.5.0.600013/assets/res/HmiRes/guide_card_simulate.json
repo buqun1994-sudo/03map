@@ -1,0 +1,142 @@
+{
+	"attrs": [
+		{
+			"curCard": "GuideCardIDNone",
+			"curCardId": 4,
+			"priorityMapEvent": 0,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDSAPA",
+			"curCardId": 3,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"modeType": "Touch",
+							"ModeTypeValue": 1,
+							"styleType": "3DRoad",
+							"styleTypeValue": 4,
+							"ValueName": "hide",
+							"Value": 2
+						},
+						{
+							"styleType": "2DRoad",
+							"styleTypeValue": 2,
+							"ValueName": "close",
+							"Value": 1
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDTBTCard",
+			"curCardId": 27,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDTbtSecondNavi",
+			"curCardId": 24,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,21 @@
+.class public Lcom/autonavi/amapauto/jni/protocol/data/WipeStateData;
+.super Lcom/autonavi/amapauto/jni/protocol/data/ALResponeData;
+.source "SourceFile"
+
+
+# instance fields
+.field public msg:Ljava/lang/String;
+
+.field public operaSelect:I
+
+
+# direct methods
+.method public constructor <init>()V
+    .locals 0
+
+    .line 1
+    invoke-direct {p0}, Lcom/autonavi/amapauto/jni/protocol/data/ALResponeData;-><init>()V
+
+    .line 4
+    return-void
+.end method

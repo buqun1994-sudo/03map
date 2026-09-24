@@ -1,0 +1,8 @@
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>1.语音播报可有简洁版？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>在图面上，点击左上角更多按钮，选择【设置】——【声音播报】——【导航播报】——【简洁播报】即可。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>2.语音播报的开关在哪？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>在图面上，点击右上角的信息栏，可展开快捷面板调节音量，也可在【设置】——【声音播报】里调节音量大小。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>3.如何更新语音？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>进入【离线数据】——【导航语音】，可在线下载语音。也可在官网下载语音文件，将文件复制到车机内amapauto9--data--voice文件夹下。</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>4.语音播报和音乐如何兼容？</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>进入【设置】——【声音播报】——【混音模式】，可选择压低音乐或暂停音乐。</Paragraph></TextColor></TextSize>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:id="@id/widget_container" android:paddingLeft="@dimen/auto_widget_dimen_left_margin" android:paddingTop="@dimen/auto_widget_dimen_top_margin" android:paddingRight="@dimen/auto_widget_dimen_right_margin" android:paddingBottom="@dimen/auto_widget_dimen_bottom_margin" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <ImageView android:id="@id/widget_image" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/widget_drawable_whole_backgroud" android:scaleType="centerCrop" />
+    <LinearLayout android:id="@id/xunhang_container" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent">
+        <include layout="@layout/auto_widget_gongban_fourxthree_xunhang_layout" />
+    </LinearLayout>
+    <LinearLayout android:id="@id/daohang_container" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent">
+        <include layout="@layout/auto_widget_gongban_fourxthree_daohang_newui_layout" />
+    </LinearLayout>
+    <LinearLayout android:id="@id/silce_container" android:layout_width="match_parent" android:layout_height="match_parent">
+        <include layout="@layout/auto_widget_gongban_fourxthree_jingmo_layout" />
+    </LinearLayout>
+</FrameLayout>

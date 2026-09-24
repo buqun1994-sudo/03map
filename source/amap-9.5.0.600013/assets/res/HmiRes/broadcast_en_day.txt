@@ -1,0 +1,8 @@
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>1. Is there a simple version of the voice broadcast?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>On the map, click the more button in the upper left corner and select [Settings]-[Sound Broadcast]-[Navigation Broadcast]-[Simple Broadcast].</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>2. Where is the switch for voice broadcast?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>On the map, click the information bar in the upper right corner to expand the shortcut panel to adjust the volume, or adjust the volume in [Settings]-[Sound Broadcast].</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>3. How to update the voice?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>Enter 【Offline Data】——【Navigation Voice】, you can download the voice online. You can also download the voice file on the official website and copy the file to the amapauto9--data--voice folder in the car.</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>4. How is the voice broadcast and music compatible?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>Enter [Settings]-[Sound Broadcast]-[Mixing Mode], you can choose to lower or pause the music.</Paragraph></TextColor></TextSize>

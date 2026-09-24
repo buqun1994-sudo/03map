@@ -1,0 +1,4269 @@
+{
+	"attrs": [
+		{
+			"curCard": "GuideCardIDNone",
+			"curCardId": 4,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDSAPA",
+			"curCardId": 3,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"modeType": "Touch",
+							"ModeTypeValue": 1,
+							"styleType": "3DRoad",
+							"styleTypeValue": 4,
+							"ValueName": "hide",
+							"Value": 2
+						},
+						{
+							"styleType": "2DRoad",
+							"styleTypeValue": 2,
+							"ValueName": "close",
+							"Value": 1
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDRecommendRoute",
+			"curCardId": 11,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "close",
+							"Value": 1
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDEnergyWarn",
+			"curCardId": 13,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDBatteryUnreachable",
+			"curCardId": 16,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDBatteryWarn",
+			"curCardId": 9,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDGpsWeak",
+			"curCardId": 17,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GGuideCardIDDynamicNavi",
+			"curCardId": 12,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "close",
+							"Value": 1
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDAGroupDest",
+			"curCardId": 18,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDRecvLinkIdRouteResult",
+			"curCardId": 19,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "close",
+							"Value": 1
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDParkRecommend",
+			"curCardId": 1,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				},
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDWeather",
+			"curCardId": 7,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDNaviMoreCard",
+			"curCardId": 21,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "close",
+							"Value": 1
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDBrandSelect",
+			"curCardId": 22,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"modeType": "Immerse",
+							"ModeTypeValue": 2,
+							"ValueName": "close",
+							"Value": 1
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDAddVia",
+			"curCardId": 14,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAnClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				},
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAnClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDDelViaManual",
+			"curCardId": 15,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAnClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				},
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAnClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDDelViaAuto",
+			"curCardId": 23,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				},
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndClose",
+							"priorityValue": 1
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDTbtSecondNavi",
+			"curCardId": 24,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						}
+					]
+				},
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDTbtBatteryCurve",
+			"curCardId": 25,
+			"stateRules": [
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"styleType": "3DRoad",
+							"styleTypeValue": 4,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						}
+					]
+				},
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardCloseAndShow",
+							"priorityValue": 4
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDGroupIM",
+			"curCardId": 26,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDTBTCard",
+			"curCardId": 27,
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				},
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		},
+		{
+			"curCard": "GuideCardIDDiscountGasDest",
+			"curCardId": 28,
+			"stateRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"styleType": "2DRoad|3DRoad",
+							"styleTypeValue": 6,
+							"ValueName": "hide",
+							"Value": 2
+						}
+					]
+				}
+			],
+			"priorityRules": [
+				{
+					"screen_point": "",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				},
+				{
+					"screen_point": "portrait",
+					"rules": [
+						{
+							"newCard": "GuideCardIDSAPA",
+							"newCardId": 3,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDParkRecommend",
+							"newCardId": 1,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDRecommendRoute",
+							"newCardId": 11,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GGuideCardIDDynamicNavi",
+							"newCardId": 12,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDEnergyWarn",
+							"newCardId": 13,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDWeather",
+							"newCardId": 7,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDBatteryUnreachable",
+							"newCardId": 16,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBatteryWarn",
+							"newCardId": 9,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDGpsWeak",
+							"newCardId": 17,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAGroupDest",
+							"newCardId": 18,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDRecvLinkIdRouteResult",
+							"newCardId": 19,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDNaviMoreCard",
+							"newCardId": 21,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDBrandSelect",
+							"newCardId": 22,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDAddVia",
+							"newCardId": 14,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaManual",
+							"newCardId": 15,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDelViaAuto",
+							"newCardId": 23,
+							"priority": "GuideCardHideAndShow",
+							"priorityValue": 3
+						},
+						{
+							"newCard": "GuideCardIDTbtSecondNavi",
+							"newCardId": 24,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTbtBatteryCurve",
+							"newCardId": 25,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDGroupIM",
+							"newCardId": 26,
+							"priority": "GuideCardShowAndHide",
+							"priorityValue": 2
+						},
+						{
+							"newCard": "GuideCardIDTBTCard",
+							"newCardId": 27,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						},
+						{
+							"newCard": "GuideCardIDDiscountGasDest",
+							"newCardId": 28,
+							"priority": "GuideCardShowAndShow",
+							"priorityValue": 0
+						}
+					]
+				}
+			]
+		}
+	]
+}

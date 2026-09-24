@@ -1,0 +1,4 @@
+interface:
+  display_name: "模板能力回流"
+  short_description: "识别可跨项目复用的协作能力并安全去专有化"
+  default_prompt: "Use $template-feedback to assess whether a map workflow can be safely generalized for future projects."

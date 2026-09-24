@@ -1,0 +1,11 @@
+{
+    "specialKeywords": {
+        "keyword": "启辰4S店",
+        "subKeywords": {
+            "subKeyword0": "东风启辰4S店",
+            "subKeyword1": "东风启辰",
+            "subKeyword2": "启辰",
+            "subKeyword3": "启辰服务"
+        }
+    }
+}

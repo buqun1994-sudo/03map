@@ -1,0 +1,69 @@
+{
+    "search_text_list": {
+        "kilometer": {
+            "text": "公里",
+            "textEn": "km",
+            "color": ""
+        },
+        "meter": {
+            "text": "米",
+            "textEn": "m",
+            "color": ""
+        },
+        "marked_location": {
+            "text": "地图选点",
+            "textEn": "Marked Location",
+            "color": ""
+        },
+        "station": {
+            "text": "站台",
+            "textEn": " station",
+            "color": ""
+        },
+        "gas_unit": {
+            "text": "元/升",
+            "textEn": " Yuan/Litre",
+            "color": ""
+        },
+        "business_time": {
+            "text": "营业时间:%s",
+            "textEn": "Business time: %s",
+            "color": ""
+        },
+        "open_time": {
+            "text": "开放时间:%s",
+            "textEn": "Open time: %s",
+            "color": ""
+        },
+        "nearest_address": {
+            "text": "在%s附近",
+            "textEn": "In nearby of %s",
+            "color": ""
+        },
+        "nearest_address_prefix": {
+            "text": "在%s",
+            "textEn": "In nearby of %s",
+            "color": ""
+        },
+        "nearest_address_suffix": {
+            "text": "附近",
+            "textEn": "Nearby",
+            "color": ""
+        },
+		"is_decorating": {
+            "text": "(装修中)",
+            "textEn": "",
+            "color": ""
+		},
+		"is_building": {
+            "text": "(建设中)",
+            "textEn": "",
+            "color": ""
+		},
+		"suspend_business": {
+            "text": "(暂停营业)",
+            "textEn": "",
+            "color": ""
+		}
+    }
+}

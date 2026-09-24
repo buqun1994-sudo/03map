@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="horizontal" android:background="@drawable/widget_shape_noalpha_background" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <FrameLayout android:layout_gravity="center_vertical" android:id="@id/widget_twoxthree_daohang_guideinfo_container_parent" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="160.0" android:layout_centerVertical="true">
+        <include layout="@layout/auto_widget_gongban_twoxthree_daohang_guideinfo_layout" />
+        <include layout="@layout/auto_widget_gongban_twoxthree_daohang_nogps_layout" />
+    </FrameLayout>
+    <LinearLayout android:layout_gravity="center_vertical" android:id="@id/widget_twoxthree_daohang_right_container_parent" android:visibility="gone" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="50.0" android:layout_centerVertical="true">
+        <include layout="@layout/auto_widget_gongban_twoxthree_daohang_right_layout" />
+    </LinearLayout>
+</LinearLayout>

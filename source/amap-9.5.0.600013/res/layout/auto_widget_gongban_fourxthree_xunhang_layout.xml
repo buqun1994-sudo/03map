@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:background="@color/widget_transparency" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:id="@id/road_line_container" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/auto_dimen2_14" android:layout_alignParentTop="true" android:layout_centerHorizontal="true">
+        <ImageView android:id="@id/road_line" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <FrameLayout android:id="@id/xunhang_camera_container" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_14" android:layout_marginTop="@dimen/auto_dimen2_12" android:layout_below="@id/road_line_container" android:layout_alignParentLeft="true">
+        <RelativeLayout android:layout_gravity="center_vertical" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_alignParentLeft="true">
+            <FrameLayout android:layout_gravity="center_vertical" android:id="@id/xunhang_camera_icon_container" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_alignParentLeft="true" android:layout_centerVertical="true">
+                <ImageView android:gravity="center" android:layout_gravity="left|center" android:id="@id/xunhang_camera" android:layout_width="@dimen/auto_dimen2_48" android:layout_height="@dimen/auto_dimen2_48" android:src="@drawable/widget_drawable_auto_ic_edog_camera_loading" />
+                <TextView android:textSize="@dimen/auto_font_size_20" android:textStyle="bold" android:textColor="@color/widget_color_black" android:gravity="center" android:layout_gravity="left|center" android:id="@id/xunhang_camera_speed" android:background="@drawable/widget_drawable_auto_ic_edog_limit_speed_loading" android:visibility="visible" android:layout_width="@dimen/auto_dimen2_48" android:layout_height="@dimen/auto_dimen2_48" android:text="80" />
+            </FrameLayout>
+        </RelativeLayout>
+    </FrameLayout>
+    <ImageView android:id="@id/widget_xunhang_close" android:layout_width="@dimen/auto_dimen2_88" android:layout_height="@dimen/auto_dimen2_52" android:layout_marginTop="@dimen/auto_dimen2_12" android:layout_marginRight="@dimen/auto_dimen2_9" android:src="@drawable/auto_widget_jingmo_close_btn_day_selector" android:scaleType="centerInside" android:layout_alignParentTop="true" android:layout_alignParentRight="true" />
+    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_alignParentBottom="true">
+        <FrameLayout android:id="@id/widget_zoomlayout_container_parent" android:layout_width="wrap_content" android:layout_height="wrap_content">
+            <include layout="@layout/auto_widget_gongban_fourxthree_xunhang_vertical_zoomin_zoomout_blank_layout" />
+            <include layout="@layout/auto_widget_gongban_fourxthree_xunhang_vertical_zoomin_zoomout_layout" />
+        </FrameLayout>
+    </LinearLayout>
+    <TextView android:textSize="@dimen/auto_font_size_18" android:textColor="@color/widget_color_xunhang_current_road_name" android:gravity="center" android:id="@id/current_road_name" android:background="@drawable/auto_widget_current_roadname_backgroud" android:paddingLeft="@dimen/auto_dimen2_12" android:paddingRight="@dimen/auto_dimen2_12" android:visibility="invisible" android:layout_width="wrap_content" android:layout_height="@dimen/auto_dimen2_38" android:layout_marginBottom="@dimen/auto_dimen2_14" android:text="@string/widget_current_road_name" android:layout_alignParentBottom="true" android:layout_centerHorizontal="true" />
+</RelativeLayout>

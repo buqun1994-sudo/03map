@@ -1,0 +1,13 @@
+{
+    "version": 1,
+    "local_version": "3.0.10.7",
+    "enabled": true,
+    "expired": 0,
+    "model": {
+        "engine": "mnn",
+        "file": "intell_freq_nn.mnn",
+        "type": "module",
+        "format": "NCHW",
+        "features": []
+    }
+}

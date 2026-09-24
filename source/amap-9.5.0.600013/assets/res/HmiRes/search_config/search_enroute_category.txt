@@ -1,0 +1,70 @@
+{
+    "enroute_search": [
+        {
+            "name": "充电",
+            "category": "10",
+            "keyword":"充电站",
+            "url":""
+        },
+		{
+            "name": "加油",
+            "category": "4",
+            "keyword":"加油站",
+	    "url":""
+        },
+		{
+            "name": "美食",
+            "category": "14",
+            "keyword":"美食",
+	    "url":""
+        },
+        {
+            "name": "卫生间",
+            "category": "7",
+            "keyword":"公厕",
+	    "url":""
+        },
+        {
+            "name": "加气",
+            "category": "5",
+            "keyword":"加气站",
+	    "url":""
+        },
+        {
+            "name": "洗车",
+            "category": "23",
+            "keyword":"洗车店",
+	    "url":""
+        },
+        {
+            "name": "酒店",
+            "category": "15",
+            "keyword":"酒店",
+	    "url":""
+        },
+        {
+            "name": "服务区",
+            "category": "26",
+            "keyword":"服务区",
+	    "url":""
+        },
+		{
+            "name": "途径路",
+            "category": "31",
+            "keyword":"途径路",
+	    "url":""
+        },
+        {
+            "name": "天气",
+            "category": "32",
+            "keyword":"天气",
+	    "url":""
+        },
+        {
+            "name": "景点",
+            "category": "36",
+            "keyword":"景点",
+	    "url":""
+        }
+    ]
+}

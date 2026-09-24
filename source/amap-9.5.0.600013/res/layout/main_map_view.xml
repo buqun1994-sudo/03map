@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:background="@android:color/background_dark" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.autonavi.amapauto.view.MapSurfaceViewEx android:id="@id/map_surface" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <SurfaceView android:id="@id/ui_surface" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <ImageView android:id="@id/cover" android:background="@drawable/starting_bg" android:layout_width="match_parent" android:layout_height="match_parent" />
+</FrameLayout>

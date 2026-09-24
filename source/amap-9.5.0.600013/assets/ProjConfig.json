@@ -1,0 +1,104 @@
+{
+  "UserPath": "..", 
+  "Log": {
+    "LogMaxFileSize": 5, 
+    "LogLevel": 0, 
+    "LogMaxFiles": 80, 
+    "LogPath": "/sdcard/amapauto9/Log/", 
+    "LogGroupMask": 0, 
+    "DumpPath": "./dumppath"
+  }, 
+  "Views": [
+    {
+      "Ratio": 1.0, 
+      "Name": "MainScreen", 
+      "Top": 0, 
+      "Height": 600, 
+      "Width": 1024, 
+      "Plugins": [
+        {
+          "bg": 1, 
+          "Name": "autonavi"
+        }, 
+        {
+          "bg": -1, 
+          "Name": "WechatBind"
+        }, 
+        {
+          "bg": -1, 
+          "Name": "SwitchCard"
+        }, 
+        {
+          "bg": -1, 
+          "Name": "MyTrack"
+        }, 
+        {
+          "bg": -1, 
+          "Name": "PhoneConn"
+        }, 
+        {
+          "bg": -1, 
+          "Name": "DriveReport"
+        }, 
+        {
+          "bg": -1, 
+          "Name": "EHP"
+        }, 
+        {
+          "bg": 0, 
+          "Name": "Assembly"
+        }, 
+        {
+          "bg": 0, 
+          "Name": "BlueBird"
+        }, 
+        {
+          "bg": 1, 
+          "Name": "BootLoader"
+        }, 
+        {
+          "bg": 1, 
+          "Name": "MainScreen"
+        }, 
+        {
+          "bg": -1, 
+          "Name": "SmartPark"
+        }, 
+        {
+          "bg": -1, 
+          "Name": "AGroup"
+        }
+      ], 
+      "Type": 1, 
+      "ID": 1000, 
+      "Left": 0
+    }
+  ], 
+  "BasePath": "../../../../../../../res/res/", 
+  "UpdateConfigPath": "", 
+  "ConfigPath": "/android_assets/res/HmiRes/", 
+  "AL": {
+    "Load": 1, 
+    "Name": "AutoSys"
+  }, 
+  "UpdateLibPath": "", 
+  "SoftViews": [
+    {}
+  ], 
+  "BlueBirdPath": "", 
+  "Test": {
+    "CasePath": "../../../../../../../res/res/user/testcase/", 
+    "Interval": "0.05", 
+    "ResultPath": "../../../../../../../res/res/user/testresult/", 
+    "ResourcePath": "../../../../../../../res/res/"
+  }, 
+  "GFrame": {
+    "Load": 1, 
+    "ViewId": 0, 
+    "UpdateUiPath": "", 
+    "UiPath": "/data/data/com.autonavi.amapauto/lib/", 
+    "SoftViewId": -3
+  }, 
+  "LibraryPath": "./libs/", 
+  "Name": "AutoCpp"
+}

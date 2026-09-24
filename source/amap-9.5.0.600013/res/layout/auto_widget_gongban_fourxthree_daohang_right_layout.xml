@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:layout_gravity="center_vertical" android:id="@id/widget_daohang_right_container_parent" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_centerVertical="true"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:id="@id/widget_daohang_road_line_container" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/auto_dimen2_7" android:layout_alignParentTop="true" android:layout_centerHorizontal="true">
+        <ImageView android:id="@id/widget_daohang_road_line" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <LinearLayout android:id="@id/widget_daohang_traffic_container" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginTop="@dimen/auto_dimen2_9" android:layout_marginRight="@dimen/auto_dimen2_18" android:layout_marginBottom="@dimen/auto_dimen2_9" android:layout_alignParentRight="true">
+        <ImageView android:id="@id/widget_daohang_traffic" android:layout_width="wrap_content" android:layout_height="match_parent" />
+    </LinearLayout>
+    <TextView android:id="@id/daohang_current_road_name" android:visibility="gone" android:text="@string/widget_current_road_name" android:layout_alignParentBottom="true" android:layout_centerHorizontal="true" style="@style/widget_current_road_layout_style" />
+</RelativeLayout>

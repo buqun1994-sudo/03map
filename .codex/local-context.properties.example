@@ -1,0 +1,13 @@
+# 本机私有配置模板；不要提交真实路径、设备地址、密钥或口令。
+JDK17_HOME=/path/to/jdk-17/Contents/Home
+JAVA_HOME=/path/to/jdk-17/Contents/Home
+ANDROID_SDK_ROOT=/path/to/Android/sdk
+PRIMARY_ADB=/path/to/Android/sdk/platform-tools/adb
+APKTOOL_JAR=/path/to/apktool.jar
+BAKSMALI_JAR=/path/to/baksmali.jar
+SMALI_JAR=/path/to/smali.jar
+AAPT2=/path/to/Android/sdk/build-tools/version/aapt2
+ZIPALIGN=/path/to/Android/sdk/build-tools/version/zipalign
+APKSIGNER=/path/to/Android/sdk/build-tools/version/apksigner
+VEHICLE_ADB_SERIAL=host-or-ip:port
+TEST_PHONE_ADB_SERIAL=

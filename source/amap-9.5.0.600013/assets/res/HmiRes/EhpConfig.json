@@ -1,0 +1,209 @@
+{
+    "dp":{
+        "cacheTileNum" : 4
+    },
+    "metadata":{
+        "countryCode" : 156,
+        "drivingSide" : 1,
+        "speedUnit" : 0
+    },
+    "common" : {
+        "trace" : {
+            "enabled" : true,
+            "minLevel" : "error",
+            "kpi" : true,
+            "fileEnabled" : true,
+            "fileName" : "ehp-trace"
+        }
+    },
+    "eg" : {
+        "navigation":{
+            "maxMppHorizonLength" : 3000,
+            "maxSubPathHorizonLength" : 1000,
+            "maxBehindHorizonLength" : 500,
+            "maxMppLevel" : 2000,
+            "maxSubLevel" : 1,
+            "maxMppEta" : 30000000,
+            "maxHighwaySubEta" : 30,
+            "maxCitySpeedSubEta" : 30,
+            "maxSubEta" : 60,
+            "maxCcpMatchFailedCount" : 2000,
+            "maxCcpMatchDistanceTolerance" : 20,
+            "maxCcpJumpDistanceTolerance" : 50
+        },
+        "cruise":{
+            "maxMppHorizonLength" : 3000,
+            "maxSubPathHorizonLength" : 1000,
+            "maxBehindHorizonLength" : 500,
+            "maxMppLevel" : 2000,
+            "maxSubLevel" : 1,
+            "maxMppEta" : 30000000,
+            "maxHighwaySubEta" : 30,
+            "maxCitySpeedSubEta" : 30,
+            "maxSubEta" : 60,
+            "maxCcpMatchFailedCount" : 2000,
+            "maxCcpMatchDistanceTolerance" : 20,
+            "maxCcpJumpDistanceTolerance" : 50
+        },
+        "cloud" : {
+            "enabled" : true,
+            "isEncode" : true,
+            "requiredStatus" : "none",
+            "cloudLinkReqTimeInterval" : 20000,
+            "cloudDynamicAttrReqTimeInterval" : 120000,
+            "lrCloudDynamicAttrReqTimeInterval" : 900000,
+            "lrCloudDynamicAttrReqLen" : -1,
+            "initReqRouteSize" : 100,
+            "expandReqRouteSize" : 50,
+            "requestTimeout" : 10000,
+            "datalog" : {
+                "enabled" : true,
+                "fileName" : "ehp-cloud"
+            },
+            "mocklog" : {
+                "enabled" : false,
+                "fileName" : "ehp-cloudmock"
+            },
+            "playback" : {
+                "enabled" : false,
+                "fileName" : "../../../../config/mock/ehp-cloud_2018-07-03-15h-45m-42s.log"
+            }
+        },
+        "splitSegItems" : {
+            "speedCamera" : true,
+            "speedFacility" : true
+        },
+        "extAttributeItems" : {
+            "camera" : true,
+            "entranceNum" : true,
+            "laneArrow" : true,
+            "facility" : true,
+            "slope" : true,
+            "curvature" : true,
+            "paver" : true,
+            "headingChange" : true,
+            "averageSpeed" : true
+        },
+        "curvature" : {
+            "intervalDist" : 30
+        },
+        "longRange" :
+        {
+            "enabled" : true
+        },
+        "segment" :
+        {
+            "probability" :
+            {
+                "roadClassRatio" : 80,
+                "angleRatio" : 20,
+                "trafficFlowRatio" : 1
+            }
+        },
+        "isAggreateSpeedLimit":true,
+        "speedLimitEffectiveLen":200,
+        "maxSegmentLen":600,
+        "routeDataPath":"D:/ehpdata/data/",
+        "configPath":"D:/ehpdata/data/PathConfig.xml",
+        "isOutPutBpTree2Tool" : true,
+        "isOutPutLongRangeBpTree2Tool" : false,
+        "isOutPutCcp2Tool" : true,
+        "server" : {
+            "host":"https://maps.testing.amap.com/ws/shield",
+            "initPredictiveTreeUrl":"/ehp/initPredictiveTree",
+            "predictiveTreeUrl":"/ehp/predictiveTree",
+            "lrpredictiveTreeUrl":"/ehp/lrpredictiveTree",
+            "dynamicAttributeUrl":"/ehp/dynamicAttribute",
+            "metadataUrl":"/ehp/metadata"
+        }        
+    },
+    "bl" : 
+    {
+        "av2" :
+        {
+            "maxTransmittedPathLength" : 2000,
+            "maxHorizonTrailingLength": 500,
+            "maxMppHorizonLength" : 2000,
+            "maxSubPathHorizonLength" : 500,
+            "maxTransmittedHigwayEta" : 30,
+            "maxTransmittedNormalEta" : 60,
+            "trailingLengthTolerance" : 50,
+            "horizonLengthTolerance" : 100,
+            "maxPathLevel" : 1,
+            "maxCcpMatchFailedCount" : 30,
+            "maxCcpMatchDistanceTolerance" : 10,
+            "output" :
+            {
+                "interval" :
+                {
+                    "shortRange" :
+                    {
+                        "default" : 20,
+                        "position" : 150,
+                        "metadata" : 5000
+                    },
+                    "longRange" :
+                    {
+                        "default" : 40,
+                        "position" : 1000,
+                        "metadata" : 5000
+                    }
+                }
+            },
+            "longRange" :
+            {
+                "enabled" : true,
+                "resolution" : 128,
+                "extAttributeItems" : {
+                    "routePoint" : true,
+                    "averageSpeed" : true,
+                    "trafficSpeed" : true,
+                    "trafficFlow" : true,
+                    "slope" : true
+                },
+                "averageSpeedMergeType" : 3,
+                "trafficSpeedMergeType" : 3,
+                "slopeMergeType" : 1
+            },
+            "multiplexedExport" : false,
+            "roadClassMap":
+            {
+                "freeWay":	1,
+                "citySpeedWay":	1,
+                "nationalRoad":	2,
+                "provinceRoad":	3,
+                "mainRoad":	4,
+                "countyRoad":	4,
+                "secondaryRoad":	5,
+                "ruralRoad":	5,
+                "commonRoad":	6,
+                "inCountyRoad":	6,
+                "nonNaviRoad":	6
+            }
+        },
+        "ifcLog" : {
+            "enabled" : true,
+            "fileName" : "ehp-ifc"
+        },
+        "test" : 
+        {
+            "enabled" : true,
+            "logFile" :
+            {
+                "enabled" : true,
+                "pathName" : "ehp-export"
+            },
+            "backend" :
+            {
+                "enabled" : true,
+                "peerIp" : "127.0.0.1",
+                "peerPort" : 9143,
+                "magicNumberIncluded" : false,
+                "payloadLengthIncluded" : false
+            },
+            "egInterval" : 20,
+            "locGenerate" : false,
+            "gnetLogPath" : "./"
+        }
+    }
+}

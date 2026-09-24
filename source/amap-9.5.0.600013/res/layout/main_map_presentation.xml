@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.autonavi.amapauto.multiscreen.presentation.PresentationMapView android:id="@id/multiscreen_present_surface" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <com.autonavi.amapauto.multiscreen.presentation.PresentationUIView android:id="@id/multiscreen_present_ui" android:layout_width="match_parent" android:layout_height="match_parent" />
+</RelativeLayout>

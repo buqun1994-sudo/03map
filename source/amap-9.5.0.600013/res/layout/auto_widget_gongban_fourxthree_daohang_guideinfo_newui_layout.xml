@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/widget_daohang_guideinfo_container" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:gravity="center_vertical" android:background="@color/widget_transparency" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <LinearLayout android:gravity="center_vertical" android:layout_gravity="center_vertical" android:orientation="horizontal" android:background="@color/widget_transparency" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_weight="8.0">
+            <ImageView android:layout_gravity="center_vertical" android:id="@id/auto_widget_turn_info_iv" android:layout_width="@dimen/auto_dimen2_45" android:layout_height="@dimen/auto_dimen2_45" android:layout_marginLeft="@dimen/auto_dimen2_29" android:src="@drawable/sou3_night" android:scaleType="centerCrop" android:layout_centerVertical="true" />
+            <LinearLayout android:gravity="bottom" android:layout_gravity="bottom" android:orientation="horizontal" android:id="@id/widget_next_road_distance_container" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="@dimen/auto_dimen2_6" android:layout_toRightOf="@id/auto_widget_turn_info_iv">
+                <LinearLayout android:gravity="bottom" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                    <TextView android:textSize="@dimen/auto_font_size_38" android:textColor="@color/widget_color_next_road_distance_newui" android:id="@id/auto_widget_next_road_distance_tv" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/widget_next_road_distance_default" />
+                    <TextView android:textSize="@dimen/auto_font_size_14" android:textColor="@color/widget_color_next_road_distance_unit_newui" android:id="@id/auto_widget_next_road_distance_unit_tv" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_1" android:text="@string/widget_next_road_distance_unit_meter" />
+                    <TextView android:textSize="@dimen/auto_font_size_17" android:textColor="@color/widget_color_next_road_distance_description_newui" android:id="@id/auto_widget_next_road_distance_unit_description_tv" android:visibility="visible" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_2" android:text="@string/widget_next_road_distance_unit_description" />
+                    <TextView android:textSize="@dimen/auto_font_size_20" android:textColor="@color/widget_color_next_road_name_newui" android:ellipsize="end" android:id="@id/auto_widget_next_road_name_tv" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/auto_dimen2_14" android:text="@string/widget_daohang_next_road_name" android:singleLine="true" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:layout_gravity="center" android:orientation="horizontal" android:id="@id/ll_audio_widget_mute_switch" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginRight="@dimen/auto_dimen2_19">
+            <ImageView android:id="@id/audio_widget_mute_switch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/auto_widget_audio_mute_btn_day_selector" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

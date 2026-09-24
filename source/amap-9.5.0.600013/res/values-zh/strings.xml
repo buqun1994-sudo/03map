@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">高德地图</string>
+    <string name="authorize_descrption">操作系统授权高德地图访问如下权限为您提供服务，请确认是否继续使用高德地图；若您选择同意，高德地图会在您使用期间通过下述权限收集您的相应个人信息，若您选择退出，则高德地图不会收集您的个人信息。</string>
+    <string name="child_process_name_location">:locationservice</string>
+    <string name="permission_agree">同意</string>
+    <string name="permission_audio">麦克风</string>
+    <string name="permission_cancel">关闭</string>
+    <string name="permission_carinfo_instructions">汽车信息权限：获取剩余油量或电量</string>
+    <string name="permission_confirm">开启</string>
+    <string name="permission_descrption">"定位：用于定位车辆位置，提供导航服务；始终允许前后台访问；
+存储：用于激活导航应用；保存/读取离线地图数据，在断网情况下提供导航服务；
+电话：用于识别设备唯一性，确保服务稳定性，保障账号安全。"</string>
+    <string name="permission_dot">、</string>
+    <string name="permission_ignore">关闭</string>
+    <string name="permission_location">定位</string>
+    <string name="permission_location_instructions">定位权限：定位车辆位置和导航</string>
+    <string name="permission_mic_instructions">麦克风权限：用于组队对讲功能</string>
+    <string name="permission_phone">电话</string>
+    <string name="permission_quit">退出</string>
+    <string name="permission_setting">去设置</string>
+    <string name="permission_settings">设置</string>
+    <string name="permission_storage">存储</string>
+    <string name="permission_storage_instructions">存储权限：该权限为必要权限，用于读取离线地图数据、激活导航服务并校验激活状态</string>
+    <string name="permission_tel_instructions">电话权限：用于识别设备唯一性，保障账户安全</string>
+    <string name="permission_tips">高德地图需要%1$s权限，是否去设置？</string>
+    <string name="permission_tips_title">授权提示</string>
+    <string name="permission_title">高德地图将申请以下权限为您提供服务</string>
+    <string name="service_notification_content">正在运行</string>
+    <string name="service_notification_title">高德地图车机版</string>
+</resources>

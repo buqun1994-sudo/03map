@@ -1,0 +1,10 @@
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>1. How to search?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>On the map, click [Destination], and click the search box on the pop-up page to directly enter the destination to search.</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>2. How to search nearby?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>You can click [search nearby] on the pop-up card on the search result card or moving the map. The pop-up page displays the categories of the surroundings, and you can also manually search to find destinations nearby.</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>3. How to set home/go company?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>On the map, click [Destination], on the right side of the pop-up page, you can set home/go to company, and you can also perform quick navigation in the favorite points.</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>4. How to add favorite points?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>You can add favorites by searching for information points, or you can move the map to add favorites in the pop-up card information points. Searching nearby can be performed and navigated with the favorite information points.</Paragraph></TextColor></TextSize>
+<TextSize=28><TextColor=0,0,0,230><Paragraph=0,0,0,16>5. Does the search support handwriting?</Paragraph></TextColor></TextSize>
+<TextSize=24><TextColor=0,0,0,153><Paragraph=0,0,0,40>Support handwriting, input method adds association function.</Paragraph></TextColor></TextSize>

@@ -1,0 +1,17 @@
+{
+	"payLimit": [
+		{
+			"typecode": "011100",
+			"tag_brand": "公共充电站-特来电"
+		},
+		{
+			"typecode": "011100",
+			"tag_brand": "公共充电站-安悦"
+		},
+		{
+			"typecode": "011100",
+			"tag_brand": "公共充电站-安悦充电"
+		}
+	],
+	"payText" : "支持Volvo On Call扫码支付"
+}

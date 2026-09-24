@@ -1,0 +1,5 @@
+{
+	"SearchKeyword" 		: "充电站|充电桩",
+	"SearchFilter"  		: "cscf:0|1|2|3|4|5;brand_code:1|2",
+	"AlongWaySearchFilter"  : "cscf:0|1|2|3|4|5;national_standard:1|2"
+}

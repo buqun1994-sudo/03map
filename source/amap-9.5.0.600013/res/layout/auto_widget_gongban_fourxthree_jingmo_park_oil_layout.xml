@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:id="@id/widget_park_oil_container" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:layout_gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="match_parent">
+        <RelativeLayout android:id="@id/park_container" style="@style/widget_jingmo_rect_leftchild_style">
+            <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <RelativeLayout android:id="@id/park_tip_container" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_centerVertical="true">
+                    <TextView android:id="@id/park_name" android:text="@string/widget_park" style="@style/widget_jingmo_rect_titlechild_style" />
+                    <TextView android:id="@id/park_distance" android:visibility="gone" android:text="@string/park_distance" android:layout_below="@id/park_name" style="@style/widget_jingmo_rect_hint_child_style" />
+                </RelativeLayout>
+            </LinearLayout>
+        </RelativeLayout>
+        <RelativeLayout android:id="@id/oil_container" style="@style/widget_jingmo_rect_rightchild_style">
+            <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <RelativeLayout android:id="@id/oil_tip_container" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_centerVertical="true">
+                    <TextView android:id="@id/oil_name" android:text="@string/add_oil" style="@style/widget_jingmo_rect_titlechild_style" />
+                    <TextView android:id="@id/oil_distance" android:visibility="gone" android:text="@string/widget_oil_distance" android:layout_below="@id/oil_name" style="@style/widget_jingmo_rect_hint_child_style" />
+                </RelativeLayout>
+            </LinearLayout>
+        </RelativeLayout>
+    </LinearLayout>
+</LinearLayout>

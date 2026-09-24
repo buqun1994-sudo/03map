@@ -1,0 +1,69 @@
+#============================================
+#phn_engine模块的配置文件
+#============================================
+[logger]
+# 日志输出文件路径名，缺省../log/***.log
+file			= 
+
+# 日志等级，缺省为"low"（也可以直接写7），同时支持数值和字串，支持的字符串有none, low, normal, detail, all
+#	lgl_none		= 0,		/* 不输出 */
+#	lgl_crit		= 1,		/* 关键信息 */
+#	lgl_error		= 2,		/* 错误信息 */
+#	lgl_warning		= 4,		/* 警告信息 */
+#	lgl_low			= lgl_warning | lgl_error | lgl_crit,	/* 组合类型 - 少量信息 */
+#	lgl_info		= 8,		/* 一般信息 */
+#	lgl_normal		= lgl_low | lgl_info,					/* 组合类型 - 一般信息 */
+#	lgl_verbose		= 16,		/* 不重要的信息 */
+#	lgl_debug		= 32,		/* 调试信息，信息量狂大 */
+#	lgl_detail		= lgl_normal | lgl_verbose | lgl_debug,	/* 组合类型 - 大量信息 */
+#	lgl_perf		= 64,		/* 性能信息，信息量大 */
+#	lgl_trace		= 128,		/* 调用信息 */
+#	lgl_spec		= 256,		/* 特殊级别，用于特别用途 */
+#	lgl_all			= -1,		/* 所有信息 */
+level				= 0
+
+# 输出方式，日志的输出方式，可以是数值组合，缺省是1，表明同时输出在文件和控制台
+# /* 日志记录的输出方式 */
+#	lgo_none		= 0,		/* 不输出 */
+#	lgo_file		= 1,		/* 文件方式输出 */
+#	lgo_console		= 2,		/* 输出到控制台 */
+#	lgo_debugger	= 4,		/* 输出到调试器 */
+#	lgo_msgbox		= 8,		/* 输出到信息框 */
+output			= 0
+
+# 日志的样式，缺省为short，可以选的值有short、long、all、none，或者选择数值的组合
+#	lgs_default		= 0x00,		/* 缺省样式 */
+#	lgs_time_hms	= 0x01,		/* 简单的时间 */
+#	lgs_time		= 0x02,		/* 包含时间 */
+#	lgs_level		= 0x04,		/* 包含错误等级 */
+#	lgs_threadid	= 0x08,		/* 包含线程ID */
+#	lgs_crlf		= 0x10,		/* 包含回车 */
+#	lgs_subject		= 0x20,		/* 包含主题 */
+#	lgs_precessid	= 0x40,		/* 包含进程ID */
+#	lgs_none		= 0x100,	/* 不包含信息 */
+#	lgs_all			= 0x0FF,	/* 所有信息 */
+#
+#	lgs_short		= lgs_time_hms | lgs_level | lgs_threadid | lgs_crlf | lgs_subject,
+#	lgs_long		= lgs_time | lgs_level | lgs_threadid | lgs_precessid | lgs_crlf | lgs_subject,
+style			= 0xFF
+
+# 是否每次都调用刷新，缺省仅警告信息以上的才刷新
+flush			= 1
+
+# 日志最大尺寸（单位：字节），缺省为10*1024*1024
+maxsize			= 
+
+# 当日志写满后是否覆盖原有老的日志文件，如果否，将会按照时间备份老的日志，缺省备份日志文件
+overwrite		= 0
+
+# 备份日志的最大数量，缺省20，如果超过将会删除出了第一个日志外最旧的日志文件
+maxcount		= 1000
+
+# 是否包含日志头尾，缺省：包含头，如果为0则不包含头
+head			= 
+
+#日志信息的过滤器，其中include是“仅包含”，exclude是“不包含”
+#过滤字符串不支持通配符，字串之间以逗号“,”分割。
+include			=
+
+exclude			=

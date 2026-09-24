@@ -1,0 +1,4 @@
+interface:
+  display_name: "高德代码地图"
+  short_description: "把高德业务需求映射到源码文件、方法和验证入口"
+  default_prompt: "Use $amap-code-map to map the user's AMap business request to the precise source files, methods, call chain, evidence level, and verification, then update the code map."

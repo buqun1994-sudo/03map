@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" android:compileSdkVersion="34" android:compileSdkVersionCodename="14" package="com.autonavi.amapautolite" platformBuildVersionCode="34" platformBuildVersionName="14">
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_MEDIA_STORAGE"/>
+    <uses-permission android:name="android.permission.MANAGE_USB"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.GET_TASKS"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:maxSdkVersion="30" android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <uses-permission android:maxSdkVersion="30" android:name="android.permission.BLUETOOTH"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <permission android:label="Allow write content provider" android:name="com.autonavi.amapautolite.permission.WRITE_CONTENTPROVIDER" android:protectionLevel="normal"/>
+    <uses-permission android:name="com.autonavi.amapautolite.permission.WRITE_CONTENTPROVIDER"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <meta-data android:name="FloatViewTrd_Version" android:value="7.2.6"/>
+    <uses-permission android:name="com.autonavi.amapautolite_com.hihonor.security.permission.ACCESS_THREAT_DETECTION"/>
+    <uses-permission android:name="com.autonavi.amapautolite_com.xiaomi.security.permission.ACCESS_XSOF"/>
+    <queries>
+        <provider android:authorities="com.autonavi.amapautolite_com.oplus.privacysandbox.provider"/>
+    </queries>
+    <queries>
+        <provider android:authorities="com.autonavi.amapautolite_com.oplus.securepay.SampleProvider"/>
+    </queries>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
+    <uses-permission android:name="com.autonavi.amapautolite_com.huawei.lbs.permission.ACCESS_BIND_LBSSERVICE"/>
+    <uses-permission android:name="com.autonavi.amapautolite_com.vivo.permission.location.GARAGE_RESULT_ACCESS"/>
+    <application android:allowBackup="false" android:appComponentFactory="androidx.core.app.CoreComponentFactory" android:debuggable="false" android:extractNativeLibs="true" android:icon="@drawable/v3_icon" android:label="@string/app_name" android:name="com.autonavi.amapauto.app.MapApplicationProxy" android:networkSecurityConfig="@xml/network_security_config" android:resizeableActivity="false" android:supportsRtl="true" android:theme="@style/Theme.Background">
+        <meta-data android:name="android.max_aspect" android:value="2.1"/>
+        <uses-library android:name="org.apache.http.legacy" android:required="false"/>
+        <meta-data android:name="autonavi_bootstrap_id" android:value="7c6dedf41575847c1b97b8cb90859238d6fcb7a7"/>
+        <meta-data android:name="autonavi_directBootAware" android:value="false"/>
+        <meta-data android:name="autonavi_disableNSUDirectBootAware" android:value="false"/>
+        <meta-data android:name="autonavi_disableExternalFilesDir" android:value="false"/>
+        <meta-data android:name="autonavi_carEnergyIgnore" android:value="false"/>
+        <activity android:configChanges="mcc|mnc|locale|keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|layoutDirection|fontScale" android:exported="true" android:icon="@drawable/v3_icon" android:launchMode="singleTask" android:name="com.autonavi.auto.MainMapActivity" android:screenOrientation="user"/>
+        <activity android:configChanges="mcc|mnc|locale|keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|layoutDirection|fontScale" android:exported="true" android:icon="@drawable/v3_icon" android:launchMode="singleTask" android:name="com.autonavi.auto.remote.fill.UsbFillActivity" android:relinquishTaskIdentity="false" android:screenOrientation="user">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+                <category android:name="android.intent.category.APP_MAPS"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+        <activity android:configChanges="keyboardHidden|orientation" android:exported="false" android:icon="@drawable/v3_icon" android:name="com.autonavi.amapauto.DiagnoseActivity"/>
+        <activity android:configChanges="mcc|mnc|locale|keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|layoutDirection|fontScale" android:exported="true" android:icon="@drawable/v3_icon" android:launchMode="singleTask" android:name="com.autonavi.amapauto.MainMapActivity" android:screenOrientation="user" android:theme="@style/Theme.Background" android:windowSoftInputMode="stateAlwaysHidden|adjustPan">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:host="launch" android:scheme="androidauto"/>
+                <data android:host="poi" android:scheme="androidauto"/>
+                <data android:host="showTraffic" android:scheme="androidauto"/>
+                <data android:host="myLocation" android:scheme="androidauto"/>
+                <data android:host="rootmap" android:scheme="androidauto"/>
+                <data android:host="rootmap_park" android:scheme="androidauto"/>
+                <data android:host="route" android:scheme="androidauto"/>
+                <data android:host="viewReGeo" android:scheme="androidauto"/>
+                <data android:host="viewGeo" android:scheme="androidauto"/>
+                <data android:host="arroundpoi" android:scheme="androidauto"/>
+                <data android:host="keywordNavi" android:scheme="androidauto"/>
+                <data android:host="navi" android:scheme="androidauto"/>
+                <data android:host="viewMap" android:scheme="androidauto"/>
+                <data android:host="mapOpera" android:scheme="androidauto"/>
+                <data android:host="navi2SpecialDest" android:scheme="androidauto"/>
+                <data android:host="naviPreview" android:scheme="androidauto"/>
+                <data android:host="naviRoutePrefer" android:scheme="androidauto"/>
+                <data android:host="naviRoutePreferEx" android:scheme="androidauto"/>
+                <data android:host="naviExit" android:scheme="androidauto"/>
+                <data android:host="appExit" android:scheme="androidauto"/>
+                <data android:host="openFavorite" android:scheme="androidauto"/>
+                <data android:host="setting" android:scheme="androidauto"/>
+                <data android:host="offline_data" android:scheme="androidauto"/>
+                <data android:host="offline_tts" android:scheme="androidauto"/>
+                <data android:host="naviSetting" android:scheme="androidauto"/>
+                <data android:host="citySelect" android:scheme="androidauto"/>
+                <data android:host="searchBase" android:scheme="androidauto"/>
+                <data android:host="searchReasultMap" android:scheme="androidauto"/>
+                <data android:host="searchAround" android:scheme="androidauto"/>
+                <data android:host="searchCategory" android:scheme="androidauto"/>
+                <data android:host="userLogin" android:scheme="androidauto"/>
+                <data android:host="launch_do_nothing" android:scheme="androidauto"/>
+                <data android:host="derectSimuNavi" android:scheme="androidauto"/>
+                <data android:host="voiceOper" android:scheme="androidauto"/>
+                <data android:host="aloneSearch" android:scheme="androidauto"/>
+                <data android:host="settingHomeOrCompany" android:scheme="androidauto"/>
+                <data android:host="trafficReport" android:scheme="androidauto"/>
+                <data android:host="userMessage" android:scheme="androidauto"/>
+                <data android:host="userTrace" android:scheme="androidauto"/>
+                <data android:host="openOfflinedata" android:scheme="androidauto"/>
+                <data android:host="openUsbguide" android:scheme="androidauto"/>
+                <data android:host="colombo" android:scheme="androidauto"/>
+            </intent-filter>
+        </activity>
+        <service android:enabled="true" android:exported="true" android:name="com.autonavi.amapauto.adapter.internal.AmapAutoService">
+            <intent-filter>
+                <action android:name="com.autonavi.amapauto.aidl"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </service>
+        <service android:name="com.autonavi.autofloat.FloatWindowService"/>
+        <provider android:authorities="com.autonavi.amapautolite.provider.search" android:exported="true" android:name="com.autonavi.auto.search.provider.ThirdPartSearchProvider" android:writePermission="com.autonavi.amapauto.permission.WRITE_CONTENTPROVIDER"/>
+        <receiver android:directBootAware="false" android:exported="true" android:name="com.autonavi.amapauto.controller.AutoStartupReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="AUTONAVI_START_BACKGROUND"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="com.autonavi.amapauto.common.LanguageChangeReceiver">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.LOCALE_CHANGED"/>
+            </intent-filter>
+        </receiver>
+        <service android:directBootAware="false" android:exported="false" android:foregroundServiceType="location|camera|microphone" android:name="com.autonavi.amapauto.background.AutoBackgroundService">
+            <intent-filter>
+                <action android:name="com.autonavi.action.autostart"/>
+            </intent-filter>
+        </service>
+        <service android:exported="false" android:name="com.autonavi.amapauto.bootstrap.UpdateSevices" android:process=":selfupdate"/>
+        <service android:exported="false" android:name="com.autonavi.mqtt.service.PushService" android:process=":push"/>
+        <service android:enabled="true" android:exported="true" android:foregroundServiceType="location" android:name="com.amap.api.service.AMapService" android:process=":locationservice"/>
+        <receiver android:directBootAware="false" android:exported="true" android:name="com.autonavi.amapauto.adapter.internal.AmapAutoBroadcastReceiver">
+            <intent-filter>
+                <action android:name="com.autonavi.amapauto.receiver_test"/>
+                <action android:name="AUTONAVI_STANDARD_BROADCAST_RECV"/>
+                <action android:name="FLY.ANDROID.NAVI.MSG.SENDER"/>
+                <action android:name="com.neusoft.action.carmodechange"/>
+                <action android:name="com.incall.action.carmodechange"/>
+                <action android:name="com.autonavi.xm.action.NAVIGATE"/>
+                <action android:name="android.intent.action.POWER_OFF"/>
+                <action android:name="android.intent.action.POWER_ON"/>
+                <action android:name="carplay_navigation_activated"/>
+                <action android:name="svautomotive.3partymanager.navigation.MESSAGE"/>
+                <action android:name="android.Navi.TncReceiver"/>
+                <action android:name="ime.smart.driving.recorder.preview.slide.mode"/>
+                <action android:name="action_auto_screen_fps"/>
+                <action android:name="action_auto_screen_enable"/>
+                <action android:name="android.mcuhw.MCUHW_PROTOCOL_2F_DAYNIGHTMODE"/>
+                <action android:name="com.stcloud.drive.EVT_ACC_STATUS"/>
+                <action android:name="com.tian.navi.NAVITO"/>
+                <action android:name="com.tian.key.UP"/>
+                <action android:name="com.tian.key.DOWN"/>
+                <action android:name="com.tian.key.LEFT"/>
+                <action android:name="com.tian.key.RIGHT"/>
+                <action android:name="com.tian.key.ROTATE_LEFT"/>
+                <action android:name="com.tian.key.ROTATE_RIGHT"/>
+                <action android:name="com.tian.navi.RESIDUAL_MILEAGE"/>
+                <action android:name="com.tian.navi.TBT_START"/>
+                <action android:name="com.tian.navi.TBT_STOP"/>
+                <action android:name="com.tian.navi.INERTIAL_GUIDANCE"/>
+                <action android:name="com.chinatsp.headlights.change"/>
+                <action android:name="com.borqs.civia.acc.off"/>
+                <action android:name="com.borqs.civia.acc.on"/>
+                <action android:name="com.autonavi.action.REQUEST_VERSION"/>
+                <action android:name="com.hsae.auto.ACTION_ACC_STATE"/>
+                <action android:name="com.hsae.auto.EXTRA_ACC_STATE"/>
+                <action android:name="com.incall.action.SCREEN_STATUS"/>
+                <action android:name="com.incall.action.INSTRUMENTATION_THEME_CHANGE"/>
+                <action android:name="com.incall.action.IACCMODE_CHANGE"/>
+                <action android:name="com.incall.action.SCREEN_MODE_CHANGE"/>
+                <action android:name="com.incall.action.REQUEST_MAP_STATUS"/>
+                <action android:name="com.incall.action.CLUSTER_TBT_SHOW"/>
+            </intent-filter>
+        </receiver>
+        <service android:directBootAware="false" android:enabled="true" android:exported="true" android:name="com.autonavi.amapauto.protocol.service.ProtocolService">
+            <intent-filter>
+                <action android:name="com.autonavi.amapauto.protocolService"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </service>
+        <service android:directBootAware="false" android:enabled="true" android:exported="true" android:name="com.autonavi.amapauto.protocol.service.JsonProtocolService">
+            <intent-filter>
+                <action android:name="com.autonavi.amapauto.aidl.json_protocol_service"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </service>
+        <provider android:authorities="com.autonavi.amapautolite.adiuprovider" android:exported="false" android:name="com.autonavi.adiu.storage.AdiuContentProvider"/>
+        <service android:exported="false" android:name="com.autonavi.auto.autostart.IntelligentSpeedLimitService"/>
+        <service android:enabled="true" android:exported="true" android:name="com.iflytek.navigationservice.NavigationService">
+            <intent-filter>
+                <action android:name="com.iflytek.navigationservice.NavigationService"/>
+            </intent-filter>
+        </service>
+        <service android:enabled="true" android:exported="true" android:name="com.autonavi.amapauto.adapter.internal.CarTeamService">
+            <intent-filter>
+                <action android:name="com.amapauto.carteamservice"/>
+            </intent-filter>
+        </service>
+        <receiver android:enabled="true" android:exported="false" android:name="com.autonavi.amapauto.user.PushServiceReceiver">
+            <intent-filter>
+                <action android:name="com.autonavi.amapauto.user.al.action.HANDLE_PUSH_MSG"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:enabled="true" android:exported="false" android:name="com.autonavi.amapauto.framework.AutoAppStateReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED"/>
+                <action android:name="android.intent.action.PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.PACKAGE_REMOVED"/>
+                <data android:scheme="package"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:label="@string/widget_fourxthree_name" android:name="com.autonavi.autowidget.AutoWidgetProvider">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                <action android:name="com.autonavi.amapauto.APPWIDGET_UPDATE"/>
+                <action android:name="action_internal_widget_auto_bitmap"/>
+                <action android:name="AUTO_STATUS_FOR_INTERNAL_WIDGET"/>
+                <action android:name="autonavi.action.BITMAP_UPDATE"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_BITMAP_DISPLAY"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_CONTROLL_SWITCH"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_AUDIO_UI_SWITCH"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_OIL_DISTANCE"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_PARK_DISTANCE"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_HOME_COMPANY_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_WEATHER_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_GPS_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_ROAD_NAME_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_SILENCE_ROADNAME_INFO"/>
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/auto_widget_provider"/>
+        </receiver>
+        <receiver android:exported="true" android:label="@string/widget_twoxthree_name" android:name="com.autonavi.autowidget.AutoWidgetProviderTwoXThree">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                <action android:name="com.autonavi.amapauto.APPWIDGET_UPDATE"/>
+                <action android:name="action_internal_widget_auto_bitmap"/>
+                <action android:name="AUTO_STATUS_FOR_INTERNAL_WIDGET"/>
+                <action android:name="AUTO_GUIDE_INFO_FOR_INTERNAL_WIDGET"/>
+                <action android:name="autonavi.action.BITMAP_UPDATE"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_BITMAP_DISPLAY"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_CONTROLL_SWITCH"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_AUDIO_UI_SWITCH"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_OIL_DISTANCE"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_PARK_DISTANCE"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_HOME_COMPANY_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_WEATHER_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_GPS_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_CAR_DIRECTION"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_ROAD_NAME_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_CAMERA_INFO"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_UPDATE_SILENCE_ROADNAME_INFO"/>
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/auto_widget_provider_twoxthree"/>
+        </receiver>
+        <receiver android:exported="true" android:name="com.autonavi.amapauto.widget.framework.AutoWidgetReceiver">
+            <intent-filter>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_SET_DESTINATION"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_ADD_OIL"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_PARK"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_GO_HOME"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_GO_COMPANY"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_GO_HOME_OR_COMPANY"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_ZOOM_IN"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_ZOOM_OUT"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_MAIN_MAP"/>
+                <action android:name="com.autonavi.amapauto.AUTO_WIDGET_AUDIO_LOGIC_SWITCH"/>
+                <action android:name="AUTO_KEY_WORDS_SEARCH_FOR_INTERNAL_WIDGETP"/>
+                <action android:name="AUTO_AROUND_SEARCH_FOR_INTERNAL_WIDGET"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="com.autonavi.amapauto.jni.AutoNotifySliceClickReceiver">
+            <intent-filter>
+                <action android:name="com.autonavi.amapauto.intent.action_notify_slice_reveive"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="com.autonavi.amapauto.jni.AutoNotifyClickReceiver">
+            <intent-filter>
+                <action android:name="com.autonavi.amapauto.intent.action_notify_reveive"/>
+            </intent-filter>
+        </receiver>
+        <service android:enabled="true" android:exported="true" android:name="com.autonavi.amapauto.adapter.internal.widget.AutoSimilarWidgetService">
+            <intent-filter>
+                <action android:name="com.similar.widget.view.service"/>
+            </intent-filter>
+        </service>
+        <provider android:authorities="com.autonavi.amapautolitelite.provider.socol" android:exported="true" android:name="com.autonavi.amapauto.socol.SocolParamsProvider"/>
+        <provider android:authorities="com.autonavi.amapautolite.bootstrap.fileProvider" android:exported="false" android:grantUriPermissions="true" android:name="androidx.core.content.FileProvider">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/provider_paths"/>
+        </provider>
+        <meta-data android:name="com.xiaomi.security.xsof.client.version" android:value="1"/>
+        <activity android:exported="false" android:name="com.alibaba.wireless.security.open.middletier.fc.ui.ContainerActivity" android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentResult4323"/>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentCreate4323"/>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentLog4323"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <meta-data android:name="com.alibaba-inc.check.login.status.resume" android:value="0"/>
+        </activity>
+        <activity android:exported="false" android:name="com.alibaba.wireless.security.open.middletier.fc.ui.ExtContainerActivity" android:theme="@android:style/Theme.Holo.Dialog.NoActionBar">
+            <intent-filter>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentResult4323"/>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentCreate4323"/>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentLog4323"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <meta-data android:name="com.alibaba-inc.check.login.status.resume" android:value="0"/>
+        </activity>
+        <activity android:exported="false" android:name="com.alibaba.wireless.security.open.middletier.fc.ui.Ext2ContainerActivity" android:theme="@android:style/Theme.Holo.Light.Dialog.NoActionBar">
+            <intent-filter>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentResult4323"/>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentCreate4323"/>
+                <action android:name="com.alibaba.wireless.security.open.middletier.fc.ui.BXIntentLog4323"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <meta-data android:name="com.alibaba-inc.check.login.status.resume" android:value="0"/>
+        </activity>
+    </application>
+</manifest>

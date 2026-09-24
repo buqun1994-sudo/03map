@@ -1,0 +1,30 @@
+{
+    "RouteTipsStyleInfo.json": {
+        "version": "2019122318"
+    }, 
+    "changeplay.bin": {
+        "version": "2019121001"
+    }, 
+    "common.irf": {
+        "md5": "AFFDB806A05C08DDF22DFA806B8FF7C3", 
+        "version": "2021011501"
+    }, 
+    "global.db": {
+        "version": "1608820241"
+    }, 
+    "languagedata_embedded.bin": {
+        "md5": "600ce33c1701c0895c265324a056f7c1"
+    }, 
+    "nvzhongyin": {
+        "md5": "88EF26688D2BE1C7597940FEF0EE6E6D"
+    }, 
+    "parameter.cfg": {
+        "md5": "7F6CE376FBB9852F9B635029AE61623C"
+    }, 
+    "voicefont.bin": {
+        "md5": "4608701B81245AB5CF106902A8CE7DA7"
+    }, 
+    "xiaoyan.irf": {
+        "md5": "DE4C425EE0F130E2326FEBD25BD927BC"
+    }
+}

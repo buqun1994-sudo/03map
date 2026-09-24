@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="trafficInfoAttr">
+        <item>未知状态</item>
+        <item>畅通</item>
+        <item>有缓行</item>
+        <item>有拥堵</item>
+        <item>严重拥堵</item>
+    </string-array>
+</resources>

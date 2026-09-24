@@ -1,0 +1,111 @@
+.class public Lzm0$i;
+.super Ljava/lang/Object;
+.source "SourceFile"
+
+# interfaces
+.implements Landroid/net/wifi/p2p/WifiP2pManager$ConnectionInfoListener;
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingMethod;
+    value = Lzm0;->a()V
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x1
+    name = null
+.end annotation
+
+
+# instance fields
+.field public final synthetic a:Lzm0;
+
+
+# direct methods
+.method public constructor <init>(Lzm0;)V
+    .locals 0
+
+    .line 1
+    iput-object p1, p0, Lzm0$i;->a:Lzm0;
+
+    .line 3
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    .line 6
+    return-void
+.end method
+
+
+# virtual methods
+.method public onConnectionInfoAvailable(Landroid/net/wifi/p2p/WifiP2pInfo;)V
+    .locals 3
+
+    .line 1
+    const/4 v0, 0x1
+
+    .line 2
+    new-array v0, v0, [Ljava/lang/Object;
+
+    .line 4
+    const/4 v1, 0x0
+
+    .line 5
+    aput-object p1, v0, v1
+
+    .line 7
+    const-string v1, "WifiDirectServerHelper"
+
+    .line 9
+    const-string v2, "onDisconnect with info = {?}"
+
+    .line 11
+    invoke-static {v1, v2, v0}, Ldz;->d(Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;)V
+
+    .line 14
+    iget-object v0, p0, Lzm0$i;->a:Lzm0;
+
+    .line 16
+    invoke-static {v0}, Lzm0;->t(Lzm0;)I
+
+    .line 19
+    move-result v0
+
+    .line 20
+    const/4 v1, 0x2
+
+    .line 21
+    if-ne v0, v1, :cond_1
+
+    .line 23
+    iget-boolean p1, p1, Landroid/net/wifi/p2p/WifiP2pInfo;->groupFormed:Z
+
+    .line 25
+    if-nez p1, :cond_0
+
+    .line 27
+    iget-object p1, p0, Lzm0$i;->a:Lzm0;
+
+    .line 29
+    const/4 v0, 0x3
+
+    .line 30
+    invoke-static {p1, v0}, Lzm0;->P(Lzm0;I)V
+
+    .line 33
+    goto :goto_0
+
+    .line 34
+    :cond_0
+    iget-object p1, p0, Lzm0$i;->a:Lzm0;
+
+    .line 36
+    const/4 v0, 0x0
+
+    .line 37
+    invoke-static {p1, v0}, Lzm0;->Y(Lzm0;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V
+
+    .line 40
+    :cond_1
+    :goto_0
+    return-void
+.end method
