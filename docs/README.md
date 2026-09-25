@@ -16,10 +16,12 @@
 | 任务信号 | 必读文档 |
 |---|---|
 | 项目正式范围、输入基线、阶段目标 | `docs/architecture/项目长期总纲.md` |
+| 内容区底层架构、页面/控制/快捷功能主链 | `docs/architecture/内容区主链.md` |
 | 上下文继承、人机协作、主动验证 | `docs/architecture/共享基线.md`、`docs/architecture/rules/ai-collaboration.md` |
 | ADB、JDK、Android SDK、APKTool、签名工具 | `docs/operations/本地工具链.md` |
 | 解包、Smali 修改、重打包、安装和悬浮广播 | `docs/operations/APK工作流.md` |
 | 用户路径、480×480 悬浮目标、正式需求 | `docs/product/产品需求基线.md` |
+| 内容区设置项与用户偏好 | `docs/product/设置项清单.md` |
 | 权限、签名、第三方 APK、日志和设备数据 | `docs/security/安全与密钥边界.md` |
 | 静态检查、构建、安装、启动、窗口和日志证据 | `docs/testing/验证矩阵.md` |
 | 任务输入、完成标准、阻断 | `docs/plans/codex-task-intake-template.md` |
