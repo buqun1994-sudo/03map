@@ -73,6 +73,18 @@
 5. 当前架构结论：下一轮不能继续沿 `03desktop` 的局部视觉/热区逻辑叠加修正；应先建立唯一的手势条显隐、热区命中、拖拽位移、提示位移与动画生命周期状态机，所有可见层和触摸层只从同一份几何/状态读取。`03desktop` 只能继续作为视觉参数参考，不作为 `03地图` 的行为主链。
 6. 本轮只记录问题、保留现有施工副本和候选包，不继续修改代码；`480×480` 封存支线、正式 `source/` 和历史候选身份保持不变。下一次施工前必须先把上述未通过项转成明确的状态不变量和运行级验收项。
 
+## 2026-09-25 唯一主链施工与 fix5 实机通过
+
+1. 已按用户确认的真值驱动架构完成施工：`main_map_view.xml` 收敛为 `content → root → panelHost → mapLayer / gestureLayer → gestureNode → hintText + visibleHandle`；`source/amap-9.5.0.600013/` 与 `archive-480x480-20260924/` 均未修改。
+2. `SplitPanelController.smali` 现在只有一份分界线真值：`currentDividerX`；几何源为 `screenWidth`、`mapWidth`、`expandedDividerX`，默认值入口为 `defaultProgress` / `setDefaultProgress(F)`，未来设置可沿同一入口修改默认位置。
+3. 位移 owner 唯一为 `panelHost`；触摸 owner 唯一为 `gestureNode`；提示 owner 唯一为 `hintText`。`applyDividerX(F)` 将当前位置限制在 `[expandedDividerX, screenWidth]`，并由同一值驱动地图面板、地图 Surface/遮罩尺寸关系、手势条和提示几何。
+4. 状态编号固定为 `0` 展开、`1` 收起、`2` 按下、`3` 有效横向拖拽、`4` 吸附展开、`5` 吸附收起、`6` 被阻断手势；横向判定为 `absDx > 1.2 × absDy`，速度预测窗口为 `350ms`，吸附动画为 `200ms`，中点为 `expandedDividerX + mapWidth / 2`。
+5. `panelAnimator` 与 `hintAnimator` 各自只有一个 owner；同一 View 开始新动画前先取消旧实例。点击只执行一次 `showHint()`，不改变地图状态；提示文案挂在 `gestureNode` 下，自动渐隐或在按下/拖拽时渐隐，弹跳范围保持在手势条左侧安全边界内。
+6. 已修正本轮定点校验发现的两个边界错误：最小分界线不再误取 `screenWidth`；释放手势预测位置小于中点吸附到 `expandedDividerX`，大于等于中点吸附到 `screenWidth`。
+7. 已生成桌面候选 `03地图-全屏动态分屏-9.5.0.600013-fix5.apk`，SHA-256 为 `58a4f9aa645c5f765c3cbf7f577225d668f0d2d35b9fd3f4fb7eadd30746836d`；包身份为 `com.autonavi.amapautolite` / versionName `9.5.0.600013` / versionCode `26000001`，证书 SHA-256 为 `a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc`。
+8. 静态与构建验证已通过：Smali/资源最小回编、APKTool 3.0.3 最终回编、`aapt2 dump badging/permissions`、`zipalign`、v1/v2/v3 签名验证、签名后 APKTool round-trip；`63` 个 `lib/**/*.so` 均为 Deflate 压缩。
+9. 用户已在目标车机手动测试 `fix5` 并反馈当前分屏测试通过；本条为用户实机运行结论，AI 未自动安装、采集完整设备日志或修改车机状态。
+
 ## 2026-09-24 S191 第三方桌面式地图包静态对照
 
 1. 用户提供的 S191 APK 与正式输入基线同包名、versionCode 和证书，但 APK SHA-256 为 `3da30b6b0a321b3a2968f663ad57a06b8abcec649b6d8eef59cd019ad1af2c56`，增加第二个 DEX 与独立音乐/Dock 模块，插件主链和 native/资源亦有差异。仅隔离解包、静态比较；未安装、启动或改写正式源码与设备。
