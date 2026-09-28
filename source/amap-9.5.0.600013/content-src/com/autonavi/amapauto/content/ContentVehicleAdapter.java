@@ -5,12 +5,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Parcel;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.util.Log;
-import java.lang.reflect.Method;
 
 public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private static final String TAG = "ContentVehicleAdapter";
@@ -19,58 +20,135 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private static final String VEHICLE_DESCRIPTOR = "com.chery.canmanager.interfaces.IVirturalCarProperty";
     private static final int TRANSACTION_SEND_DATA = 5;
     private static final int TRANSACTION_GET_DATA = 7;
-    private static final int LOCK_REQUEST_PROPERTY = 1045;
-    private static final int LOCK_STATE_PROPERTY = 1047;
+    private static final int TRANSACTION_GET_DATA_FLOAT = 13;
+    private static final int LOCK_REQUEST = 1045;
+    private static final int LOCK_STATE = 1047;
+    private static final int CABIN_TEMPERATURE = 0x110;
+    private static final int BATTERY_SOC = 0x306;
+    private static final int RANGE_REMAINING = 0x303;
+    private static final int CHARGE_CONNECTION = 0x305;
+    private static final int CHARGE_BMS = 0x29d;
+    private static final int CHARGE_SCHEDULE = 0x308;
+    private static final int SEAT_HEAT_VENT = 0x212;
+    private static final int MASSAGE_SWITCH = 0x241;
+    private static final int MASSAGE_STRENGTH = 0x243;
+    private static final int MASSAGE_MODE = 0x245;
+    private static final int GEAR_SELECTION = 0x255;
+    private static final int VEHICLE_SPEED = 0x401;
     private static final int AREA_DRIVER = 0;
-    private static final int TEMP_PROPERTY = 0x110;
-    private static final int BATTERY_LEVEL_PROPERTY = 0x11600309;
-    private static final int CHARGE_PORT_PROPERTY = 0x2140f027;
-    private static final int CHARGE_STATUS_PROPERTY = 0x2140f02a;
-    private static final int BOOK_CHARGE_PROPERTY = 0x2140f024;
-    private static final int REMAINING_TIME_PROPERTY = 0x2140f086;
-    private static final int HIGH_VOLTAGE_PROPERTY = 0x21400a86;
-    private static final int HIGH_CURRENT_PROPERTY = 0x21600a87;
-    private static final int SEAT_HEAT_VENT_PROPERTY = 0x15400515;
-    private static final int MASSAGE_SWITCH_PROPERTY = 0x214009ec;
-    private static final int MASSAGE_MODE_PROPERTY = 0x214009ed;
-    private static final int MASSAGE_LEVEL_PROPERTY = 0x214009ee;
     private static final long POLL_INTERVAL_MS = 1500L;
+    private static final long REBIND_INTERVAL_MS = 3000L;
+    private static final long BIND_TIMEOUT_MS = 5000L;
 
     private final Context context;
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable pollRunnable = new Runnable() {
         @Override
         public void run() {
-            pollState();
-            if (running) {
-                handler.postDelayed(this, POLL_INTERVAL_MS);
+            IBinder currentBinder;
+            Handler worker;
+            synchronized (ContentVehicleAdapter.this) {
+                if (!running || binder == null) {
+                    return;
+                }
+                currentBinder = binder;
+                worker = workerHandler;
             }
+            publish(readSnapshot(currentBinder), currentBinder);
+            synchronized (ContentVehicleAdapter.this) {
+                if (running && binder == currentBinder && worker == workerHandler) {
+                    worker.postDelayed(this, POLL_INTERVAL_MS);
+                }
+            }
+        }
+    };
+    private final Runnable bindTimeout = new Runnable() {
+        @Override
+        public void run() {
+            synchronized (ContentVehicleAdapter.this) {
+                if (!running || binder != null) {
+                    return;
+                }
+            }
+            reconnect();
+        }
+    };
+    private final Runnable retryBind = new Runnable() {
+        @Override
+        public void run() {
+            bindVehicleService();
         }
     };
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
+        public void onServiceConnected(ComponentName name, final IBinder service) {
+            final Handler worker;
             synchronized (ContentVehicleAdapter.this) {
-                binder = service;
+                if (!running) {
+                    return;
+                }
+                worker = workerHandler;
             }
-            pollState();
+            worker.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (!VEHICLE_DESCRIPTOR.equals(service.getInterfaceDescriptor())) {
+                            throw new RemoteException("unexpected vehicle service descriptor");
+                        }
+                        synchronized (ContentVehicleAdapter.this) {
+                            if (!running || worker != workerHandler) {
+                                return;
+                            }
+                            binder = service;
+                        }
+                        mainHandler.removeCallbacks(bindTimeout);
+                        worker.removeCallbacks(pollRunnable);
+                        worker.post(pollRunnable);
+                    } catch (RemoteException | RuntimeException error) {
+                        Log.w(TAG, "vehicle service rejected", error);
+                        mainHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                reconnect();
+                            }
+                        });
+                    }
+                }
+            });
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
             synchronized (ContentVehicleAdapter.this) {
                 binder = null;
+                if (workerHandler != null) {
+                    workerHandler.removeCallbacks(pollRunnable);
+                }
             }
-            pollState();
+            publish(ContentPorts.VehicleSnapshot.unavailable(), null);
+            mainHandler.removeCallbacks(bindTimeout);
+            mainHandler.postDelayed(bindTimeout, BIND_TIMEOUT_MS);
+        }
+
+        @Override
+        public void onBindingDied(ComponentName name) {
+            reconnect();
+        }
+
+        @Override
+        public void onNullBinding(ComponentName name) {
+            reconnect();
         }
     };
+
     private ContentPorts.VehicleSnapshotListener listener;
+    private HandlerThread workerThread;
+    private Handler workerHandler;
     private IBinder binder;
-    private Object car;
-    private Object vehicleManager;
-    private boolean carConnectionAttempted;
     private boolean serviceBound;
     private boolean running;
+    private boolean writeQueued;
 
     public ContentVehicleAdapter(Context context) {
         this.context = context.getApplicationContext();
@@ -78,7 +156,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
 
     @Override
     public synchronized boolean isAvailable() {
-        return vehicleManager != null || binder != null;
+        return binder != null;
     }
 
     @Override
@@ -87,312 +165,327 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     @Override
-    public boolean requestLock(boolean locked) {
-        synchronized (this) {
-            if (binder == null) {
-                return false;
-            }
-        }
-        return transactWrite(LOCK_REQUEST_PROPERTY, locked ? 1 : 2);
+    public boolean requestLock(boolean locked, long requestId) {
+        return queueCommand(LOCK_REQUEST, locked ? 1 : 2, requestId);
     }
 
     @Override
-    public boolean requestSeatLevel(String seatId, int level) {
-        if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(seatId)) {
-            int rawValue = level == 0 ? 1 : level == 1 ? 5 : level == 2 ? 6 : 7;
-            return writeCarInt(SEAT_HEAT_VENT_PROPERTY, AREA_DRIVER, rawValue);
+    public boolean requestSeatLevel(String seatId, int level, long requestId) {
+        if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(seatId) && level >= 0 && level <= 3) {
+            return queueCommand(SEAT_HEAT_VENT, level == 0 ? 1 : level + 4, requestId);
         }
-        if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId)) {
-            int rawValue = level == 0 ? 1 : level == 1 ? 2 : level == 2 ? 3 : 4;
-            return writeCarInt(SEAT_HEAT_VENT_PROPERTY, AREA_DRIVER, rawValue);
+        if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId) && level >= 0 && level <= 3) {
+            return queueCommand(SEAT_HEAT_VENT, level == 0 ? 1 : level + 1, requestId);
         }
-        if (ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId)) {
-            boolean disabled = level <= 0;
-            boolean switchWritten = writeCarInt(MASSAGE_SWITCH_PROPERTY, AREA_DRIVER, disabled ? 1 : 2);
-            boolean modeWritten = writeCarInt(MASSAGE_MODE_PROPERTY, AREA_DRIVER, disabled ? 0 : 1);
-            boolean levelWritten = writeCarInt(MASSAGE_LEVEL_PROPERTY, AREA_DRIVER,
-                    disabled ? 0 : Math.min(3, Math.max(1, level)));
-            return switchWritten && modeWritten && levelWritten;
+        if (ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId) && level >= 0 && level <= 3) {
+            return level == 0 ? queueCommand(MASSAGE_SWITCH, 1, requestId)
+                    : queueCommand(MASSAGE_STRENGTH, level, requestId, true);
         }
         return false;
     }
 
     @Override
     public synchronized void start(ContentPorts.VehicleSnapshotListener listener) {
+        if (running) {
+            this.listener = listener;
+            return;
+        }
         this.listener = listener;
         running = true;
+        workerThread = new HandlerThread("ContentVehicleReader");
+        workerThread.start();
+        workerHandler = new Handler(workerThread.getLooper());
+        publish(ContentPorts.VehicleSnapshot.unavailable(), null);
         bindVehicleService();
-        ensureCarManager();
-        handler.removeCallbacks(pollRunnable);
-        handler.post(pollRunnable);
     }
 
     @Override
     public synchronized void stop() {
         running = false;
-        handler.removeCallbacks(pollRunnable);
+        mainHandler.removeCallbacksAndMessages(null);
         if (serviceBound) {
             try {
                 context.unbindService(serviceConnection);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException error) {
+                Log.w(TAG, "vehicle service unbind failed", error);
             }
             serviceBound = false;
         }
-        if (car != null) {
-            try {
-                Method disconnect = car.getClass().getMethod("disconnect");
-                disconnect.invoke(car);
-            } catch (Throwable ignored) {
-            }
-        }
         binder = null;
-        vehicleManager = null;
-        car = null;
+        writeQueued = false;
+        if (workerHandler != null) {
+            workerHandler.removeCallbacksAndMessages(null);
+            workerHandler = null;
+        }
+        if (workerThread != null) {
+            workerThread.quitSafely();
+            workerThread = null;
+        }
         listener = null;
     }
 
     private void bindVehicleService() {
-        if (serviceBound) {
-            return;
+        synchronized (this) {
+            if (!running || serviceBound) {
+                return;
+            }
         }
         Intent intent = new Intent();
         intent.setComponent(new ComponentName(VEHICLE_SERVICE_PACKAGE, VEHICLE_SERVICE_CLASS));
+        boolean bound = false;
         try {
-            serviceBound = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
-        } catch (Throwable error) {
-            Log.w(TAG, "vehicle binder unavailable", error);
+            bound = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "vehicle service bind failed", error);
+        }
+        synchronized (this) {
+            serviceBound = bound;
+        }
+        mainHandler.removeCallbacks(bindTimeout);
+        mainHandler.removeCallbacks(retryBind);
+        if (bound) {
+            mainHandler.postDelayed(bindTimeout, BIND_TIMEOUT_MS);
+        } else {
+            publish(ContentPorts.VehicleSnapshot.unavailable(), null);
+            mainHandler.postDelayed(retryBind, REBIND_INTERVAL_MS);
         }
     }
 
-    private void ensureCarManager() {
-        if (vehicleManager != null || carConnectionAttempted) {
-            return;
-        }
-        carConnectionAttempted = true;
-        try {
-            Class<?> carClass = Class.forName("android.car.Car");
-            Method factory = null;
-            for (Method method : carClass.getMethods()) {
-                if (!"createCar".equals(method.getName())) {
-                    continue;
-                }
-                Class<?>[] parameterTypes = method.getParameterTypes();
-                if (parameterTypes.length >= 1 && Context.class.isAssignableFrom(parameterTypes[0])) {
-                    factory = method;
-                    break;
-                }
-            }
-            if (factory == null) {
-                return;
-            }
-            Object[] arguments = factory.getParameterTypes().length == 1
-                    ? new Object[]{context} : new Object[]{context, handler};
-            car = factory.invoke(null, arguments);
-            Method connect = car.getClass().getMethod("connect");
-            connect.invoke(car);
-            Method getCarManager = car.getClass().getMethod("getCarManager", String.class);
-            vehicleManager = getCarManager.invoke(car, "vehicle");
-        } catch (Throwable error) {
-            Log.w(TAG, "vehicle car manager unavailable", error);
-            vehicleManager = null;
-        }
-    }
-
-    private void pollState() {
-        ContentPorts.VehicleSnapshotListener stateListener;
+    private void reconnect() {
         synchronized (this) {
             if (!running) {
                 return;
             }
-            ensureCarManager();
-            stateListener = listener;
-        }
-        if (stateListener != null) {
-            stateListener.onVehicleSnapshot(readSnapshot());
-        }
-    }
-
-    private ContentPorts.VehicleSnapshot readSnapshot() {
-        float temperature = readFloatProperty(TEMP_PROPERTY, 1, Float.NaN);
-        int battery = readIntProperty(BATTERY_LEVEL_PROPERTY, AREA_DRIVER, -1);
-        int chargePort = readIntProperty(CHARGE_PORT_PROPERTY, AREA_DRIVER, -1);
-        int chargeStatus = readIntProperty(CHARGE_STATUS_PROPERTY, AREA_DRIVER, -1);
-        int bookCharge = readIntProperty(BOOK_CHARGE_PROPERTY, AREA_DRIVER, -1);
-        int remainingTime = readIntProperty(REMAINING_TIME_PROPERTY, AREA_DRIVER, -1);
-        float voltage = readFloatProperty(HIGH_VOLTAGE_PROPERTY, AREA_DRIVER, Float.NaN);
-        float current = readFloatProperty(HIGH_CURRENT_PROPERTY, AREA_DRIVER, Float.NaN);
-        int seatRaw = readIntProperty(SEAT_HEAT_VENT_PROPERTY, AREA_DRIVER, -1);
-        int massageSwitch = readIntProperty(MASSAGE_SWITCH_PROPERTY, AREA_DRIVER, -1);
-        int massageLevel = readIntProperty(MASSAGE_LEVEL_PROPERTY, AREA_DRIVER, -1);
-        int lockState = readLockState();
-        int chargeState = ContentState.CHARGE_DEFAULT;
-        if (chargePort == 1) {
-            if (chargeStatus == 3) {
-                chargeState = ContentState.CHARGE_CHARGING;
-            } else if (bookCharge == 1 || chargeStatus == 6) {
-                chargeState = ContentState.CHARGE_SCHEDULED;
-            } else {
-                chargeState = ContentState.CHARGE_PLUGGED;
+            binder = null;
+            if (workerHandler != null) {
+                workerHandler.removeCallbacks(pollRunnable);
+            }
+            if (serviceBound) {
+                try {
+                    context.unbindService(serviceConnection);
+                } catch (RuntimeException error) {
+                    Log.w(TAG, "vehicle service unbind failed", error);
+                }
+                serviceBound = false;
             }
         }
-        float power = Float.NaN;
-        if (!Float.isNaN(voltage) && !Float.isNaN(current)) {
-            power = Math.abs(voltage * current) / 1000.0f;
-        }
-        if (remainingTime == 2047) {
-            remainingTime = -1;
-        }
-        int boundedBattery = battery < 0 ? -1 : Math.max(0, Math.min(100, battery));
-        int ventilationLevel = ventilationLevel(seatRaw);
-        int heatingLevel = heatingLevel(seatRaw);
-        int normalizedMassageLevel = massageSwitch == 2 && massageLevel >= 0
-                ? Math.min(3, massageLevel) : massageSwitch == 1 ? 0 : -1;
-        boolean seatKnown = ventilationLevel >= 0 || heatingLevel >= 0 || normalizedMassageLevel >= 0;
-        boolean lockKnown = lockState == 1 || lockState == 2;
-        boolean dataAvailable = !Float.isNaN(temperature) || boundedBattery >= 0
-                || chargePort >= 0 || chargeStatus >= 0 || seatKnown;
-        return new ContentPorts.VehicleSnapshot(dataAvailable, false, temperature, boundedBattery, -1,
-                chargeState, power, remainingTime, ventilationLevel, heatingLevel,
-                normalizedMassageLevel, seatKnown, lockKnown, lockState == 1);
+        publish(ContentPorts.VehicleSnapshot.unavailable(), null);
+        mainHandler.removeCallbacks(bindTimeout);
+        mainHandler.removeCallbacks(retryBind);
+        mainHandler.postDelayed(retryBind, REBIND_INTERVAL_MS);
     }
 
-    private int ventilationLevel(int rawValue) {
-        return rawValue == 1 ? 0 : rawValue == 5 ? 1 : rawValue == 6 ? 2 : rawValue == 7 ? 3 : -1;
+    private boolean queueCommand(final int functionId, final int value, final long requestId) {
+        return queueCommand(functionId, value, requestId, false);
     }
 
-    private int heatingLevel(int rawValue) {
-        return rawValue == 1 ? 0 : rawValue == 2 ? 1 : rawValue == 3 ? 2 : rawValue == 4 ? 3 : -1;
-    }
-
-    private int readLockState() {
+    private boolean queueCommand(final int functionId, final int value, final long requestId,
+            final boolean ensureMassageOn) {
+        final IBinder currentBinder;
+        final Handler worker;
         synchronized (this) {
-            if (binder == null) {
-                return -1;
+            if (!running || binder == null || workerHandler == null || writeQueued) {
+                return false;
             }
-        }
-        Parcel data = Parcel.obtain();
-        Parcel reply = Parcel.obtain();
-        try {
-            data.writeInterfaceToken(VEHICLE_DESCRIPTOR);
-            data.writeInt(LOCK_STATE_PROPERTY);
-            data.writeInt(AREA_DRIVER);
-            if (!binder.transact(TRANSACTION_GET_DATA, data, reply, 0)) {
-                return -1;
-            }
-            return readReplyInt(reply, -1);
-        } catch (Throwable error) {
-            Log.w(TAG, "lock state read failed", error);
-            return -1;
-        } finally {
-            data.recycle();
-            reply.recycle();
-        }
-    }
-
-    private boolean transactWrite(int propertyId, int value) {
-        IBinder currentBinder;
-        synchronized (this) {
             currentBinder = binder;
+            worker = workerHandler;
+            writeQueued = true;
         }
-        if (currentBinder == null) {
-            return false;
+        boolean queued = worker.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    synchronized (ContentVehicleAdapter.this) {
+                        if (!running || binder != currentBinder) {
+                            reportCommandFailure(requestId, "车控连接中断，请稍后重试");
+                            return;
+                        }
+                    }
+                    int gear = getData(currentBinder, GEAR_SELECTION, AREA_DRIVER);
+                    float speed = getDataFloat(currentBinder, VEHICLE_SPEED, AREA_DRIVER);
+                    if (gear != 11 || Float.isNaN(speed) || speed < 0.0f || speed > 0.1f) {
+                        reportCommandFailure(requestId, "请在 P 档停车后操作车控");
+                        return;
+                    }
+                    synchronized (ContentVehicleAdapter.this) {
+                        if (!running || binder != currentBinder) {
+                            reportCommandFailure(requestId, "车控连接中断，请稍后重试");
+                            return;
+                        }
+                    }
+                    if (ensureMassageOn && getData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER) != 2) {
+                        sendData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER, 2);
+                        int confirmedSwitch = -1;
+                        for (int attempt = 0; attempt < 10; attempt++) {
+                            synchronized (ContentVehicleAdapter.this) {
+                                if (!running || binder != currentBinder) {
+                                    throw new RemoteException("vehicle connection changed");
+                                }
+                            }
+                            confirmedSwitch = getData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
+                            if (confirmedSwitch == 2) {
+                                break;
+                            }
+                            SystemClock.sleep(200L);
+                        }
+                        if (confirmedSwitch != 2) {
+                            throw new RemoteException("massage switch unconfirmed");
+                        }
+                    }
+                    sendData(currentBinder, functionId, AREA_DRIVER, value);
+                    worker.removeCallbacks(pollRunnable);
+                    worker.post(pollRunnable);
+                } catch (RemoteException | RuntimeException error) {
+                    Log.w(TAG, "vehicle command failed", error);
+                    reportCommandFailure(requestId, "车辆控制请求失败，请查看车机状态");
+                } finally {
+                    synchronized (ContentVehicleAdapter.this) {
+                        writeQueued = false;
+                    }
+                }
+            }
+        });
+        if (!queued) {
+            synchronized (this) {
+                writeQueued = false;
+            }
         }
-        Parcel data = Parcel.obtain();
+        return queued;
+    }
+
+    private void reportCommandFailure(final long requestId, final String message) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                ContentPorts.VehicleSnapshotListener currentListener;
+                synchronized (ContentVehicleAdapter.this) {
+                    currentListener = running ? listener : null;
+                }
+                if (currentListener != null) {
+                    currentListener.onVehicleCommandFailed(requestId, message);
+                }
+            }
+        });
+    }
+
+    private void publish(final ContentPorts.VehicleSnapshot snapshot, final IBinder sourceBinder) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                ContentPorts.VehicleSnapshotListener currentListener;
+                synchronized (ContentVehicleAdapter.this) {
+                    currentListener = running && binder == sourceBinder ? listener : null;
+                }
+                if (currentListener != null) {
+                    currentListener.onVehicleSnapshot(snapshot);
+                }
+            }
+        });
+    }
+
+    private ContentPorts.VehicleSnapshot readSnapshot(IBinder currentBinder) {
+        float temperature = readFloat(currentBinder, CABIN_TEMPERATURE, 1);
+        float soc = readFloat(currentBinder, BATTERY_SOC, AREA_DRIVER);
+        int battery = Float.isNaN(soc) || soc < 0.0f || soc > 100.0f ? -1 : Math.round(soc);
+        int range = readInt(currentBinder, RANGE_REMAINING, AREA_DRIVER);
+        int connection = readInt(currentBinder, CHARGE_CONNECTION, AREA_DRIVER);
+        int bms = readInt(currentBinder, CHARGE_BMS, AREA_DRIVER);
+        int schedule = readInt(currentBinder, CHARGE_SCHEDULE, AREA_DRIVER);
+        int seatRaw = readInt(currentBinder, SEAT_HEAT_VENT, AREA_DRIVER);
+        int massageSwitchRaw = readInt(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
+        int massageStrengthRaw = readInt(currentBinder, MASSAGE_STRENGTH, AREA_DRIVER);
+        int massageModeRaw = readInt(currentBinder, MASSAGE_MODE, AREA_DRIVER);
+        int lockRaw = readInt(currentBinder, LOCK_STATE, AREA_DRIVER);
+        int chargeState = connection == 0 && bms == 0 && schedule == 0
+                ? ContentState.CHARGE_DEFAULT : ContentState.CHARGE_UNKNOWN;
+        int ventilation = seatRaw == 1 ? 0 : seatRaw >= 5 && seatRaw <= 7
+                ? seatRaw - 4 : seatRaw >= 2 && seatRaw <= 4 ? 0 : -1;
+        int heating = seatRaw == 1 ? 0 : seatRaw >= 2 && seatRaw <= 4
+                ? seatRaw - 1 : seatRaw >= 5 && seatRaw <= 7 ? 0 : -1;
+        boolean massageSwitchKnown = massageSwitchRaw == 1 || massageSwitchRaw == 2;
+        boolean massageActive = massageSwitchRaw == 2;
+        int massage = massageSwitchRaw == 1 ? 0 : massageActive
+                && massageStrengthRaw >= 1 && massageStrengthRaw <= 3 ? massageStrengthRaw : -1;
+        boolean seatKnown = ventilation >= 0 || heating >= 0 || massageSwitchKnown;
+        boolean lockKnown = lockRaw == 1 || lockRaw == 2;
+        boolean available = !Float.isNaN(temperature) || battery >= 0 || range >= 0
+                || connection >= 0 || bms >= 0 || schedule >= 0 || seatKnown || lockKnown;
+        return new ContentPorts.VehicleSnapshot(available, false, temperature, battery, range,
+                chargeState, connection, bms, schedule, Float.NaN, -1,
+                ventilation, heating, massage, massageModeRaw, massageSwitchKnown,
+                massageActive, seatKnown, lockKnown, lockRaw == 1);
+    }
+
+    private int readInt(IBinder currentBinder, int functionId, int area) {
+        try {
+            return getData(currentBinder, functionId, area);
+        } catch (RemoteException | RuntimeException error) {
+            return -1;
+        }
+    }
+
+    private float readFloat(IBinder currentBinder, int functionId, int area) {
+        try {
+            float result = getDataFloat(currentBinder, functionId, area);
+            return Float.isInfinite(result) ? Float.NaN : result;
+        } catch (RemoteException | RuntimeException error) {
+            return Float.NaN;
+        }
+    }
+
+    private static int getData(IBinder currentBinder, int functionId, int area) throws RemoteException {
+        Parcel request = Parcel.obtain();
         Parcel reply = Parcel.obtain();
         try {
-            data.writeInterfaceToken(VEHICLE_DESCRIPTOR);
-            data.writeInt(propertyId);
-            data.writeInt(AREA_DRIVER);
-            data.writeInt(value);
-            return currentBinder.transact(TRANSACTION_SEND_DATA, data, reply, 0);
-        } catch (RemoteException | RuntimeException error) {
-            Log.w(TAG, "vehicle command failed", error);
-            return false;
-        } finally {
-            data.recycle();
-            reply.recycle();
-        }
-    }
-
-    private boolean writeCarInt(int propertyId, int areaId, int value) {
-        Object manager;
-        synchronized (this) {
-            ensureCarManager();
-            manager = vehicleManager;
-        }
-        if (manager == null) {
-            return false;
-        }
-        try {
-            Method method = manager.getClass().getMethod("setIntProperty", int.class, int.class, int.class);
-            method.invoke(manager, propertyId, areaId, value);
-            return true;
-        } catch (Throwable error) {
-            Log.w(TAG, "vehicle property write failed", error);
-            return false;
-        }
-    }
-
-    private int readIntProperty(int propertyId, int areaId, int fallback) {
-        Number value = readProperty(propertyId, areaId, false);
-        return value == null ? fallback : value.intValue();
-    }
-
-    private float readFloatProperty(int propertyId, int areaId, float fallback) {
-        Number value = readProperty(propertyId, areaId, true);
-        return value == null ? fallback : value.floatValue();
-    }
-
-    private Number readProperty(int propertyId, int areaId, boolean preferFloat) {
-        Object manager;
-        synchronized (this) {
-            ensureCarManager();
-            manager = vehicleManager;
-        }
-        if (manager == null) {
-            return null;
-        }
-        String preferredName = preferFloat ? "getFloatProperty" : "getIntProperty";
-        try {
-            Method preferred = manager.getClass().getMethod(preferredName, int.class, int.class);
-            Object value = preferred.invoke(manager, propertyId, areaId);
-            if (value instanceof Number) {
-                return (Number) value;
+            request.writeInterfaceToken(VEHICLE_DESCRIPTOR);
+            request.writeInt(functionId);
+            request.writeInt(area);
+            if (!currentBinder.transact(TRANSACTION_GET_DATA, request, reply, 0)) {
+                throw new RemoteException("getData transaction unavailable");
             }
-        } catch (Throwable ignored) {
-        }
-        try {
-            for (Method method : manager.getClass().getMethods()) {
-                if (!"getProperty".equals(method.getName()) || method.getParameterTypes().length != 2) {
-                    continue;
-                }
-                Object value = method.invoke(manager, propertyId, areaId);
-                if (value instanceof Number) {
-                    return (Number) value;
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-        return null;
-    }
-
-    private int readReplyInt(Parcel reply, int fallback) {
-        if (reply.dataAvail() < 4) {
-            return fallback;
-        }
-        int position = reply.dataPosition();
-        try {
             reply.readException();
-            if (reply.dataAvail() >= 4) {
-                return reply.readInt();
-            }
-        } catch (Throwable ignored) {
-        }
-        reply.setDataPosition(position);
-        try {
             return reply.readInt();
-        } catch (RuntimeException ignored) {
-            return fallback;
+        } finally {
+            reply.recycle();
+            request.recycle();
+        }
+    }
+
+    private static float getDataFloat(IBinder currentBinder, int functionId, int area)
+            throws RemoteException {
+        Parcel request = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            request.writeInterfaceToken(VEHICLE_DESCRIPTOR);
+            request.writeInt(functionId);
+            request.writeInt(area);
+            if (!currentBinder.transact(TRANSACTION_GET_DATA_FLOAT, request, reply, 0)) {
+                throw new RemoteException("getDataFloat transaction unavailable");
+            }
+            reply.readException();
+            return reply.readFloat();
+        } finally {
+            reply.recycle();
+            request.recycle();
+        }
+    }
+
+    private static void sendData(IBinder currentBinder, int functionId, int area, int value)
+            throws RemoteException {
+        Parcel request = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            request.writeInterfaceToken(VEHICLE_DESCRIPTOR);
+            request.writeInt(functionId);
+            request.writeInt(area);
+            request.writeInt(value);
+            if (!currentBinder.transact(TRANSACTION_SEND_DATA, request, reply, 0)) {
+                throw new RemoteException("sendData transaction unavailable");
+            }
+            reply.readException();
+        } finally {
+            reply.recycle();
+            request.recycle();
         }
     }
 }

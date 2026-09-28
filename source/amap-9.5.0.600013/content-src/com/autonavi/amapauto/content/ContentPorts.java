@@ -1,11 +1,14 @@
 package com.autonavi.amapauto.content;
 
+import android.graphics.Bitmap;
 public final class ContentPorts {
     private ContentPorts() {
     }
 
     public interface VehicleSnapshotListener {
         void onVehicleSnapshot(VehicleSnapshot snapshot);
+
+        void onVehicleCommandFailed(long requestId, String message);
     }
 
     public interface VehiclePort {
@@ -13,9 +16,9 @@ public final class ContentPorts {
 
         boolean isLockAvailable();
 
-        boolean requestLock(boolean locked);
+        boolean requestLock(boolean locked, long requestId);
 
-        boolean requestSeatLevel(String seatId, int level);
+        boolean requestSeatLevel(String seatId, int level, long requestId);
 
         void start(VehicleSnapshotListener listener);
 
@@ -45,32 +48,46 @@ public final class ContentPorts {
         public final boolean preview;
         public final float temperatureC;
         public final int batteryPercent;
-        public final int rangeKm;
+        public final int rangeRaw;
         public final int chargeState;
+        public final int chargeConnectionRaw;
+        public final int chargeBmsRaw;
+        public final int chargeScheduleRaw;
         public final float chargePowerKw;
         public final int chargeRemainingMinutes;
         public final int ventilationLevel;
         public final int heatingLevel;
         public final int massageLevel;
+        public final int massageModeRaw;
+        public final boolean massageSwitchKnown;
+        public final boolean massageActive;
         public final boolean seatControlsKnown;
         public final boolean lockKnown;
         public final boolean locked;
 
         public VehicleSnapshot(boolean dataAvailable, boolean preview, float temperatureC,
-                int batteryPercent, int rangeKm, int chargeState, float chargePowerKw,
+                int batteryPercent, int rangeRaw, int chargeState, int chargeConnectionRaw,
+                int chargeBmsRaw, int chargeScheduleRaw, float chargePowerKw,
                 int chargeRemainingMinutes, int ventilationLevel, int heatingLevel,
-                int massageLevel, boolean seatControlsKnown, boolean lockKnown, boolean locked) {
+                int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
+                boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.temperatureC = temperatureC;
             this.batteryPercent = batteryPercent;
-            this.rangeKm = rangeKm;
+            this.rangeRaw = rangeRaw;
             this.chargeState = chargeState;
+            this.chargeConnectionRaw = chargeConnectionRaw;
+            this.chargeBmsRaw = chargeBmsRaw;
+            this.chargeScheduleRaw = chargeScheduleRaw;
             this.chargePowerKw = chargePowerKw;
             this.chargeRemainingMinutes = chargeRemainingMinutes;
             this.ventilationLevel = ventilationLevel;
             this.heatingLevel = heatingLevel;
             this.massageLevel = massageLevel;
+            this.massageModeRaw = massageModeRaw;
+            this.massageSwitchKnown = massageSwitchKnown;
+            this.massageActive = massageActive;
             this.seatControlsKnown = seatControlsKnown;
             this.lockKnown = lockKnown;
             this.locked = locked;
@@ -78,8 +95,8 @@ public final class ContentPorts {
 
         public static VehicleSnapshot unavailable() {
             return new VehicleSnapshot(false, false, Float.NaN, -1, -1,
-                    ContentState.CHARGE_DEFAULT, Float.NaN, -1, -1, -1, -1,
-                    false, false, true);
+                    ContentState.CHARGE_UNKNOWN, -1, -1, -1, Float.NaN, -1, -1, -1, -1,
+                    -1, false, false, false, false, true);
         }
     }
 
@@ -93,10 +110,18 @@ public final class ContentPorts {
         public final String artist;
         public final boolean playbackAvailable;
         public final boolean nextAvailable;
+        public final Bitmap artwork;
 
         public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
                 boolean playing, int generation, String title, String artist,
                 boolean playbackAvailable, boolean nextAvailable) {
+            this(dataAvailable, preview, source, playing, generation, title, artist,
+                    playbackAvailable, nextAvailable, null);
+        }
+
+        public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
+                boolean playing, int generation, String title, String artist,
+                boolean playbackAvailable, boolean nextAvailable, Bitmap artwork) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.source = source;
@@ -106,6 +131,7 @@ public final class ContentPorts {
             this.artist = artist;
             this.playbackAvailable = playbackAvailable;
             this.nextAvailable = nextAvailable;
+            this.artwork = artwork;
         }
 
         public static MediaSnapshot unavailable() {
@@ -126,12 +152,12 @@ public final class ContentPorts {
         }
 
         @Override
-        public boolean requestLock(boolean locked) {
+        public boolean requestLock(boolean locked, long requestId) {
             return false;
         }
 
         @Override
-        public boolean requestSeatLevel(String seatId, int level) {
+        public boolean requestSeatLevel(String seatId, int level, long requestId) {
             return false;
         }
 

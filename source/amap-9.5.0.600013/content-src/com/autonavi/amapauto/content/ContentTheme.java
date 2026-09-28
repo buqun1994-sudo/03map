@@ -35,34 +35,34 @@ public final class ContentTheme {
 
     public static ContentTheme light() {
         return new ContentTheme(
-                Color.rgb(242, 243, 245),
+                Color.rgb(237, 242, 250),
+                Color.rgb(246, 248, 252),
                 Color.rgb(255, 255, 255),
-                Color.rgb(232, 234, 237),
-                Color.rgb(35, 38, 43),
-                Color.rgb(98, 103, 111),
-                Color.rgb(155, 160, 168),
-                Color.rgb(215, 218, 222),
-                Color.rgb(55, 126, 242),
-                Color.rgb(220, 233, 255),
-                Color.rgb(54, 190, 100),
-                Color.rgb(241, 155, 38),
-                Color.rgb(224, 70, 67));
+                Color.rgb(32, 38, 51),
+                Color.rgb(91, 100, 116),
+                Color.rgb(99, 108, 123),
+                Color.rgb(214, 222, 233),
+                Color.rgb(36, 99, 190),
+                Color.rgb(223, 234, 251),
+                Color.rgb(29, 113, 66),
+                Color.rgb(143, 89, 17),
+                Color.rgb(179, 46, 44));
     }
 
     public static ContentTheme dark() {
         return new ContentTheme(
-                Color.rgb(27, 29, 32),
-                Color.rgb(43, 46, 52),
-                Color.rgb(55, 59, 66),
-                Color.rgb(244, 246, 248),
-                Color.rgb(176, 182, 191),
-                Color.rgb(120, 126, 136),
-                Color.rgb(70, 75, 84),
-                Color.rgb(105, 162, 255),
-                Color.rgb(48, 78, 122),
-                Color.rgb(73, 207, 116),
-                Color.rgb(244, 169, 62),
-                Color.rgb(241, 91, 88));
+                Color.rgb(23, 25, 29),
+                Color.rgb(37, 40, 45),
+                Color.rgb(48, 52, 59),
+                Color.rgb(244, 246, 250),
+                Color.rgb(173, 181, 194),
+                Color.rgb(159, 168, 183),
+                Color.rgb(66, 72, 83),
+                Color.rgb(131, 180, 255),
+                Color.rgb(39, 59, 86),
+                Color.rgb(106, 217, 143),
+                Color.rgb(241, 185, 94),
+                Color.rgb(255, 130, 127));
     }
 
     public static ContentTheme interpolate(ContentTheme start, ContentTheme end, float fraction) {

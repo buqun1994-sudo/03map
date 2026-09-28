@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape android:shape="oval"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/content_oem_mb_ic_bk_line_color_day" />
+    <corners android:radius="@dimen/content_oem_mb_px_16" />
+    <size android:height="@dimen/content_oem_mb_px_16" android:width="@dimen/content_oem_mb_px_16" />
+</shape>

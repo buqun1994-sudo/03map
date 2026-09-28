@@ -1,0 +1,8 @@
+-dontobfuscate
+-dontoptimize
+-keep class com.autonavi.amapauto.content.** { *; }
+-dontwarn androidx.annotation.**
+-dontwarn androidx.appcompat.content.res.AppCompatResources
+-dontwarn androidx.appcompat.widget.AppCompatImageView
+-dontwarn com.airbnb.lottie.R$*
+-dontwarn javax.annotation.Nullable

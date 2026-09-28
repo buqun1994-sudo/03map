@@ -12,7 +12,7 @@
 ## 2. 新对话入口
 
 1. 第一轮先读取本文件和 `docs/README.md`。
-2. 任务涉及 APK、ADB、车机或签名时，再读取 `docs/operations/本地工具链.md`、`docs/operations/APK工作流.md`、`docs/security/安全与密钥边界.md` 和 `docs/testing/验证矩阵.md`。
+2. 任务涉及 APK、ADB、车机或签名时，再读取 `docs/operations/本地工具链.md`、`docs/operations/APK工作流.md`、`docs/security/安全与密钥边界.md` 和 `docs/testing/验证矩阵.md`。电脑端发现车机的第一条且唯一入口是 `node scripts/find-vehicle-adb.mjs --serial-only`；入口执行前不得人工检查旧 IP、路由、ARP 或逐地址 `adb connect`，失败后才进入网络诊断。本规则只涉及开发连接，不改变地图 APK 的身份和设备操作门禁。
 3. 需要理解人机协作和上下文继承时，读取 `docs/architecture/共享基线.md`；其中的链接指向 `03lyrics` 已验证的通用规则。
 4. 每次开工前先执行 `git status --short --branch`，保留用户已有改动。
 5. 原始 APK、签名材料、截图和日志放在仓库外或被 `.gitignore` 忽略的本机目录，不能提交；当前正式输入 APK 归档在 `apk-archive/9.5.0.600013/`，用户提供的上游 APK 只作为基线差异证据。原始解包基线由 Git 提交 `ac6033c` 固定；`source/amap-9.5.0.600013/` 是持续演进、必须提交的唯一正式代码入口，不能把其它临时解包目录当作源码。

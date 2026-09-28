@@ -1753,6 +1753,16 @@
     return-void
 .end method
 
+.method protected onPause()V
+    .locals 0
+
+    invoke-static {p0}, Lcom/autonavi/amapauto/content/ContentRuntime;->onHostPaused(Landroid/app/Activity;)V
+
+    invoke-super {p0}, Landroid/app/Activity;->onPause()V
+
+    return-void
+.end method
+
 .method public onDestroy()V
     .locals 7
 
@@ -2557,6 +2567,8 @@
     invoke-static {v0}, Lcom/autonavi/amapauto/Hook;->a(Ljava/lang/String;)V
 
     .line 137
+    invoke-static {p0}, Lcom/autonavi/amapauto/content/ContentRuntime;->onHostResumed(Landroid/app/Activity;)V
+
     return-void
 .end method
 

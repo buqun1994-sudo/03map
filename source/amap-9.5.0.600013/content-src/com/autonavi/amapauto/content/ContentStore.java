@@ -1,10 +1,14 @@
 package com.autonavi.amapauto.content;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class ContentStore {
+    private static final long VEHICLE_COMMAND_TIMEOUT_MS = 6000L;
+
     public interface Listener {
         void onContentStateChanged(ContentState state);
     }
@@ -14,6 +18,23 @@ public final class ContentStore {
     private final ContentPorts.VehiclePort vehiclePort;
     private final ContentPorts.MediaPort mediaPort;
     private final List<Listener> listeners = new ArrayList<>();
+    private final Handler commandHandler = new Handler(Looper.getMainLooper());
+    private final Runnable commandTimeout = new Runnable() {
+        @Override
+        public void run() {
+            synchronized (ContentStore.this) {
+                if (state.pendingVehicleCommand.length() == 0) {
+                    return;
+                }
+                finishVehicleCommandLocked(false, "车辆状态未确认，请查看车机状态");
+            }
+            publish();
+        }
+    };
+    private boolean pendingLocked;
+    private int pendingSeatLevel;
+    private long nextVehicleRequestId;
+    private long pendingVehicleRequestId;
 
     public ContentStore(Context context) {
         preferenceStore = new ContentPreferenceStore(context);
@@ -26,6 +47,11 @@ public final class ContentStore {
             @Override
             public void onVehicleSnapshot(ContentPorts.VehicleSnapshot snapshot) {
                 acceptVehicleSnapshot(snapshot);
+            }
+
+            @Override
+            public void onVehicleCommandFailed(long requestId, String message) {
+                failVehicleCommand(requestId, message);
             }
         });
         mediaPort.start(new ContentPorts.MediaSnapshotListener() {
@@ -60,6 +86,7 @@ public final class ContentStore {
     }
 
     public void destroy() {
+        commandHandler.removeCallbacks(commandTimeout);
         vehiclePort.stop();
         mediaPort.stop();
         synchronized (this) {
@@ -135,16 +162,29 @@ public final class ContentStore {
             state.vehiclePreview = snapshot.preview;
             state.temperatureC = snapshot.temperatureC;
             state.batteryPercent = snapshot.batteryPercent;
-            state.rangeKm = snapshot.rangeKm;
+            state.rangeRaw = snapshot.rangeRaw;
             state.chargeState = normalizeChargeState(snapshot.chargeState);
+            state.chargeConnectionRaw = snapshot.chargeConnectionRaw;
+            state.chargeBmsRaw = snapshot.chargeBmsRaw;
+            state.chargeScheduleRaw = snapshot.chargeScheduleRaw;
             state.chargePowerKw = snapshot.chargePowerKw;
             state.chargeRemainingMinutes = snapshot.chargeRemainingMinutes;
             state.ventilationLevel = snapshot.ventilationLevel;
             state.heatingLevel = snapshot.heatingLevel;
             state.massageLevel = snapshot.massageLevel;
+            state.massageModeRaw = snapshot.massageModeRaw;
+            state.massageSwitchKnown = snapshot.massageSwitchKnown;
+            state.massageActive = snapshot.massageActive;
             state.seatControlsKnown = snapshot.seatControlsKnown;
             state.lockKnown = snapshot.lockKnown;
             state.locked = snapshot.locked;
+            if (state.pendingVehicleCommand.length() != 0) {
+                if (!snapshot.dataAvailable) {
+                    finishVehicleCommandLocked(false, "车控连接中断，命令未确认");
+                } else if (vehicleCommandConfirmedLocked(snapshot)) {
+                    finishVehicleCommandLocked(true, "");
+                }
+            }
         }
         publish();
     }
@@ -166,41 +206,69 @@ public final class ContentStore {
                     ? "未连接" : snapshot.artist;
             state.mediaPlaybackAvailable = snapshot.playbackAvailable;
             state.mediaNextAvailable = snapshot.nextAvailable;
+            state.mediaArtwork = snapshot.artwork;
         }
         publish();
     }
 
     public void cycleSeatLevel(String seatId) {
         int nextLevel;
+        long requestId;
         synchronized (this) {
-            if (!state.seatControlsKnown) {
+            if (state.pendingVehicleCommand.length() != 0 || !vehiclePort.isAvailable()) {
                 return;
             }
             if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(seatId)) {
+                if (state.ventilationLevel < 0) {
+                    return;
+                }
                 nextLevel = nextLevel(state.ventilationLevel);
             } else if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId)) {
+                if (state.heatingLevel < 0) {
+                    return;
+                }
                 nextLevel = nextLevel(state.heatingLevel);
             } else if (ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId)) {
-                nextLevel = nextLevel(state.massageLevel);
+                if (!state.massageSwitchKnown) {
+                    return;
+                }
+                nextLevel = state.massageActive && state.massageLevel < 0
+                        ? 0 : nextLevel(state.massageLevel);
             } else {
                 return;
             }
+            requestId = ++nextVehicleRequestId;
         }
-        boolean accepted = vehiclePort.requestSeatLevel(seatId, nextLevel);
-        recordCommandResult(accepted, "座椅车控命令未发送，请检查车机状态");
+        boolean accepted = vehiclePort.requestSeatLevel(seatId, nextLevel, requestId);
+        synchronized (this) {
+            if (accepted) {
+                beginVehicleCommandLocked(seatId, nextLevel, false, requestId);
+            } else {
+                recordCommandResultLocked(false, "座椅车控命令未发送，请检查车机状态");
+            }
+        }
         publish();
     }
 
     public void toggleLock() {
         boolean nextLocked;
+        long requestId;
         synchronized (this) {
-            if (!state.lockKnown || !vehiclePort.isLockAvailable()) {
+            if (state.pendingVehicleCommand.length() != 0
+                    || !state.lockKnown || !vehiclePort.isLockAvailable()) {
                 return;
             }
             nextLocked = !state.locked;
+            requestId = ++nextVehicleRequestId;
         }
-        boolean accepted = vehiclePort.requestLock(nextLocked);
-        recordCommandResult(accepted, "车锁命令未发送，请检查车机状态");
+        boolean accepted = vehiclePort.requestLock(nextLocked, requestId);
+        synchronized (this) {
+            if (accepted) {
+                beginVehicleCommandLocked(ContentRegistry.Shortcuts.LOCK, -1, nextLocked, requestId);
+            } else {
+                recordCommandResultLocked(false, "车锁命令未发送，请检查车机状态");
+            }
+        }
         publish();
     }
 
@@ -262,16 +330,66 @@ public final class ContentStore {
     }
 
     private int normalizeChargeState(int chargeState) {
-        return chargeState < ContentState.CHARGE_DEFAULT || chargeState > ContentState.CHARGE_CHARGING
-                ? ContentState.CHARGE_DEFAULT : chargeState;
+        return chargeState < ContentState.CHARGE_UNKNOWN || chargeState > ContentState.CHARGE_CHARGING
+                ? ContentState.CHARGE_UNKNOWN : chargeState;
     }
 
     private void recordCommandResult(boolean accepted, String failureMessage) {
         synchronized (this) {
-            state.commandStatus = accepted ? ContentState.COMMAND_NONE : ContentState.COMMAND_FAILED;
-            state.commandSequence++;
-            state.commandMessage = accepted ? "" : failureMessage;
+            recordCommandResultLocked(accepted, failureMessage);
         }
+    }
+
+    private void recordCommandResultLocked(boolean accepted, String failureMessage) {
+        state.commandStatus = accepted ? ContentState.COMMAND_NONE : ContentState.COMMAND_FAILED;
+        state.commandSequence++;
+        state.commandMessage = accepted ? "" : failureMessage;
+    }
+
+    private void beginVehicleCommandLocked(String command, int seatLevel, boolean locked,
+            long requestId) {
+        state.pendingVehicleCommand = command;
+        state.commandStatus = ContentState.COMMAND_PENDING;
+        state.commandMessage = "";
+        pendingSeatLevel = seatLevel;
+        pendingLocked = locked;
+        pendingVehicleRequestId = requestId;
+        commandHandler.removeCallbacks(commandTimeout);
+        commandHandler.postDelayed(commandTimeout, VEHICLE_COMMAND_TIMEOUT_MS);
+    }
+
+    private boolean vehicleCommandConfirmedLocked(ContentPorts.VehicleSnapshot snapshot) {
+        if (ContentRegistry.Shortcuts.LOCK.equals(state.pendingVehicleCommand)) {
+            return snapshot.lockKnown && snapshot.locked == pendingLocked;
+        }
+        if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(state.pendingVehicleCommand)) {
+            return snapshot.ventilationLevel == pendingSeatLevel;
+        }
+        if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(state.pendingVehicleCommand)) {
+            return snapshot.heatingLevel == pendingSeatLevel;
+        }
+        return ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(state.pendingVehicleCommand)
+                && snapshot.massageSwitchKnown
+                && snapshot.massageActive == (pendingSeatLevel > 0)
+                && snapshot.massageLevel == pendingSeatLevel;
+    }
+
+    private void finishVehicleCommandLocked(boolean confirmed, String failureMessage) {
+        commandHandler.removeCallbacks(commandTimeout);
+        state.pendingVehicleCommand = "";
+        pendingVehicleRequestId = 0L;
+        recordCommandResultLocked(confirmed, failureMessage);
+    }
+
+    private void failVehicleCommand(long requestId, String message) {
+        synchronized (this) {
+            if (state.pendingVehicleCommand.length() == 0
+                    || pendingVehicleRequestId != requestId) {
+                return;
+            }
+            finishVehicleCommandLocked(false, message);
+        }
+        publish();
     }
 
     private void publish() {

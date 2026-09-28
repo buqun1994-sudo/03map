@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="content_oem_mb_px_16">16.0px</dimen>
+    <color name="content_oem_mb_pri_main_color_day">@color/content_oem_mb_pri_6_color_day</color>
+    <color name="content_oem_mb_pri_6_color_day">#1a8cff</color>
+    <color name="content_oem_mb_ic_bk_line_color_day">@color/content_oem_mb_bk_3_color</color>
+    <color name="content_oem_mb_bk_3_color">@color/content_oem_mbui_config_color_black_17</color>
+    <color name="content_oem_mbui_config_color_black_17">#2b000000</color>
+</resources>

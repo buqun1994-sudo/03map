@@ -1,13 +1,16 @@
 package com.autonavi.amapauto.content;
 
 import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
@@ -15,10 +18,12 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewParent;
+import android.view.VelocityTracker;
+import android.view.ViewConfiguration;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ScrollView;
@@ -31,6 +36,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public final class ContentRenderer implements ContentStore.Listener {
     private static final String ROLE_BACKGROUND = "background";
@@ -41,20 +49,36 @@ public final class ContentRenderer implements ContentStore.Listener {
     private static final String ROLE_SECONDARY = "secondary";
     private static final String ROLE_MUTED = "muted";
     private static final String ROLE_ACCENT = "accent";
-    private static final String ROLE_LYRICS_BACKGROUND = "lyrics_background";
+    private static final String ROLE_DIVIDER = "divider";
 
     private final Context context;
     private final ViewGroup host;
     private final ContentStore store;
     private final Map<String, TileBinding> tileBindings = new HashMap<>();
     private final List<View> pageViews = new ArrayList<>();
+    private final List<View> pageIndicators = new ArrayList<>();
     private final List<View> controlCards = new ArrayList<>();
     private final List<ContentIconView> dockIconViews = new ArrayList<>();
     private final List<View> dockButtons = new ArrayList<>();
     private final HandlerClock clock = new HandlerClock();
+    private final Handler artworkHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService artworkExecutor = Executors.newSingleThreadExecutor();
+    private Future<?> artworkTask;
+    private Bitmap softenedArtwork;
+    private String softenedArtworkKey = "";
+    private String requestedArtworkKey = "";
+    private String failedArtworkKey = "";
+    private ImageView atmosphereBackground;
+    private ImageView mediaArtworkView;
+    private ContentIconView mediaArtworkFallback;
+    private Bitmap displayedArtwork;
     private ContentTheme theme;
     private int displayedThemeMode;
     private ValueAnimator themeAnimator;
+    private ValueAnimator pageSnapAnimator;
+    private ValueAnimator controlSnapAnimator;
+    private int pageSnapTarget = -1;
+    private int controlSnapTarget = -1;
     private FrameLayout panel;
     private LinearLayout verticalRoot;
     private FrameLayout topBar;
@@ -64,11 +88,11 @@ public final class ContentRenderer implements ContentStore.Listener {
     private TextView timeText;
     private TextView chargingText;
     private TextView rangeText;
-    private boolean timeInLeftCluster;
+    private TextView batteryPercentText;
     private ContentIconView batteryIcon;
-    private HorizontalScrollView pageScroller;
+    private ContentPager pageScroller;
     private LinearLayout pageRow;
-    private HorizontalScrollView controlScroller;
+    private ContentPager controlScroller;
     private LinearLayout controlRow;
     private TextView mediaTitleText;
     private TextView mediaArtistText;
@@ -79,6 +103,7 @@ public final class ContentRenderer implements ContentStore.Listener {
     private TextView sourceLabel;
     private LinearLayout dockSlots;
     private View dockContainer;
+    private HorizontalScrollView dockViewport;
     private ContentIconView lockDockIcon;
     private int panelWidth;
     private int pageWidth;
@@ -86,8 +111,12 @@ public final class ContentRenderer implements ContentStore.Listener {
     private float expandedDividerX;
     private float mapWidth;
     private int lastDockSignature = Integer.MIN_VALUE;
+    private int lastIndicatorIndex = -1;
+    private int lastIndicatorAccent = Color.TRANSPARENT;
+    private int lastIndicatorMuted = Color.TRANSPARENT;
     private long lastCommandSequence = -1L;
     private boolean built;
+    private boolean activityActive = true;
     private PopupWindow activePopup;
     private final View.OnLayoutChangeListener hostLayoutListener = new View.OnLayoutChangeListener() {
         @Override
@@ -127,6 +156,13 @@ public final class ContentRenderer implements ContentStore.Listener {
         host.addView(panel, new FrameLayout.LayoutParams(panelWidth,
                 ViewGroup.LayoutParams.MATCH_PARENT, Gravity.LEFT | Gravity.TOP));
 
+        atmosphereBackground = new ImageView(context);
+        atmosphereBackground.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        atmosphereBackground.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        atmosphereBackground.setVisibility(View.GONE);
+        panel.addView(atmosphereBackground, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         verticalRoot = new LinearLayout(context);
         verticalRoot.setOrientation(LinearLayout.VERTICAL);
         verticalRoot.setClipChildren(true);
@@ -137,7 +173,12 @@ public final class ContentRenderer implements ContentStore.Listener {
         buildPages();
         buildControls();
         buildDock();
+        View boundary = new View(context);
+        boundary.setTag(ROLE_DIVIDER);
+        panel.addView(boundary, new FrameLayout.LayoutParams(dp(1),
+                ViewGroup.LayoutParams.MATCH_PARENT, Gravity.RIGHT));
         applyThemeTree(panel);
+        updateIconVisibility();
         store.addListener(this);
         clock.start();
     }
@@ -147,8 +188,23 @@ public final class ContentRenderer implements ContentStore.Listener {
         clock.stop();
         dismissPopup();
         if (themeAnimator != null) {
-            themeAnimator.cancel();
+            ValueAnimator previous = themeAnimator;
             themeAnimator = null;
+            previous.cancel();
+        }
+        cancelPagerAnimation(false);
+        cancelPagerAnimation(true);
+        if (artworkTask != null) {
+            artworkTask.cancel(true);
+            artworkTask = null;
+        }
+        artworkExecutor.shutdownNow();
+        artworkHandler.removeCallbacksAndMessages(null);
+        atmosphereBackground.setImageDrawable(null);
+        mediaArtworkView.setImageDrawable(null);
+        if (softenedArtwork != null) {
+            softenedArtwork.recycle();
+            softenedArtwork = null;
         }
         store.removeListener(this);
         store.destroy();
@@ -156,70 +212,123 @@ public final class ContentRenderer implements ContentStore.Listener {
         host.removeAllViews();
     }
 
+    public void pause() {
+        if (!built || !activityActive) {
+            return;
+        }
+        activityActive = false;
+        clock.stop();
+        if (themeAnimator != null) {
+            ValueAnimator previous = themeAnimator;
+            themeAnimator = null;
+            previous.cancel();
+            applyTheme(store.snapshot().themeMode == ContentState.THEME_DARK
+                    ? ContentTheme.dark() : ContentTheme.light());
+        }
+        cancelPagerAnimation(false);
+        cancelPagerAnimation(true);
+        if (artworkTask != null) {
+            artworkTask.cancel(true);
+            artworkTask = null;
+        }
+        requestedArtworkKey = "";
+        atmosphereBackground.setVisibility(View.GONE);
+        updateIconVisibility();
+    }
+
+    public void resume() {
+        if (!built || activityActive) {
+            return;
+        }
+        activityActive = true;
+        ContentState state = store.snapshot();
+        alignPager(pageScroller, state.pageIndex);
+        alignPager(controlScroller, state.controlIndex);
+        renderArtwork(state);
+        updateIconVisibility();
+        clock.start();
+    }
+
     private void buildTopBar() {
         topBar = new FrameLayout(context);
-        topBar.setTag(ROLE_BACKGROUND);
-        topBar.setPadding(dp(16), dp(8), dp(16), dp(8));
+        topBar.setPadding(dp(16), dp(5), dp(16), dp(5));
         verticalRoot.addView(topBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(72)));
 
-        leftTopCluster = new LinearLayout(context);
-        leftTopCluster.setOrientation(LinearLayout.HORIZONTAL);
-        leftTopCluster.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.addView(leftTopCluster, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.LEFT | Gravity.CENTER_VERTICAL));
+        LinearLayout column = new LinearLayout(context);
+        column.setOrientation(LinearLayout.VERTICAL);
+        topBar.addView(column, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        rightTopCluster = new LinearLayout(context);
-        rightTopCluster.setOrientation(LinearLayout.HORIZONTAL);
-        rightTopCluster.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.addView(rightTopCluster, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.RIGHT | Gravity.CENTER_VERTICAL));
+        LinearLayout firstRow = new LinearLayout(context);
+        firstRow.setGravity(Gravity.CENTER_VERTICAL);
+        column.addView(firstRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
 
-        temperatureText = makeText(18.0f, Typeface.BOLD, ROLE_PRIMARY);
-        temperatureText.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
-        leftTopCluster.addView(temperatureText, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        chargingText = makeText(14.0f, Typeface.BOLD, ROLE_ACCENT);
-        chargingText.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
-        chargingText.setSingleLine(true);
-        chargingText.setEllipsize(TextUtils.TruncateAt.END);
-        chargingText.setVisibility(View.GONE);
-        LinearLayout.LayoutParams chargingParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        chargingParams.leftMargin = dp(12);
-        leftTopCluster.addView(chargingText, chargingParams);
-
-        timeText = makeText(19.0f, Typeface.BOLD, ROLE_PRIMARY);
-        timeText.setGravity(Gravity.CENTER);
+        timeText = makeText(17.0f, Typeface.BOLD, ROLE_PRIMARY);
+        timeText.setGravity(Gravity.CENTER_VERTICAL);
         timeText.setSingleLine(true);
-        attachTimeToCenter();
-
-        rangeText = makeText(16.0f, Typeface.BOLD, ROLE_PRIMARY);
-        rangeText.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
-        rangeText.setSingleLine(true);
-        rightTopCluster.addView(rangeText, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        timeText.setEllipsize(TextUtils.TruncateAt.END);
+        firstRow.addView(timeText, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
 
         batteryIcon = new ContentIconView(context);
         batteryIcon.setIcon("battery");
-        LinearLayout.LayoutParams batteryParams = new LinearLayout.LayoutParams(dp(46), dp(32));
-        batteryParams.leftMargin = dp(8);
-        rightTopCluster.addView(batteryIcon, batteryParams);
+        firstRow.addView(batteryIcon, new LinearLayout.LayoutParams(dp(32), dp(32)));
+
+        batteryPercentText = makeText(14.0f, Typeface.BOLD, ROLE_PRIMARY);
+        batteryPercentText.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+        firstRow.addView(batteryPercentText, new LinearLayout.LayoutParams(
+                dp(44), ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout secondRow = new LinearLayout(context);
+        secondRow.setGravity(Gravity.CENTER_VERTICAL);
+        column.addView(secondRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+
+        leftTopCluster = new LinearLayout(context);
+        leftTopCluster.setGravity(Gravity.CENTER_VERTICAL);
+        secondRow.addView(leftTopCluster, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
+
+        rightTopCluster = new LinearLayout(context);
+        rightTopCluster.setGravity(Gravity.CENTER_VERTICAL);
+        secondRow.addView(rightTopCluster, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        temperatureText = makeText(16.0f, Typeface.BOLD, ROLE_PRIMARY);
+        temperatureText.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
+        leftTopCluster.addView(temperatureText, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
+
+        chargingText = makeText(12.0f, Typeface.BOLD, ROLE_ACCENT);
+        chargingText.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
+        chargingText.setMaxLines(2);
+        chargingText.setVisibility(View.GONE);
+        leftTopCluster.addView(chargingText, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
+
+        rangeText = makeText(13.0f, Typeface.NORMAL, ROLE_SECONDARY);
+        rangeText.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+        rangeText.setSingleLine(true);
+        rangeText.setEllipsize(TextUtils.TruncateAt.END);
+        rangeText.setMaxWidth(dp(100));
+        rightTopCluster.addView(rangeText, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void buildPages() {
-        pageScroller = new HorizontalScrollView(context);
+        pageScroller = new ContentPager(false);
         pageScroller.setHorizontalScrollBarEnabled(false);
         pageScroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
         pageScroller.setFillViewport(false);
         pageScroller.setClipChildren(true);
-        pageScroller.setClipToPadding(false);
-        pageScroller.setTag(ROLE_BACKGROUND);
-        verticalRoot.addView(pageScroller, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        pageScroller.setClipToPadding(true);
+        LinearLayout.LayoutParams pageParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
+        pageParams.leftMargin = dp(16);
+        pageParams.rightMargin = dp(16);
+        verticalRoot.addView(pageScroller, pageParams);
 
         pageRow = new LinearLayout(context);
         pageRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -232,29 +341,41 @@ public final class ContentRenderer implements ContentStore.Listener {
         pageViews.add(lyricsPage);
         pageRow.addView(shortcutsPage, pageLayoutParams());
         pageRow.addView(lyricsPage, pageLayoutParams());
-        bindPagerTouch(pageScroller, false);
+        LinearLayout indicators = new LinearLayout(context);
+        indicators.setGravity(Gravity.CENTER);
+        verticalRoot.addView(indicators, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
+        for (int index = 0; index < pageViews.size(); index++) {
+            View indicator = new View(context);
+            LinearLayout.LayoutParams indicatorParams = new LinearLayout.LayoutParams(dp(6), dp(6));
+            indicatorParams.leftMargin = dp(4);
+            indicatorParams.rightMargin = dp(4);
+            indicators.addView(indicator, indicatorParams);
+            pageIndicators.add(indicator);
+        }
     }
 
     private View buildShortcutsPage() {
         ScrollView scrollView = new ScrollView(context);
         scrollView.setFillViewport(true);
         scrollView.setClipChildren(true);
+        scrollView.setVerticalScrollBarEnabled(true);
         scrollView.setBackgroundColor(Color.TRANSPARENT);
 
         LinearLayout page = new LinearLayout(context);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(14), dp(12), dp(14), dp(12));
+        page.setPadding(0, dp(4), 0, dp(8));
         page.setBackgroundColor(Color.TRANSPARENT);
 
-        TextView title = makeText(22.0f, Typeface.BOLD, ROLE_PRIMARY);
+        TextView title = makeText(20.0f, Typeface.BOLD, ROLE_PRIMARY);
         title.setText("快捷功能");
         page.addView(title, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(32)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(28)));
 
-        TextView subtitle = makeText(13.0f, Typeface.NORMAL, ROLE_SECONDARY);
-        subtitle.setText("常用车控，一触即达");
+        TextView subtitle = makeText(11.0f, Typeface.NORMAL, ROLE_SECONDARY);
+        subtitle.setText("点按调整 · 上滑查看更多");
         page.addView(subtitle, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(26)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(16)));
 
         LinearLayout firstRow = new LinearLayout(context);
         firstRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -263,7 +384,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         firstRow.addView(createShortcutTile(ContentRegistry.Shortcuts.SEAT_HEATING,
                 "座椅加热", "heating"), gridTileParams());
         page.addView(firstRow, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(92)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(50)));
 
         LinearLayout secondRow = new LinearLayout(context);
         secondRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -272,8 +393,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         secondRow.addView(createShortcutTile(ContentRegistry.Shortcuts.LOCK,
                 "车锁", "lock"), gridTileParams());
         LinearLayout.LayoutParams secondRowParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(92));
-        secondRowParams.topMargin = dp(8);
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(50));
+        secondRowParams.topMargin = dp(6);
         page.addView(secondRow, secondRowParams);
 
         LinearLayout settingsBar = new LinearLayout(context);
@@ -283,14 +404,15 @@ public final class ContentRenderer implements ContentStore.Listener {
         settingsBar.setTag(ROLE_SURFACE);
         ContentIconView settingsIcon = new ContentIconView(context);
         settingsIcon.setIcon("settings");
+        settingsIcon.setAvailable(false);
         settingsBar.addView(settingsIcon, new LinearLayout.LayoutParams(dp(36), dp(36)));
         LinearLayout settingsText = new LinearLayout(context);
         settingsText.setOrientation(LinearLayout.VERTICAL);
         settingsText.setGravity(Gravity.CENTER_VERTICAL);
         TextView settingsTitle = makeText(15.0f, Typeface.BOLD, ROLE_PRIMARY);
-        settingsTitle.setText("设置与 Dock 编辑");
+        settingsTitle.setText("设置暂不可用");
         TextView settingsDetail = makeText(12.0f, Typeface.NORMAL, ROLE_SECONDARY);
-        settingsDetail.setText("长按 Dock 按钮替换入口");
+        settingsDetail.setText("长按底部按钮可更换入口");
         settingsText.addView(settingsTitle, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
         settingsText.addView(settingsDetail, new LinearLayout.LayoutParams(
@@ -304,19 +426,19 @@ public final class ContentRenderer implements ContentStore.Listener {
         arrow.setGravity(Gravity.CENTER);
         settingsBar.addView(arrow, new LinearLayout.LayoutParams(dp(24), dp(40)));
         LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
-        settingsParams.topMargin = dp(12);
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(56));
+        settingsParams.topMargin = dp(20);
         page.addView(settingsBar, settingsParams);
         bindPressEffect(settingsBar);
         settingsBar.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Toast.makeText(context, "设置入口将在后续施工中接入", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "设置暂不可用；长按底部按钮可更换入口", Toast.LENGTH_SHORT).show();
             }
         });
 
         scrollView.addView(page, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return scrollView;
     }
 
@@ -325,52 +447,47 @@ public final class ContentRenderer implements ContentStore.Listener {
         page.setClipChildren(true);
         page.setBackgroundColor(Color.TRANSPARENT);
 
-        View lyricsBackground = new View(context);
-        lyricsBackground.setTag(ROLE_LYRICS_BACKGROUND);
-        page.addView(lyricsBackground, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
+        ScrollView scrollView = new ScrollView(context);
+        scrollView.setFillViewport(true);
         LinearLayout content = new LinearLayout(context);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setGravity(Gravity.CENTER_HORIZONTAL);
-        content.setPadding(dp(20), dp(24), dp(20), dp(24));
+        content.setGravity(Gravity.CENTER);
+        content.setPadding(dp(12), dp(16), dp(12), dp(16));
         ContentIconView musicIcon = new ContentIconView(context);
         musicIcon.setIcon("source");
-        content.addView(musicIcon, new LinearLayout.LayoutParams(dp(72), dp(72)));
-        TextView heading = makeText(24.0f, Typeface.BOLD, ROLE_PRIMARY);
-        heading.setText("歌词页面");
+        content.addView(musicIcon, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        TextView heading = makeText(22.0f, Typeface.BOLD, ROLE_PRIMARY);
+        heading.setText("暂无歌词");
         heading.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         headingParams.topMargin = dp(14);
         content.addView(heading, headingParams);
-        TextView placeholder = makeText(16.0f, Typeface.NORMAL, ROLE_SECONDARY);
-        placeholder.setText("歌词功能将在下一轮接入");
+        TextView placeholder = makeText(14.0f, Typeface.NORMAL, ROLE_SECONDARY);
+        placeholder.setText("可在下方选择媒体来源并播放音乐");
         placeholder.setGravity(Gravity.CENTER);
-        content.addView(placeholder, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(34)));
-        TextView detail = makeText(13.0f, Typeface.NORMAL, ROLE_MUTED);
-        detail.setText("当前页用于验证页面切换、主题和独立背景层");
-        detail.setGravity(Gravity.CENTER);
-        content.addView(detail, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
-        page.addView(content, new FrameLayout.LayoutParams(
+        LinearLayout.LayoutParams placeholderParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        placeholderParams.topMargin = dp(10);
+        content.addView(placeholder, placeholderParams);
+        scrollView.addView(content, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        page.addView(scrollView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
                 Gravity.CENTER));
         return page;
     }
 
     private void buildControls() {
-        controlScroller = new HorizontalScrollView(context);
+        controlScroller = new ContentPager(true);
         controlScroller.setHorizontalScrollBarEnabled(false);
         controlScroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
         controlScroller.setFillViewport(false);
         controlScroller.setClipChildren(true);
-        controlScroller.setTag(ROLE_BACKGROUND);
         LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(126));
-        controlParams.leftMargin = dp(18);
-        controlParams.rightMargin = dp(18);
+        controlParams.leftMargin = dp(16);
+        controlParams.rightMargin = dp(16);
         controlParams.bottomMargin = dp(8);
         verticalRoot.addView(controlScroller, controlParams);
 
@@ -385,27 +502,35 @@ public final class ContentRenderer implements ContentStore.Listener {
         controlCards.add(climateCard);
         controlRow.addView(mediaCard, cardLayoutParams());
         controlRow.addView(climateCard, cardLayoutParams());
-        bindPagerTouch(controlScroller, true);
     }
 
     private View buildMediaCard() {
         LinearLayout card = new LinearLayout(context);
-        card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(10), dp(10), dp(10), dp(10));
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(12), dp(8), dp(12), dp(8));
         card.setTag(ROLE_SURFACE);
+
+        LinearLayout summary = new LinearLayout(context);
+        summary.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(summary, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
 
         FrameLayout artwork = new FrameLayout(context);
         artwork.setTag(ROLE_ELEVATED);
-        ContentIconView artworkIcon = new ContentIconView(context);
-        artworkIcon.setIcon("source");
-        artwork.addView(artworkIcon, new FrameLayout.LayoutParams(dp(38), dp(38), Gravity.CENTER));
-        card.addView(artwork, new LinearLayout.LayoutParams(dp(68), dp(68)));
+        artwork.setClipToOutline(true);
+        mediaArtworkView = new ImageView(context);
+        mediaArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        artwork.addView(mediaArtworkView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mediaArtworkFallback = new ContentIconView(context);
+        mediaArtworkFallback.setIcon("source");
+        artwork.addView(mediaArtworkFallback, new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER));
+        summary.addView(artwork, new LinearLayout.LayoutParams(dp(52), dp(52)));
 
         LinearLayout songInfo = new LinearLayout(context);
         songInfo.setOrientation(LinearLayout.VERTICAL);
         songInfo.setGravity(Gravity.CENTER_VERTICAL);
-        songInfo.setPadding(dp(12), 0, dp(8), 0);
+        songInfo.setPadding(dp(12), 0, 0, 0);
         mediaTitleText = makeText(16.0f, Typeface.BOLD, ROLE_PRIMARY);
         mediaTitleText.setSingleLine(true);
         mediaTitleText.setEllipsize(TextUtils.TruncateAt.END);
@@ -416,12 +541,16 @@ public final class ContentRenderer implements ContentStore.Listener {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(26)));
         songInfo.addView(mediaArtistText, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
-        card.addView(songInfo, new LinearLayout.LayoutParams(0,
+        summary.addView(songInfo, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
 
         LinearLayout actions = new LinearLayout(context);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        actionsParams.topMargin = dp(4);
+        card.addView(actions, actionsParams);
         mediaPlayButton = createControlButton("play", "播放");
         mediaPlayIcon = (ContentIconView) ((FrameLayout) mediaPlayButton).getChildAt(0);
         mediaPlayButton.setOnClickListener(new View.OnClickListener() {
@@ -430,16 +559,19 @@ public final class ContentRenderer implements ContentStore.Listener {
                 store.toggleMediaPlayback();
             }
         });
-        actions.addView(mediaPlayButton, actionParams(dp(46)));
+        actions.addView(mediaPlayButton, new LinearLayout.LayoutParams(0, dp(48), 1.0f));
 
         mediaNextButton = createControlButton("next", "下一首");
         mediaNextButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 store.nextMediaTrack();
+                ((ContentIconView) ((FrameLayout) mediaNextButton).getChildAt(0)).playAction();
             }
         });
-        actions.addView(mediaNextButton, actionParams(dp(46)));
+        LinearLayout.LayoutParams nextParams = new LinearLayout.LayoutParams(0, dp(48), 1.0f);
+        nextParams.leftMargin = dp(8);
+        actions.addView(mediaNextButton, nextParams);
 
         sourceButton = new FrameLayout(context);
         sourceButton.setTag(ROLE_ELEVATED);
@@ -462,9 +594,9 @@ public final class ContentRenderer implements ContentStore.Listener {
                 showMediaSourcePopup();
             }
         });
-        actions.addView(sourceButton, actionParams(dp(78)));
-        card.addView(actions, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout.LayoutParams sourceParams = new LinearLayout.LayoutParams(0, dp(48), 1.25f);
+        sourceParams.leftMargin = dp(8);
+        actions.addView(sourceButton, sourceParams);
         bindPressEffect(mediaPlayButton);
         bindPressEffect(mediaNextButton);
         bindPressEffect(sourceButton);
@@ -479,6 +611,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         card.setTag(ROLE_SURFACE);
         ContentIconView climateIcon = new ContentIconView(context);
         climateIcon.setIcon("climate");
+        climateIcon.setAvailable(false);
         card.addView(climateIcon, new LinearLayout.LayoutParams(dp(52), dp(70)));
 
         LinearLayout textColumn = new LinearLayout(context);
@@ -487,7 +620,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         TextView title = makeText(17.0f, Typeface.BOLD, ROLE_PRIMARY);
         title.setText("空调控制");
         TextView detail = makeText(13.0f, Typeface.NORMAL, ROLE_SECONDARY);
-        detail.setText("滑动切换控制组件");
+        detail.setText("暂不可用");
         textColumn.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(26)));
         textColumn.addView(detail, new LinearLayout.LayoutParams(
@@ -496,7 +629,7 @@ public final class ContentRenderer implements ContentStore.Listener {
                 ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
 
         TextView placeholder = makeText(12.0f, Typeface.BOLD, ROLE_MUTED);
-        placeholder.setText("占位");
+        placeholder.setText("未连接");
         placeholder.setGravity(Gravity.CENTER);
         placeholder.setTag(ROLE_ELEVATED);
         card.addView(placeholder, new LinearLayout.LayoutParams(dp(50), dp(34)));
@@ -504,24 +637,30 @@ public final class ContentRenderer implements ContentStore.Listener {
         card.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Toast.makeText(context, "空调控制组件将在后续接入", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "空调控制暂不可用", Toast.LENGTH_SHORT).show();
             }
         });
         return card;
     }
 
     private void buildDock() {
+        dockViewport = new HorizontalScrollView(context);
+        dockViewport.setFillViewport(true);
+        dockViewport.setHorizontalScrollBarEnabled(false);
+        dockViewport.setOverScrollMode(View.OVER_SCROLL_NEVER);
         dockContainer = new LinearLayout(context);
         ((LinearLayout) dockContainer).setOrientation(LinearLayout.HORIZONTAL);
         ((LinearLayout) dockContainer).setGravity(Gravity.CENTER_VERTICAL);
-        ((LinearLayout) dockContainer).setPadding(dp(5), dp(5), dp(5), dp(5));
+        ((LinearLayout) dockContainer).setPadding(dp(3), dp(5), dp(3), dp(5));
         dockContainer.setTag(ROLE_ELEVATED);
         LinearLayout.LayoutParams dockParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(88));
         dockParams.leftMargin = dp(8);
         dockParams.rightMargin = dp(8);
         dockParams.bottomMargin = dp(12);
-        verticalRoot.addView(dockContainer, dockParams);
+        verticalRoot.addView(dockViewport, dockParams);
+        dockViewport.addView(dockContainer, new HorizontalScrollView.LayoutParams(
+                Math.max(dp(300), panelWidth - dp(16)), ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout lockButton = createDockButton("lock", "车锁");
         lockDockIcon = (ContentIconView) lockButton.getChildAt(0);
@@ -531,28 +670,28 @@ public final class ContentRenderer implements ContentStore.Listener {
             public void onClick(View view) {
                 ContentState state = store.snapshot();
                 if (!state.lockKnown) {
-                    Toast.makeText(context, "车锁状态尚未回流", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "暂时无法读取车锁状态", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 store.toggleLock();
             }
         });
         ((LinearLayout) dockContainer).addView(lockButton,
-                new LinearLayout.LayoutParams(dp(66), ViewGroup.LayoutParams.MATCH_PARENT));
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
         bindPressEffect(lockButton);
 
         View divider = new View(context);
-        divider.setBackgroundColor(theme.divider);
+        divider.setTag(ROLE_DIVIDER);
         LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(dp(1), dp(48));
-        dividerParams.leftMargin = dp(4);
-        dividerParams.rightMargin = dp(4);
+        dividerParams.leftMargin = dp(2);
+        dividerParams.rightMargin = dp(2);
         ((LinearLayout) dockContainer).addView(divider, dividerParams);
 
         dockSlots = new LinearLayout(context);
         dockSlots.setOrientation(LinearLayout.HORIZONTAL);
         dockSlots.setGravity(Gravity.CENTER_VERTICAL);
         ((LinearLayout) dockContainer).addView(dockSlots,
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 5.0f));
         rebuildDock(store.snapshot());
     }
 
@@ -560,29 +699,30 @@ public final class ContentRenderer implements ContentStore.Listener {
         LinearLayout tile = new LinearLayout(context);
         tile.setOrientation(LinearLayout.HORIZONTAL);
         tile.setGravity(Gravity.CENTER_VERTICAL);
-        tile.setPadding(dp(10), dp(8), dp(8), dp(8));
+        tile.setPadding(dp(6), dp(4), dp(6), dp(4));
         tile.setTag(ROLE_SURFACE);
         ContentIconView icon = new ContentIconView(context);
         icon.setIcon(iconKey);
-        tile.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        tile.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(28)));
         LinearLayout textColumn = new LinearLayout(context);
         textColumn.setOrientation(LinearLayout.VERTICAL);
         textColumn.setGravity(Gravity.CENTER_VERTICAL);
-        textColumn.setPadding(dp(9), 0, 0, 0);
-        TextView labelText = makeText(15.0f, Typeface.BOLD, ROLE_PRIMARY);
+        textColumn.setPadding(dp(5), 0, 0, 0);
+        TextView labelText = makeText(14.0f, Typeface.BOLD, ROLE_PRIMARY);
         labelText.setText(label);
+        labelText.setGravity(Gravity.CENTER_VERTICAL);
         labelText.setSingleLine(true);
         labelText.setEllipsize(TextUtils.TruncateAt.END);
         TextView valueText = makeText(12.0f, Typeface.NORMAL, ROLE_SECONDARY);
-        valueText.setGravity(Gravity.LEFT);
+        valueText.setGravity(Gravity.CENTER_VERTICAL);
+        valueText.setSingleLine(true);
+        valueText.setEllipsize(TextUtils.TruncateAt.END);
         textColumn.addView(labelText, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(23)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
         textColumn.addView(valueText, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
-        textColumn.addView(new View(context), new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(18)));
         tile.addView(textColumn, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
         TileBinding binding = new TileBinding(itemId, tile, icon, labelText, valueText);
         tileBindings.put(itemId, binding);
         bindPressEffect(tile);
@@ -592,14 +732,14 @@ public final class ContentRenderer implements ContentStore.Listener {
                 if (ContentRegistry.Shortcuts.LOCK.equals(itemId)) {
                     ContentState state = store.snapshot();
                     if (!state.lockKnown) {
-                        Toast.makeText(context, "车锁状态尚未回流", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(context, "暂时无法读取车锁状态", Toast.LENGTH_SHORT).show();
                     } else {
                         store.toggleLock();
                     }
                 } else if (ContentRegistry.Shortcuts.SETTINGS.equals(itemId)) {
-                    Toast.makeText(context, "设置入口将在后续施工中接入", Toast.LENGTH_SHORT).show();
-                } else if (!store.snapshot().seatControlsKnown) {
-                    Toast.makeText(context, "座椅车控状态尚未回流", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "设置暂不可用", Toast.LENGTH_SHORT).show();
+                } else if (!canControlSeat(store.snapshot(), itemId)) {
+                    Toast.makeText(context, "座椅控制暂不可用", Toast.LENGTH_SHORT).show();
                 } else {
                     store.cycleSeatLevel(itemId);
                 }
@@ -677,25 +817,33 @@ public final class ContentRenderer implements ContentStore.Listener {
         } else if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(itemId)
                 || ContentRegistry.Shortcuts.SEAT_HEATING.equals(itemId)
                 || ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(itemId)) {
-            if (!store.snapshot().seatControlsKnown) {
-                Toast.makeText(context, "座椅车控状态尚未回流", Toast.LENGTH_SHORT).show();
+            if (!canControlSeat(store.snapshot(), itemId)) {
+                Toast.makeText(context, "座椅控制暂不可用", Toast.LENGTH_SHORT).show();
                 return;
             }
             store.cycleSeatLevel(itemId);
         } else if (ContentRegistry.Shortcuts.SETTINGS.equals(itemId)) {
-            Toast.makeText(context, "设置入口将在后续施工中接入", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "设置暂不可用", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void renderTopBar(ContentState state) {
-        boolean charging = state.chargeState != ContentState.CHARGE_DEFAULT;
+        boolean charging = state.chargeState == ContentState.CHARGE_PLUGGED
+                || state.chargeState == ContentState.CHARGE_SCHEDULED
+                || state.chargeState == ContentState.CHARGE_CHARGING;
+        boolean unplugged = state.chargeState == ContentState.CHARGE_DEFAULT;
+        boolean unresolvedCharge = state.chargeState == ContentState.CHARGE_UNKNOWN
+                && state.vehicleDataAvailable;
         temperatureText.setText(Float.isNaN(state.temperatureC)
                 ? "--.-°C" : String.format(Locale.CHINA, "%.1f°C", state.temperatureC));
-        setAnimatedVisibility(temperatureText, charging ? View.GONE : View.VISIBLE);
-        setAnimatedVisibility(chargingText, charging ? View.VISIBLE : View.GONE);
-        if (charging) {
+        setAnimatedVisibility(temperatureText, charging || unresolvedCharge ? View.GONE : View.VISIBLE);
+        setAnimatedVisibility(chargingText,
+                charging || unresolvedCharge || unplugged ? View.VISIBLE : View.GONE);
+        if (unresolvedCharge) {
+            chargingText.setText("充电状态\n待确认");
+        } else if (charging) {
             if (state.chargeState == ContentState.CHARGE_PLUGGED) {
-                chargingText.setText("已插枪·等待充电");
+                chargingText.setText("已插枪\n等待充电");
             } else if (state.chargeState == ContentState.CHARGE_SCHEDULED) {
                 chargingText.setText("预约等待中");
             } else {
@@ -703,17 +851,25 @@ public final class ContentRenderer implements ContentStore.Listener {
                         ? "--" : String.format(Locale.CHINA, "%.1f", state.chargePowerKw);
                 String remaining = state.chargeRemainingMinutes < 0
                         ? "--" : Integer.toString(state.chargeRemainingMinutes);
-                chargingText.setText("功率 " + power + "kW · 剩余 " + remaining + "分钟");
+                chargingText.setText(power + " kW\n剩余 " + remaining + " 分钟");
             }
-            attachTimeToLeft();
-        } else {
-            attachTimeToCenter();
+        } else if (unplugged) {
+            chargingText.setText("未插枪");
         }
         timeText.setText(formatTime(state));
-        rangeText.setText(state.rangeKm >= 0 ? state.rangeKm + " km" : "-- km");
+        chargingText.setTextColor(unresolvedCharge ? theme.mutedText
+                : state.chargeState == ContentState.CHARGE_CHARGING ? theme.positive : theme.secondaryText);
+        timeText.setTextSize(panelWidth < dp(360) ? 14.0f : 17.0f);
+        rangeText.setText(state.rangeRaw >= 0 ? "续航 " + state.rangeRaw : "续航 --");
         batteryIcon.setBattery(state.batteryPercent,
                 state.chargeState == ContentState.CHARGE_CHARGING);
         batteryIcon.setColors(batteryColor(state.batteryPercent), theme.accent);
+        batteryIcon.setAvailable(state.batteryPercent >= 0 && !state.vehiclePreview);
+        batteryPercentText.setText(state.batteryPercent >= 0
+                ? state.batteryPercent + "%" : "--%");
+        batteryIcon.setContentDescription(state.batteryPercent < 0 ? "动力电池不可用"
+                : "动力电池" + state.batteryPercent + "%"
+                + (state.chargeState == ContentState.CHARGE_DEFAULT ? "，未插枪" : ""));
     }
 
     private void renderMediaState(ContentState state) {
@@ -722,8 +878,127 @@ public final class ContentRenderer implements ContentStore.Listener {
         sourceLabel.setText(state.mediaSource);
         sourceButton.setContentDescription("媒体来源：" + state.mediaSource);
         mediaPlayIcon.setIcon(state.mediaPlaying ? "pause" : "play");
+        mediaPlayButton.setContentDescription(state.mediaPlaying ? "暂停" : "播放");
         setButtonAvailability(mediaPlayButton, state.mediaPlaybackAvailable);
         setButtonAvailability(mediaNextButton, state.mediaNextAvailable);
+        renderArtwork(state);
+    }
+
+    private void renderArtwork(ContentState state) {
+        final Bitmap artwork = state.mediaArtwork;
+        boolean valid = state.mediaDataAvailable && !state.mediaPreview
+                && artwork != null && !artwork.isRecycled();
+        Bitmap thumbnail = valid ? artwork : null;
+        if (displayedArtwork != thumbnail) {
+            displayedArtwork = thumbnail;
+            mediaArtworkView.setImageBitmap(thumbnail);
+        }
+        mediaArtworkFallback.setVisibility(valid ? View.GONE : View.VISIBLE);
+        if (!valid || !state.mediaPlaying || !activityActive) {
+            requestedArtworkKey = "";
+            if (artworkTask != null) {
+                artworkTask.cancel(true);
+                artworkTask = null;
+            }
+            atmosphereBackground.setVisibility(View.GONE);
+            atmosphereBackground.setImageDrawable(null);
+            return;
+        }
+        final String key = state.mediaSource + "\n" + state.mediaTitle + "\n"
+                + state.mediaArtist + "\n" + artwork.getGenerationId();
+        if (key.equals(softenedArtworkKey) && softenedArtwork != null) {
+            requestedArtworkKey = "";
+            if (artworkTask != null) {
+                artworkTask.cancel(true);
+                artworkTask = null;
+            }
+            atmosphereBackground.setImageBitmap(softenedArtwork);
+            atmosphereBackground.setVisibility(View.VISIBLE);
+            return;
+        }
+        if (key.equals(requestedArtworkKey) || key.equals(failedArtworkKey)) {
+            return;
+        }
+        requestedArtworkKey = key;
+        atmosphereBackground.setVisibility(View.GONE);
+        atmosphereBackground.setImageDrawable(null);
+        if (artworkTask != null) {
+            artworkTask.cancel(true);
+        }
+        artworkTask = artworkExecutor.submit(new Runnable() {
+            @Override
+            public void run() {
+                Bitmap result = null;
+                try {
+                    result = softenArtwork(artwork);
+                } catch (RuntimeException failure) {
+                    android.util.Log.w("ContentRenderer", "Media artwork unavailable", failure);
+                }
+                final Bitmap prepared = result;
+                artworkHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!built || !key.equals(requestedArtworkKey)) {
+                            if (prepared != null) {
+                                prepared.recycle();
+                            }
+                            return;
+                        }
+                        artworkTask = null;
+                        requestedArtworkKey = "";
+                        if (prepared == null) {
+                            failedArtworkKey = key;
+                            return;
+                        }
+                        Bitmap previous = softenedArtwork;
+                        softenedArtwork = prepared;
+                        softenedArtworkKey = key;
+                        renderArtwork(store.snapshot());
+                        if (previous != null) {
+                            previous.recycle();
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    private static Bitmap softenArtwork(Bitmap artwork) {
+        int size = 24;
+        Bitmap sample = Bitmap.createScaledBitmap(artwork, size, size, true);
+        int[] pixels = new int[size * size];
+        sample.getPixels(pixels, 0, size, 0, 0, size, size);
+        if (sample != artwork) {
+            sample.recycle();
+        }
+        int[] blurred = new int[pixels.length];
+        for (int row = 0; row < size; row++) {
+            if (Thread.currentThread().isInterrupted()) {
+                return null;
+            }
+            for (int column = 0; column < size; column++) {
+                int alpha = 0;
+                int red = 0;
+                int green = 0;
+                int blue = 0;
+                int count = 0;
+                for (int sampleRow = Math.max(0, row - 3);
+                        sampleRow <= Math.min(size - 1, row + 3); sampleRow++) {
+                    for (int sampleColumn = Math.max(0, column - 3);
+                            sampleColumn <= Math.min(size - 1, column + 3); sampleColumn++) {
+                        int color = pixels[sampleRow * size + sampleColumn];
+                        alpha += Color.alpha(color);
+                        red += Color.red(color);
+                        green += Color.green(color);
+                        blue += Color.blue(color);
+                        count++;
+                    }
+                }
+                blurred[row * size + column] = Color.argb(alpha / count,
+                        red / count, green / count, blue / count);
+            }
+        }
+        return Bitmap.createBitmap(blurred, size, size, Bitmap.Config.ARGB_8888);
     }
 
     private void renderShortcutState(ContentState state) {
@@ -742,6 +1017,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         binding.icon.setLevel(Math.max(0, level));
         binding.icon.setLocked(state.locked);
         binding.icon.setColors(iconColorForItem(state, itemId), theme.accent);
+        binding.icon.setAvailable(isItemAvailable(state, itemId));
         binding.tile.setBackground(roundColor(isItemActive(state, itemId)
                 ? theme.selected : theme.surface, dp(16)));
         binding.valueText.setText(valueForItem(state, itemId));
@@ -752,6 +1028,9 @@ public final class ContentRenderer implements ContentStore.Listener {
             lockDockIcon.setIcon("lock");
             lockDockIcon.setLocked(state.locked);
             lockDockIcon.setColors(state.lockKnown ? theme.accent : theme.mutedText, theme.accent);
+            lockDockIcon.setAvailable(isItemAvailable(state, ContentRegistry.Shortcuts.LOCK));
+            ((View) lockDockIcon.getParent()).setContentDescription(!state.lockKnown
+                    ? "车锁状态不可用" : state.locked ? "车锁已锁定" : "车锁已解锁");
         }
         for (int childIndex = 0; childIndex < dockIconViews.size(); childIndex++) {
             String itemId = state.dockItems[childIndex];
@@ -760,51 +1039,26 @@ public final class ContentRenderer implements ContentStore.Listener {
             icon.setLevel(Math.max(0, levelForItem(state, itemId)));
             icon.setLocked(state.locked);
             icon.setColors(iconColorForItem(state, itemId), theme.accent);
+            icon.setAvailable(isItemAvailable(state, itemId));
+            icon.setActive(isItemActive(state, itemId));
             dockButtons.get(childIndex).setBackground(roundColor(
                     isItemActive(state, itemId) ? theme.selected : theme.elevated, dp(12)));
+            dockButtons.get(childIndex).setContentDescription(labelForItem(itemId) + "，"
+                    + (isItemAvailable(state, itemId) ? valueForItem(state, itemId) : "暂不可用"));
         }
     }
 
     private void setButtonAvailability(View button, boolean available) {
         button.setEnabled(available);
-        button.setAlpha(available ? 1.0f : 0.42f);
-    }
-
-    private void attachTimeToCenter() {
-        if (!timeInLeftCluster && timeText.getParent() == topBar) {
-            return;
+        button.setAlpha(1.0f);
+        if (button instanceof FrameLayout) {
+            View child = ((FrameLayout) button).getChildAt(0);
+            if (child instanceof ContentIconView) {
+                ((ContentIconView) child).setColors(available ? theme.text : theme.mutedText,
+                        theme.accent);
+                ((ContentIconView) child).setAvailable(available);
+            }
         }
-        ViewParent parent = timeText.getParent();
-        if (parent instanceof ViewGroup) {
-            ((ViewGroup) parent).removeView(timeText);
-        }
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.CENTER);
-        topBar.addView(timeText, params);
-        timeInLeftCluster = false;
-        timeText.setTranslationX(0.0f);
-        timeText.setAlpha(0.0f);
-        timeText.animate().alpha(1.0f).setDuration(180L)
-                .setInterpolator(new AccelerateDecelerateInterpolator()).start();
-    }
-
-    private void attachTimeToLeft() {
-        if (timeInLeftCluster && timeText.getParent() == leftTopCluster) {
-            return;
-        }
-        ViewParent parent = timeText.getParent();
-        if (parent instanceof ViewGroup) {
-            ((ViewGroup) parent).removeView(timeText);
-        }
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        leftTopCluster.addView(timeText, 0, params);
-        timeInLeftCluster = true;
-        timeText.setTranslationX(-dp(8));
-        timeText.setAlpha(0.0f);
-        timeText.animate().alpha(1.0f).translationX(0.0f).setDuration(220L)
-                .setInterpolator(new AccelerateDecelerateInterpolator()).start();
     }
 
     private void setAnimatedVisibility(final View view, final int visibility) {
@@ -812,6 +1066,7 @@ public final class ContentRenderer implements ContentStore.Listener {
             return;
         }
         view.animate().cancel();
+        view.setVisibility(visibility);
         if (visibility == View.VISIBLE) {
             view.setAlpha(0.0f);
             view.setVisibility(View.VISIBLE);
@@ -819,15 +1074,7 @@ public final class ContentRenderer implements ContentStore.Listener {
                     .setInterpolator(new AccelerateDecelerateInterpolator()).start();
             return;
         }
-        view.animate().alpha(0.0f).setDuration(160L)
-                .setInterpolator(new AccelerateDecelerateInterpolator())
-                .withEndAction(new Runnable() {
-                    @Override
-                    public void run() {
-                        view.setVisibility(visibility);
-                        view.setAlpha(1.0f);
-                    }
-                }).start();
+        view.setAlpha(1.0f);
     }
 
     private String formatTime(ContentState state) {
@@ -857,59 +1104,104 @@ public final class ContentRenderer implements ContentStore.Listener {
     }
 
     private void renderPage(ContentState state) {
-        if (pageScroller == null) {
-            return;
+        if (lastIndicatorIndex != state.pageIndex || lastIndicatorAccent != theme.accent
+                || lastIndicatorMuted != theme.mutedText) {
+            lastIndicatorIndex = state.pageIndex;
+            lastIndicatorAccent = theme.accent;
+            lastIndicatorMuted = theme.mutedText;
+            for (int index = 0; index < pageIndicators.size(); index++) {
+                String name = "content_oem_dot_indicator_"
+                        + (index == state.pageIndex ? "select" : "unselect");
+                int resourceId = context.getResources().getIdentifier(
+                        name, "drawable", context.getPackageName());
+                if (resourceId == 0) {
+                    continue;
+                }
+                Drawable drawable = context.getResources().getDrawable(resourceId, context.getTheme()).mutate();
+                drawable.setTint(index == state.pageIndex ? theme.accent : theme.mutedText);
+                pageIndicators.get(index).setBackground(drawable);
+            }
         }
-        int targetX = state.pageIndex * pageWidth;
-        if (Math.abs(pageScroller.getScrollX() - targetX) > dp(2)) {
-            pageScroller.smoothScrollTo(targetX, 0);
-        }
+        pageScroller.setContentDescription("第 " + (state.pageIndex + 1) + " 页，共 " + pageViews.size() + " 页");
+        snapPager(pageScroller, state.pageIndex, false);
     }
 
     private void renderControl(ContentState state) {
-        if (controlScroller == null) {
-            return;
-        }
-        int targetX = state.controlIndex * pageWidth;
-        if (Math.abs(controlScroller.getScrollX() - targetX) > dp(2)) {
-            controlScroller.smoothScrollTo(targetX, 0);
-        }
+        snapPager(controlScroller, state.controlIndex, true);
     }
 
-    private void bindPagerTouch(final HorizontalScrollView scroller, final boolean control) {
-        scroller.setOnTouchListener(new View.OnTouchListener() {
-            private float downX;
-            private long downTime;
-
+    private void snapPager(final ContentPager scroller, int index, final boolean control) {
+        if (scroller == null || scroller.gestureActive || scroller.getWidth() == 0) {
+            return;
+        }
+        final int targetX = index * pageWidth;
+        ValueAnimator running = control ? controlSnapAnimator : pageSnapAnimator;
+        if (running != null && (control ? controlSnapTarget : pageSnapTarget) == targetX) {
+            return;
+        }
+        cancelPagerAnimation(control);
+        if (Math.abs(scroller.getScrollX() - targetX) <= 1) {
+            scroller.scrollTo(targetX, 0);
+            return;
+        }
+        final ValueAnimator animator = ValueAnimator.ofInt(scroller.getScrollX(), targetX);
+        animator.setDuration(220L);
+        animator.setInterpolator(new AccelerateDecelerateInterpolator());
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
-            public boolean onTouch(View view, MotionEvent event) {
-                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                    downX = event.getX();
-                    downTime = event.getEventTime();
-                    return false;
-                }
-                if (event.getActionMasked() == MotionEvent.ACTION_UP) {
-                    float deltaX = event.getX() - downX;
-                    long duration = Math.max(1L, event.getEventTime() - downTime);
-                    float velocity = Math.abs(deltaX) / duration;
-                    int currentIndex = control ? store.snapshot().controlIndex : store.snapshot().pageIndex;
-                    int maxIndex = (control ? ContentRegistry.controlIds().length
-                            : ContentRegistry.visiblePageIds().length) - 1;
-                    int targetIndex = currentIndex;
-                    if (deltaX < -dp(28) || velocity > 0.7f && deltaX < 0) {
-                        targetIndex = Math.min(maxIndex, currentIndex + 1);
-                    } else if (deltaX > dp(28) || velocity > 0.7f && deltaX > 0) {
-                        targetIndex = Math.max(0, currentIndex - 1);
-                    }
-                    if (control) {
-                        store.setControlIndex(targetIndex);
-                    } else {
-                        store.setPageIndex(targetIndex);
-                    }
-                }
-                return false;
+            public void onAnimationUpdate(ValueAnimator animation) {
+                scroller.scrollTo(((Integer) animation.getAnimatedValue()).intValue(), 0);
             }
         });
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if ((control ? controlSnapAnimator : pageSnapAnimator) != animator) {
+                    return;
+                }
+                if (!cancelled && built) {
+                    scroller.scrollTo(targetX, 0);
+                }
+                if (control) {
+                    controlSnapAnimator = null;
+                    controlSnapTarget = -1;
+                } else {
+                    pageSnapAnimator = null;
+                    pageSnapTarget = -1;
+                }
+                updateIconVisibility();
+            }
+        });
+        if (control) {
+            controlSnapAnimator = animator;
+            controlSnapTarget = targetX;
+        } else {
+            pageSnapAnimator = animator;
+            pageSnapTarget = targetX;
+        }
+        animator.start();
+        updateIconVisibility();
+    }
+
+    private void cancelPagerAnimation(boolean control) {
+        ValueAnimator animator = control ? controlSnapAnimator : pageSnapAnimator;
+        if (animator != null) {
+            animator.cancel();
+        }
+        if (control) {
+            controlSnapAnimator = null;
+            controlSnapTarget = -1;
+        } else {
+            pageSnapAnimator = null;
+            pageSnapTarget = -1;
+        }
     }
 
     @Override
@@ -928,20 +1220,25 @@ public final class ContentRenderer implements ContentStore.Listener {
             animateTheme(state.themeMode == ContentState.THEME_DARK
                     ? ContentTheme.dark() : ContentTheme.light(), state.themeMode);
         }
+        updateIconVisibility();
+        updateIconThemes(panel, state.themeMode);
         renderTopBar(state);
         renderMediaState(state);
         renderShortcutState(state);
         renderPage(state);
         renderControl(state);
         rebuildDock(state);
-        renderDockState(state);
+        updateIconVisibility();
     }
 
     private void animateTheme(final ContentTheme targetTheme, final int targetMode) {
         if (themeAnimator != null) {
-            themeAnimator.cancel();
+            ValueAnimator previous = themeAnimator;
+            themeAnimator = null;
+            previous.cancel();
         }
         final ContentTheme startTheme = theme;
+        displayedThemeMode = targetMode;
         themeAnimator = ValueAnimator.ofFloat(0.0f, 1.0f);
         themeAnimator.setDuration(240L);
         themeAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
@@ -959,7 +1256,9 @@ public final class ContentRenderer implements ContentStore.Listener {
 
             @Override
             public void onAnimationEnd(Animator animation) {
-                displayedThemeMode = targetMode;
+                if (themeAnimator != animation || !built) {
+                    return;
+                }
                 themeAnimator = null;
                 applyTheme(targetTheme);
             }
@@ -983,6 +1282,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         renderMediaState(state);
         renderShortcutState(state);
         renderDockState(state);
+        renderPage(state);
     }
 
     private void applyThemeTree(View view) {
@@ -1009,12 +1309,8 @@ public final class ContentRenderer implements ContentStore.Listener {
             view.setBackground(roundColor(theme.elevated, dp(14)));
         } else if (ROLE_SELECTED.equals(tag)) {
             view.setBackground(roundColor(theme.selected, dp(14)));
-        } else if (ROLE_LYRICS_BACKGROUND.equals(tag)) {
-            GradientDrawable gradient = new GradientDrawable(
-                    GradientDrawable.Orientation.TL_BR,
-                    new int[]{theme.elevated, theme.background});
-            gradient.setCornerRadius(dp(18));
-            view.setBackground(gradient);
+        } else if (ROLE_DIVIDER.equals(tag)) {
+            view.setBackgroundColor(theme.divider);
         }
         if (view instanceof TextView) {
             TextView textView = (TextView) view;
@@ -1030,6 +1326,9 @@ public final class ContentRenderer implements ContentStore.Listener {
         } else if (view instanceof ContentIconView) {
             ContentIconView iconView = (ContentIconView) view;
             iconView.setColors(theme.secondaryText, theme.accent);
+        }
+        if (view == atmosphereBackground) {
+            view.setAlpha(Color.red(theme.background) < 100 ? 0.20f : 0.10f);
         }
     }
 
@@ -1055,9 +1354,11 @@ public final class ContentRenderer implements ContentStore.Listener {
     }
 
     private void updatePanelWidth(int targetWidth) {
-        if (panel == null) {
+        if (panel == null || panelWidth == Math.max(dp(1), targetWidth)) {
             return;
         }
+        cancelPagerAnimation(false);
+        cancelPagerAnimation(true);
         panelWidth = Math.max(dp(1), targetWidth);
         ViewGroup.LayoutParams panelParams = panel.getLayoutParams();
         if (panelParams != null && panelParams.width != panelWidth) {
@@ -1079,6 +1380,30 @@ public final class ContentRenderer implements ContentStore.Listener {
                 controlCard.setLayoutParams(params);
             }
         }
+        ViewGroup.LayoutParams dockParams = dockContainer.getLayoutParams();
+        dockParams.width = Math.max(dp(300), panelWidth - dp(16));
+        dockContainer.setLayoutParams(dockParams);
+        final ContentState state = store.snapshot();
+        alignPager(pageScroller, state.pageIndex);
+        alignPager(controlScroller, state.controlIndex);
+        updateIconVisibility();
+    }
+
+    private void alignPager(final ContentPager scroller, final int index) {
+        if (scroller == null) {
+            return;
+        }
+        scroller.post(new Runnable() {
+            @Override
+            public void run() {
+                if (built && !scroller.gestureActive) {
+                    ContentState state = store.snapshot();
+                    int currentIndex = scroller == controlScroller ? state.controlIndex : state.pageIndex;
+                    scroller.scrollTo(currentIndex * pageWidth, 0);
+                    updateIconVisibility();
+                }
+            }
+        });
     }
 
     private void updateHostWidth(int targetWidth) {
@@ -1094,33 +1419,21 @@ public final class ContentRenderer implements ContentStore.Listener {
     }
 
     private int pageWidth() {
-        return Math.max(dp(1), panelWidth - dp(28));
+        return Math.max(dp(1), panelWidth - dp(32));
     }
 
     private LinearLayout.LayoutParams pageLayoutParams() {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(pageWidth,
-                ViewGroup.LayoutParams.MATCH_PARENT);
-        params.rightMargin = dp(10);
-        return params;
+        return new LinearLayout.LayoutParams(pageWidth, ViewGroup.LayoutParams.MATCH_PARENT);
     }
 
     private LinearLayout.LayoutParams cardLayoutParams() {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(pageWidth,
-                ViewGroup.LayoutParams.MATCH_PARENT);
-        params.rightMargin = dp(10);
-        return params;
+        return new LinearLayout.LayoutParams(pageWidth, ViewGroup.LayoutParams.MATCH_PARENT);
     }
 
     private LinearLayout.LayoutParams gridTileParams() {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
         params.rightMargin = dp(4);
-        return params;
-    }
-
-    private LinearLayout.LayoutParams actionParams(int width) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, dp(64));
-        params.leftMargin = dp(5);
         return params;
     }
 
@@ -1166,7 +1479,69 @@ public final class ContentRenderer implements ContentStore.Listener {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
         drawable.setCornerRadius(radius);
+        drawable.setStroke(dp(1), color == theme.selected ? theme.accent : theme.divider);
         return drawable;
+    }
+
+    private boolean isItemAvailable(ContentState state, String itemId) {
+        if (ContentRegistry.Pages.SHORTCUTS.equals(itemId)) {
+            return true;
+        }
+        if (ContentRegistry.Shortcuts.SETTINGS.equals(itemId)) {
+            return false;
+        }
+        if (ContentRegistry.Shortcuts.LOCK.equals(itemId)) {
+            return state.lockKnown && state.vehicleDataAvailable && !state.vehiclePreview;
+        }
+        return state.vehicleDataAvailable && !state.vehiclePreview && canControlSeat(state, itemId);
+    }
+
+    private void updateIconThemes(View view, int mode) {
+        if (view instanceof ContentIconView) {
+            ((ContentIconView) view).setThemeMode(mode);
+        } else if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int childIndex = 0; childIndex < group.getChildCount(); childIndex++) {
+                updateIconThemes(group.getChildAt(childIndex), mode);
+            }
+        }
+    }
+
+    private void updateIconVisibility() {
+        if (!built) {
+            return;
+        }
+        ContentState state = store.snapshot();
+        boolean expanded = activityActive && (Float.isNaN(dividerX) || mapWidth > dp(1));
+        setIconVisibility(topBar, expanded);
+        setIconVisibility(dockContainer, expanded);
+        for (int index = 0; index < pageViews.size(); index++) {
+            View page = pageViews.get(index);
+            boolean visible = index == state.pageIndex && !pageScroller.gestureActive
+                    && pageSnapAnimator == null && pageScroller.getScrollX() == index * pageWidth;
+            page.setImportantForAccessibility(visible ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            setIconVisibility(page, expanded && visible);
+        }
+        for (int index = 0; index < controlCards.size(); index++) {
+            View card = controlCards.get(index);
+            boolean visible = index == state.controlIndex && !controlScroller.gestureActive
+                    && controlSnapAnimator == null && controlScroller.getScrollX() == index * pageWidth;
+            card.setImportantForAccessibility(visible ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            setIconVisibility(card, expanded && visible);
+        }
+    }
+
+    private void setIconVisibility(View view, boolean visible) {
+        if (view instanceof ContentIconView) {
+            ((ContentIconView) view).setAnimationVisible(visible);
+        } else if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int childIndex = 0; childIndex < group.getChildCount(); childIndex++) {
+                setIconVisibility(group.getChildAt(childIndex), visible);
+            }
+        }
     }
 
     private int levelForItem(ContentState state, String itemId) {
@@ -1185,17 +1560,43 @@ public final class ContentRenderer implements ContentStore.Listener {
         return 0;
     }
 
+    private boolean canControlSeat(ContentState state, String itemId) {
+        return ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(itemId)
+                ? state.massageSwitchKnown : levelForItem(state, itemId) >= 0;
+    }
+
     private String valueForItem(ContentState state, String itemId) {
+        if (ContentRegistry.Pages.SHORTCUTS.equals(itemId)) {
+            return state.pageIndex == 0 ? "已选中" : "切换到快捷功能";
+        }
+        if (itemId.equals(state.pendingVehicleCommand)) {
+            return "正在确认…";
+        }
         if (ContentRegistry.Shortcuts.LOCK.equals(itemId)) {
             return state.lockKnown ? (state.locked ? "已闭锁" : "已解锁") : "不可用";
         }
         int level = levelForItem(state, itemId);
+        if (ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(itemId)) {
+            if (!state.massageSwitchKnown) {
+                return "不可用";
+            }
+            return !state.massageActive ? "关闭" : level < 0 ? "已开启·档位未知" : level + "档";
+        }
         return level < 0 ? "不可用" : level == 0 ? "关闭" : level + "档";
     }
 
     private boolean isItemActive(ContentState state, String itemId) {
+        if (ContentRegistry.Pages.SHORTCUTS.equals(itemId)) {
+            return state.pageIndex == 0;
+        }
+        if (!isItemAvailable(state, itemId)) {
+            return false;
+        }
         if (ContentRegistry.Shortcuts.LOCK.equals(itemId)) {
             return state.lockKnown && state.locked;
+        }
+        if (ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(itemId)) {
+            return state.massageSwitchKnown && state.massageActive;
         }
         return levelForItem(state, itemId) > 0;
     }
@@ -1378,6 +1779,109 @@ public final class ContentRenderer implements ContentStore.Listener {
 
         private void stop() {
             handler.removeCallbacks(tick);
+        }
+    }
+
+    private final class ContentPager extends HorizontalScrollView {
+        private final boolean control;
+        private final int touchSlop;
+        private boolean gestureActive;
+        private boolean dragging;
+        private boolean verticalGesture;
+        private float downX;
+        private float downY;
+        private VelocityTracker velocityTracker;
+
+        private ContentPager(boolean control) {
+            super(context);
+            this.control = control;
+            touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent event) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                cancelPagerAnimation(control);
+                gestureActive = true;
+                dragging = false;
+                verticalGesture = false;
+                downX = event.getX();
+                downY = event.getY();
+                releaseVelocityTracker();
+                velocityTracker = VelocityTracker.obtain();
+                updateIconVisibility();
+            }
+            if (velocityTracker != null) {
+                velocityTracker.addMovement(event);
+            }
+            boolean handled = super.dispatchTouchEvent(event);
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                gestureActive = false;
+                ContentState state = store.snapshot();
+                int index = control ? state.controlIndex : state.pageIndex;
+                if (action == MotionEvent.ACTION_UP && dragging) {
+                    float delta = event.getX() - downX;
+                    velocityTracker.computeCurrentVelocity(1000);
+                    float velocity = velocityTracker.getXVelocity();
+                    if (Math.abs(delta) >= dp(28) || Math.abs(velocity) >= dp(700)) {
+                        int maxIndex = (control ? controlCards.size() : pageViews.size()) - 1;
+                        index = Math.max(0, Math.min(maxIndex,
+                                index + (delta < 0 ? 1 : -1)));
+                    }
+                }
+                releaseVelocityTracker();
+                if (control) {
+                    store.setControlIndex(index);
+                } else {
+                    store.setPageIndex(index);
+                }
+                snapPager(this, index, control);
+            }
+            return handled;
+        }
+
+        @Override
+        public boolean onInterceptTouchEvent(MotionEvent event) {
+            if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                float distanceX = Math.abs(event.getX() - downX);
+                float distanceY = Math.abs(event.getY() - downY);
+                if (!dragging && distanceY > touchSlop && distanceY > distanceX) {
+                    verticalGesture = true;
+                }
+                if (verticalGesture) {
+                    return false;
+                }
+                if (distanceX > touchSlop && distanceX > distanceY) {
+                    dragging = true;
+                }
+            }
+            return super.onInterceptTouchEvent(event);
+        }
+
+        @Override
+        protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+            super.onSizeChanged(width, height, oldWidth, oldHeight);
+            ContentState state = store.snapshot();
+            alignPager(this, control ? state.controlIndex : state.pageIndex);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            gestureActive = false;
+            releaseVelocityTracker();
+            super.onDetachedFromWindow();
+        }
+
+        private void releaseVelocityTracker() {
+            if (velocityTracker != null) {
+                velocityTracker.recycle();
+                velocityTracker = null;
+            }
+        }
+
+        @Override
+        public void fling(int velocityX) {
         }
     }
 

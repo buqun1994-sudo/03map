@@ -1,277 +1,356 @@
 package com.autonavi.amapauto.content;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.RectF;
+import android.graphics.ColorFilter;
+import android.graphics.drawable.Drawable;
 import android.view.View;
+import com.airbnb.lottie.LottieComposition;
+import com.airbnb.lottie.LottieCompositionFactory;
+import com.airbnb.lottie.LottieDrawable;
+import com.airbnb.lottie.LottieListener;
+import com.airbnb.lottie.LottieProperty;
+import com.airbnb.lottie.LottieTask;
+import com.airbnb.lottie.RenderMode;
+import com.airbnb.lottie.SimpleColorFilter;
+import com.airbnb.lottie.model.KeyPath;
+import com.airbnb.lottie.value.LottieValueCallback;
 
 public final class ContentIconView extends View {
-    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Path path = new Path();
     private String iconKey = "settings";
     private int iconColor;
-    private int accentColor;
     private int level;
     private int batteryPercent = -1;
+    private int themeMode = ContentState.THEME_LIGHT;
+    private boolean locked = true;
     private boolean charging;
-    private boolean locked;
+    private boolean available = true;
+    private boolean active;
+    private boolean animationVisible = true;
+    private boolean attached;
+    private boolean drawingAnimation;
+    private String resourceName = "";
+    private Drawable stableDrawable;
+    private LottieDrawable animatedDrawable;
+    private LottieTask<LottieComposition> loadingTask;
+    private LottieListener<LottieComposition> loadedListener;
+    private LottieListener<Throwable> failedListener;
+    private int loadSequence;
 
     public ContentIconView(Context context) {
         super(context);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeJoin(Paint.Join.ROUND);
-        setWillNotDraw(false);
+        setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
 
-    public void setIcon(String iconKey) {
-        this.iconKey = iconKey == null ? "settings" : iconKey;
+    public void setIcon(String nextIconKey) {
+        if (nextIconKey == null || nextIconKey.equals(iconKey)) {
+            return;
+        }
+        boolean playbackTransition = ("play".equals(iconKey) || "pause".equals(iconKey))
+                && ("play".equals(nextIconKey) || "pause".equals(nextIconKey));
+        iconKey = nextIconKey;
+        stopAnimation();
+        refresh(playbackTransition);
+    }
+
+    public void setColors(int nextIconColor, int accentColor) {
+        if (iconColor == nextIconColor && stableDrawable != null) {
+            return;
+        }
+        iconColor = nextIconColor;
+        refresh(false);
+        if (animatedDrawable != null) {
+            animatedDrawable.addValueCallback(new KeyPath("**"), LottieProperty.COLOR_FILTER,
+                    new LottieValueCallback<ColorFilter>(new SimpleColorFilter(iconColor)));
+        }
+    }
+
+    public void setLevel(int nextLevel) {
+        nextLevel = Math.max(0, Math.min(3, nextLevel));
+        if (level != nextLevel) {
+            level = nextLevel;
+            refresh(false);
+        }
+    }
+
+    public void setBattery(int nextPercent, boolean nextCharging) {
+        boolean transition = charging != nextCharging && nextCharging && batteryPercent >= 0;
+        if (batteryPercent != nextPercent || charging != nextCharging) {
+            batteryPercent = nextPercent;
+            charging = nextCharging;
+            stopAnimation();
+            refresh(transition);
+        }
+    }
+
+    public void setLocked(boolean nextLocked) {
+        if (locked != nextLocked) {
+            locked = nextLocked;
+            stopAnimation();
+            refresh("lock".equals(iconKey));
+        }
+    }
+
+    public void setThemeMode(int nextThemeMode) {
+        if (themeMode != nextThemeMode) {
+            themeMode = nextThemeMode;
+            refresh(false);
+        }
+    }
+
+    public void setAvailable(boolean nextAvailable) {
+        if (available != nextAvailable) {
+            available = nextAvailable;
+            stopAnimation();
+            refresh(false);
+        }
+    }
+
+    public void setActive(boolean nextActive) {
+        if (active != nextActive) {
+            active = nextActive;
+            refresh("map".equals(iconKey) && nextActive);
+        }
+    }
+
+    public void setAnimationVisible(boolean visible) {
+        if (animationVisible == visible) {
+            return;
+        }
+        animationVisible = visible;
+        if (!visible) {
+            stopAnimation();
+        }
+    }
+
+    public void playAction() {
+        startTransition();
+    }
+
+    private void refresh(boolean animate) {
+        String nextResource = stableResourceName();
+        if (!nextResource.equals(resourceName) || stableDrawable == null) {
+            resourceName = nextResource;
+            int resourceId = getResources().getIdentifier(resourceName, "drawable",
+                    getContext().getPackageName());
+            if (stableDrawable != null) {
+                stableDrawable.setCallback(null);
+            }
+            stableDrawable = resourceId == 0 ? null
+                    : getResources().getDrawable(resourceId, getContext().getTheme()).mutate();
+            if (stableDrawable != null) {
+                stableDrawable.setCallback(this);
+            }
+        }
+        if (stableDrawable != null) {
+            if (available && level > 0 && isSeatIcon()) {
+                stableDrawable.clearColorFilter();
+            } else {
+                stableDrawable.setColorFilter(new SimpleColorFilter(iconColor));
+            }
+        }
         invalidate();
+        if (animate) {
+            startTransition();
+        }
     }
 
-    public void setColors(int iconColor, int accentColor) {
-        this.iconColor = iconColor;
-        this.accentColor = accentColor;
-        invalidate();
+    private boolean isSeatIcon() {
+        return "ventilation".equals(iconKey) || "heating".equals(iconKey)
+                || "massage".equals(iconKey);
     }
 
-    public void setLevel(int level) {
-        this.level = level;
-        invalidate();
+    private String stableResourceName() {
+        if (isSeatIcon()) {
+            String seatKind = "ventilation".equals(iconKey) ? "ventilate"
+                    : "heating".equals(iconKey) ? "heat" : "massage";
+            String seatLevel = available && level > 0 ? Integer.toString(level) : "off";
+            return "content_oem_ico_skin_seat_" + seatKind + "_l_" + seatLevel
+                    + (themeMode == ContentState.THEME_DARK ? "_night" : "_day");
+        }
+        if ("lock".equals(iconKey)) {
+            return "content_oem_ico_lock_" + (available && !locked ? "open" : "close");
+        }
+        if ("battery".equals(iconKey)) {
+            int bucket = Math.max(0, Math.min(5, (batteryPercent + 19) / 20));
+            return "content_oem_ico_battery_" + (available && charging ? "charging" : bucket);
+        }
+        if ("play".equals(iconKey) || "pause".equals(iconKey) || "next".equals(iconKey)) {
+            return "content_oem_ico_media_" + iconKey;
+        }
+        if ("source".equals(iconKey)) {
+            return "content_oem_ico_media_music";
+        }
+        if ("climate".equals(iconKey)) {
+            return "content_oem_ico_ac_ac";
+        }
+        if ("map".equals(iconKey)) {
+            return "content_oem_ico_home_applist";
+        }
+        return "content_oem_ic_settings";
     }
 
-    public void setBattery(int batteryPercent, boolean charging) {
-        this.batteryPercent = batteryPercent;
-        this.charging = charging;
-        invalidate();
+    private String transitionAsset() {
+        if ("lock".equals(iconKey)) {
+            return locked ? "ico_lock_close_f.json" : "ico_lock_open_f.json";
+        }
+        if ("play".equals(iconKey) || "pause".equals(iconKey)) {
+            return "ico_media_" + iconKey + "_02_f.json";
+        }
+        if ("next".equals(iconKey)) {
+            return "ico_media_next.json";
+        }
+        if ("battery".equals(iconKey) && charging) {
+            return "ico_battery_charging.json";
+        }
+        if ("map".equals(iconKey) && active) {
+            return "ico_home_applist.json";
+        }
+        return null;
     }
 
-    public void setLocked(boolean locked) {
-        this.locked = locked;
+    private boolean canAnimate() {
+        return attached && animationVisible && available && isShown()
+                && getWindowVisibility() == View.VISIBLE && hasWindowFocus();
+    }
+
+    private void startTransition() {
+        final String asset = transitionAsset();
+        if (asset == null || !canAnimate()) {
+            return;
+        }
+        stopAnimation();
+        final int sequence = loadSequence;
+        loadedListener = new LottieListener<LottieComposition>() {
+            @Override
+            public void onResult(LottieComposition composition) {
+                if (sequence != loadSequence || !canAnimate()) {
+                    return;
+                }
+                for (String warning : composition.getWarnings()) {
+                    if (!warning.startsWith("Animation contains merge paths.")) {
+                        android.util.Log.w("ContentIconView", "Unsupported OEM animation: " + asset);
+                        stopAnimation();
+                        return;
+                    }
+                }
+                if (animatedDrawable == null) {
+                    animatedDrawable = new LottieDrawable();
+                    animatedDrawable.setCallback(ContentIconView.this);
+                    animatedDrawable.enableMergePathsForKitKatAndAbove(true);
+                    animatedDrawable.setRenderMode(RenderMode.SOFTWARE);
+                    animatedDrawable.setUseCompositionFrameRate(true);
+                    animatedDrawable.setRepeatCount(0);
+                    animatedDrawable.addAnimatorListener(new AnimatorListenerAdapter() {
+                        @Override
+                        public void onAnimationEnd(Animator animation) {
+                            drawingAnimation = false;
+                            invalidate();
+                        }
+                    });
+                }
+                animatedDrawable.setComposition(composition);
+                animatedDrawable.addValueCallback(new KeyPath("**"), LottieProperty.COLOR_FILTER,
+                        new LottieValueCallback<ColorFilter>(new SimpleColorFilter(iconColor)));
+                drawingAnimation = true;
+                animatedDrawable.playAnimation();
+                invalidate();
+            }
+        };
+        failedListener = new LottieListener<Throwable>() {
+            @Override
+            public void onResult(Throwable failure) {
+                if (sequence == loadSequence) {
+                    android.util.Log.w("ContentIconView", "OEM animation unavailable: " + asset, failure);
+                    stopAnimation();
+                }
+            }
+        };
+        loadingTask = LottieCompositionFactory.fromAsset(getContext().getApplicationContext(),
+                "content-oem/" + asset, "content-oem/" + asset);
+        loadingTask.addListener(loadedListener).addFailureListener(failedListener);
+    }
+
+    private void stopAnimation() {
+        loadSequence++;
+        if (loadingTask != null) {
+            loadingTask.removeListener(loadedListener);
+            loadingTask.removeFailureListener(failedListener);
+            loadingTask = null;
+        }
+        loadedListener = null;
+        failedListener = null;
+        if (animatedDrawable != null) {
+            animatedDrawable.cancelAnimation();
+        }
+        drawingAnimation = false;
         invalidate();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        float centerX = getWidth() * 0.5f;
-        float centerY = getHeight() * 0.5f;
-        float size = Math.min(getWidth(), getHeight()) * 0.68f;
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(Math.max(2.0f, size * 0.08f));
-        paint.setColor(iconColor);
-        if ("ventilation".equals(iconKey)) {
-            drawSeat(canvas, centerX, centerY, size, false);
-            drawWaves(canvas, centerX + size * 0.12f, centerY - size * 0.25f, size * 0.1f, level);
-        } else if ("heating".equals(iconKey)) {
-            drawSeat(canvas, centerX, centerY, size, false);
-            drawWaves(canvas, centerX + size * 0.12f, centerY - size * 0.25f, size * 0.1f, level);
-        } else if ("massage".equals(iconKey)) {
-            drawSeat(canvas, centerX, centerY, size, true);
-            drawMassage(canvas, centerX + size * 0.12f, centerY + size * 0.1f, size * 0.1f, level);
-        } else if ("lock".equals(iconKey)) {
-            drawLock(canvas, centerX, centerY, size);
-        } else if ("map".equals(iconKey)) {
-            drawMap(canvas, centerX, centerY, size);
-        } else if ("play".equals(iconKey)) {
-            drawPlay(canvas, centerX, centerY, size);
-        } else if ("pause".equals(iconKey)) {
-            drawPause(canvas, centerX, centerY, size);
-        } else if ("next".equals(iconKey)) {
-            drawNext(canvas, centerX, centerY, size);
-        } else if ("source".equals(iconKey)) {
-            drawNote(canvas, centerX, centerY, size);
-        } else if ("battery".equals(iconKey)) {
-            drawBattery(canvas, centerX, centerY, size);
-        } else if ("climate".equals(iconKey)) {
-            drawClimate(canvas, centerX, centerY, size);
-        } else {
-            drawSettings(canvas, centerX, centerY, size);
+        Drawable drawable = drawingAnimation ? animatedDrawable : stableDrawable;
+        if (drawable != null) {
+            int size = Math.min(getWidth(), getHeight());
+            int left = (getWidth() - size) / 2;
+            int top = (getHeight() - size) / 2;
+            drawable.setBounds(left, top, left + size, top + size);
+            drawable.draw(canvas);
         }
     }
 
-    private void drawSeat(Canvas canvas, float centerX, float centerY, float size, boolean massage) {
-        RectF seatBack = new RectF(centerX - size * 0.26f, centerY - size * 0.36f,
-                centerX - size * 0.02f, centerY + size * 0.20f);
-        canvas.drawRoundRect(seatBack, size * 0.08f, size * 0.08f, paint);
-        path.reset();
-        path.moveTo(centerX - size * 0.22f, centerY + size * 0.16f);
-        path.lineTo(centerX + size * 0.25f, centerY + size * 0.22f);
-        path.lineTo(centerX + size * 0.34f, centerY + size * 0.42f);
-        canvas.drawPath(path, paint);
-        if (massage) {
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(accentColor);
-            canvas.drawCircle(centerX + size * 0.12f, centerY - size * 0.18f, size * 0.045f, paint);
-            canvas.drawCircle(centerX + size * 0.27f, centerY - size * 0.02f, size * 0.045f, paint);
-            paint.setColor(iconColor);
-            paint.setStyle(Paint.Style.STROKE);
+    @Override
+    protected boolean verifyDrawable(Drawable drawable) {
+        return drawable == stableDrawable || drawable == animatedDrawable || super.verifyDrawable(drawable);
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        attached = true;
+        refresh(false);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus) {
+            stopAnimation();
         }
     }
 
-    private void drawWaves(Canvas canvas, float centerX, float centerY, float waveWidth, int activeLevel) {
-        int waveCount = Math.max(0, Math.min(3, activeLevel));
-        for (int waveIndex = 0; waveIndex < 3; waveIndex++) {
-            paint.setColor(waveIndex < waveCount ? accentColor : iconColor);
-            float offset = waveIndex * waveWidth * 1.45f;
-            path.reset();
-            path.moveTo(centerX + offset, centerY + waveWidth * 0.8f);
-            path.cubicTo(centerX + offset - waveWidth, centerY,
-                    centerX + offset + waveWidth, centerY - waveWidth,
-                    centerX + offset, centerY - waveWidth * 1.8f);
-            canvas.drawPath(path, paint);
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility != View.VISIBLE) {
+            stopAnimation();
         }
     }
 
-    private void drawMassage(Canvas canvas, float centerX, float centerY, float dotSize, int activeLevel) {
-        int dotCount = Math.max(0, Math.min(3, activeLevel));
-        paint.setStyle(Paint.Style.FILL);
-        for (int dotIndex = 0; dotIndex < 3; dotIndex++) {
-            paint.setColor(dotIndex < dotCount ? accentColor : iconColor);
-            canvas.drawCircle(centerX + dotIndex * dotSize * 1.7f, centerY, dotSize * 0.52f, paint);
-        }
-        paint.setStyle(Paint.Style.STROKE);
-    }
-
-    private void drawLock(Canvas canvas, float centerX, float centerY, float size) {
-        RectF body = new RectF(centerX - size * 0.28f, centerY - size * 0.02f,
-                centerX + size * 0.28f, centerY + size * 0.34f);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(iconColor);
-        canvas.drawRoundRect(body, size * 0.06f, size * 0.06f, paint);
-        paint.setStyle(Paint.Style.STROKE);
-        path.reset();
-        if (locked) {
-            path.moveTo(centerX - size * 0.18f, centerY - size * 0.02f);
-            path.lineTo(centerX - size * 0.18f, centerY - size * 0.25f);
-            path.cubicTo(centerX - size * 0.18f, centerY - size * 0.52f,
-                    centerX + size * 0.18f, centerY - size * 0.52f,
-                    centerX + size * 0.18f, centerY - size * 0.25f);
-            path.lineTo(centerX + size * 0.18f, centerY - size * 0.02f);
-        } else {
-            path.moveTo(centerX - size * 0.18f, centerY - size * 0.02f);
-            path.lineTo(centerX - size * 0.18f, centerY - size * 0.24f);
-            path.cubicTo(centerX - size * 0.18f, centerY - size * 0.48f,
-                    centerX + size * 0.08f, centerY - size * 0.49f,
-                    centerX + size * 0.18f, centerY - size * 0.30f);
-        }
-        canvas.drawPath(path, paint);
-    }
-
-    private void drawMap(Canvas canvas, float centerX, float centerY, float size) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(accentColor);
-        canvas.drawCircle(centerX, centerY, size * 0.38f, paint);
-        paint.setColor(iconColor);
-        canvas.drawCircle(centerX, centerY - size * 0.08f, size * 0.11f, paint);
-        path.reset();
-        path.moveTo(centerX - size * 0.2f, centerY + size * 0.2f);
-        path.lineTo(centerX + size * 0.18f, centerY - size * 0.28f);
-        canvas.drawPath(path, paint);
-        paint.setStyle(Paint.Style.STROKE);
-    }
-
-    private void drawPlay(Canvas canvas, float centerX, float centerY, float size) {
-        paint.setStyle(Paint.Style.FILL);
-        path.reset();
-        path.moveTo(centerX - size * 0.18f, centerY - size * 0.34f);
-        path.lineTo(centerX + size * 0.30f, centerY);
-        path.lineTo(centerX - size * 0.18f, centerY + size * 0.34f);
-        path.close();
-        canvas.drawPath(path, paint);
-        paint.setStyle(Paint.Style.STROKE);
-    }
-
-    private void drawPause(Canvas canvas, float centerX, float centerY, float size) {
-        paint.setStyle(Paint.Style.FILL);
-        canvas.drawRoundRect(new RectF(centerX - size * 0.25f, centerY - size * 0.30f,
-                centerX - size * 0.05f, centerY + size * 0.30f), size * 0.04f, size * 0.04f, paint);
-        canvas.drawRoundRect(new RectF(centerX + size * 0.05f, centerY - size * 0.30f,
-                centerX + size * 0.25f, centerY + size * 0.30f), size * 0.04f, size * 0.04f, paint);
-        paint.setStyle(Paint.Style.STROKE);
-    }
-
-    private void drawNext(Canvas canvas, float centerX, float centerY, float size) {
-        paint.setStyle(Paint.Style.FILL);
-        path.reset();
-        path.moveTo(centerX - size * 0.28f, centerY - size * 0.28f);
-        path.lineTo(centerX + size * 0.10f, centerY);
-        path.lineTo(centerX - size * 0.28f, centerY + size * 0.28f);
-        path.close();
-        canvas.drawPath(path, paint);
-        canvas.drawRoundRect(new RectF(centerX + size * 0.15f, centerY - size * 0.30f,
-                centerX + size * 0.25f, centerY + size * 0.30f), size * 0.04f, size * 0.04f, paint);
-        paint.setStyle(Paint.Style.STROKE);
-    }
-
-    private void drawNote(Canvas canvas, float centerX, float centerY, float size) {
-        paint.setStyle(Paint.Style.FILL);
-        canvas.drawCircle(centerX - size * 0.18f, centerY + size * 0.23f, size * 0.13f, paint);
-        canvas.drawRoundRect(new RectF(centerX - size * 0.08f, centerY - size * 0.33f,
-                centerX + size * 0.01f, centerY + size * 0.24f), size * 0.03f, size * 0.03f, paint);
-        path.reset();
-        path.moveTo(centerX - size * 0.03f, centerY - size * 0.32f);
-        path.cubicTo(centerX + size * 0.25f, centerY - size * 0.28f,
-                centerX + size * 0.26f, centerY - size * 0.12f,
-                centerX + size * 0.34f, centerY - size * 0.05f);
-        canvas.drawPath(path, paint);
-        paint.setStyle(Paint.Style.STROKE);
-    }
-
-    private void drawBattery(Canvas canvas, float centerX, float centerY, float size) {
-        RectF outer = new RectF(centerX - size * 0.40f, centerY - size * 0.22f,
-                centerX + size * 0.34f, centerY + size * 0.22f);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(Math.max(2.0f, size * 0.06f));
-        canvas.drawRoundRect(outer, size * 0.07f, size * 0.07f, paint);
-        paint.setStyle(Paint.Style.FILL);
-        canvas.drawRoundRect(new RectF(centerX + size * 0.36f, centerY - size * 0.10f,
-                centerX + size * 0.46f, centerY + size * 0.10f), size * 0.03f, size * 0.03f, paint);
-        int fillPercent = Math.max(0, Math.min(100, batteryPercent));
-        float fillWidth = size * 0.64f * fillPercent / 100.0f;
-        paint.setColor(charging ? accentColor : iconColor);
-        canvas.drawRoundRect(new RectF(centerX - size * 0.32f, centerY - size * 0.13f,
-                centerX - size * 0.32f + fillWidth, centerY + size * 0.13f),
-                size * 0.03f, size * 0.03f, paint);
-        if (charging) {
-            paint.setColor(accentColor);
-            path.reset();
-            path.moveTo(centerX + size * 0.02f, centerY - size * 0.18f);
-            path.lineTo(centerX - size * 0.09f, centerY + size * 0.02f);
-            path.lineTo(centerX + size * 0.01f, centerY + size * 0.02f);
-            path.lineTo(centerX - size * 0.03f, centerY + size * 0.20f);
-            path.lineTo(centerX + size * 0.14f, centerY - size * 0.04f);
-            path.lineTo(centerX + size * 0.04f, centerY - size * 0.04f);
-            path.close();
-            canvas.drawPath(path, paint);
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (visibility != View.VISIBLE) {
+            stopAnimation();
         }
     }
 
-    private void drawClimate(Canvas canvas, float centerX, float centerY, float size) {
-        paint.setStyle(Paint.Style.STROKE);
-        canvas.drawCircle(centerX, centerY, size * 0.26f, paint);
-        for (int spoke = 0; spoke < 4; spoke++) {
-            double angle = spoke * Math.PI / 2.0;
-            float startX = centerX + (float) Math.cos(angle) * size * 0.30f;
-            float startY = centerY + (float) Math.sin(angle) * size * 0.30f;
-            float endX = centerX + (float) Math.cos(angle) * size * 0.42f;
-            float endY = centerY + (float) Math.sin(angle) * size * 0.42f;
-            canvas.drawLine(startX, startY, endX, endY, paint);
+    @Override
+    protected void onDetachedFromWindow() {
+        attached = false;
+        stopAnimation();
+        if (animatedDrawable != null) {
+            animatedDrawable.removeAllAnimatorListeners();
+            animatedDrawable.clearComposition();
+            animatedDrawable.setCallback(null);
+            animatedDrawable = null;
         }
-    }
-
-    private void drawSettings(Canvas canvas, float centerX, float centerY, float size) {
-        paint.setStyle(Paint.Style.STROKE);
-        RectF outer = new RectF(centerX - size * 0.34f, centerY - size * 0.30f,
-                centerX + size * 0.34f, centerY + size * 0.30f);
-        canvas.drawRoundRect(outer, size * 0.08f, size * 0.08f, paint);
-        canvas.drawLine(centerX - size * 0.18f, centerY - size * 0.10f,
-                centerX + size * 0.18f, centerY - size * 0.10f, paint);
-        canvas.drawLine(centerX - size * 0.18f, centerY + size * 0.12f,
-                centerX + size * 0.18f, centerY + size * 0.12f, paint);
-        paint.setStyle(Paint.Style.FILL);
-        canvas.drawCircle(centerX - size * 0.04f, centerY - size * 0.10f, size * 0.06f, paint);
-        canvas.drawCircle(centerX + size * 0.09f, centerY + size * 0.12f, size * 0.06f, paint);
+        if (stableDrawable != null) {
+            stableDrawable.setCallback(null);
+        }
+        super.onDetachedFromWindow();
     }
 }

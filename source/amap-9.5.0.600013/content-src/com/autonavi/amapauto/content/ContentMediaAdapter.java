@@ -3,6 +3,7 @@ package com.autonavi.amapauto.content;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
@@ -262,9 +263,16 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         long actions = playbackState == null ? 0L : playbackState.getActions();
         boolean playbackAvailable = (actions & (PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE)) != 0L;
         boolean nextAvailable = (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L;
+        Bitmap artwork = metadata == null ? null : metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+        if (artwork == null && metadata != null) {
+            artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+        }
+        if (artwork == null && metadata != null) {
+            artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
+        }
         stateListener.onMediaSnapshot(new ContentPorts.MediaSnapshot(true, false,
                 sourceForPackage(packageName), playing, currentGeneration, title, artist,
-                playbackAvailable, nextAvailable));
+                playbackAvailable, nextAvailable, artwork));
     }
 
     private String stringMetadata(MediaMetadata metadata, String key, String fallback) {

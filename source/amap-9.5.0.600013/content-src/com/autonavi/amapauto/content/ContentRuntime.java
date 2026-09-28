@@ -66,6 +66,22 @@ public final class ContentRuntime {
         }
     }
 
+    public static void onHostPaused(Activity activity) {
+        synchronized (LOCK) {
+            if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
+                activeRuntime.renderer.pause();
+            }
+        }
+    }
+
+    public static void onHostResumed(Activity activity) {
+        synchronized (LOCK) {
+            if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
+                activeRuntime.renderer.resume();
+            }
+        }
+    }
+
     public static void onAmapThemeChanged(int mode) {
         int resolvedMode = mode == 2 ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
         lastAmapThemeMode = resolvedMode;

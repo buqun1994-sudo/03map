@@ -41,7 +41,7 @@ unzip -l "$INPUT_APK" | rg 'AndroidManifest|classes|lib/|resources.arsc'
 ### 正式源码回写与可重建门禁
 
 1. 对照当前 Git 正式源码与实验副本，只迁入本轮确认为有效的 Java、Smali、Manifest、资源及构建配置；将 `build/`、class、DEX、签名、旧轮次和设备证据排除。迁入后逐项核对文件哈希、命名空间、方法入口和资源引用。
-2. 在被忽略的 `.codex/local-context.properties` 配置指向仓库外的 `AMAP_SIGNING_PK8` 和 `AMAP_SIGNING_CERT`，从正式源码运行 `bash scripts/build-content-apk.sh`。脚本在被忽略的 `apk-work/9.5.0.600013/source-build.*` 编译 `content-src/`、用 D8 生成 `classes2.dex`、回编 APKTool、注入 DEX、对齐并签名；不从旧 `unknown/classes2.dex` 借用产物。
+2. 在被忽略的 `.codex/local-context.properties` 配置指向仓库外的 `AMAP_SIGNING_PK8` 和 `AMAP_SIGNING_CERT`，从正式源码运行 `bash scripts/build-content-apk.sh`。脚本先运行 `scripts/check-content-assets.mjs`，通过 `scripts/resolve-content-deps.sh` 按版本和 SHA-256 获取公开 Lottie 6.6.7 及必要 AndroidX／Okio 依赖到被忽略 `.tmp/`，从正式 `content-src/` 编译 Java；R8 从受控库裁剪不触及私有 View 的同 APK 图标播放器并生成 `classes2.dex`，`scripts/check-content-dex.mjs` 核对引用闭包；再在被忽略的 `apk-work/9.5.0.600013/source-build.*` 回编 APKTool、注入 DEX、对齐并签名。不从旧 `unknown/classes2.dex` 借用产物，也不把 AAR／JAR／APK／DEX 加入 Git。首次无网络或缓存失效时依赖预检失败，不绕过哈希或降级为不完整包。
 3. 缺少签名材料、证书不等于已测试候选包身份或签名 / 包身份验证不通过时，脚本在交付前失败；不输出可交付的未签名包，也不回退到任意 Debug 证书。可显式传入仓库外 PK8、PEM 路径覆盖本机配置：`bash scripts/build-content-apk.sh "$EXTERNAL_KEY" "$EXTERNAL_CERT"`。输出 `signed.apk` 才是候选包；脚本自动验证单 signer、v2、证书 SHA-256、包身份、对齐、DEX 与 `.so` Deflate，并清理未签名中间包。不得从旧签名包复制签名块。
 4. 构建完成后运行 `node scripts/check-code-map.mjs`、`git diff --check`，检查 `git status` 与暂存清单。提交正式源码、构建入口和追踪文档；APK、DEX、class、密钥及完整日志永不进入 Git。若正式源码不能独立重建，禁止宣称代码已归档。
 
@@ -62,12 +62,13 @@ unzip -l "$INPUT_APK" | rg 'AndroidManifest|classes|lib/|resources.arsc'
 
 用户未指定其它方式时，构建后由 AI 在安全门禁内完成：
 
-1. 设备处于 `device` 状态，包名 / 版本 / 签名允许保留数据覆盖安装。
+1. 先通过唯一车机发现入口获取当前 serial，确认设备处于 `device` 状态，包名 / 版本 / 签名允许保留数据覆盖安装；入口失败后停止，不使用配置中旧 serial。
 2. 使用 `adb install -r` 安装，不用卸载、清数据或降级绕过错误。
 3. 按 `aapt2` 解析出的实际入口启动，确认目标进程存活。
 4. 读取窗口、Surface / 分屏几何和最小致命日志；截图、日志只写临时目录。
 
 ```sh
+VEHICLE_ADB_SERIAL="$(node scripts/find-vehicle-adb.mjs --serial-only)" || exit 1
 "$ADB" devices -l
 "$ADB" -s "$VEHICLE_ADB_SERIAL" install -r "$WORK_DIR/signed.apk"
 "$ADB" -s "$VEHICLE_ADB_SERIAL" shell am start -n "$ENTRY_COMPONENT"

@@ -1,14 +1,18 @@
 package com.autonavi.amapauto.content;
 
+import android.graphics.Bitmap;
+
 public final class ContentState {
     public static final int THEME_LIGHT = 0;
     public static final int THEME_DARK = 1;
     public static final int CHARGE_DEFAULT = 0;
+    public static final int CHARGE_UNKNOWN = -1;
     public static final int CHARGE_PLUGGED = 1;
     public static final int CHARGE_SCHEDULED = 2;
     public static final int CHARGE_CHARGING = 3;
     public static final int COMMAND_NONE = 0;
     public static final int COMMAND_FAILED = 1;
+    public static final int COMMAND_PENDING = 2;
 
     public int themeMode = THEME_LIGHT;
     public boolean showWeekday = true;
@@ -18,8 +22,11 @@ public final class ContentState {
     public boolean vehiclePreview;
     public float temperatureC = Float.NaN;
     public int batteryPercent = -1;
-    public int rangeKm = -1;
-    public int chargeState = CHARGE_DEFAULT;
+    public int rangeRaw = -1;
+    public int chargeState = CHARGE_UNKNOWN;
+    public int chargeConnectionRaw = -1;
+    public int chargeBmsRaw = -1;
+    public int chargeScheduleRaw = -1;
     public float chargePowerKw = Float.NaN;
     public int chargeRemainingMinutes = -1;
     public int pageIndex = 1;
@@ -33,15 +40,20 @@ public final class ContentState {
     public String mediaArtist = "未连接";
     public boolean mediaPlaybackAvailable;
     public boolean mediaNextAvailable;
+    public Bitmap mediaArtwork;
     public int ventilationLevel = -1;
     public int heatingLevel = -1;
     public int massageLevel = -1;
+    public int massageModeRaw = -1;
+    public boolean massageSwitchKnown;
+    public boolean massageActive;
     public boolean seatControlsKnown;
     public boolean lockKnown;
     public boolean locked = true;
     public int commandStatus = COMMAND_NONE;
     public long commandSequence;
     public String commandMessage = "";
+    public String pendingVehicleCommand = "";
     public String[] dockItems = ContentRegistry.defaultDockItems();
 
     public ContentState copy() {
@@ -54,8 +66,11 @@ public final class ContentState {
         copy.vehiclePreview = vehiclePreview;
         copy.temperatureC = temperatureC;
         copy.batteryPercent = batteryPercent;
-        copy.rangeKm = rangeKm;
+        copy.rangeRaw = rangeRaw;
         copy.chargeState = chargeState;
+        copy.chargeConnectionRaw = chargeConnectionRaw;
+        copy.chargeBmsRaw = chargeBmsRaw;
+        copy.chargeScheduleRaw = chargeScheduleRaw;
         copy.chargePowerKw = chargePowerKw;
         copy.chargeRemainingMinutes = chargeRemainingMinutes;
         copy.pageIndex = pageIndex;
@@ -69,15 +84,20 @@ public final class ContentState {
         copy.mediaArtist = mediaArtist;
         copy.mediaPlaybackAvailable = mediaPlaybackAvailable;
         copy.mediaNextAvailable = mediaNextAvailable;
+        copy.mediaArtwork = mediaArtwork;
         copy.ventilationLevel = ventilationLevel;
         copy.heatingLevel = heatingLevel;
         copy.massageLevel = massageLevel;
+        copy.massageModeRaw = massageModeRaw;
+        copy.massageSwitchKnown = massageSwitchKnown;
+        copy.massageActive = massageActive;
         copy.seatControlsKnown = seatControlsKnown;
         copy.lockKnown = lockKnown;
         copy.locked = locked;
         copy.commandStatus = commandStatus;
         copy.commandSequence = commandSequence;
         copy.commandMessage = commandMessage;
+        copy.pendingVehicleCommand = pendingVehicleCommand;
         copy.dockItems = dockItems.clone();
         return copy;
     }

@@ -13,6 +13,7 @@ source_root="$repo_root/source/amap-9.5.0.600013"
 work_root="$repo_root/apk-work/9.5.0.600013"
 android_jar="$ANDROID_SDK_ROOT/platforms/android-34/android.jar"
 d8="$(dirname "$ZIPALIGN")/d8"
+r8_jar="$(dirname "$ZIPALIGN")/lib/d8.jar"
 aapt2="${AAPT2:-$(dirname "$ZIPALIGN")/aapt2}"
 expected_signer='a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc'
 
@@ -31,7 +32,7 @@ if [[ "$certificate_digest" != "$expected_signer" ]]; then
     printf '签名证书与当前车机候选包身份不匹配；禁止构建或覆盖安装\n' >&2
     exit 1
 fi
-for required in "$source_root/apktool.yml" "$android_jar" "$d8" "$APKTOOL_JAR" "$aapt2" "$ZIPALIGN" "$APKSIGNER"; do
+for required in "$source_root/apktool.yml" "$android_jar" "$d8" "$r8_jar" "$APKTOOL_JAR" "$aapt2" "$ZIPALIGN" "$APKSIGNER"; do
     if [[ ! -e "$required" ]]; then
         printf '缺少构建输入：%s\n' "$required" >&2
         exit 1
@@ -41,6 +42,7 @@ if rg -q '^\s*- so\s*$' "$source_root/apktool.yml"; then
     printf 'apktool.yml 禁止配置 doNotCompress: - so\n' >&2
     exit 1
 fi
+node "$repo_root/scripts/check-content-assets.mjs"
 
 mkdir -p "$work_root"
 build_root="$(mktemp -d "$work_root/source-build.XXXXXX")"
@@ -55,7 +57,8 @@ trap 'rm -f -- "$unsigned" "$aligned" "$signed_candidate"' EXIT
 mkdir -p "$stage" "$classes" "$dex"
 rsync -a --exclude='/content-src/' --exclude='/build/' "$source_root/" "$stage/"
 
-"$JAVA_HOME/bin/javac" --release 8 -cp "$android_jar" -d "$classes" \
+dependency_classpath="$(bash "$repo_root/scripts/resolve-content-deps.sh")"
+"$JAVA_HOME/bin/javac" --release 8 -cp "$android_jar:$dependency_classpath" -d "$classes" \
     "$source_root"/content-src/com/autonavi/amapauto/content/*.java
 class_files=()
 while IFS= read -r -d '' class_file; do
@@ -65,8 +68,16 @@ if [[ ${#class_files[@]} -eq 0 ]]; then
     printf '内容区 Java 未产出 class\n' >&2
     exit 1
 fi
-"$d8" --min-api 21 --lib "$android_jar" --output "$dex" "${class_files[@]}"
+"$JAVA_HOME/bin/jar" cf "$build_root/content.jar" -C "$classes" .
+IFS=: read -r -a dependency_jars <<< "$dependency_classpath"
+annotation_jar="${dependency_jars[${#dependency_jars[@]}-1]}"
+unset 'dependency_jars[${#dependency_jars[@]}-1]'
+"$JAVA_HOME/bin/java" -cp "$r8_jar" com.android.tools.r8.R8 --release --min-api 21 \
+    --lib "$android_jar" --lib "$annotation_jar" \
+    --pg-conf "$repo_root/scripts/content-runtime.pro" --output "$dex" \
+    "$build_root/content.jar" "${dependency_jars[@]}"
 mv "$dex/classes.dex" "$dex/classes2.dex"
+node "$repo_root/scripts/check-content-dex.mjs" "$dex/classes2.dex"
 
 "$JAVA_HOME/bin/java" -jar "$APKTOOL_JAR" b "$stage" -o "$unsigned"
 (cd "$dex" && zip -q -X "$unsigned" classes2.dex)
