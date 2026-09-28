@@ -1,48 +1,58 @@
-# 文档索引
+# 文档索引与职责
 
-## 1. 定位
+## 1. 当前口径
 
-本目录是 `03地图` 的长期上下文包，让新的对话可以快速判断项目目标、工具主链、设备边界、验证入口和人机协作方式。文档只记录稳定事实、阶段决策和可追溯结果；一次性聊天判断不直接升级为长期真值。
+当前产品主线是高德 `9.5.0.600013` 的全屏动态分屏：启动即进入展开态，默认内容区约 `1/3`、地图区约 `2/3`；内容区主题只跟随高德自身主题状态。历史 `480×480` 悬浮地图只保留在 `docs/archive/480x480支线.md`。
+
+本目录只保存可追溯事实、稳定决策、源码锚点、验证证据和研究记录。聊天中的一次性判断不直接升级为长期真值。
+
+固定路由的完整仓库路径为：`source/amap-9.5.0.600013/`、`docs/product/产品需求基线.md`、`docs/code-map/README.md`、`docs/code-map/主链索引.md`、`.agents/skills/`；下表为相对于 `docs/` 的短路径。
 
 ## 2. 新对话最小读取
 
-1. 根 `AGENTS.md`。
-2. 本文件。
-3. 按任务信号读取下面的专项文档。
-4. 涉及本机工具或车机时读取 `.codex/local-context.properties`；该文件被 Git 忽略，不能把其中内容复制到提交文档。
+1. `AGENTS.md`：仓库边界、安全门禁和默认执行方式。
+2. 本文件：文档职责和读取路由。
+3. `docs/architecture/项目长期总纲.md`：当前主线、输入基线和系统边界。
+4. 按任务信号读取专项文档；涉及设备时再读取 `.codex/local-context.properties`，不得把其中内容写回仓库。
 
-## 3. 文档路由
+## 3. 固定文档与唯一职责
 
-| 任务信号 | 必读文档 |
-|---|---|
-| 项目正式范围、输入基线、阶段目标 | `docs/architecture/项目长期总纲.md` |
-| 内容区底层架构、页面/控制/快捷功能主链 | `docs/architecture/内容区主链.md` |
-| 上下文继承、人机协作、主动验证 | `docs/architecture/共享基线.md`、`docs/architecture/rules/ai-collaboration.md` |
-| ADB、JDK、Android SDK、APKTool、签名工具 | `docs/operations/本地工具链.md` |
-| 解包、Smali 修改、重打包、安装和悬浮广播 | `docs/operations/APK工作流.md` |
-| 用户路径、480×480 悬浮目标、正式需求 | `docs/product/产品需求基线.md` |
-| 内容区设置项与用户偏好 | `docs/product/设置项清单.md` |
-| 权限、签名、第三方 APK、日志和设备数据 | `docs/security/安全与密钥边界.md` |
-| 静态检查、构建、安装、启动、窗口和日志证据 | `docs/testing/验证矩阵.md` |
-| 任务输入、完成标准、阻断 | `docs/plans/codex-task-intake-template.md` |
-| 当前已经发生的事实和未完成事项 | `docs/progress.md` |
-| 车机媒体读取、切源和控制能力 | `docs/research/车机媒体能力研究.md` |
-| `480×480` 悬浮支线封存与恢复入口 | `docs/archive/480x480支线.md` |
-| 当前唯一输入 APK（高德 9.5）的身份、来源差异与施工入口 | `docs/archive/amap-9.5.0.600013.md` |
-| 业务需求到源码文件、方法和验证证据的映射 | `docs/code-map/README.md`、`docs/code-map/主链索引.md` |
-| 稳定复用规则 | `docs/architecture/rules/README.md` |
-| 高德解包源码、代码入口、版本基线和高价值锚点 | `docs/code-map/README.md`、`docs/code-map/主链索引.md` |
-| 正式反编译源码快照 | `source/amap-9.5.0.600013/`、`docs/code-map/基线清单.md` |
-| 03 系列协作资产和 Skill 来源 | `docs/architecture/03系列协作资产.md`、`.agents/skills/` |
-| 仓库自检 | `scripts/check-project-docs.mjs`、`scripts/check-skills.mjs`、`scripts/check-code-map.mjs` |
-| Codex 能力池、多 Agent 和工作流评估 | `docs/architecture/Codex规则能力池.md`、`docs/architecture/multi-agent-workflow.md`、`docs/testing/codex-workflow-eval-cases.md`、`docs/testing/codex-workflow-scorecard.md` |
+| 文档 | 唯一职责 | 不负责什么 |
+|---|---|---|
+| `architecture/项目长期总纲.md` | 当前产品 / 系统范围、输入基线、长期不变量 | 不写具体控件、命令流水账 |
+| `product/产品需求基线.md` | 用户可见行为、页面结构和产品验收语义 | 不写源码路径和车机原始字段 |
+| `architecture/内容区主链.md` | 内容区架构、状态主链、owner、生命周期边界 | 不重复产品验收步骤 |
+| `product/设置项清单.md` | 用户偏好、默认值和持久化字段 | 不定义业务数据源 |
+| `code-map/主链索引.md` | 需求到源码文件 / 方法 / 证据的映射 | 不写产品方案和完整源码目录 |
+| `code-map/基线清单.md` | APK、快照和版本身份 | 不记录施工包流水账 |
+| `operations/本地工具链.md` | 本机工具、变量和设备检查 | 不定义产品行为 |
+| `operations/APK工作流.md` | 解包、施工、构建、签名、安装和启动流程 | 不保存设备私有值 |
+| `testing/验证矩阵.md` | 静态、构建、安装、启动、日志和人工证据门槛 | 不记录源码实现细节 |
+| `progress.md` | 当前状态、阻断和下一步 | 不作为历史研究档案 |
+| `research/车机媒体能力研究.md` | 车机能力的原始证据、适配输入和验证状态 | 不替代产品需求，也不把研究探针直接写成正式 APK UI 已完成 |
 
-## 4. 写作口径
+## 4. 参考、历史与协作资产
 
-1. 产品文档写用户目标、正式范围、层级语义和验收结果。
-2. 架构文档写输入基线、主链、owner、边界和不变量。
-3. 代码地图写“业务需求 → 逻辑主链 → 精确文件/方法 → 证据等级”，不机械罗列所有混淆类。
-4. 运维文档写可复制的工具调用和本机配置入口，不写真实密钥或设备私有值。
-5. 验证文档写命令、证据和客观阻断；进度文档只写当前正式状态和未完成项。
-6. 实验记录只有在能解释当前基线、业务逻辑或源码入口时才保留；其余不作为新对话入口。
-7. 与 `03lyrics` 共用的方法通过相对链接引用，项目专有事实只写在 `03地图`。
+- `archive/`：已封存的输入 APK 说明和 `480×480` 历史支线；只读语义，不回写当前主线。
+- `architecture/rules/`、`共享基线.md`：规则索引和跨项目协作链接，不复制产品事实。
+- `architecture/03系列协作资产.md`、`Codex规则能力池.md`、`multi-agent-workflow.md`：协作资产说明，不属于产品真值最小读取链。
+- `testing/codex-workflow-*.md`、`plans/`：评估用例和任务模板，不替代当前验证矩阵。
+- `code-map/README.md`、`全量清单.md`：代码地图使用说明和规模导航；具体入口以 `主链索引.md` 为准。
+
+## 5. 写入规则
+
+1. **一事实一 owner：** 需求写产品基线，架构写内容区主链，源码入口写代码地图，设备证据写研究或验证，当前状态写进度。
+2. **当前与历史分离：** 历史结论必须带日期和证据等级；不得用历史包、旧坐标或旧尺寸覆盖当前主线。
+3. **证据分级：** 统一使用“静态确认 / 实机确认 / 实验参考 / 待验证”；推断不得写成完成事实。
+4. **控制体量：** 长期总纲、产品基线、进度保持短；架构文档只保留 owner 和不变量；原始研究允许增长，但必须先维护摘要和结论表。
+5. **改动联动：** 修改主线、源码入口或验证门槛时，同轮更新对应 owner 文档和本索引；不要在多个文档复制同一段事实。
+
+## 6. 仓库自检
+
+```sh
+node scripts/check-project-docs.mjs
+node scripts/check-skills.mjs
+node scripts/check-code-map.mjs
+```
+
+这些检查验证文档结构、Skill 和代码地图边界；代码或工程行为变更仍需按 [验证矩阵](testing/验证矩阵.md) 完成构建与运行验证。

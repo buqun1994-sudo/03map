@@ -1,15 +1,19 @@
 # APK 工作流
 
-## 1. 创建工作副本
+> **职责：** 规定从正式快照到候选 APK、再到安全门禁内运行观察的可复制流程。工具变量见 [本地工具链](本地工具链.md)，身份事实见 [基线清单](../code-map/基线清单.md)，验证门槛见 [验证矩阵](../testing/验证矩阵.md)。
 
-本项目的正式输入是被忽略的 `apk-archive/9.5.0.600013/` 中的 125% 全屏 APK；`source/amap-9.5.0.600013/` 是由它生成的只读解包快照。施工先核对输入 APK 和快照身份，再从快照复制干净工作副本到被忽略的 `apk-work/`；不得从上游 APK、旧实验包或 `.tmp/` 魔改目录续接。原始 APK 保持只读：
+## 1. 创建施工副本
+
+正式输入是被忽略的 `apk-archive/9.5.0.600013/`；`source/amap-9.5.0.600013/` 是只读快照。每轮从快照建立新的被忽略副本，不从上游 APK、旧候选包或 `.tmp/` 继续：
 
 ```sh
 INPUT_APK="/path/to/archived-9.5-input.apk"
 WORK_DIR="/path/to/local/apk-work/9.5.0.600013"
 shasum -a 256 "$INPUT_APK"
-# 核对 docs/code-map/基线清单.md 后，复制 source/amap-9.5.0.600013/ 到全新的 $WORK_DIR/decode。
+# 复制 source/amap-9.5.0.600013/ 到全新的 "$WORK_DIR/decode/"
 ```
+
+先核对包名、版本、Manifest、快照哈希和签名身份；不直接修改 `source/`。
 
 ## 2. 静态检查
 
@@ -20,32 +24,23 @@ shasum -a 256 "$INPUT_APK"
 unzip -l "$INPUT_APK" | rg 'AndroidManifest|classes|lib/|resources.arsc'
 ```
 
-先记录包名、版本、入口 Activity、ABI、权限和证书摘要，再决定修改范围。
+记录入口 Activity、ABI、权限和证书摘要；构建后对候选 APK 重复包身份检查。
 
-## 3. APKTool 解包与重打包
+## 3. 解包、修改与回编
 
 ```sh
-# 正式主链：使用已核对的 $WORK_DIR/decode，不直接编辑 source/。
-# 如需重新解包，应输出到全新空目录，先与 source/ 比较差异再决定是否替换施工副本。
 "$JAVA" -jar "$APKTOOL" b "$WORK_DIR/decode" -o "$WORK_DIR/unsigned.apk"
 ```
 
-每次结构性修改后先重新检查 Manifest、Smali 语法和资源引用，不能连续堆改动到最后才定位错误。
+常规资源、Manifest 和 Smali 修改沿 APKTool decode / build 主链；需要精确处理多个 DEX 时使用完整的 baksmali / smali 分发包，逐个确认输入输出，不覆盖原始文件。
 
-## 4. DEX 精确修改
+每个结构性动作后立即检查命名空间、类型归属、项目包含关系、Smali 语法和资源引用，不把多轮错误堆到最后处理。
 
-```sh
-# 对已定位的 DEX 做精确修改时，由 AI 使用完整的 baksmali/smali 分发包和依赖执行；
-# 当前 Android SDK 自带的 BAKSMALI_JAR 不是独立可执行 JAR，不能直接用 `java -jar`。
-# 常规修改优先沿用 APKTool 的 decode / build 主链：
-"$JAVA" -jar "$APKTOOL" b "$WORK_DIR/decode" -o "$WORK_DIR/unsigned.apk"
-```
+施工副本的 `apktool.yml` 不得保留 `doNotCompress: - so`；最终 `lib/**/*.so` 必须使用 Deflate。
 
-当前 Android SDK 自带的 `smali-baksmali-3.0.9.jar` 已确认没有 `Main-Class`，且依赖其它 Smali / Guava 类库；不要把同一个 JAR 同时填作 `BAKSMALI_JAR` 和 `SMALI_JAR`。如果 APK 有多个 `classes*.dex`，必须逐个确认输入和输出对应关系；不要覆盖原始文件。
+## 4. 对齐、签名与包检查
 
-## 5. 对齐、签名和验证
-
-签名材料只能来自仓库外，并且必须先确认签名身份和用户授权：
+签名材料只能来自仓库外，并且必须匹配当次授权：
 
 ```sh
 "$ZIPALIGN" -p -f 4 "$WORK_DIR/unsigned.apk" "$WORK_DIR/aligned.apk"
@@ -54,48 +49,39 @@ unzip -l "$INPUT_APK" | rg 'AndroidManifest|classes|lib/|resources.arsc'
 "$AAPT2" dump badging "$WORK_DIR/signed.apk"
 ```
 
-不使用未知测试密钥替代需要共存或完整性验证的签名身份；证书摘要必须写入本轮工作证据，不写进公共文档。
+记录候选包 SHA-256、包身份、签名摘要、对齐结果和原生库压缩结果；证书私钥、口令和设备私有信息不写入仓库。
 
-## 6. 安装与启动
+## 5. 默认运行验证
+
+用户未指定其它方式时，构建后由 AI 在安全门禁内完成：
+
+1. 设备处于 `device` 状态，包名 / 版本 / 签名允许保留数据覆盖安装。
+2. 使用 `adb install -r` 安装，不用卸载、清数据或降级绕过错误。
+3. 按 `aapt2` 解析出的实际入口启动，确认目标进程存活。
+4. 读取窗口、Surface / 分屏几何和最小致命日志；截图、日志只写临时目录。
 
 ```sh
+"$ADB" devices -l
 "$ADB" -s "$VEHICLE_ADB_SERIAL" install -r "$WORK_DIR/signed.apk"
-"$ADB" -s "$VEHICLE_ADB_SERIAL" shell am start -n 'package.name/.EntryActivity'
-"$ADB" -s "$VEHICLE_ADB_SERIAL" shell pidof package.name
-```
-
-默认保留数据覆盖安装。遇到签名冲突、版本降级或包名冲突时，先读取错误和已安装包状态，不用卸载或清数据绕过。
-
-## 7. 悬浮地图广播
-
-输入基线为 [高德 9.5](../archive/amap-9.5.0.600013.md)，目标包 `com.autonavi.amapautolite`。当前源码的悬浮插件 Action 和参数为：
-
-- `com.autonavi.plus.showmap`：整数参数 `x`、`y`、`w`、`h`
-- `com.autonavi.plus.closemap`：关闭地图窗口
-- `com.autonavi.plus.offset`：已注册，但 `FloatWindowsManage.control()` 当前没有处理分支，不可当作可用移动接口
-
-当前正式目标为 `480×480`，位置由该轮窗口方案确定；以下命令只用于具备启动与悬浮权限后的定向广播测试，不是“启动即悬浮”的产品实现：
-
-```sh
-FLOAT_X=0
-FLOAT_Y=0
-FLOAT_RIGHT=$((FLOAT_X + 480))
-FLOAT_BOTTOM=$((FLOAT_Y + 480))
-"$ADB" -s "$VEHICLE_ADB_SERIAL" shell am broadcast \
-  -a com.autonavi.plus.showmap -p com.autonavi.amapautolite \
-  --ei x "$FLOAT_X" --ei y "$FLOAT_Y" --ei w "$FLOAT_RIGHT" --ei h "$FLOAT_BOTTOM"
-```
-
-`x / y` 是左上角，`w / h` 在当前版本中是右边界和下边界，不是宽高。上面的 `0,0` 只是测试占位坐标，不能作为正式默认位置。指定目标包可避免其它地图接收同名广播；实际位置需要以设备截图和窗口边界确认。
-
-收回窗口使用 `-a com.autonavi.plus.closemap -p com.autonavi.amapautolite`。旧实验的“先打开全屏 Activity、返回 HOME、再发广播”只是基线主链的测试办法，不满足当前正式启动需求；不使用未验证的缩放广播作为默认步骤。
-
-## 8. 运行观察
-
-```sh
+"$ADB" -s "$VEHICLE_ADB_SERIAL" shell am start -n "$ENTRY_COMPONENT"
+"$ADB" -s "$VEHICLE_ADB_SERIAL" shell pidof com.autonavi.amapautolite
 "$ADB" -s "$VEHICLE_ADB_SERIAL" shell dumpsys window windows
 "$ADB" -s "$VEHICLE_ADB_SERIAL" exec-out screencap -p > "$WORK_DIR/runtime.png"
-"$ADB" -s "$VEHICLE_ADB_SERIAL" logcat -d -v threadtime -t 500 | rg 'FATAL EXCEPTION|AndroidRuntime|amap|chenmo|WindowManager'
+"$ADB" -s "$VEHICLE_ADB_SERIAL" logcat -d -v threadtime -t 300 | rg 'FATAL EXCEPTION|AndroidRuntime|amap|SplitPanel|WindowManager'
 ```
 
-判断标准是：目标进程存活、真实地图界面可见、悬浮窗口边界正确、原车 Dock 未被永久改写、没有致命异常。正式交互还需在相同安装包身份下记录两次启动、拖拽、UI/地图层分别缩放、三种视角和全屏恢复，详见 [验证矩阵](../testing/验证矩阵.md)。
+设备离线、系统授权弹窗、签名冲突或高风险动作出现时，停在具体门禁并记录阻断，不用清数据或未知签名掩盖问题。
+
+## 6. 当前分屏观察重点
+
+候选包必须按 [验证矩阵](../testing/验证矩阵.md) 检查：冷启动首帧、默认 `1/3 : 2/3`、地图收起 / 恢复、中途接管、两条 Surface、主题来源和三种地图视角。不能用旧 `480×480` 包或 S191 静态样本替代当前候选包证据。
+
+## 7. 历史 `480×480` 广播入口
+
+以下接口只在明确恢复封存支线时使用，不属于当前主线启动方式：
+
+- `com.autonavi.plus.showmap`：整数参数 `x`、`y`、`w`、`h`。
+- `com.autonavi.plus.closemap`：关闭历史地图窗口。
+- `com.autonavi.plus.offset`：已注册但当前无可用处理分支。
+
+历史广播的坐标语义、窗口边界和证据要求见 [480×480 支线](../archive/480x480支线.md)；不得把“先启动全屏、返回 HOME、再发广播”写成当前产品启动链。

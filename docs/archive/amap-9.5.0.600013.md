@@ -40,6 +40,6 @@
 4. 所有构建包、签名材料、截图、日志和 round-trip 解包放在 `.tmp/` 或仓库外，不进入正式源码快照。
 5. 历史实验包不能覆盖输入基线，也不能作为下一轮施工副本。
 
-## 5. 仍然有效的运行接口
+## 5. 历史运行接口
 
-正式 APK 中仍存在悬浮广播主链：`ApplicationInitialization.init()` 注册 `com.autonavi.plus.showmap`、`com.autonavi.plus.closemap`，由 `ControlReceiver` 转发给 `FloatWindowsManage`。广播是代码地图中的技术入口，不等于当前产品已经接受任何历史窗口尺寸；当前目标尺寸由产品基线规定为 `480×480`。
+正式 APK 中仍存在历史悬浮广播主链：`ApplicationInitialization.init()` 注册 `com.autonavi.plus.showmap`、`com.autonavi.plus.closemap`，由 `ControlReceiver` 转发给 `FloatWindowsManage`。它只作为 `480×480` 封存支线的技术入口保留，不属于当前全屏分屏启动链，也不定义当前产品尺寸。
