@@ -1,7 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:background="@android:color/background_dark" android:layout_width="match_parent" android:layout_height="match_parent"
+<FrameLayout android:background="@android:color/transparent" android:clipChildren="true" android:layout_width="match_parent" android:layout_height="match_parent"
   xmlns:android="http://schemas.android.com/apk/res/android">
-    <com.autonavi.amapauto.view.MapSurfaceViewEx android:id="@id/map_surface" android:layout_width="match_parent" android:layout_height="match_parent" />
-    <SurfaceView android:id="@id/ui_surface" android:layout_width="match_parent" android:layout_height="match_parent" />
-    <ImageView android:id="@id/cover" android:background="@drawable/starting_bg" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <View android:background="@android:color/transparent" android:layout_width="match_parent" android:layout_height="match_parent" />
+
+    <FrameLayout android:id="@id/content_host" android:clipChildren="true" android:background="@android:color/transparent" android:clickable="false" android:layout_gravity="left|top" android:layout_width="match_parent" android:layout_height="match_parent" />
+
+    <FrameLayout android:id="@id/split_panel_host" android:clipChildren="false" android:layout_gravity="left|top" android:layout_width="match_parent" android:layout_height="match_parent">
+        <FrameLayout android:clipChildren="true" android:background="@android:color/black" android:layout_gravity="left|top" android:layout_width="match_parent" android:layout_height="match_parent">
+            <com.autonavi.amapauto.view.MapSurfaceViewEx android:id="@id/map_surface" android:layout_width="match_parent" android:layout_height="match_parent" />
+            <SurfaceView android:id="@id/ui_surface" android:background="@android:color/transparent" android:layout_width="match_parent" android:layout_height="match_parent" />
+            <ImageView android:id="@id/cover" android:background="@drawable/starting_bg" android:scaleType="fitXY" android:visibility="visible" android:layout_width="match_parent" android:layout_height="match_parent" />
+        </FrameLayout>
+        <FrameLayout android:clipChildren="false" android:layout_gravity="left|top" android:layout_width="match_parent" android:layout_height="match_parent">
+            <FrameLayout android:background="@android:color/transparent" android:clickable="true" android:layout_gravity="left|center_vertical" android:layout_width="60px" android:layout_height="810px">
+                <TextView android:alpha="0.0" android:background="@drawable/split_gesture_hint_background" android:gravity="center_vertical|right" android:layout_gravity="left|center_vertical" android:layout_width="360px" android:layout_height="72px" android:paddingLeft="20px" android:paddingRight="18px" android:singleLine="true" android:textColor="#ffffffff" android:textSize="20sp" android:visibility="gone" />
+                <View android:background="@drawable/split_gesture_handle" android:layout_gravity="left|center_vertical" android:layout_marginLeft="42px" android:layout_width="6px" android:layout_height="256px" />
+            </FrameLayout>
+        </FrameLayout>
+    </FrameLayout>
 </FrameLayout>

@@ -651,4 +651,6 @@
     <id name="zoom_in" />
     <id name="zoom_interval_line" />
     <id name="zoom_out" />
+    <id name="content_host" />
+    <id name="split_panel_host" />
 </resources>

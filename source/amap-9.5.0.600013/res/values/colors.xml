@@ -1557,4 +1557,9 @@
     <color name="widget_color_xunhang_twoxthree_current_road_name">#ffffff</color>
     <color name="widget_color_zoom_background">#e63a3d41</color>
     <color name="widget_transparency">#00ffffff</color>
+    <color name="split_content_background">#ebf3f3f3</color>
+    <color name="split_gesture_handle">#2b000000</color>
+    <color name="split_hint_gradient_start">#00000000</color>
+    <color name="split_hint_gradient_center">#40000000</color>
+    <color name="split_hint_gradient_end">#90000000</color>
 </resources>

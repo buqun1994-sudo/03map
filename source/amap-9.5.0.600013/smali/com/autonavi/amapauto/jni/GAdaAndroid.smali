@@ -3703,6 +3703,8 @@
     :goto_0
     invoke-virtual {v0, v1}, Lse;->notifyNightModeChange(Z)V
 
+    invoke-static {p0}, Lcom/autonavi/amapauto/content/ContentRuntime;->onAmapThemeChanged(I)V
+
     .line 16
     new-array v0, v2, [Ljava/lang/Object;
 

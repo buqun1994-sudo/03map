@@ -31,10 +31,10 @@ AI 会直接调用本机 `adb`、`apktool`、`baksmali/smali`、`aapt2`、`zipal
 
 ## 代码地图与协作资产
 
-当前正式解包源码快照位于 `source/amap-9.5.0.600013/`（9,228 个文件，已排除签名元数据和构建目录）。代码地图不机械罗列混淆类，而是把业务需求映射到逻辑主链、精确文件/方法、证据等级和下一步验证；03 系列协作资产见 [提取记录](docs/architecture/03系列协作资产.md)。
+当前可版本化正式源码位于 `source/amap-9.5.0.600013/`；原始输入快照由 Git 提交 `ac6033c` 固定。代码地图不机械罗列混淆类，而是把业务需求映射到逻辑主链、精确文件/方法、证据等级和下一步验证；03 系列协作资产见 [提取记录](docs/architecture/03系列协作资产.md)。
 
 仓库快检：`node scripts/check-project-docs.mjs`、`node scripts/check-skills.mjs`、`node scripts/check-code-map.mjs`。
 
 ## 当前状态
 
-当前输入 APK 和必要身份凭据保存在被忽略的 `apk-archive/9.5.0.600013/`；历史 `480×480` 悬浮记录不再作为当前目标。正式源码快照只用于建立新的 `apk-work/9.5.0.600013/` 施工副本，APK、截图、日志和签名材料不进入 Git。
+当前输入 APK 和必要身份凭据保存在被忽略的 `apk-archive/9.5.0.600013/`；历史 `480×480` 悬浮记录不再作为当前目标。实验可在 `apk-work/9.5.0.600013/` 进行，但提交前必须将 Java / Smali / Manifest / 资源改动回写 `source/`，并从 Git 源码重新构建；APK、截图、日志、DEX 和签名材料不进入 Git。构建入口：`bash scripts/build-content-apk.sh`。

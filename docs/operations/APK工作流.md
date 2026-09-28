@@ -4,16 +4,16 @@
 
 ## 1. 创建施工副本
 
-正式输入是被忽略的 `apk-archive/9.5.0.600013/`；`source/amap-9.5.0.600013/` 是只读快照。每轮从快照建立新的被忽略副本，不从上游 APK、旧候选包或 `.tmp/` 继续：
+正式输入 APK 只读保存在被忽略的 `apk-archive/9.5.0.600013/`；原始解包快照由 Git 提交 `ac6033c` 固定，当前持续施工的唯一可维护入口是 `source/amap-9.5.0.600013/`。需要实验时，从当前 Git 正式源码建立新的被忽略副本，不从旧候选包或 `.tmp/` 继续：
 
 ```sh
 INPUT_APK="/path/to/archived-9.5-input.apk"
 WORK_DIR="/path/to/local/apk-work/9.5.0.600013"
 shasum -a 256 "$INPUT_APK"
-# 复制 source/amap-9.5.0.600013/ 到全新的 "$WORK_DIR/decode/"
+# 复制当前 source/amap-9.5.0.600013/ 到全新的 "$WORK_DIR/decode/"
 ```
 
-先核对包名、版本、Manifest、快照哈希和签名身份；不直接修改 `source/`。
+先核对包名、版本、Manifest、原始输入快照身份和签名身份；构建前将实验成果回写 `source/`，而非把被忽略副本当成唯一施工代码。
 
 ## 2. 静态检查
 
@@ -32,11 +32,18 @@ unzip -l "$INPUT_APK" | rg 'AndroidManifest|classes|lib/|resources.arsc'
 "$JAVA" -jar "$APKTOOL" b "$WORK_DIR/decode" -o "$WORK_DIR/unsigned.apk"
 ```
 
-常规资源、Manifest 和 Smali 修改沿 APKTool decode / build 主链；需要精确处理多个 DEX 时使用完整的 baksmali / smali 分发包，逐个确认输入输出，不覆盖原始文件。
+上述 APKTool 命令仅验证资源与 Smali 的**中间包**；内容区 Java 尚未编译 / 注入时缺少 `ContentRuntime` 等类，绝对不可安装或宣称为完整候选包。完整包必须执行下文的 `build-content-apk.sh` 主链；需要精确处理已有 DEX 时使用完整的 baksmali / smali 分发包，逐个确认输入输出，不覆盖原始文件。
 
 每个结构性动作后立即检查命名空间、类型归属、项目包含关系、Smali 语法和资源引用，不把多轮错误堆到最后处理。
 
-施工副本的 `apktool.yml` 不得保留 `doNotCompress: - so`；最终 `lib/**/*.so` 必须使用 Deflate。
+施工副本和正式源码的 `apktool.yml` 均不得保留 `doNotCompress: - so`；最终 `lib/**/*.so` 必须使用 Deflate。
+
+### 正式源码回写与可重建门禁
+
+1. 对照当前 Git 正式源码与实验副本，只迁入本轮确认为有效的 Java、Smali、Manifest、资源及构建配置；将 `build/`、class、DEX、签名、旧轮次和设备证据排除。迁入后逐项核对文件哈希、命名空间、方法入口和资源引用。
+2. 从正式源码运行 `bash scripts/build-content-apk.sh`：脚本在被忽略的 `apk-work/9.5.0.600013/source-build.*` 建新施工区，编译 `content-src/`、用 D8 生成 `classes2.dex`、回编 APKTool、注入 DEX、对齐并核对包身份和 `.so` 压缩；不从旧 `unknown/classes2.dex` 借用产物。
+3. 未提供外部签名材料时，脚本只输出**未签名**的对齐 APK，不能安装或当成已签名候选。若有已授权且匹配原签名身份的仓库外 PK8 私钥和 PEM 证书，可执行 `bash scripts/build-content-apk.sh "$EXTERNAL_KEY" "$EXTERNAL_CERT"`；脚本强制匹配正式输入的证书 SHA-256，随后仍需核对 `apksigner verify`、SHA-256，再走安装门禁。不得从旧签名包复制签名块。
+4. 构建完成后运行 `node scripts/check-code-map.mjs`、`git diff --check`，检查 `git status` 与暂存清单。提交正式源码、构建入口和追踪文档；APK、DEX、class、密钥及完整日志永不进入 Git。若正式源码不能独立重建，禁止宣称代码已归档。
 
 ## 4. 对齐、签名与包检查
 

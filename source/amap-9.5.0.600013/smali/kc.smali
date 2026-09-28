@@ -1756,6 +1756,8 @@
 .method public onDestroy()V
     .locals 7
 
+    invoke-static {p0}, Lcom/autonavi/amapauto/content/ContentRuntime;->detach(Landroid/app/Activity;)V
+
     .line 1
     sget-boolean v0, Lyg0;->a:Z
 
@@ -3987,22 +3989,7 @@
     .locals 8
 
     .line 1
-    sget-object v0, Lcom/autonavi/eaglet/surfacemng/cfg/Config;->wndReuse:Lcom/autonavi/eaglet/surfacemng/cfg/Config$b;
-
-    .line 3
-    invoke-virtual {v0}, Lcom/autonavi/eaglet/surfacemng/cfg/Config$b;->f()Z
-
-    .line 6
-    move-result v0
-
-    .line 7
-    if-eqz v0, :cond_0
-
-    .line 9
-    invoke-virtual {p0}, Lkc;->w()V
-
-    .line 12
-    return-void
+    const/4 v0, 0x0
 
     .line 13
     :cond_0
@@ -4096,6 +4083,18 @@
     invoke-virtual {p0, v0}, Landroid/app/Activity;->setContentView(I)V
     :try_end_0
     .catch Ljava/lang/RuntimeException; {:try_start_0 .. :try_end_0} :catch_0
+
+    const v7, 0x1020002
+
+    invoke-virtual {p0, v7}, Landroid/app/Activity;->findViewById(I)Landroid/view/View;
+
+    move-result-object v7
+
+    check-cast v7, Landroid/view/ViewGroup;
+
+    invoke-static {v7}, LSplitPanelController;->install(Landroid/view/ViewGroup;)LSplitPanelController;
+
+    invoke-static {v7}, Lcom/autonavi/amapauto/content/ContentRuntime;->attach(Landroid/view/ViewGroup;)V
 
     .line 64
     invoke-static {}, Lse;->c()Lse;

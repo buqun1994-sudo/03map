@@ -6,6 +6,8 @@
 
 本目录只保存可追溯事实、稳定决策、源码锚点、验证证据和研究记录。聊天中的一次性判断不直接升级为长期真值。
 
+`source/amap-9.5.0.600013/` 是 Git 跟踪的正式可维护源码；原始输入快照固定在 `ac6033c`，被忽略的 `apk-work/` 只作为实验和产物区。提交前按 [APK 工作流](operations/APK工作流.md) 回写源码并从正式入口重建。
+
 固定路由的完整仓库路径为：`source/amap-9.5.0.600013/`、`docs/product/产品需求基线.md`、`docs/code-map/README.md`、`docs/code-map/主链索引.md`、`.agents/skills/`；下表为相对于 `docs/` 的短路径。
 
 ## 2. 新对话最小读取

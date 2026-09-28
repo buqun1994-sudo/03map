@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,10 +20,6 @@ function walk(dir) {
   return files;
 }
 
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
-}
-
 if (!existsSync(sourceRoot)) {
   failures.push("缺少正式源码快照：source/amap-9.5.0.600013/");
 } else {
@@ -31,7 +28,7 @@ if (!existsSync(sourceRoot)) {
   const under = (prefix) => relativeFiles.filter((path) => path.startsWith(`${prefix}/`)).length;
   const count = (predicate) => files.filter(predicate).length;
 
-  const expectedCounts = [
+  const baselineMinimums = [
     ["总文件", files.length, 9228],
     ["Smali", count((path) => path.endsWith(".smali")), 7269],
     ["XML", count((path) => path.endsWith(".xml")), 595],
@@ -40,16 +37,16 @@ if (!existsSync(sourceRoot)) {
     ["lib", under("lib"), 63],
     ["unknown", under("unknown"), 48],
   ];
-  for (const [label, actual, expected] of expectedCounts) {
-    if (actual !== expected) failures.push(`${label} 数量为 ${actual}，预期 ${expected}`);
+  for (const [label, actual, minimum] of baselineMinimums) {
+    if (actual < minimum) failures.push(`${label} 数量为 ${actual}，低于输入基线 ${minimum}`);
   }
 
   for (const path of relativeFiles) {
-    if (/\.(apk|aab|dex|vdex|odex|jar)$/.test(path) && path !== "assets/SignatureKiller/origin.apk") {
-      failures.push(`正式源码快照包含禁止产物：${path}`);
+    if (/\.(apk|aab|dex|vdex|odex|jar|class)$/.test(path) && path !== "assets/SignatureKiller/origin.apk") {
+      failures.push(`正式源码包含禁止产物：${path}`);
     }
     if (path.split("/").includes("build")) {
-      failures.push(`正式源码快照包含构建目录：${path}`);
+      failures.push(`正式源码包含构建目录：${path}`);
     }
   }
 
@@ -65,13 +62,19 @@ if (!existsSync(sourceRoot)) {
     if (relativeFiles.includes(signatureFile)) failures.push(`正式源码快照包含签名元数据：${signatureFile}`);
   }
 
-  const expectedHashes = new Map([
+  const inputBaselineHashes = new Map([
     ["AndroidManifest.xml", "2b3ee85e92b223ca6971fc5ce4a116c8d86539eb110856e4cf7379b36f1f3dec"],
     ["apktool.yml", "2610aa15401e71b695709662225b7be31cbb73d4d4fd650491d2edcbb83477da"],
   ]);
-  for (const [name, expected] of expectedHashes) {
-    const path = join(sourceRoot, name);
-    if (!existsSync(path) || sha256(path) !== expected) failures.push(`${name} SHA-256 与基线不一致`);
+  for (const [name, expected] of inputBaselineHashes) {
+    try {
+      const original = execFileSync("git", ["show", `ac6033c:source/amap-9.5.0.600013/${name}`], { cwd: root });
+      const actual = createHash("sha256").update(original).digest("hex");
+      if (actual !== expected) failures.push(`输入基线提交的 ${name} SHA-256 不一致`);
+    } catch {
+      failures.push(`无法读取 ac6033c 中的输入基线 ${name}`);
+    }
+    if (!existsSync(join(sourceRoot, name))) failures.push(`正式源码缺少 ${name}`);
   }
 
   const anchors = [
@@ -99,6 +102,12 @@ if (!existsSync(sourceRoot)) {
     "smali/kx.smali",
     "smali/com/autonavi/amapauto/ar/camera/CameraManager.smali",
     "assets/res/HmiRes/CarLogo_Style",
+    "smali/SplitPanelController.smali",
+    "res/drawable/split_gesture_handle.xml",
+    "res/drawable/split_gesture_hint_background.xml",
+    "res/values-night/colors.xml",
+    ...["ContentIconView", "ContentMediaAdapter", "ContentMediaListener", "ContentPorts", "ContentPreferenceStore", "ContentRegistry", "ContentRenderer", "ContentRuntime", "ContentState", "ContentStore", "ContentTheme", "ContentVehicleAdapter"]
+      .map((name) => `content-src/com/autonavi/amapauto/content/${name}.java`),
   ];
   for (const anchor of anchors) {
     const path = join(sourceRoot, anchor);
@@ -108,6 +117,14 @@ if (!existsSync(sourceRoot)) {
   const methodAnchors = new Map([
     ["smali/rv.smali", [".method public C()I"]],
     ["smali/kc.smali", [".method public v()V"]],
+    ["smali/SplitPanelController.smali", [
+      ".method public static install(Landroid/view/ViewGroup;)LSplitPanelController;",
+      ".method private applyDividerX(F)V",
+    ]],
+    ["content-src/com/autonavi/amapauto/content/ContentRuntime.java", [
+      "public static void attach(ViewGroup contentRoot)",
+      "public static void detach(Activity activity)",
+    ]],
     ["smali/com/autonavi/amapauto/chenmo_float/FloatWindowsManage.smali", [
       ".method public control(Landroid/content/Intent;)V",
       ".method public showMap()V",
@@ -171,4 +188,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("代码地图检查通过（源码边界、计数、哈希和关键锚点均符合基线）。");
+console.log("代码地图检查通过（输入基线提交、可版本化源码边界和关键锚点）。");

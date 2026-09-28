@@ -318,4 +318,6 @@
     <string name="xunhang_camera_distance">521米</string>
     <string name="zoom_in">放大图面</string>
     <string name="zoom_out">缩小图面</string>
+    <string name="split_hint_collapse">向右拖动收起地图</string>
+    <string name="split_hint_expand">向左拖动展开地图</string>
 </resources>

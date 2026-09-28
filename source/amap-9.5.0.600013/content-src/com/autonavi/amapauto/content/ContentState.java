@@ -1,0 +1,84 @@
+package com.autonavi.amapauto.content;
+
+public final class ContentState {
+    public static final int THEME_LIGHT = 0;
+    public static final int THEME_DARK = 1;
+    public static final int CHARGE_DEFAULT = 0;
+    public static final int CHARGE_PLUGGED = 1;
+    public static final int CHARGE_SCHEDULED = 2;
+    public static final int CHARGE_CHARGING = 3;
+    public static final int COMMAND_NONE = 0;
+    public static final int COMMAND_FAILED = 1;
+
+    public int themeMode = THEME_LIGHT;
+    public boolean showWeekday = true;
+    public boolean showSeconds;
+    public long nowMillis;
+    public boolean vehicleDataAvailable;
+    public boolean vehiclePreview;
+    public float temperatureC = Float.NaN;
+    public int batteryPercent = -1;
+    public int rangeKm = -1;
+    public int chargeState = CHARGE_DEFAULT;
+    public float chargePowerKw = Float.NaN;
+    public int chargeRemainingMinutes = -1;
+    public int pageIndex = 1;
+    public int controlIndex;
+    public boolean mediaDataAvailable;
+    public boolean mediaPreview;
+    public String mediaSource = "本机";
+    public boolean mediaPlaying;
+    public int mediaGeneration;
+    public String mediaTitle = "暂无媒体";
+    public String mediaArtist = "未连接";
+    public boolean mediaPlaybackAvailable;
+    public boolean mediaNextAvailable;
+    public int ventilationLevel = -1;
+    public int heatingLevel = -1;
+    public int massageLevel = -1;
+    public boolean seatControlsKnown;
+    public boolean lockKnown;
+    public boolean locked = true;
+    public int commandStatus = COMMAND_NONE;
+    public long commandSequence;
+    public String commandMessage = "";
+    public String[] dockItems = ContentRegistry.defaultDockItems();
+
+    public ContentState copy() {
+        ContentState copy = new ContentState();
+        copy.themeMode = themeMode;
+        copy.showWeekday = showWeekday;
+        copy.showSeconds = showSeconds;
+        copy.nowMillis = nowMillis;
+        copy.vehicleDataAvailable = vehicleDataAvailable;
+        copy.vehiclePreview = vehiclePreview;
+        copy.temperatureC = temperatureC;
+        copy.batteryPercent = batteryPercent;
+        copy.rangeKm = rangeKm;
+        copy.chargeState = chargeState;
+        copy.chargePowerKw = chargePowerKw;
+        copy.chargeRemainingMinutes = chargeRemainingMinutes;
+        copy.pageIndex = pageIndex;
+        copy.controlIndex = controlIndex;
+        copy.mediaDataAvailable = mediaDataAvailable;
+        copy.mediaPreview = mediaPreview;
+        copy.mediaSource = mediaSource;
+        copy.mediaPlaying = mediaPlaying;
+        copy.mediaGeneration = mediaGeneration;
+        copy.mediaTitle = mediaTitle;
+        copy.mediaArtist = mediaArtist;
+        copy.mediaPlaybackAvailable = mediaPlaybackAvailable;
+        copy.mediaNextAvailable = mediaNextAvailable;
+        copy.ventilationLevel = ventilationLevel;
+        copy.heatingLevel = heatingLevel;
+        copy.massageLevel = massageLevel;
+        copy.seatControlsKnown = seatControlsKnown;
+        copy.lockKnown = lockKnown;
+        copy.locked = locked;
+        copy.commandStatus = commandStatus;
+        copy.commandSequence = commandSequence;
+        copy.commandMessage = commandMessage;
+        copy.dockItems = dockItems.clone();
+        return copy;
+    }
+}

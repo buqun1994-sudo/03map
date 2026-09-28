@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="split_content_background">#eb151515</color>
+    <color name="split_gesture_handle">#2bffffff</color>
+    <color name="split_hint_gradient_start">#00000000</color>
+    <color name="split_hint_gradient_center">#55000000</color>
+    <color name="split_hint_gradient_end">#aa000000</color>
+</resources>

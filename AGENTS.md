@@ -15,12 +15,12 @@
 2. 任务涉及 APK、ADB、车机或签名时，再读取 `docs/operations/本地工具链.md`、`docs/operations/APK工作流.md`、`docs/security/安全与密钥边界.md` 和 `docs/testing/验证矩阵.md`。
 3. 需要理解人机协作和上下文继承时，读取 `docs/architecture/共享基线.md`；其中的链接指向 `03lyrics` 已验证的通用规则。
 4. 每次开工前先执行 `git status --short --branch`，保留用户已有改动。
-5. 原始 APK、签名材料、截图和日志放在仓库外或被 `.gitignore` 忽略的本机目录，不能提交；当前正式输入 APK 归档在 `apk-archive/9.5.0.600013/`，用户提供的上游 APK 只作为基线差异证据。`source/amap-9.5.0.600013/` 是唯一正式代码入口，不能把其它临时解包目录当作源码。
+5. 原始 APK、签名材料、截图和日志放在仓库外或被 `.gitignore` 忽略的本机目录，不能提交；当前正式输入 APK 归档在 `apk-archive/9.5.0.600013/`，用户提供的上游 APK 只作为基线差异证据。原始解包基线由 Git 提交 `ac6033c` 固定；`source/amap-9.5.0.600013/` 是持续演进、必须提交的唯一正式代码入口，不能把其它临时解包目录当作源码。
 6. 默认先做静态检查和最小构建，再在安全门禁内执行保留数据覆盖安装、启动和最小日志检查；用户当次要求优先。历史悬浮广播只在明确研究 `480×480` 封存支线时使用，不作为当前主线步骤。
 
 ## 3. 物理边界
 
-1. source/amap-9.5.0.600013/：当前 9.5、125% 全屏输入基线的 APKTool 解包源码快照；Manifest、Smali、资源、assets、lib 和 unknown 以磁盘内容为真值，不放原始 APK、DEX 或构建目录。
+1. source/amap-9.5.0.600013/：当前 9.5、125% 全屏输入基线派生的可版本化正式源码；Manifest、Smali、资源和 `content-src/` Java 以磁盘内容为真值，不放原始 APK、DEX、class、签名材料或构建目录。原始输入快照仍可由 `ac6033c` 回读，不能用当前施工代码覆盖它的身份记录。
 2. `docs/`：产品、架构、工具链、安全、验证、代码地图、研究、计划和进度文档；职责和唯一事实 owner 见 `docs/README.md`。
 3. `.codex/`：可提交的本机配置说明；`local-context.properties` 只保存本机路径和设备别名，永不提交。
 4. `.tmp/`、`apk-work/` 和仓库外工作目录：APK 解包、重打包和运行证据临时区，不进入 Git。
@@ -34,7 +34,8 @@
 3. `baksmali/smali` 负责需要精确控制的 DEX 反汇编、汇编和校验。
 4. `aapt/aapt2` 负责包名、入口、权限和资源检查；`zipalign` 负责对齐；`apksigner` 负责签名与证书验证。
 5. 工具由 Mac 本地直接调用，不把 ADB、APKTool 或签名材料复制进仓库，也不把 ADB 做成正式运行依赖。
-6. 如果进行 APK 打包，默认必须采用压缩原生库的方式：施工副本的 `apktool.yml` 不得保留 `doNotCompress: - so`，最终 `lib/**/*.so` 必须使用 Deflate；正式源码快照中的历史不压缩配置只作为输入事实，不得照搬到施工回编。
+6. 如果进行 APK 打包，默认必须采用压缩原生库的方式：正式源码和施工副本的 `apktool.yml` 不得保留 `doNotCompress: - so`，最终 `lib/**/*.so` 必须使用 Deflate；`ac6033c` 中的原始输入配置只作为历史事实。
+7. 每次施工允许在被忽略副本实验，但交付 / 提交前必须将全部可维护的 Java、Smali、Manifest、资源和构建配置回写到 `source/amap-9.5.0.600013/`，逐项排除旧实验与生成物；只从 Git 跟踪的正式源码完成 Java / D8 / APKTool 构建和核对。`apk-work/`、APK、DEX、class 只保留为本机产物，以身份哈希追踪，不能替代源码提交；若无法从正式源码重建，则不得宣称本轮代码已归档。
 
 ## 5. 安全与人工门禁
 

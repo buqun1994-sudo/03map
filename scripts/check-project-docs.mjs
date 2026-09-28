@@ -38,6 +38,7 @@ const requiredFiles = [
   "scripts/check-project-docs.mjs",
   "scripts/check-skills.mjs",
   "scripts/check-code-map.mjs",
+  "scripts/build-content-apk.sh",
 ];
 
 function read(relativePath) {
@@ -102,6 +103,9 @@ for (const marker of ["*.apk", "*.dex", "apk-work/", ".tmp/", "apk-archive/"] ) 
   if (!ignore.includes(marker)) failures.push(`.gitignore 缺少边界：${marker}`);
 }
 if (!agents.includes("source/amap-9.5.0.600013/")) failures.push("AGENTS.md 未声明正式源码入口");
+if (!agents.includes("交付 / 提交前必须将全部可维护的 Java")) {
+  failures.push("AGENTS.md 未声明施工副本回写正式源码的提交门禁");
+}
 if (contents.get("docs/architecture/03系列协作资产.md")?.includes("03helper") !== true) {
   failures.push("03 系列协作资产记录未包含 03helper 审计结果");
 }
