@@ -37,4 +37,4 @@ AI 会直接调用本机 `adb`、`apktool`、`baksmali/smali`、`aapt2`、`zipal
 
 ## 当前状态
 
-当前输入 APK 和必要身份凭据保存在被忽略的 `apk-archive/9.5.0.600013/`；历史 `480×480` 悬浮记录不再作为当前目标。实验可在 `apk-work/9.5.0.600013/` 进行，但提交前必须将 Java / Smali / Manifest / 资源改动回写 `source/`，并从 Git 源码重新构建；APK、截图、日志、DEX 和签名材料不进入 Git。构建入口：`bash scripts/build-content-apk.sh`。
+当前输入 APK 和必要身份凭据保存在被忽略的 `apk-archive/9.5.0.600013/`；历史 `480×480` 悬浮记录不再作为当前目标。实验可在 `apk-work/9.5.0.600013/` 进行，但提交前必须将 Java / Smali / Manifest / 资源改动回写 `source/`，并从 Git 源码重新构建；APK、截图、日志、DEX 和签名材料不进入 Git。构建入口：`bash scripts/build-content-apk.sh`；仅签名验证通过的 `signed.apk` 可交付，缺签名材料时构建失败。

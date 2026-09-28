@@ -41,17 +41,17 @@ unzip -l "$INPUT_APK" | rg 'AndroidManifest|classes|lib/|resources.arsc'
 ### 正式源码回写与可重建门禁
 
 1. 对照当前 Git 正式源码与实验副本，只迁入本轮确认为有效的 Java、Smali、Manifest、资源及构建配置；将 `build/`、class、DEX、签名、旧轮次和设备证据排除。迁入后逐项核对文件哈希、命名空间、方法入口和资源引用。
-2. 从正式源码运行 `bash scripts/build-content-apk.sh`：脚本在被忽略的 `apk-work/9.5.0.600013/source-build.*` 建新施工区，编译 `content-src/`、用 D8 生成 `classes2.dex`、回编 APKTool、注入 DEX、对齐并核对包身份和 `.so` 压缩；不从旧 `unknown/classes2.dex` 借用产物。
-3. 未提供外部签名材料时，脚本只输出**未签名**的对齐 APK，不能安装或当成已签名候选。若有已授权且匹配原签名身份的仓库外 PK8 私钥和 PEM 证书，可执行 `bash scripts/build-content-apk.sh "$EXTERNAL_KEY" "$EXTERNAL_CERT"`；脚本强制匹配正式输入的证书 SHA-256，随后仍需核对 `apksigner verify`、SHA-256，再走安装门禁。不得从旧签名包复制签名块。
+2. 在被忽略的 `.codex/local-context.properties` 配置指向仓库外的 `AMAP_SIGNING_PK8` 和 `AMAP_SIGNING_CERT`，从正式源码运行 `bash scripts/build-content-apk.sh`。脚本在被忽略的 `apk-work/9.5.0.600013/source-build.*` 编译 `content-src/`、用 D8 生成 `classes2.dex`、回编 APKTool、注入 DEX、对齐并签名；不从旧 `unknown/classes2.dex` 借用产物。
+3. 缺少签名材料、证书不等于已测试候选包身份或签名 / 包身份验证不通过时，脚本在交付前失败；不输出可交付的未签名包，也不回退到任意 Debug 证书。可显式传入仓库外 PK8、PEM 路径覆盖本机配置：`bash scripts/build-content-apk.sh "$EXTERNAL_KEY" "$EXTERNAL_CERT"`。输出 `signed.apk` 才是候选包；脚本自动验证单 signer、v2、证书 SHA-256、包身份、对齐、DEX 与 `.so` Deflate，并清理未签名中间包。不得从旧签名包复制签名块。
 4. 构建完成后运行 `node scripts/check-code-map.mjs`、`git diff --check`，检查 `git status` 与暂存清单。提交正式源码、构建入口和追踪文档；APK、DEX、class、密钥及完整日志永不进入 Git。若正式源码不能独立重建，禁止宣称代码已归档。
 
 ## 4. 对齐、签名与包检查
 
-签名材料只能来自仓库外，并且必须匹配当次授权：
+日常出包只执行上节的完整构建入口，不单独运行以下低层命令交付 APK。需要手工诊断中间包时，签名材料只能来自仓库外，且签名证书必须与当前已测试包身份匹配：
 
 ```sh
 "$ZIPALIGN" -p -f 4 "$WORK_DIR/unsigned.apk" "$WORK_DIR/aligned.apk"
-"$APKSIGNER" sign --ks "$EXTERNAL_KEYSTORE" --out "$WORK_DIR/signed.apk" "$WORK_DIR/aligned.apk"
+"$APKSIGNER" sign --key "$EXTERNAL_KEY" --cert "$EXTERNAL_CERT" --out "$WORK_DIR/signed.apk" "$WORK_DIR/aligned.apk"
 "$APKSIGNER" verify --verbose --print-certs "$WORK_DIR/signed.apk"
 "$AAPT2" dump badging "$WORK_DIR/signed.apk"
 ```

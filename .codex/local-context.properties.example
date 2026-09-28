@@ -9,5 +9,8 @@ SMALI_JAR=/path/to/smali.jar
 AAPT2=/path/to/Android/sdk/build-tools/version/aapt2
 ZIPALIGN=/path/to/Android/sdk/build-tools/version/zipalign
 APKSIGNER=/path/to/Android/sdk/build-tools/version/apksigner
+# 当前车机候选包的兼容签名身份；必须与已测试包的证书一致，私钥 / 证书不入 Git。
+AMAP_SIGNING_PK8=/path/outside/repo/to/map-signing-key.pk8
+AMAP_SIGNING_CERT=/path/outside/repo/to/map-signing-cert.pem
 VEHICLE_ADB_SERIAL=host-or-ip:port
 TEST_PHONE_ADB_SERIAL=
