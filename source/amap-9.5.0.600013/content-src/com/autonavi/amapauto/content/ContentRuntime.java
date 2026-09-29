@@ -1,13 +1,21 @@
 package com.autonavi.amapauto.content;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Method;
 
 public final class ContentRuntime {
     private static final Object LOCK = new Object();
     private static volatile int lastAmapThemeMode = ContentState.THEME_LIGHT;
+    private static volatile boolean hasAmapThemeMode;
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile float lastDividerX = Float.NaN;
     private static volatile float lastExpandedDividerX;
     private static volatile float lastMapWidth;
@@ -21,9 +29,23 @@ public final class ContentRuntime {
     private ContentRuntime(Activity activity, ViewGroup host) {
         ownerActivity = new WeakReference<>(activity);
         this.host = host;
+        int initialTheme = hasAmapThemeMode ? lastAmapThemeMode
+                : ((host.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES
+                        ? ContentState.THEME_DARK : ContentState.THEME_LIGHT);
         store = new ContentStore(host.getContext());
-        store.setThemeMode(lastAmapThemeMode);
-        renderer = new ContentRenderer(host.getContext(), host, store, lastAmapThemeMode);
+        store.setThemeMode(initialTheme);
+        renderer = new ContentRenderer(contentContext(host.getContext()), host, store, initialTheme);
+    }
+
+    static Context contentContext(Context original) {
+        int systemDpi = Resources.getSystem().getDisplayMetrics().densityDpi;
+        if (systemDpi <= 0) {
+            return original;
+        }
+        Configuration config = new Configuration(original.getResources().getConfiguration());
+        config.densityDpi = systemDpi;
+        return original.createConfigurationContext(config);
     }
 
     public static void attach(ViewGroup contentRoot) {
@@ -35,10 +57,16 @@ public final class ContentRuntime {
             return;
         }
         ViewGroup host = (ViewGroup) hostView;
+        Integer currentTheme = readAmapTheme();
+        if (currentTheme != null) {
+            lastAmapThemeMode = currentTheme;
+            hasAmapThemeMode = true;
+        }
         Activity activity = host.getContext() instanceof Activity
                 ? (Activity) host.getContext() : null;
         synchronized (LOCK) {
             if (activeRuntime != null && activeRuntime.host == host) {
+                if (currentTheme != null) activeRuntime.store.setThemeMode(currentTheme);
                 return;
             }
             if (activeRuntime != null) {
@@ -75,20 +103,50 @@ public final class ContentRuntime {
     }
 
     public static void onHostResumed(Activity activity) {
+        Integer currentTheme = readAmapTheme();
+        if (currentTheme != null) {
+            lastAmapThemeMode = currentTheme;
+            hasAmapThemeMode = true;
+        }
         synchronized (LOCK) {
             if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
+                if (currentTheme != null) activeRuntime.store.setThemeMode(currentTheme);
                 activeRuntime.renderer.resume();
             }
         }
     }
 
     public static void onAmapThemeChanged(int mode) {
-        int resolvedMode = mode == 2 ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
+        final int resolvedMode = mode == 2 ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
         lastAmapThemeMode = resolvedMode;
+        hasAmapThemeMode = true;
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            MAIN.post(new Runnable() {
+                @Override public void run() { applyAmapTheme(resolvedMode); }
+            });
+        } else {
+            applyAmapTheme(resolvedMode);
+        }
+    }
+
+    private static void applyAmapTheme(int mode) {
         synchronized (LOCK) {
-            if (activeRuntime != null) {
-                activeRuntime.store.setThemeMode(resolvedMode);
+            if (activeRuntime != null && lastAmapThemeMode == mode) {
+                activeRuntime.store.setThemeMode(mode);
             }
+        }
+    }
+
+    private static Integer readAmapTheme() {
+        try {
+            // The existing GAdaAndroid.nativeIsNightMode() is already used by Amap widgets.
+            Method query = Class.forName("com.autonavi.amapauto.jni.GAdaAndroid")
+                    .getMethod("nativeIsNightMode");
+            return Boolean.TRUE.equals(query.invoke(null))
+                    ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
+        } catch (ReflectiveOperationException | LinkageError unavailable) {
+            // Native startup may lag behind the content View; the normal callback remains authoritative.
+            return null;
         }
     }
 

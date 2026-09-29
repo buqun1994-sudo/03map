@@ -1283,6 +1283,34 @@
       "intrinsicHeight": "48.0dp",
       "viewportWidth": "48.0",
       "viewportHeight": "48.0"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_brightness_mid.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_brightness_mid.xml",
+      "sourceSha256": "cbf0409de722e7e7c2863d08a48c5c36a2f0d5405a5dd5cd923652c31e7c10ac",
+      "decodedSha256": "c0c8d944b1a53f825ee9edf57bb31923524b655e20c3f37d097f10607520c885",
+      "format": "Vector",
+      "density": "anydpi-v21",
+      "states": "ico_brightness_mid",
+      "deployedSha256": "c0c8d944b1a53f825ee9edf57bb31923524b655e20c3f37d097f10607520c885",
+      "textNormalization": "UTF-8；逐字复制原厂解包 XML"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_volume_2.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_volume_2.xml",
+      "sourceSha256": "09d433ff071655b074dcc327d83720b7ec69a3235166794309b94acb35641485",
+      "decodedSha256": "9d1c0124639fe5c141b1537d4c99477b6f131996fd637bd3d913854e1ddfa6a7",
+      "format": "Vector",
+      "density": "anydpi-v21",
+      "states": "ico_volume_2",
+      "deployedSha256": "9d1c0124639fe5c141b1537d4c99477b6f131996fd637bd3d913854e1ddfa6a7",
+      "textNormalization": "UTF-8；逐字复制原厂解包 XML"
     }
   ]
 }

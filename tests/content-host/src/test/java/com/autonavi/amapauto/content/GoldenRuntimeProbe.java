@@ -64,9 +64,9 @@ public class GoldenRuntimeProbe {
         try {
             fixture.layout(640);
             LinearLayout shortcuts = (LinearLayout) field(fixture.renderer, "shortcutsRow");
-            assertEquals(4, shortcuts.getChildCount());
-            for (int index = 0; index < shortcuts.getChildCount(); index++) {
-                View tile = shortcuts.getChildAt(index);
+            assertEquals(3, shortcuts.getChildCount());
+            assertEquals(5, ((List<View>) field(fixture.renderer, "shortcutTiles")).size());
+            for (View tile : (List<View>) field(fixture.renderer, "shortcutTiles")) {
                 assertEquals(tile.getWidth(), tile.getHeight());
                 assertEquals(2, ((LinearLayout) tile).getChildCount());
                 android.widget.TextView label = (android.widget.TextView) ((LinearLayout) tile).getChildAt(1);
@@ -89,7 +89,9 @@ public class GoldenRuntimeProbe {
                     Float.NaN, -1, 0, 0, 0, -1, true, false, true, true, true));
             assertEquals("充电中", chargingText.getText().toString());
             fixture.store.acceptVehicleSnapshot(vehicle(true, 0));
-            ContentIconView tileLock = (ContentIconView) ((LinearLayout) shortcuts.getChildAt(3)).getChildAt(0);
+            ContentIconView tileLock = (ContentIconView) ((LinearLayout)
+                    ((LinearLayout) field(fixture.renderer, "shortcutOverflowRow")).getChildAt(0))
+                    .getChildAt(0);
             fixture.store.toggleLock();
             assertEquals(ContentRegistry.Shortcuts.LOCK, fixture.store.snapshot().pendingVehicleCommand);
             assertEquals("content_oem_ico_lock_open", field(tileLock, "resourceName"));
@@ -485,103 +487,105 @@ public class GoldenRuntimeProbe {
     }
 
     @Test
-    public void svgMassageSliderSingleTargetAndRollback() throws Exception {
+    public void downwardShadowAndActiveSeatIconsRemainVisible() throws Exception {
+        Fixture fixture = new Fixture(141, 1f);
+        try {
+            fixture.layout(640);
+            View tile = ((List<View>) field(fixture.renderer, "shortcutTiles")).get(0);
+            assertEquals(0f, tile.getElevation(), 0f);
+            android.graphics.drawable.Drawable background = tile.getBackground();
+            background.setBounds(20, 20, 120, 120);
+            Bitmap shadow = Bitmap.createBitmap(140, 140, Bitmap.Config.ARGB_8888);
+            background.draw(new Canvas(shadow));
+            assertEquals("shadow must have no horizontal offset", shadow.getPixel(18, 70),
+                    shadow.getPixel(121, 70));
+            assertTrue("bottom shadow must exceed top shadow",
+                    android.graphics.Color.alpha(shadow.getPixel(70, 122))
+                    > android.graphics.Color.alpha(shadow.getPixel(70, 17)));
+            shadow.recycle();
+            for (String seat : new String[]{"ventilation", "heating", "massage"}) {
+                ContentIconView icon = new ContentIconView(fixture.host.getContext());
+                icon.setIcon(seat);
+                icon.setAvailable(true);
+                icon.layout(0, 0, 64, 64);
+                for (int mode : new int[]{ContentState.THEME_LIGHT, ContentState.THEME_DARK}) {
+                    icon.setThemeMode(mode);
+                    int foreground = mode == ContentState.THEME_LIGHT ? 0xff27303b : 0xfff4f6fa;
+                    icon.setColors(foreground, foreground);
+                    for (int level = 0; level <= 3; level++) {
+                        icon.setLevel(level);
+                        Bitmap image = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+                        icon.draw(new Canvas(image));
+                        int visible = 0;
+                        for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) {
+                            int pixel = image.getPixel(x, y);
+                            if (android.graphics.Color.alpha(pixel) > 50
+                                    && Math.abs(android.graphics.Color.red(pixel)
+                                    - android.graphics.Color.red(foreground)) < 20) visible++;
+                        }
+                        assertTrue(seat + " level " + level + " lost theme contrast", visible > 100);
+                        image.recycle();
+                    }
+                }
+            }
+            fixture.store.setPageIndex(0);
+            replacePort(fixture.store, "vehiclePort", new AcceptVehiclePort());
+            fixture.store.acceptVehicleSnapshot(vehicle(true, 0));
+            tile.performClick();
+            assertEquals(ContentRegistry.Shortcuts.SEAT_VENTILATION,
+                    fixture.store.snapshot().pendingVehicleCommand);
+            ContentIconView clickedIcon = (ContentIconView) ((LinearLayout) tile).getChildAt(0);
+            assertEquals(fixture.store.snapshot().pendingSeatLevel, field(clickedIcon, "level"));
+            android.graphics.drawable.Drawable clickedDrawable =
+                    (android.graphics.drawable.Drawable) field(clickedIcon, "stableDrawable");
+            assertNotNull(clickedDrawable.getColorFilter());
+            idle(260);
+            fixture.saveFrame("ventilation-pressed-visible");
+        } finally {
+            fixture.close();
+        }
+    }
+
+    @Test
+    public void contentPanelDensityDoesNotMutateMapContext() throws Exception {
+        Fixture fixture = new Fixture(265, 1.0f);
+        try {
+            int mapDpi = fixture.host.getResources().getDisplayMetrics().densityDpi;
+            assertEquals(265, mapDpi);
+            android.content.Context panel = ContentRuntime.contentContext(fixture.host.getContext());
+            assertEquals(Resources.getSystem().getDisplayMetrics().densityDpi,
+                    panel.getResources().getDisplayMetrics().densityDpi);
+            assertEquals(mapDpi, fixture.host.getResources().getDisplayMetrics().densityDpi);
+        } finally {
+            fixture.close();
+        }
+    }
+
+    @Test
+    public void systemSlidersRemainSeparateFromSeatCommands() throws Exception {
         Fixture fixture = new Fixture();
         try {
             fixture.layout(640);
             fixture.store.setPageIndex(0);
             idle(260);
-            ContentPorts.VehiclePort original = (ContentPorts.VehiclePort) field(fixture.store, "vehiclePort");
-            original.stop();
+            ContentSystemSlider brightness = (ContentSystemSlider)
+                    field(fixture.renderer, "brightnessSlider");
+            ContentSystemSlider volume = (ContentSystemSlider)
+                    field(fixture.renderer, "volumeSlider");
+            assertTrue(brightness.getHeight() > brightness.getWidth());
+            assertEquals(brightness.getWidth(), volume.getWidth());
+            assertTrue(brightness.getContentDescription().toString().startsWith("亮度"));
+            assertTrue(volume.getContentDescription().toString().startsWith("音量"));
+            assertNotNull(((android.widget.ImageView) brightness.getChildAt(2)).getDrawable());
+            assertNotNull(((android.widget.ImageView) volume.getChildAt(2)).getDrawable());
             AcceptVehiclePort port = new AcceptVehiclePort();
             replacePort(fixture.store, "vehiclePort", port);
             fixture.store.acceptVehicleSnapshot(vehicleMassage(0));
-            View slider = (View) field(fixture.renderer, "massageSlider");
-            assertTrue(slider.getWidth() >= 128);
-            assertTrue(slider.getHeight() >= slider.getWidth() * 2);
-            int effectiveHeight = slider.getHeight() - 108;
-            for (int target : new int[]{1, 3, 2, 0}) {
-                int previousRequests = port.seatRequests;
-                float positionY = slider.getHeight() - effectiveHeight * target / 3.0f;
-                touch(slider, MotionEvent.ACTION_DOWN, slider.getWidth() / 2, slider.getHeight(), 0);
-                touch(slider, MotionEvent.ACTION_MOVE, slider.getWidth() / 2, positionY, 50);
-                assertEquals("drag wrote before release", previousRequests, port.seatRequests);
-                touch(slider, MotionEvent.ACTION_UP, slider.getWidth() / 2, positionY, 100);
-                assertEquals("release did not write exactly once", previousRequests + 1, port.seatRequests);
-                assertEquals(target, port.lastSeatLevel);
-                assertEquals(target, fixture.store.snapshot().pendingSeatLevel);
-                touch(slider, MotionEvent.ACTION_DOWN, slider.getWidth() / 2, positionY, 120);
-                touch(slider, MotionEvent.ACTION_UP, slider.getWidth() / 2, positionY, 140);
-                assertEquals("pending command stacked", previousRequests + 1, port.seatRequests);
-                fixture.store.acceptVehicleSnapshot(vehicleMassage(target));
-                assertEquals("", fixture.store.snapshot().pendingVehicleCommand);
-                idle(220);
-                assertEquals(target, Math.round((Float) field(fixture.renderer, "sliderDisplayedLevel")));
-                fixture.store.updateClock(System.currentTimeMillis());
-                assertNull("clock replayed settled slider animation", field(fixture.renderer, "sliderAnimator"));
-            }
-            float roundedPreviewY = slider.getHeight() - effectiveHeight * 0.45f;
-            touch(slider, MotionEvent.ACTION_DOWN, slider.getWidth() / 2, slider.getHeight(), 0);
-            touch(slider, MotionEvent.ACTION_MOVE, slider.getWidth() / 2, roundedPreviewY, 50);
-            touch(slider, MotionEvent.ACTION_UP, slider.getWidth() / 2, roundedPreviewY, 100);
-            float initial = (Float) field(fixture.renderer, "sliderDisplayedLevel");
-            assertTrue("rounding preview did not remain between levels", initial > 1.0f && initial < 1.5f);
-            android.animation.ValueAnimator snapping = (android.animation.ValueAnimator)
-                    field(fixture.renderer, "sliderAnimator");
-            assertNotNull("release must animate toward discrete target", snapping);
-            snapping.setCurrentPlayTime(100L);
-            float middle = (Float) field(fixture.renderer, "sliderDisplayedLevel");
-            assertTrue("slider snap midpoint", middle > 1.0f && middle < initial);
-            snapping.setCurrentPlayTime(200L);
-            assertEquals(1.0f, (Float) field(fixture.renderer, "sliderDisplayedLevel"), 0.01f);
-            fixture.store.acceptVehicleSnapshot(vehicleMassage(1));
-            fixture.store.acceptVehicleSnapshot(vehicleMassage(0));
-            idle(230);
-            int requests = port.seatRequests;
-            touch(slider, MotionEvent.ACTION_DOWN, slider.getWidth() / 2, 0, 0);
-            touch(slider, MotionEvent.ACTION_MOVE, slider.getWidth() / 2, slider.getHeight(), 50);
-            touch(slider, MotionEvent.ACTION_CANCEL, slider.getWidth() / 2, slider.getHeight(), 100);
-            assertEquals("cancel wrote command", requests, port.seatRequests);
-            fixture.store.setSeatLevel(ContentRegistry.Shortcuts.SEAT_MASSAGE, 0);
-            assertEquals("same level sent command", requests, port.seatRequests);
-            port.acceptSeat = false;
-            touch(slider, MotionEvent.ACTION_DOWN, slider.getWidth() / 2, slider.getHeight(), 0);
-            touch(slider, MotionEvent.ACTION_UP, slider.getWidth() / 2, 0, 90);
-            assertEquals(ContentState.COMMAND_FAILED, fixture.store.snapshot().commandStatus);
-            assertEquals("", fixture.store.snapshot().pendingVehicleCommand);
-            idle(220);
-            assertEquals(0, Math.round((Float) field(fixture.renderer, "sliderDisplayedLevel")));
-            port.acceptSeat = true;
-            touch(slider, MotionEvent.ACTION_DOWN, slider.getWidth() / 2, slider.getHeight(), 0);
-            touch(slider, MotionEvent.ACTION_UP, slider.getWidth() / 2, 0, 90);
-            fixture.store.acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable());
-            assertEquals("", fixture.store.snapshot().pendingVehicleCommand);
-            assertEquals(ContentState.COMMAND_FAILED, fixture.store.snapshot().commandStatus);
-            fixture.store.acceptVehicleSnapshot(vehicleMassage(0));
-            touch(slider, MotionEvent.ACTION_DOWN, slider.getWidth() / 2, slider.getHeight(), 0);
-            touch(slider, MotionEvent.ACTION_UP, slider.getWidth() / 2, 0, 90);
+            assertEquals(0, port.seatRequests);
+            fixture.store.cycleSeatLevel(ContentRegistry.Shortcuts.SEAT_MASSAGE);
+            assertEquals(1, port.seatRequests);
             assertEquals(ContentRegistry.Shortcuts.SEAT_MASSAGE,
                     fixture.store.snapshot().pendingVehicleCommand);
-            idle(6100);
-            assertEquals("", fixture.store.snapshot().pendingVehicleCommand);
-            assertEquals(ContentState.COMMAND_FAILED, fixture.store.snapshot().commandStatus);
-            fixture.store.acceptVehicleSnapshot(new ContentPorts.VehicleSnapshot(true, false,
-                    25.0f, 70, 366, ContentState.CHARGE_DEFAULT, 0, 0, 0, Float.NaN, -1,
-                    0, 0, -1, -1, true, true, true, true, true));
-            requests = port.seatRequests;
-            fixture.store.setSeatLevel(ContentRegistry.Shortcuts.SEAT_MASSAGE, 3);
-            assertEquals("unknown active level guessed", requests, port.seatRequests);
-            fixture.store.setSeatLevel(ContentRegistry.Shortcuts.SEAT_MASSAGE, 0);
-            assertEquals("unknown active level could not close", requests + 1, port.seatRequests);
-            fixture.store.acceptVehicleSnapshot(vehicleMassage(0));
-            port.immediateStore = fixture.store;
-            port.immediateSnapshot = vehicleMassage(2);
-            fixture.store.setSeatLevel(ContentRegistry.Shortcuts.SEAT_MASSAGE, 2);
-            assertEquals("synchronous snapshot was lost", "",
-                    fixture.store.snapshot().pendingVehicleCommand);
-            assertEquals(2, fixture.store.snapshot().massageLevel);
-            fixture.renderer.pause();
-            assertNull(field(fixture.renderer, "sliderAnimator"));
         } finally {
             fixture.close();
         }
@@ -602,16 +606,19 @@ public class GoldenRuntimeProbe {
                 fixture.layout(width);
                 LinearLayout first = (LinearLayout) field(fixture.renderer, "shortcutsRow");
                 LinearLayout overflow = (LinearLayout) field(fixture.renderer, "shortcutOverflowRow");
-                int columns = width == 640 ? 4 : width == 580 ? 3 : 2;
+                int columns = width == 420 ? 2 : 3;
                 assertEquals(columns, first.getChildCount());
-                assertEquals(4 - columns, overflow.getChildCount());
+                assertEquals(Math.min(columns, 5 - columns), overflow.getChildCount());
+                assertEquals(Math.max(0, 5 - 2 * columns),
+                        ((LinearLayout) field(fixture.renderer, "shortcutLastRow")).getChildCount());
                 for (int index = 0; index < first.getChildCount(); index++) {
                     assertTrue("shortcut below minimum touch size", first.getChildAt(index).getWidth() >= 128);
                     assertTrue("shortcut crosses content edge", first.getChildAt(index).getRight() <= width);
                 }
-                View slider = (View) field(fixture.renderer, "massageSlider");
-                assertTrue("slider below minimum touch size", slider.getWidth() >= 128);
-                assertTrue("slider crosses map edge", slider.getRight() <= width);
+                View brightness = (View) field(fixture.renderer, "brightnessSlider");
+                View volume = (View) field(fixture.renderer, "volumeSlider");
+                assertTrue("brightness below minimum touch size", brightness.getWidth() >= 128);
+                assertTrue("volume crosses content edge", volume.getRight() <= width);
             }
         } finally {
             fixture.close();
@@ -638,14 +645,6 @@ public class GoldenRuntimeProbe {
             assertTrue("selected square midpoint", tile.getAlpha() > 0.82f && tile.getAlpha() < 1.0f);
             selection.setCurrentPlayTime(220L);
             assertEquals(1.0f, tile.getAlpha(), 0.01f);
-            android.animation.ValueAnimator fill = (android.animation.ValueAnimator)
-                    field(fixture.renderer, "sliderAnimator");
-            assertNotNull("seat state change has no fill animation", fill);
-            fill.setCurrentPlayTime(100L);
-            float midpoint = (Float) field(fixture.renderer, "sliderDisplayedLevel");
-            assertTrue("seat fill midpoint", midpoint > 0.0f && midpoint < 3.0f);
-            fill.setCurrentPlayTime(200L);
-            assertEquals(3.0f, (Float) field(fixture.renderer, "sliderDisplayedLevel"), 0.01f);
             touch(tile, MotionEvent.ACTION_DOWN, tile.getWidth() / 2, tile.getHeight() / 2, 0);
             Map<?, ?> presses = (Map<?, ?>) field(fixture.renderer, "pressAnimators");
             android.animation.ValueAnimator pressed = (android.animation.ValueAnimator) presses.get(tile);
@@ -695,7 +694,6 @@ public class GoldenRuntimeProbe {
             assertEquals(ContentTheme.dark().background,
                     ((ContentTheme) field(fixture.renderer, "theme")).background);
             fixture.renderer.pause();
-            assertNull(field(fixture.renderer, "sliderAnimator"));
             assertNull(field(fixture.renderer, "topTransitionAnimator"));
             assertTrue(((Map<?, ?>) field(fixture.renderer, "pressAnimators")).isEmpty());
         } finally {
@@ -709,13 +707,14 @@ public class GoldenRuntimeProbe {
         Fixture fixture = new Fixture();
         fixture.layout(640);
         fixture.store.acceptMediaSnapshot(media(false, null));
-        ContentIconView icon = (ContentIconView) field(fixture.renderer, "mediaPlayIcon");
-        assertTrue("fixture window not focused", icon.hasWindowFocus());
+        ContentIconView mediaPlay = (ContentIconView) field(fixture.renderer, "mediaPlayIcon");
         fixture.store.acceptMediaSnapshot(media(true, null));
-        System.out.println("ICON diagnostics visible=" + icon.isShown() + " focus=" + icon.hasWindowFocus()
-                + " icon=" + field(icon, "iconKey") + " active=" + field(icon, "animationVisible")
-                + " attached=" + field(icon, "attached") + " task=" + field(icon, "loadingTask")
-                + " sequence=" + field(icon, "loadSequence"));
+        assertEquals("content_oem_ico_media_pause", field(mediaPlay, "resourceName"));
+        assertNull("unmatched circular play animation must not run", field(mediaPlay, "loadingTask"));
+        ContentIconView icon = (ContentIconView) ((android.widget.FrameLayout)
+                field(fixture.renderer, "mediaNextButton")).getChildAt(0);
+        assertTrue("fixture window not focused", icon.hasWindowFocus());
+        icon.playAction();
         com.airbnb.lottie.LottieTask<?> current = (com.airbnb.lottie.LottieTask<?>) field(icon, "loadingTask");
         if (current != null && current.getResult() != null) {
             System.out.println("ICON result=" + current.getResult().getException());
@@ -740,7 +739,7 @@ public class GoldenRuntimeProbe {
         fixture.store.setControlIndex(0);
         idle(280);
         assertFalse("return replayed past transition", (Boolean) field(icon, "drawingAnimation"));
-        assertEquals("content_oem_ico_media_pause", field(icon, "resourceName"));
+        assertEquals("content_oem_ico_media_next", field(icon, "resourceName"));
         fixture.store.acceptMediaSnapshot(media(false, null));
         fixture.activityController.windowFocusChanged(false);
         assertFalse((Boolean) field(icon, "drawingAnimation"));
@@ -839,7 +838,7 @@ public class GoldenRuntimeProbe {
                     && Math.abs(playLocation[1] - sourceLocation[1]) <= 4);
             assertEquals("two pages must remain accessible", "第 1 页，共 2 页",
                     ((View) field(fixture.renderer, "pageScroller")).getContentDescription());
-            assertEquals("four real square controls", 4,
+            assertEquals("five real square controls", 5,
                     ((List<View>) field(fixture.renderer, "shortcutTiles")).size());
             assertNoVisibleText(fixture.host, "设置暂不可用");
             replacePort(fixture.store, "vehiclePort", new AcceptVehiclePort());
@@ -851,8 +850,8 @@ public class GoldenRuntimeProbe {
             fixture.saveFrame("vehicle-system-212-app-265-light-shortcuts-state-fixture");
             View selectedTile = ((List<View>) field(fixture.renderer, "shortcutTiles")).get(1);
             assertEquals("selected card stays white", 0xffffffff,
-                    ((android.graphics.drawable.ShapeDrawable) selectedTile.getBackground())
-                            .getPaint().getColor());
+                    ((android.graphics.drawable.GradientDrawable) selectedTile.getBackground())
+                            .getColor().getDefaultColor());
             source.performClick();
             PopupWindow popup = (PopupWindow) field(fixture.renderer, "activePopup");
             assertNotNull(popup);
@@ -1043,6 +1042,10 @@ public class GoldenRuntimeProbe {
                 @Override public AssetManager getAssets() { return assets; }
                 @Override public Context getApplicationContext() { return this; }
                 @Override public String getPackageName() { return "com.autonavi.amapautolite"; }
+                @Override public Object getSystemService(String name) {
+                    if (Context.AUDIO_SERVICE.equals(name)) return null;
+                    return super.getSystemService(name);
+                }
             };
             host = new FrameLayout(context);
             activity.setContentView(host);

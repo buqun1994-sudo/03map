@@ -33,6 +33,7 @@ public final class ContentIconView extends View {
     private boolean drawingAnimation;
     private String resourceName = "";
     private Drawable stableDrawable;
+    private Drawable transitionFallbackDrawable;
     private LottieDrawable animatedDrawable;
     private LottieTask<LottieComposition> loadingTask;
     private LottieListener<LottieComposition> loadedListener;
@@ -126,10 +127,11 @@ public final class ContentIconView extends View {
     }
 
     public void playAction() {
-        startTransition();
+        startTransition(stableDrawable);
     }
 
     private void refresh(boolean animate) {
+        Drawable previousDrawable = stableDrawable;
         String nextResource = stableResourceName();
         if (!nextResource.equals(resourceName) || stableDrawable == null) {
             resourceName = nextResource;
@@ -145,15 +147,12 @@ public final class ContentIconView extends View {
             }
         }
         if (stableDrawable != null) {
-            if (available && level > 0 && isSeatIcon()) {
-                stableDrawable.clearColorFilter();
-            } else {
-                stableDrawable.setColorFilter(new SimpleColorFilter(iconColor));
-            }
+            // OEM seat paths are white in active assets; tint while retaining per-path alpha.
+            stableDrawable.setColorFilter(new SimpleColorFilter(iconColor));
         }
         invalidate();
         if (animate) {
-            startTransition();
+            startTransition(previousDrawable);
         }
     }
 
@@ -212,7 +211,7 @@ public final class ContentIconView extends View {
             return locked ? "ico_lock_close_f.json" : "ico_lock_open_f.json";
         }
         if ("play".equals(iconKey) || "pause".equals(iconKey)) {
-            return "ico_media_" + iconKey + "_02_f.json";
+            return null;
         }
         if ("next".equals(iconKey)) {
             return "ico_media_next.json";
@@ -231,12 +230,14 @@ public final class ContentIconView extends View {
                 && getWindowVisibility() == View.VISIBLE && hasWindowFocus();
     }
 
-    private void startTransition() {
+    private void startTransition(Drawable previousDrawable) {
         final String asset = transitionAsset();
         if (asset == null || !canAnimate()) {
             return;
         }
         stopAnimation();
+        transitionFallbackDrawable = previousDrawable;
+        invalidate();
         final int sequence = loadSequence;
         loadedListener = new LottieListener<LottieComposition>() {
             @Override
@@ -269,6 +270,8 @@ public final class ContentIconView extends View {
                 animatedDrawable.setComposition(composition);
                 animatedDrawable.addValueCallback(new KeyPath("**"), LottieProperty.COLOR_FILTER,
                         new LottieValueCallback<ColorFilter>(new SimpleColorFilter(iconColor)));
+                animatedDrawable.setFrame((int) composition.getStartFrame());
+                transitionFallbackDrawable = null;
                 drawingAnimation = true;
                 animatedDrawable.playAnimation();
                 invalidate();
@@ -301,13 +304,15 @@ public final class ContentIconView extends View {
             animatedDrawable.cancelAnimation();
         }
         drawingAnimation = false;
+        transitionFallbackDrawable = null;
         invalidate();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        Drawable drawable = drawingAnimation ? animatedDrawable : stableDrawable;
+        Drawable drawable = drawingAnimation ? animatedDrawable
+                : transitionFallbackDrawable != null ? transitionFallbackDrawable : stableDrawable;
         if (drawable != null) {
             int size = Math.min(getWidth(), getHeight());
             int left = (getWidth() - size) / 2;
@@ -319,7 +324,8 @@ public final class ContentIconView extends View {
 
     @Override
     protected boolean verifyDrawable(Drawable drawable) {
-        return drawable == stableDrawable || drawable == animatedDrawable || super.verifyDrawable(drawable);
+        return drawable == stableDrawable || drawable == transitionFallbackDrawable
+                || drawable == animatedDrawable || super.verifyDrawable(drawable);
     }
 
     @Override

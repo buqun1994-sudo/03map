@@ -7,15 +7,17 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.ShapeDrawable;
-import android.graphics.drawable.shapes.RoundRectShape;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -53,9 +55,10 @@ public final class ContentRenderer implements ContentStore.Listener {
     private static final String ROLE_ACCENT = "accent";
     private static final String ROLE_DIVIDER = "divider";
     private static final String ROLE_CARD = "card";
+    private static final String ROLE_ARTWORK = "artwork";
     private static final String ROLE_MEDIA = "media";
     private static final String ROLE_DOCK_BASE = "dock_base";
-    private static final String ROLE_SLIDER_FILL = "slider_fill";
+    private static final String ROLE_DOCK_BUTTON = "dock_button";
 
     private final Context context;
     private final ViewGroup host;
@@ -101,6 +104,8 @@ public final class ContentRenderer implements ContentStore.Listener {
     private LinearLayout pageRow;
     private LinearLayout shortcutsRow;
     private LinearLayout shortcutOverflowRow;
+    private LinearLayout shortcutLastRow;
+    private FrameLayout shortcutLowerContainer;
     private final List<View> shortcutTiles = new ArrayList<>();
     private ContentPager controlScroller;
     private LinearLayout controlRow;
@@ -110,16 +115,9 @@ public final class ContentRenderer implements ContentStore.Listener {
     private View mediaPlayButton;
     private View mediaNextButton;
     private FrameLayout sourceButton;
-    private TextView sourceLabel;
     private ContentIconView sourceIcon;
-    private View massageSlider;
-    private View sliderFill;
-    private TextView sliderValue;
-    private ValueAnimator sliderAnimator;
-    private boolean sliderDragging;
-    private float sliderPreviewLevel = Float.NaN;
-    private float sliderDisplayedLevel = Float.NaN;
-    private float sliderTargetLevel = Float.NaN;
+    private ContentSystemSlider brightnessSlider;
+    private ContentSystemSlider volumeSlider;
     private int lastChargeState = Integer.MIN_VALUE;
     private boolean lastDetailedStatus;
     private LinearLayout dockSlots;
@@ -196,6 +194,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         panel.addView(boundary, new FrameLayout.LayoutParams(dp(1),
                 ViewGroup.LayoutParams.MATCH_PARENT, Gravity.RIGHT));
         applyThemeTree(panel);
+        brightnessSlider.setTheme(theme);
+        volumeSlider.setTheme(theme);
         updateIconVisibility();
         store.addListener(this);
         clock.start();
@@ -262,6 +262,8 @@ public final class ContentRenderer implements ContentStore.Listener {
             return;
         }
         activityActive = true;
+        brightnessSlider.refresh();
+        volumeSlider.refresh();
         ContentState state = store.snapshot();
         alignPager(pageScroller, state.pageIndex);
         alignPager(controlScroller, state.controlIndex);
@@ -274,7 +276,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         topBar = new FrameLayout(context);
         topBar.setPadding(dp(8), dp(2), dp(8), dp(2));
         verticalRoot.addView(topBar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(34)));
+                ViewGroup.LayoutParams.MATCH_PARENT, 40));
 
         LinearLayout row = new LinearLayout(context);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -380,10 +382,12 @@ public final class ContentRenderer implements ContentStore.Listener {
 
         LinearLayout page = new LinearLayout(context);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(12), dp(2), dp(12), dp(8));
+        page.setClipChildren(false);
+        page.setPadding(dp(23), dp(21), dp(23), dp(8));
         page.setBackgroundColor(Color.TRANSPARENT);
 
         shortcutsRow = new LinearLayout(context);
+        shortcutsRow.setClipChildren(false);
         shortcutsRow.setOrientation(LinearLayout.HORIZONTAL);
         shortcutTiles.add(createShortcutTile(ContentRegistry.Shortcuts.SEAT_VENTILATION,
                 "座椅通风", "ventilation"));
@@ -393,26 +397,44 @@ public final class ContentRenderer implements ContentStore.Listener {
                 "座椅按摩", "massage"));
         shortcutTiles.add(createShortcutTile(ContentRegistry.Shortcuts.LOCK,
                 "车锁", "lock"));
+        shortcutTiles.add(createShortcutTile(ContentRegistry.Shortcuts.SETTINGS,
+                "设置", "settings"));
         page.addView(shortcutsRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, shortcutTileSize()));
+        shortcutLowerContainer = new FrameLayout(context);
+        shortcutLowerContainer.setClipChildren(false);
+        LinearLayout.LayoutParams lowerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, shortcutTileSize() * 2 + dp(23));
+        lowerParams.topMargin = dp(23);
+        page.addView(shortcutLowerContainer, lowerParams);
         shortcutOverflowRow = new LinearLayout(context);
+        shortcutOverflowRow.setClipChildren(false);
         shortcutOverflowRow.setOrientation(LinearLayout.HORIZONTAL);
-        page.addView(shortcutOverflowRow, new LinearLayout.LayoutParams(
+        shortcutLowerContainer.addView(shortcutOverflowRow, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, shortcutTileSize()));
+        shortcutLastRow = new LinearLayout(context);
+        shortcutLastRow.setClipChildren(false);
+        shortcutLastRow.setOrientation(LinearLayout.HORIZONTAL);
+        FrameLayout.LayoutParams lastParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, shortcutTileSize());
+        lastParams.topMargin = shortcutTileSize() + dp(23);
+        shortcutLowerContainer.addView(shortcutLastRow, lastParams);
         layoutShortcutTiles();
 
         LinearLayout sliderRow = new LinearLayout(context);
-        sliderRow.setGravity(Gravity.LEFT);
-        LinearLayout.LayoutParams sliderRowParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, shortcutTileSize() * 2 + dp(12));
-        sliderRowParams.topMargin = dp(12);
-        page.addView(sliderRow, sliderRowParams);
-        massageSlider = buildMassageSlider();
-        LinearLayout.LayoutParams sliderParams = new LinearLayout.LayoutParams(
+        shortcutLowerContainer.addView(sliderRow, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, shortcutTileSize() * 2 + dp(23)));
+        brightnessSlider = new ContentSystemSlider(context, ContentSystemSlider.BRIGHTNESS);
+        volumeSlider = new ContentSystemSlider(context, ContentSystemSlider.VOLUME);
+        LinearLayout.LayoutParams brightnessParams = new LinearLayout.LayoutParams(
                 shortcutTileSize(), ViewGroup.LayoutParams.MATCH_PARENT);
-        sliderParams.leftMargin = Math.min(2, shortcutColumns() - 1)
-                * (shortcutTileSize() + dp(12));
-        sliderRow.addView(massageSlider, sliderParams);
+        brightnessParams.leftMargin = 2 * (shortcutTileSize() + dp(23));
+        sliderRow.addView(brightnessSlider, brightnessParams);
+        LinearLayout.LayoutParams volumeParams = new LinearLayout.LayoutParams(
+                shortcutTileSize(), ViewGroup.LayoutParams.MATCH_PARENT);
+        volumeParams.leftMargin = dp(23);
+        sliderRow.addView(volumeSlider, volumeParams);
+        layoutSystemSliders();
 
         scrollView.addView(page, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -462,8 +484,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         controlScroller.setFillViewport(false);
         controlScroller.setClipChildren(false);
         LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(73));
-        controlParams.bottomMargin = dp(10);
+                ViewGroup.LayoutParams.MATCH_PARENT, 120);
+        controlParams.bottomMargin = 16;
         verticalRoot.addView(controlScroller, controlParams);
 
         controlRow = new LinearLayout(context);
@@ -489,12 +511,12 @@ public final class ContentRenderer implements ContentStore.Listener {
         applySoftShadow(content);
         FrameLayout.LayoutParams contentParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        contentParams.leftMargin = dp(12);
-        contentParams.rightMargin = dp(12);
+        contentParams.leftMargin = 20;
+        contentParams.rightMargin = 20;
         card.addView(content, contentParams);
 
         FrameLayout artwork = new FrameLayout(context);
-        artwork.setTag(ROLE_SURFACE);
+        artwork.setTag(ROLE_ARTWORK);
         artwork.setClipToOutline(true);
         mediaArtworkView = new ImageView(context);
         mediaArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -503,7 +525,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         mediaArtworkFallback = new ContentIconView(context);
         mediaArtworkFallback.setIcon("source");
         artwork.addView(mediaArtworkFallback, new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER));
-        content.addView(artwork, new LinearLayout.LayoutParams(dp(72),
+        content.addView(artwork, new LinearLayout.LayoutParams(120,
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout songInfo = new LinearLayout(context);
@@ -555,13 +577,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         sourceContent.setGravity(Gravity.CENTER);
         sourceIcon = new ContentIconView(context);
         sourceIcon.setIcon("source_local");
-        sourceContent.addView(sourceIcon, new LinearLayout.LayoutParams(dp(22), dp(22)));
-        sourceLabel = makeText(12.0f, Typeface.NORMAL, ROLE_PRIMARY);
-        sourceLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        sourceLabel.setGravity(Gravity.CENTER);
-        sourceLabel.setSingleLine(true);
-        sourceLabel.setEllipsize(TextUtils.TruncateAt.END);
-        sourceContent.addView(sourceLabel, new LinearLayout.LayoutParams(0, dp(24), 1.0f));
+        sourceContent.addView(sourceIcon, new LinearLayout.LayoutParams(48, 48));
         sourceButton.addView(sourceContent, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         sourceButton.setContentDescription("媒体来源");
@@ -584,18 +600,19 @@ public final class ContentRenderer implements ContentStore.Listener {
         if (mediaPlayButton == null || sourceButton == null) {
             return;
         }
-        int contentWidth = Math.max(1, pageWidth - dp(24));
+        int contentWidth = Math.max(1, pageWidth - 40);
         LinearLayout content = (LinearLayout) mediaPlayButton.getParent();
         View artwork = content.getChildAt(0);
         LinearLayout songInfo = (LinearLayout) content.getChildAt(1);
         boolean compact = pageWidth < dp(350);
-        songInfo.setPadding(compact ? dp(6) : dp(12), 0, 0, 0);
-        mediaTitleText.setTextSize(compact ? 14.0f : 16.0f);
-        sourceLabel.setTextSize(compact ? 11.0f : 12.0f);
-        int[] widths = new int[]{Math.min(dp(72), Math.round(contentWidth * 0.20f)),
-                dp(48), dp(48),
-                Math.max(dp(48), Math.min(dp(85), Math.round(contentWidth
-                        * (compact ? 0.26f : 0.24f))))};
+        songInfo.setPadding(compact ? 8 : 20, 0, 0, 0);
+        mediaTitleText.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                (compact ? 14.0f : 16.0f) * 1.4f);
+        int[] widths = contentWidth >= 520 ? new int[]{120, 88, 100, 97}
+                : new int[]{Math.min(100, Math.round(contentWidth * 0.20f)),
+                        Math.max(48, Math.round(contentWidth * 0.14f)),
+                        Math.max(48, Math.round(contentWidth * 0.14f)),
+                        Math.max(48, Math.round(contentWidth * 0.13f))};
         View[] views = new View[]{artwork, mediaPlayButton, mediaNextButton, sourceButton};
         for (int index = 0; index < views.length; index++) {
             LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) views[index].getLayoutParams();
@@ -659,13 +676,13 @@ public final class ContentRenderer implements ContentStore.Listener {
         dockContainer.setTag(ROLE_DOCK_BASE);
         applySoftShadow(dockContainer);
         LinearLayout.LayoutParams dockParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(60));
-        dockParams.leftMargin = dp(7);
-        dockParams.rightMargin = dp(7);
-        dockParams.bottomMargin = dp(7);
+                ViewGroup.LayoutParams.MATCH_PARENT, 100);
+        dockParams.leftMargin = 12;
+        dockParams.rightMargin = 12;
+        dockParams.bottomMargin = 12;
         verticalRoot.addView(dockViewport, dockParams);
         dockViewport.addView(dockContainer, new HorizontalScrollView.LayoutParams(
-                Math.max(dp(300), panelWidth - dp(14)), ViewGroup.LayoutParams.MATCH_PARENT));
+                Math.max(300, panelWidth - 24), ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout lockButton = createDockButton("lock", "车锁");
         lockDockIcon = (ContentIconView) lockButton.getChildAt(0);
@@ -709,7 +726,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         applySoftShadow(tile);
         ContentIconView icon = new ContentIconView(context);
         icon.setIcon(iconKey);
-        tile.addView(icon, new LinearLayout.LayoutParams(dp(30), dp(30)));
+        tile.addView(icon, new LinearLayout.LayoutParams(dp(40), dp(40)));
         TextView labelText = makeText(14.0f, Typeface.NORMAL, ROLE_SECONDARY);
         labelText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         labelText.setText(label);
@@ -717,7 +734,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         labelText.setSingleLine(true);
         labelText.setEllipsize(TextUtils.TruncateAt.END);
         tile.addView(labelText, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(18)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(28)));
         TileBinding binding = new TileBinding(tile, icon, labelText);
         tileBindings.put(itemId, binding);
         bindPressEffect(tile);
@@ -741,147 +758,6 @@ public final class ContentRenderer implements ContentStore.Listener {
             }
         });
         return tile;
-    }
-
-    private View buildMassageSlider() {
-        final FrameLayout slider = new FrameLayout(context);
-        slider.setTag(ROLE_CARD);
-        applySoftShadow(slider);
-        slider.setClipToOutline(true);
-        sliderFill = new View(context);
-        sliderFill.setTag(ROLE_SLIDER_FILL);
-        slider.addView(sliderFill, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM));
-        ContentIconView icon = new ContentIconView(context);
-        icon.setIcon("massage");
-        slider.addView(icon, new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER));
-        sliderValue = makeText(14.0f, Typeface.NORMAL, ROLE_PRIMARY);
-        sliderValue.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        sliderValue.setGravity(Gravity.CENTER);
-        sliderValue.setSingleLine(false);
-        sliderValue.setMaxLines(2);
-        slider.addView(sliderValue, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(50), Gravity.TOP));
-        slider.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
-            @Override
-            public void onLayoutChange(View view, int left, int top, int right, int bottom,
-                    int oldLeft, int oldTop, int oldRight, int oldBottom) {
-                if (bottom - top != oldBottom - oldTop && !sliderDragging
-                        && !Float.isNaN(sliderDisplayedLevel)) {
-                    setSliderFill(sliderDisplayedLevel);
-                }
-            }
-        });
-        slider.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View view, MotionEvent event) {
-                int action = event.getActionMasked();
-                if (action == MotionEvent.ACTION_DOWN) {
-                    ContentState state = store.snapshot();
-                    if (!isItemAvailable(state, ContentRegistry.Shortcuts.SEAT_MASSAGE)
-                            || !TextUtils.isEmpty(state.pendingVehicleCommand)) {
-                        return true;
-                    }
-                    if (sliderAnimator != null) {
-                        sliderAnimator.cancel();
-                        sliderAnimator = null;
-                    }
-                    sliderDragging = true;
-                    view.getParent().requestDisallowInterceptTouchEvent(true);
-                    previewMassageSlider(event.getY());
-                    animatePress(view, 0.96f, 90L);
-                    return true;
-                }
-                if (action == MotionEvent.ACTION_MOVE && sliderDragging) {
-                    previewMassageSlider(event.getY());
-                    return true;
-                }
-                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                    if (sliderDragging) {
-                        if (action == MotionEvent.ACTION_UP) {
-                            previewMassageSlider(event.getY());
-                            int target = Math.round(sliderPreviewLevel);
-                            store.setSeatLevel(ContentRegistry.Shortcuts.SEAT_MASSAGE, target);
-                        }
-                        sliderDragging = false;
-                        sliderPreviewLevel = Float.NaN;
-                        renderMassageSlider(store.snapshot());
-                    }
-                    animatePress(view, 1.0f, 170L);
-                    return true;
-                }
-                return true;
-            }
-        });
-        return slider;
-    }
-
-    private void previewMassageSlider(float positionY) {
-        int effectiveHeight = Math.max(1, massageSlider.getHeight() - dp(54));
-        float fraction = Math.max(0.0f, Math.min(1.0f,
-                (massageSlider.getHeight() - positionY) / effectiveHeight));
-        sliderPreviewLevel = fraction * 3.0f;
-        sliderTargetLevel = sliderPreviewLevel;
-        setSliderFill(sliderPreviewLevel);
-        int level = Math.round(sliderPreviewLevel);
-        sliderValue.setText(level == 0 ? "按摩\n关闭" : "按摩\n" + level + "档");
-    }
-
-    private void setSliderFill(float level) {
-        sliderDisplayedLevel = level;
-        int height = massageSlider.getHeight() > 0 ? massageSlider.getHeight()
-                : shortcutTileSize() * 2 + dp(12);
-        ViewGroup.LayoutParams params = sliderFill.getLayoutParams();
-        int filledHeight = Math.round(Math.max(0.0f, Math.min(3.0f, level)) / 3.0f
-                * Math.max(0, height - dp(54)));
-        if (params.height != filledHeight) {
-            params.height = filledHeight;
-            sliderFill.setLayoutParams(params);
-        }
-    }
-
-    private void renderMassageSlider(ContentState state) {
-        if (massageSlider == null || sliderDragging) {
-            return;
-        }
-        boolean pending = ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(state.pendingVehicleCommand);
-        int actualLevel = state.massageActive ? state.massageLevel : 0;
-        int level = pending ? state.pendingSeatLevel : actualLevel;
-        sliderValue.setText(pending ? "按摩\n正在确认" : !state.massageSwitchKnown
-                ? "按摩\n不可用" : level < 0 ? "按摩\n档位未知"
-                : level == 0 ? "按摩\n关闭" : "按摩\n" + level + "档");
-        massageSlider.setContentDescription("主驾按摩档位，" + (pending ? "正在确认" :
-                !state.massageSwitchKnown ? "不可用" : level < 0 ? "档位未知" :
-                        level == 0 ? "关闭" : level + "档"));
-        float target = Math.max(0, level);
-        if (sliderTargetLevel == target) {
-            return;
-        }
-        sliderTargetLevel = target;
-        if (sliderAnimator != null) {
-            sliderAnimator.cancel();
-        }
-        if (Float.isNaN(sliderDisplayedLevel)) {
-            setSliderFill(target);
-            return;
-        }
-        sliderAnimator = ValueAnimator.ofFloat(sliderDisplayedLevel, target);
-        sliderAnimator.setDuration(200L);
-        sliderAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override
-            public void onAnimationUpdate(ValueAnimator animator) {
-                setSliderFill(((Float) animator.getAnimatedValue()).floatValue());
-            }
-        });
-        sliderAnimator.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animator) {
-                if (sliderAnimator == animator) {
-                    sliderAnimator = null;
-                }
-            }
-        });
-        sliderAnimator.start();
     }
 
     private void rebuildDock(final ContentState state) {
@@ -931,10 +807,11 @@ public final class ContentRenderer implements ContentStore.Listener {
         LinearLayout button = new LinearLayout(context);
         button.setOrientation(LinearLayout.VERTICAL);
         button.setGravity(Gravity.CENTER);
+        button.setTag(ROLE_DOCK_BUTTON);
         button.setPadding(dp(2), dp(2), dp(2), dp(2));
         ContentIconView icon = new ContentIconView(context);
         icon.setIcon(iconKey);
-        button.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        button.addView(icon, new LinearLayout.LayoutParams(50, 50));
         button.setContentDescription(label);
         return button;
     }
@@ -1074,7 +951,6 @@ public final class ContentRenderer implements ContentStore.Listener {
     private void renderMediaState(ContentState state) {
         mediaTitleText.setText(state.mediaTitle);
         mediaArtistText.setText(state.mediaArtist);
-        sourceLabel.setText(state.mediaSource);
         sourceIcon.setIcon(ContentRegistry.mediaSourceIcon(state.mediaSource));
         sourceButton.setContentDescription("媒体来源：" + state.mediaSource);
         boolean displayedPlaying = state.mediaPlaybackTarget < 0
@@ -1209,7 +1085,6 @@ public final class ContentRenderer implements ContentStore.Listener {
         renderTile(state, ContentRegistry.Shortcuts.SEAT_HEATING);
         renderTile(state, ContentRegistry.Shortcuts.SEAT_MASSAGE);
         renderTile(state, ContentRegistry.Shortcuts.LOCK);
-        renderMassageSlider(state);
     }
 
     private void renderTile(ContentState state, String itemId) {
@@ -1223,7 +1098,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         binding.icon.setColors(iconColorForItem(state, itemId), theme.accent);
         binding.icon.setAvailable(isItemAvailable(state, itemId));
         boolean active = isItemActive(state, itemId);
-        binding.tile.setBackground(softColor(active ? theme.selected : theme.surface, dp(7)));
+        setSoftBackground(binding.tile, active ? theme.selected : theme.surface, dp(7));
         binding.labelText.setTextColor(active ? theme.text : theme.secondaryText);
         if (binding.lastActive != null && binding.lastActive.booleanValue() != active) {
             animateTileSelection(binding);
@@ -1252,8 +1127,6 @@ public final class ContentRenderer implements ContentStore.Listener {
             icon.setColors(iconColorForItem(state, itemId), theme.accent);
             icon.setAvailable(isItemAvailable(state, itemId));
             icon.setActive(isItemActive(state, itemId));
-            icon.setBackground(isItemActive(state, itemId)
-                    ? roundColor(theme.surface, dp(12)) : null);
             dockButtons.get(childIndex).setContentDescription(labelForItem(itemId) + "，"
                     + (isItemAvailable(state, itemId) ? valueForItem(state, itemId) : "暂不可用"));
         }
@@ -1427,16 +1300,10 @@ public final class ContentRenderer implements ContentStore.Listener {
             topTransitionAnimator.cancel();
             topTransitionAnimator = null;
         }
-        if (sliderAnimator != null) {
-            sliderAnimator.cancel();
-            sliderAnimator = null;
-        }
         for (ValueAnimator animator : new ArrayList<>(pressAnimators.values())) {
             animator.cancel();
         }
         pressAnimators.clear();
-        sliderDragging = false;
-        sliderPreviewLevel = Float.NaN;
         cancelViewAnimations(panel);
         for (TileBinding binding : tileBindings.values()) {
             if (binding.selectionAnimator != null) {
@@ -1452,15 +1319,6 @@ public final class ContentRenderer implements ContentStore.Listener {
                 view.setAlpha(1.0f);
                 view.setTranslationX(0.0f);
             }
-        }
-        if (massageSlider != null) {
-            massageSlider.setScaleX(1.0f);
-            massageSlider.setScaleY(1.0f);
-            ContentState state = store.snapshot();
-            float target = ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(state.pendingVehicleCommand)
-                    ? state.pendingSeatLevel : state.massageActive ? state.massageLevel : 0;
-            sliderTargetLevel = Math.max(0.0f, target);
-            setSliderFill(sliderTargetLevel);
         }
     }
 
@@ -1550,6 +1408,8 @@ public final class ContentRenderer implements ContentStore.Listener {
     private void applyTheme(ContentTheme newTheme) {
         theme = newTheme;
         applyThemeTree(panel);
+        brightnessSlider.setTheme(theme);
+        volumeSlider.setTheme(theme);
         ContentState state = store.snapshot();
         renderTopBar(state);
         renderMediaState(state);
@@ -1576,18 +1436,18 @@ public final class ContentRenderer implements ContentStore.Listener {
         Object tag = view.getTag();
         if (ROLE_BACKGROUND.equals(tag)) {
             view.setBackgroundColor(theme.background);
+        } else if (ROLE_ARTWORK.equals(tag)) {
+            view.setBackground(leftRoundColor(theme.surface, 12));
         } else if (ROLE_SURFACE.equals(tag)) {
             view.setBackground(roundColor(theme.surface, dp(7)));
         } else if (ROLE_ELEVATED.equals(tag)) {
             view.setBackground(roundColor(theme.elevated, dp(7)));
         } else if (ROLE_CARD.equals(tag)) {
-            view.setBackground(softColor(theme.surface, dp(7)));
+            setSoftBackground(view, theme.surface, dp(7));
         } else if (ROLE_MEDIA.equals(tag) || ROLE_DOCK_BASE.equals(tag)) {
-            view.setBackground(softColor(theme.elevated, dp(7)));
+            setSoftBackground(view, theme.elevated, 12);
         } else if (ROLE_SELECTED.equals(tag)) {
             view.setBackground(roundColor(theme.selected, dp(7)));
-        } else if (ROLE_SLIDER_FILL.equals(tag)) {
-            view.setBackgroundColor(theme.selected);
         } else if (ROLE_DIVIDER.equals(tag)) {
             view.setBackgroundColor(theme.divider);
         }
@@ -1662,20 +1522,9 @@ public final class ContentRenderer implements ContentStore.Listener {
         layoutShortcutTiles();
         layoutMediaCard();
         layoutTopBar();
-        if (massageSlider != null) {
-            LinearLayout.LayoutParams sliderParams = (LinearLayout.LayoutParams) massageSlider.getLayoutParams();
-            sliderParams.width = shortcutTileSize();
-            int columns = shortcutColumns();
-            sliderParams.leftMargin = Math.min(2, columns - 1)
-                    * (shortcutTileSize() + dp(12));
-            massageSlider.setLayoutParams(sliderParams);
-            View sliderRow = (View) massageSlider.getParent();
-            ViewGroup.LayoutParams rowParams = sliderRow.getLayoutParams();
-            rowParams.height = shortcutTileSize() * 2 + dp(12);
-            sliderRow.setLayoutParams(rowParams);
-        }
+        layoutSystemSliders();
         ViewGroup.LayoutParams dockParams = dockContainer.getLayoutParams();
-        dockParams.width = Math.max(dp(300), panelWidth - dp(14));
+        dockParams.width = Math.max(300, panelWidth - 24);
         dockContainer.setLayoutParams(dockParams);
         final ContentState state = store.snapshot();
         alignPager(pageScroller, state.pageIndex);
@@ -1726,18 +1575,18 @@ public final class ContentRenderer implements ContentStore.Listener {
 
     private int shortcutTileSize() {
         int columns = shortcutColumns();
-        return Math.max(dp(64), Math.min(dp(120),
-                (pageWidth - dp(24) - dp(12) * (columns - 1)) / columns));
+        return Math.max(dp(64),
+                (pageWidth - dp(46) - dp(23) * (columns - 1)) / columns);
     }
 
     private int shortcutColumns() {
-        return pageWidth >= dp(306) ? 4 : pageWidth >= dp(232) ? 3 : 2;
+        return pageWidth >= dp(371) ? 4 : pageWidth >= dp(284) ? 3 : 2;
     }
 
     private LinearLayout.LayoutParams gridTileParams(boolean last) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 shortcutTileSize(), shortcutTileSize());
-        params.rightMargin = last ? 0 : dp(12);
+        params.rightMargin = last ? 0 : dp(23);
         return params;
     }
 
@@ -1745,27 +1594,59 @@ public final class ContentRenderer implements ContentStore.Listener {
         int columns = shortcutColumns();
         shortcutsRow.removeAllViews();
         shortcutOverflowRow.removeAllViews();
+        shortcutLastRow.removeAllViews();
         for (int index = 0; index < shortcutTiles.size(); index++) {
-            LinearLayout row = index < columns ? shortcutsRow : shortcutOverflowRow;
-            int indexInRow = index < columns ? index : index - columns;
+            LinearLayout row = index < columns ? shortcutsRow
+                    : index < 2 * columns ? shortcutOverflowRow : shortcutLastRow;
+            int indexInRow = index % columns;
             row.addView(shortcutTiles.get(index), gridTileParams(indexInRow == columns - 1
                     || index == shortcutTiles.size() - 1));
         }
         ViewGroup.LayoutParams rowParams = shortcutsRow.getLayoutParams();
         rowParams.height = shortcutTileSize();
         shortcutsRow.setLayoutParams(rowParams);
-        LinearLayout.LayoutParams overflowParams =
-                (LinearLayout.LayoutParams) shortcutOverflowRow.getLayoutParams();
+        FrameLayout.LayoutParams overflowParams =
+                (FrameLayout.LayoutParams) shortcutOverflowRow.getLayoutParams();
         overflowParams.height = shortcutTileSize();
-        overflowParams.topMargin = shortcutOverflowRow.getChildCount() == 0 ? 0 : dp(12);
         shortcutOverflowRow.setLayoutParams(overflowParams);
-        shortcutOverflowRow.setVisibility(shortcutOverflowRow.getChildCount() == 0
+        FrameLayout.LayoutParams lastParams =
+                (FrameLayout.LayoutParams) shortcutLastRow.getLayoutParams();
+        lastParams.height = shortcutTileSize();
+        lastParams.topMargin = shortcutTileSize() + dp(23);
+        shortcutLastRow.setLayoutParams(lastParams);
+        shortcutLastRow.setVisibility(shortcutLastRow.getChildCount() == 0
                 ? View.GONE : View.VISIBLE);
+    }
+
+    private void layoutSystemSliders() {
+        if (brightnessSlider == null || volumeSlider == null) return;
+        int width = shortcutTileSize();
+        int left = shortcutColumns() == 4 ? 2 * (width + dp(23)) : 0;
+        LinearLayout.LayoutParams brightness =
+                (LinearLayout.LayoutParams) brightnessSlider.getLayoutParams();
+        brightness.width = width;
+        brightness.leftMargin = left;
+        brightnessSlider.setLayoutParams(brightness);
+        LinearLayout.LayoutParams volume =
+                (LinearLayout.LayoutParams) volumeSlider.getLayoutParams();
+        volume.width = width;
+        volume.leftMargin = dp(23);
+        volumeSlider.setLayoutParams(volume);
+        View row = (View) brightnessSlider.getParent();
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) row.getLayoutParams();
+        params.height = width * 2 + dp(23);
+        params.topMargin = shortcutColumns() == 4 ? 0
+                : shortcutColumns() == 3 ? width + dp(23) : 2 * (width + dp(23));
+        row.setLayoutParams(params);
+        LinearLayout.LayoutParams containerParams =
+                (LinearLayout.LayoutParams) shortcutLowerContainer.getLayoutParams();
+        containerParams.height = params.topMargin + params.height;
+        shortcutLowerContainer.setLayoutParams(containerParams);
     }
 
     private TextView makeText(float textSize, int typefaceStyle, String role) {
         TextView textView = new TextView(context);
-        textView.setTextSize(textSize);
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSize * 1.4f);
         textView.setTypeface(Typeface.create("sans", typefaceStyle));
         textView.setIncludeFontPadding(false);
         textView.setTag(role);
@@ -1776,7 +1657,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         FrameLayout button = new FrameLayout(context);
         ContentIconView icon = new ContentIconView(context);
         icon.setIcon(iconKey);
-        button.addView(icon, new FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER));
+        button.addView(icon, new FrameLayout.LayoutParams(48, 48, Gravity.CENTER));
         button.setContentDescription(description);
         return button;
     }
@@ -1789,9 +1670,16 @@ public final class ContentRenderer implements ContentStore.Listener {
                     return false;
                 }
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    if (ROLE_DOCK_BUTTON.equals(touchedView.getTag())) {
+                        ((ViewGroup) touchedView).getChildAt(0).setBackground(
+                                roundColor(theme.surface, 12));
+                    }
                     animatePress(touchedView, 0.96f, 90L);
                 } else if (event.getActionMasked() == MotionEvent.ACTION_UP
                         || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                    if (ROLE_DOCK_BUTTON.equals(touchedView.getTag())) {
+                        ((ViewGroup) touchedView).getChildAt(0).setBackground(null);
+                    }
                     animatePress(touchedView, 1.0f, 170L);
                 }
                 return false;
@@ -1860,18 +1748,63 @@ public final class ContentRenderer implements ContentStore.Listener {
         return drawable;
     }
 
-    private Drawable softColor(int color, int radius) {
-        float[] corners = new float[]{radius, radius, radius, radius,
-                radius, radius, radius, radius};
-        ShapeDrawable drawable = new ShapeDrawable(new RoundRectShape(corners, null, null));
-        drawable.getPaint().setColor(color);
-        drawable.getPaint().setShadowLayer(dp(1.2f), 0.0f, dp(1.2f),
-                Color.argb(38, 0, 0, 0));
+    private GradientDrawable leftRoundColor(int color, int radius) {
+        GradientDrawable drawable = roundColor(color, radius);
+        drawable.setCornerRadii(new float[]{radius, radius, 0, 0, 0, 0,
+                radius, radius});
         return drawable;
     }
 
+    private void setSoftBackground(View view, int color, int radius) {
+        Drawable existing = view.getBackground();
+        if (existing instanceof DownwardShadowDrawable
+                && ((DownwardShadowDrawable) existing).radius == radius) {
+            ((DownwardShadowDrawable) existing).setColor(color);
+        } else {
+            view.setBackground(new DownwardShadowDrawable(color, radius));
+        }
+    }
+
     private void applySoftShadow(View view) {
-        view.setElevation(dp(2));
+        // Window-light elevation can point left on the car display.
+        view.setElevation(0);
+        view.setTranslationZ(0);
+    }
+
+    private static final class DownwardShadowDrawable extends GradientDrawable {
+        private final int radius;
+        private Bitmap shadow;
+        private int cachedWidth;
+        private int cachedHeight;
+        private static final int MARGIN = 10;
+
+        DownwardShadowDrawable(int color, int radius) {
+            this.radius = radius;
+            setColor(color);
+            setCornerRadius(radius);
+        }
+
+        @Override public void draw(Canvas canvas) {
+            Rect bounds = getBounds();
+            int width = bounds.width();
+            int height = bounds.height();
+            if (width <= 0 || height <= 0) return;
+            if (shadow == null || cachedWidth != width || cachedHeight != height) {
+                if (shadow != null) shadow.recycle();
+                cachedWidth = width;
+                cachedHeight = height;
+                shadow = Bitmap.createBitmap(width + 2 * MARGIN, height + 2 * MARGIN,
+                        Bitmap.Config.ARGB_8888);
+                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                paint.setColor(Color.argb(28, 0, 0, 0));
+                // Software bitmap makes the blur deterministic on hardware View canvases too.
+                paint.setShadowLayer(3f, 0f, 3f, Color.argb(28, 0, 0, 0));
+                new Canvas(shadow).drawRoundRect(new RectF(MARGIN, MARGIN,
+                        MARGIN + width, MARGIN + height), radius, radius, paint);
+            }
+            canvas.drawBitmap(shadow, bounds.left - MARGIN, bounds.top - MARGIN, null);
+            super.draw(canvas);
+        }
     }
 
     private boolean isItemAvailable(ContentState state, String itemId) {
