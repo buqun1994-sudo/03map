@@ -2,9 +2,7 @@ package com.autonavi.amapauto.content;
 
 import android.content.Context;
 import android.graphics.drawable.GradientDrawable;
-import android.media.AudioManager;
-import android.os.Build;
-import android.provider.Settings;
+import android.graphics.Typeface;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -19,6 +17,7 @@ final class ContentSystemSlider extends FrameLayout {
     static final int BRIGHTNESS = 0;
     static final int VOLUME = 1;
     private final int kind;
+    private final ContentPorts.SystemPort systemPort;
     private final View fill;
     private final TextView value;
     private final ImageView icon;
@@ -28,15 +27,18 @@ final class ContentSystemSlider extends FrameLayout {
     private boolean dragging;
     private ContentTheme theme;
 
-    ContentSystemSlider(Context context, int kind) {
+    ContentSystemSlider(Context context, ContentPorts.SystemPort systemPort, Typeface typeface,
+            int kind) {
         super(context);
+        this.systemPort = systemPort;
         this.kind = kind;
         setClipToOutline(true);
         fill = new View(context);
         addView(fill, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM));
         value = new TextView(context);
-        value.setTextSize(TypedValue.COMPLEX_UNIT_PX, 20f);
+        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f);
+        value.setTypeface(typeface);
         value.setGravity(Gravity.CENTER);
         value.setMaxLines(2);
         value.setIncludeFontPadding(false);
@@ -98,42 +100,18 @@ final class ContentSystemSlider extends FrameLayout {
     }
 
     void refresh() {
-        try {
-            if (kind == BRIGHTNESS) {
-                int raw = Settings.System.getInt(getContext().getContentResolver(),
-                        Settings.System.SCREEN_BRIGHTNESS, -1);
-                available = raw >= 0 && (Build.VERSION.SDK_INT < 23
-                        || Settings.System.canWrite(getContext()));
-                percent = raw < 0 ? 0 : Math.round(raw * 100f / 255f);
-            } else {
-                AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
-                int max = audio == null ? 0 : audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                available = max > 0;
-                percent = available ? Math.round(audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-                        * 100f / max) : 0;
-            }
-        } catch (SecurityException | IllegalArgumentException exception) {
-            available = false;
-            percent = 0;
-        }
+        ContentPorts.SystemSnapshot snapshot = systemPort.read(kind);
+        available = snapshot.available;
+        percent = snapshot.percent;
         showPercent();
     }
 
     private void writePercent(int target) {
-        try {
-            if (kind == BRIGHTNESS) {
-                if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(getContext())) return;
-                Settings.System.putInt(getContext().getContentResolver(),
-                        Settings.System.SCREEN_BRIGHTNESS, Math.round(target * 255f / 100f));
-            } else {
-                AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
-                if (audio != null) audio.setStreamVolume(AudioManager.STREAM_MUSIC,
-                        Math.round(audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                * target / 100f), 0);
-            }
-        } catch (SecurityException | IllegalArgumentException exception) {
-            available = false;
+        if (!systemPort.write(kind, target)) {
+            refresh();
+            return;
         }
+        refresh();
     }
 
     private void preview(float y) {

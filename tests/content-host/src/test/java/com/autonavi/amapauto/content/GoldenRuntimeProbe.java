@@ -356,10 +356,11 @@ public class GoldenRuntimeProbe {
             android.animation.ValueAnimator statusAnimation = (android.animation.ValueAnimator)
                     field(fixture.renderer, "topTransitionAnimator");
             assertNotNull(statusAnimation);
-            statusAnimation.setCurrentPlayTime(110L);
+            statusAnimation.setCurrentPlayTime(160L);
             assertTrue("charge animation midpoint", charging.getAlpha() > 0.0f
                     && charging.getAlpha() < 1.0f);
-            statusAnimation.setCurrentPlayTime(220L);
+            assertEquals(320L, statusAnimation.getDuration());
+            statusAnimation.setCurrentPlayTime(320L);
             assertEquals("charge animation final alpha", 1.0f, charging.getAlpha(), 0.01f);
             fixture.store.updateClock(System.currentTimeMillis());
             assertEquals("clock replayed scheduled animation", 1.0f, charging.getAlpha(), 0.01f);
@@ -372,10 +373,10 @@ public class GoldenRuntimeProbe {
             android.animation.ValueAnimator timeAnimation = (android.animation.ValueAnimator)
                     field(fixture.renderer, "topTransitionAnimator");
             assertNotNull(timeAnimation);
-            timeAnimation.setCurrentPlayTime(110L);
+            timeAnimation.setCurrentPlayTime(160L);
             assertTrue("time relocation midpoint", time.getAlpha() > 0.0f
                     && time.getAlpha() < 1.0f && time.getTranslationX() > 0.0f);
-            timeAnimation.setCurrentPlayTime(220L);
+            timeAnimation.setCurrentPlayTime(320L);
             assertEquals("time relocation final alpha", 1.0f, time.getAlpha(), 0.01f);
             assertEquals("time relocation final position", 0.0f, time.getTranslationX(), 0.01f);
         } finally {
@@ -449,10 +450,11 @@ public class GoldenRuntimeProbe {
             android.animation.ValueAnimator opening = (android.animation.ValueAnimator)
                     field(fixture.renderer, "popupAnimator");
             assertNotNull(opening);
-            opening.setCurrentPlayTime(100L);
+            opening.setCurrentPlayTime(120L);
             assertTrue("menu midpoint alpha", popup.getContentView().getAlpha() > 0.0f
                     && popup.getContentView().getAlpha() < 1.0f);
-            opening.setCurrentPlayTime(200L);
+            assertEquals(240L, opening.getDuration());
+            opening.setCurrentPlayTime(240L);
             assertEquals("menu final alpha", 1.0f, popup.getContentView().getAlpha(), 0.01f);
             View popupContent = popup.getContentView();
             LinearLayout menu = popupContent instanceof ScrollView
@@ -641,26 +643,27 @@ public class GoldenRuntimeProbe {
                     field(binding, "selectionAnimator");
             assertNotNull("selected square has no animation", selection);
             assertEquals(0.82f, tile.getAlpha(), 0.02f);
-            selection.setCurrentPlayTime(110L);
+            selection.setCurrentPlayTime(130L);
             assertTrue("selected square midpoint", tile.getAlpha() > 0.82f && tile.getAlpha() < 1.0f);
-            selection.setCurrentPlayTime(220L);
+            assertEquals(260L, selection.getDuration());
+            selection.setCurrentPlayTime(260L);
             assertEquals(1.0f, tile.getAlpha(), 0.01f);
             touch(tile, MotionEvent.ACTION_DOWN, tile.getWidth() / 2, tile.getHeight() / 2, 0);
             Map<?, ?> presses = (Map<?, ?>) field(fixture.renderer, "pressAnimators");
             android.animation.ValueAnimator pressed = (android.animation.ValueAnimator) presses.get(tile);
             assertNotNull(pressed);
-            assertEquals(90L, pressed.getDuration());
-            pressed.setCurrentPlayTime(45L);
+            assertEquals(200L, pressed.getDuration());
+            pressed.setCurrentPlayTime(100L);
             assertTrue("press midpoint", tile.getScaleX() < 1.0f && tile.getScaleX() > 0.96f);
-            pressed.setCurrentPlayTime(90L);
+            pressed.setCurrentPlayTime(200L);
             assertEquals(0.96f, tile.getScaleX(), 0.01f);
             touch(tile, MotionEvent.ACTION_CANCEL, tile.getWidth() / 2, tile.getHeight() / 2, 50);
             android.animation.ValueAnimator released = (android.animation.ValueAnimator) presses.get(tile);
             assertNotNull(released);
-            assertEquals(170L, released.getDuration());
-            released.setCurrentPlayTime(85L);
+            assertEquals(240L, released.getDuration());
+            released.setCurrentPlayTime(120L);
             assertTrue("release midpoint", tile.getScaleX() > 0.96f && tile.getScaleX() < 1.0f);
-            released.setCurrentPlayTime(170L);
+            released.setCurrentPlayTime(240L);
             assertEquals(1.0f, tile.getScaleX(), 0.01f);
             fixture.store.setPageIndex(0);
             idle(230);
@@ -668,29 +671,32 @@ public class GoldenRuntimeProbe {
             android.animation.ValueAnimator page = (android.animation.ValueAnimator)
                     field(fixture.renderer, "pageSnapAnimator");
             assertNotNull("page did not snap", page);
-            page.setCurrentPlayTime(110L);
+            assertEquals(700L, page.getDuration());
+            page.setCurrentPlayTime(350L);
             HorizontalScrollView pages = (HorizontalScrollView) field(fixture.renderer, "pageScroller");
             assertTrue("page midpoint", pages.getScrollX() > 0 && pages.getScrollX() < 640);
-            page.setCurrentPlayTime(220L);
+            page.setCurrentPlayTime(700L);
             assertEquals(640, pages.getScrollX());
             fixture.store.setControlIndex(1);
             android.animation.ValueAnimator control = (android.animation.ValueAnimator)
                     field(fixture.renderer, "controlSnapAnimator");
             assertNotNull("control did not snap", control);
-            control.setCurrentPlayTime(110L);
+            assertEquals(700L, control.getDuration());
+            control.setCurrentPlayTime(350L);
             HorizontalScrollView controls = (HorizontalScrollView) field(fixture.renderer, "controlScroller");
             assertTrue("control midpoint", controls.getScrollX() > 0 && controls.getScrollX() < 640);
-            control.setCurrentPlayTime(220L);
+            control.setCurrentPlayTime(700L);
             assertEquals(640, controls.getScrollX());
             fixture.store.setThemeMode(ContentState.THEME_DARK);
             android.animation.ValueAnimator theme = (android.animation.ValueAnimator)
                     field(fixture.renderer, "themeAnimator");
             assertNotNull(theme);
-            theme.setCurrentPlayTime(120L);
+            assertEquals(700L, theme.getDuration());
+            theme.setCurrentPlayTime(350L);
             int shade = ((ContentTheme) field(fixture.renderer, "theme")).background;
             assertNotEquals(ContentTheme.light().background, shade);
             assertNotEquals(ContentTheme.dark().background, shade);
-            theme.setCurrentPlayTime(240L);
+            theme.setCurrentPlayTime(700L);
             assertEquals(ContentTheme.dark().background,
                     ((ContentTheme) field(fixture.renderer, "theme")).background);
             fixture.renderer.pause();
@@ -1029,6 +1035,7 @@ public class GoldenRuntimeProbe {
             assertTrue(new File(apk).isFile());
             AssetManager.class.getMethod("addAssetPath", String.class).invoke(assets, apk);
             assertTrue(assets.open("content-oem/ico_media_play_02_f.json").read() >= 0);
+            assertTrue(assets.open("content-fonts/Manrope[wght].ttf").read() >= 0);
             Configuration geometryConfiguration = new Configuration(original.getConfiguration());
             geometryConfiguration.densityDpi = appDensityDpi;
             geometryConfiguration.fontScale = fontScale;

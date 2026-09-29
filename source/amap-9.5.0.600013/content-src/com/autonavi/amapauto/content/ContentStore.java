@@ -21,6 +21,7 @@ public final class ContentStore {
     private final ContentPreferenceStore preferenceStore;
     private final ContentPorts.VehiclePort vehiclePort;
     private final ContentPorts.MediaPort mediaPort;
+    private final ContentPorts.SystemPort systemPort;
     private final List<Listener> listeners = new ArrayList<>();
     private final Handler commandHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService mediaCommandExecutor = Executors.newSingleThreadExecutor();
@@ -60,6 +61,7 @@ public final class ContentStore {
         preferenceStore = new ContentPreferenceStore(context);
         vehiclePort = new ContentVehicleAdapter(context);
         mediaPort = new ContentMediaAdapter(context);
+        systemPort = new ContentPorts.AndroidSystemPort(context);
         preferenceStore.load(state);
         acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable());
         acceptMediaSnapshot(ContentPorts.MediaSnapshot.unavailable());
@@ -84,6 +86,10 @@ public final class ContentStore {
 
     public synchronized ContentState snapshot() {
         return state.copy();
+    }
+
+    public ContentPorts.SystemPort systemPort() {
+        return systemPort;
     }
 
     public void addListener(Listener listener) {

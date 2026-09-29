@@ -60,8 +60,9 @@
 1. .agents/skills/amap-code-map/SKILL.md：定位或记录高德当前版本高价值源码入口时使用。
 2. .agents/skills/rule-discovery/SKILL.md：发现跨任务稳定规则、重复失败或模板候选时使用。
 3. .agents/skills/skill-authoring/SKILL.md：创建、更新或审查本项目 Skill 时使用。
-4. .agents/skills/task-closeout/SKILL.md：用户明确要求归档、交接、正式收尾或提交前检查时使用。
-5. .agents/skills/template-feedback/SKILL.md：判断能力是否去专有化并回流模板源时使用；未经用户要求不修改其它仓库。
+4. .agents/skills/redesign-content-panel/SKILL.md：审计并定向改进 Android 车机内容区 UI、状态和已定义目标功能时使用。
+5. .agents/skills/task-closeout/SKILL.md：用户明确要求归档、交接、正式收尾或提交前检查时使用。
+6. .agents/skills/template-feedback/SKILL.md：判断能力是否去专有化并回流模板源时使用；未经用户要求不修改其它仓库。
 
 ## 8. 共享协作基线
 

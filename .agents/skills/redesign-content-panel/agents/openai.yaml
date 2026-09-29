@@ -1,0 +1,4 @@
+interface:
+  display_name: "内容区视觉审计"
+  short_description: "审计并定向改进 Android 车机内容区 UI 与状态"
+  default_prompt: "Use $redesign-content-panel to audit the content panel first, then apply scoped fixes with host and static verification."

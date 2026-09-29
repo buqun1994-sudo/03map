@@ -29,10 +29,7 @@ public final class ContentRuntime {
     private ContentRuntime(Activity activity, ViewGroup host) {
         ownerActivity = new WeakReference<>(activity);
         this.host = host;
-        int initialTheme = hasAmapThemeMode ? lastAmapThemeMode
-                : ((host.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                == Configuration.UI_MODE_NIGHT_YES
-                        ? ContentState.THEME_DARK : ContentState.THEME_LIGHT);
+        int initialTheme = hasAmapThemeMode ? lastAmapThemeMode : ContentState.THEME_LIGHT;
         store = new ContentStore(host.getContext());
         store.setThemeMode(initialTheme);
         renderer = new ContentRenderer(contentContext(host.getContext()), host, store, initialTheme);

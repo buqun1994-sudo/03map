@@ -1,8 +1,73 @@
 package com.autonavi.amapauto.content;
 
 import android.graphics.Bitmap;
+import android.content.Context;
+import android.media.AudioManager;
+import android.os.Build;
+import android.provider.Settings;
 public final class ContentPorts {
     private ContentPorts() {
+    }
+
+    public interface SystemPort {
+        SystemSnapshot read(int kind);
+
+        boolean write(int kind, int percent);
+    }
+
+    public static final class SystemSnapshot {
+        public final boolean available;
+        public final int percent;
+
+        public SystemSnapshot(boolean available, int percent) {
+            this.available = available;
+            this.percent = Math.max(0, Math.min(100, percent));
+        }
+    }
+
+    public static final class AndroidSystemPort implements SystemPort {
+        private final Context context;
+
+        public AndroidSystemPort(Context context) {
+            this.context = context.getApplicationContext();
+        }
+
+        @Override public SystemSnapshot read(int kind) {
+            try {
+                if (kind == 0) {
+                    int raw = Settings.System.getInt(context.getContentResolver(),
+                            Settings.System.SCREEN_BRIGHTNESS, -1);
+                    boolean available = raw >= 0 && (Build.VERSION.SDK_INT < 23
+                            || Settings.System.canWrite(context));
+                    return new SystemSnapshot(available, raw < 0 ? 0 : Math.round(raw * 100f / 255f));
+                }
+                AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+                int max = audio == null ? 0 : audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                return new SystemSnapshot(max > 0,
+                        max > 0 ? Math.round(audio.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max) : 0);
+            } catch (SecurityException | IllegalArgumentException exception) {
+                return new SystemSnapshot(false, 0);
+            }
+        }
+
+        @Override public boolean write(int kind, int percent) {
+            int target = Math.max(0, Math.min(100, percent));
+            try {
+                if (kind == 0) {
+                    if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context)) return false;
+                    if (!Settings.System.putInt(context.getContentResolver(),
+                            Settings.System.SCREEN_BRIGHTNESS, Math.round(target * 255f / 100f))) return false;
+                } else {
+                    AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+                    if (audio == null || audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) <= 0) return false;
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC,
+                            Math.round(audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * target / 100f), 0);
+                }
+                return read(kind).available && Math.abs(read(kind).percent - target) <= 1;
+            } catch (SecurityException | IllegalArgumentException exception) {
+                return false;
+            }
+        }
     }
 
     public interface VehicleSnapshotListener {

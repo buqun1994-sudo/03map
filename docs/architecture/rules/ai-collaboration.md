@@ -1,6 +1,6 @@
 # AI 协作规则
 
-项目级动态流程通过 .agents/skills/ 路由：定位源码使用 amap-code-map；沉淀稳定经验使用 rule-discovery；创建 Skill 使用 skill-authoring；用户明确收尾/交接时使用 task-closeout；判断模板回流时使用 template-feedback。
+项目级动态流程通过 .agents/skills/ 路由：定位源码使用 amap-code-map；内容区 UI 视觉返工、状态补全或目标功能开启使用 redesign-content-panel；沉淀稳定经验使用 rule-discovery；创建 Skill 使用 skill-authoring；用户明确收尾/交接时使用 task-closeout；判断模板回流时使用 template-feedback。
 
 通用方法直接参考 [03lyrics AI 协作规则](../../../../03lyrics/docs/architecture/rules/ai-collaboration.md)；本文件只记录地图 APK 工作流的执行翻译。
 

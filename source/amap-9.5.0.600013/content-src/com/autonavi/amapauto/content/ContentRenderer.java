@@ -2,6 +2,7 @@ package com.autonavi.amapauto.content;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Color;
@@ -24,7 +25,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
-import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -45,6 +46,18 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public final class ContentRenderer implements ContentStore.Listener {
+    private static final String CONTENT_FONT_ASSET = "content-fonts/Manrope[wght].ttf";
+    private static final float TEXT_REFERENCE_PIXEL_SCALE = 1.4f;
+    private static final TimeInterpolator HEAVY_INTERPOLATOR =
+            new PathInterpolator(0.32f, 0.72f, 0.0f, 1.0f);
+    private static final long PAGE_MOTION_DURATION_MS = 700L;
+    private static final long THEME_MOTION_DURATION_MS = 700L;
+    private static final long STATUS_MOTION_DURATION_MS = 320L;
+    private static final long PRESS_DOWN_DURATION_MS = 200L;
+    private static final long PRESS_UP_DURATION_MS = 240L;
+    private static final long SELECTION_MOTION_DURATION_MS = 260L;
+    private static final long POPUP_OPEN_DURATION_MS = 240L;
+    private static final long POPUP_CLOSE_DURATION_MS = 200L;
     private static final String ROLE_BACKGROUND = "background";
     private static final String ROLE_SURFACE = "surface";
     private static final String ROLE_ELEVATED = "elevated";
@@ -63,6 +76,7 @@ public final class ContentRenderer implements ContentStore.Listener {
     private final Context context;
     private final ViewGroup host;
     private final ContentStore store;
+    private final Typeface contentTypeface;
     private final Map<String, TileBinding> tileBindings = new HashMap<>();
     private final Map<View, ValueAnimator> pressAnimators = new HashMap<>();
     private final List<View> pageViews = new ArrayList<>();
@@ -148,6 +162,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         this.context = context;
         this.host = host;
         this.store = store;
+        contentTypeface = loadContentTypeface(context);
         theme = initialThemeMode == ContentState.THEME_DARK
                 ? ContentTheme.dark() : ContentTheme.light();
         displayedThemeMode = initialThemeMode == ContentState.THEME_DARK
@@ -274,7 +289,7 @@ public final class ContentRenderer implements ContentStore.Listener {
 
     private void buildTopBar() {
         topBar = new FrameLayout(context);
-        topBar.setPadding(dp(8), dp(2), dp(8), dp(2));
+        topBar.setPadding(dp(8), dp(1), dp(8), dp(1));
         verticalRoot.addView(topBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 40));
 
@@ -289,14 +304,12 @@ public final class ContentRenderer implements ContentStore.Listener {
                 ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
 
         temperatureText = makeText(16.0f, Typeface.NORMAL, ROLE_PRIMARY);
-        temperatureText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         temperatureText.setGravity(Gravity.CENTER_VERTICAL);
         temperatureText.setSingleLine(true);
         leftTopCluster.addView(temperatureText, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         timeText = makeText(16.0f, Typeface.NORMAL, ROLE_PRIMARY);
-        timeText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         timeText.setGravity(Gravity.CENTER_VERTICAL);
         timeText.setSingleLine(true);
         timeText.setEllipsize(TextUtils.TruncateAt.END);
@@ -304,8 +317,8 @@ public final class ContentRenderer implements ContentStore.Listener {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
                 Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL));
 
-        chargingText = makeText(14.0f, Typeface.NORMAL, ROLE_ACCENT);
-        chargingText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        chargingText = makeText(12.0f, Typeface.NORMAL, ROLE_ACCENT);
+        chargingText.setLineSpacing(-dp(1), 1.0f);
         chargingText.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
         chargingText.setSingleLine(true);
         chargingText.setEllipsize(TextUtils.TruncateAt.END);
@@ -328,7 +341,6 @@ public final class ContentRenderer implements ContentStore.Listener {
                 0, ViewGroup.LayoutParams.MATCH_PARENT));
 
         rangeText = makeText(14.0f, Typeface.NORMAL, ROLE_PRIMARY);
-        rangeText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         rangeText.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
         rangeText.setSingleLine(true);
         rightTopCluster.addView(rangeText, new LinearLayout.LayoutParams(
@@ -424,8 +436,10 @@ public final class ContentRenderer implements ContentStore.Listener {
         LinearLayout sliderRow = new LinearLayout(context);
         shortcutLowerContainer.addView(sliderRow, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, shortcutTileSize() * 2 + dp(23)));
-        brightnessSlider = new ContentSystemSlider(context, ContentSystemSlider.BRIGHTNESS);
-        volumeSlider = new ContentSystemSlider(context, ContentSystemSlider.VOLUME);
+        brightnessSlider = new ContentSystemSlider(context, store.systemPort(), contentTypeface,
+                ContentSystemSlider.BRIGHTNESS);
+        volumeSlider = new ContentSystemSlider(context, store.systemPort(), contentTypeface,
+                ContentSystemSlider.VOLUME);
         LinearLayout.LayoutParams brightnessParams = new LinearLayout.LayoutParams(
                 shortcutTileSize(), ViewGroup.LayoutParams.MATCH_PARENT);
         brightnessParams.leftMargin = 2 * (shortcutTileSize() + dp(23));
@@ -533,7 +547,6 @@ public final class ContentRenderer implements ContentStore.Listener {
         songInfo.setGravity(Gravity.CENTER_VERTICAL);
         songInfo.setPadding(dp(12), 0, 0, 0);
         mediaTitleText = makeText(16.0f, Typeface.NORMAL, ROLE_PRIMARY);
-        mediaTitleText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         mediaTitleText.setSingleLine(true);
         mediaTitleText.setEllipsize(TextUtils.TruncateAt.END);
         mediaArtistText = makeText(13.0f, Typeface.NORMAL, ROLE_SECONDARY);
@@ -606,8 +619,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         LinearLayout songInfo = (LinearLayout) content.getChildAt(1);
         boolean compact = pageWidth < dp(350);
         songInfo.setPadding(compact ? 8 : 20, 0, 0, 0);
-        mediaTitleText.setTextSize(TypedValue.COMPLEX_UNIT_PX,
-                (compact ? 14.0f : 16.0f) * 1.4f);
+        mediaTitleText.setTextSize(TypedValue.COMPLEX_UNIT_SP,
+                calibratedSp(compact ? 14.0f : 16.0f));
         int[] widths = contentWidth >= 520 ? new int[]{120, 88, 100, 97}
                 : new int[]{Math.min(100, Math.round(contentWidth * 0.20f)),
                         Math.max(48, Math.round(contentWidth * 0.14f)),
@@ -728,7 +741,6 @@ public final class ContentRenderer implements ContentStore.Listener {
         icon.setIcon(iconKey);
         tile.addView(icon, new LinearLayout.LayoutParams(dp(40), dp(40)));
         TextView labelText = makeText(14.0f, Typeface.NORMAL, ROLE_SECONDARY);
-        labelText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         labelText.setText(label);
         labelText.setGravity(Gravity.CENTER);
         labelText.setSingleLine(true);
@@ -1161,8 +1173,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         }
         final ValueAnimator animator = ValueAnimator.ofFloat(0.0f, 1.0f);
         topTransitionAnimator = animator;
-        animator.setDuration(220L);
-        animator.setInterpolator(new AccelerateDecelerateInterpolator());
+        animator.setDuration(STATUS_MOTION_DURATION_MS);
+        animator.setInterpolator(HEAVY_INTERPOLATOR);
         animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
@@ -1236,8 +1248,8 @@ public final class ContentRenderer implements ContentStore.Listener {
             return;
         }
         final ValueAnimator animator = ValueAnimator.ofInt(scroller.getScrollX(), targetX);
-        animator.setDuration(220L);
-        animator.setInterpolator(new AccelerateDecelerateInterpolator());
+        animator.setDuration(PAGE_MOTION_DURATION_MS);
+        animator.setInterpolator(HEAVY_INTERPOLATOR);
         animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
@@ -1371,8 +1383,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         final ContentTheme startTheme = theme;
         displayedThemeMode = targetMode;
         themeAnimator = ValueAnimator.ofFloat(0.0f, 1.0f);
-        themeAnimator.setDuration(240L);
-        themeAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
+        themeAnimator.setDuration(THEME_MOTION_DURATION_MS);
+        themeAnimator.setInterpolator(HEAVY_INTERPOLATOR);
         themeAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
@@ -1644,13 +1656,29 @@ public final class ContentRenderer implements ContentStore.Listener {
         shortcutLowerContainer.setLayoutParams(containerParams);
     }
 
+    private static Typeface loadContentTypeface(Context context) {
+        try {
+            return Typeface.createFromAsset(context.getAssets(), CONTENT_FONT_ASSET);
+        } catch (RuntimeException exception) {
+            return Typeface.create("sans-serif", Typeface.NORMAL);
+        }
+    }
+
     private TextView makeText(float textSize, int typefaceStyle, String role) {
         TextView textView = new TextView(context);
-        textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSize * 1.4f);
-        textView.setTypeface(Typeface.create("sans", typefaceStyle));
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, calibratedSp(textSize));
+        textView.setTypeface(Typeface.create(contentTypeface, typefaceStyle));
         textView.setIncludeFontPadding(false);
         textView.setTag(role);
         return textView;
+    }
+
+    private float calibratedSp(float designSize) {
+        int densityDpi = context.getResources().getDisplayMetrics().densityDpi;
+        if (densityDpi <= 0) {
+            densityDpi = 160;
+        }
+        return designSize * TEXT_REFERENCE_PIXEL_SCALE * 160.0f / densityDpi;
     }
 
     private FrameLayout createControlButton(String iconKey, String description) {
@@ -1674,13 +1702,13 @@ public final class ContentRenderer implements ContentStore.Listener {
                         ((ViewGroup) touchedView).getChildAt(0).setBackground(
                                 roundColor(theme.surface, 12));
                     }
-                    animatePress(touchedView, 0.96f, 90L);
+                    animatePress(touchedView, 0.96f, PRESS_DOWN_DURATION_MS);
                 } else if (event.getActionMasked() == MotionEvent.ACTION_UP
                         || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
                     if (ROLE_DOCK_BUTTON.equals(touchedView.getTag())) {
                         ((ViewGroup) touchedView).getChildAt(0).setBackground(null);
                     }
-                    animatePress(touchedView, 1.0f, 170L);
+                    animatePress(touchedView, 1.0f, PRESS_UP_DURATION_MS);
                 }
                 return false;
             }
@@ -1695,7 +1723,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         final ValueAnimator animator = ValueAnimator.ofFloat(view.getScaleX(), targetScale);
         pressAnimators.put(view, animator);
         animator.setDuration(duration);
-        animator.setInterpolator(new AccelerateDecelerateInterpolator());
+        animator.setInterpolator(HEAVY_INTERPOLATOR);
         animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
@@ -1722,8 +1750,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         }
         final ValueAnimator animator = ValueAnimator.ofFloat(startAlpha, 1.0f);
         binding.selectionAnimator = animator;
-        animator.setDuration(220L);
-        animator.setInterpolator(new AccelerateDecelerateInterpolator());
+        animator.setDuration(SELECTION_MOTION_DURATION_MS);
+        animator.setInterpolator(HEAVY_INTERPOLATOR);
         animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
@@ -2010,7 +2038,6 @@ public final class ContentRenderer implements ContentStore.Listener {
             icon.setColors(theme.text, theme.accent);
             item.addView(icon, new LinearLayout.LayoutParams(dp(24), dp(24)));
             TextView label = makeText(13.0f, Typeface.NORMAL, ROLE_PRIMARY);
-            label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             label.setTextColor(theme.text);
             label.setText(source);
             label.setSingleLine(true);
@@ -2062,7 +2089,6 @@ public final class ContentRenderer implements ContentStore.Listener {
 
     private TextView popupItem(String text) {
         TextView item = makeText(15.0f, Typeface.NORMAL, ROLE_PRIMARY);
-        item.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         item.setTextColor(theme.text);
         item.setText(text);
         item.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
@@ -2119,7 +2145,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         }
         y = Math.max(dp(8), Math.min(screenHeight() - safeHeight - dp(8), y));
         popupWindow.showAtLocation(host, Gravity.TOP | Gravity.LEFT, x, y);
-        animatePopup(animatedContent, 0.0f, 1.0f, dp(8), 0.0f, 200L, null);
+        animatePopup(animatedContent, 0.0f, 1.0f, dp(8), 0.0f,
+                POPUP_OPEN_DURATION_MS, null);
     }
 
     private void dismissPopup() {
@@ -2140,7 +2167,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         }
         final PopupWindow closing = activePopup;
         animatePopup(closing.getContentView(), closing.getContentView().getAlpha(), 0.0f,
-                closing.getContentView().getTranslationY(), dp(8), 180L, new Runnable() {
+                closing.getContentView().getTranslationY(), dp(8), POPUP_CLOSE_DURATION_MS,
+                new Runnable() {
                     @Override
                     public void run() {
                         if (activePopup == closing) {
@@ -2160,7 +2188,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         final ValueAnimator animator = ValueAnimator.ofFloat(0.0f, 1.0f);
         popupAnimator = animator;
         animator.setDuration(duration);
-        animator.setInterpolator(new AccelerateDecelerateInterpolator());
+        animator.setInterpolator(HEAVY_INTERPOLATOR);
         animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {

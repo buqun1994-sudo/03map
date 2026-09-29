@@ -12,6 +12,7 @@
 | 定位高德入口、资源或调用关系 | 代码地图 | `.agents/skills/amap-code-map/SKILL.md`、`docs/code-map/主链索引.md` | 历史 `.tmp/` 不能替代正式快照 |
 | 发现第二次相同规则或失败 | 规则发现 | `.agents/skills/rule-discovery/SKILL.md`、`docs/architecture/rules/` | 单次事实留在进度或专项文档 |
 | 创建或审查项目 Skill | Skill 创建 | `.agents/skills/skill-authoring/SKILL.md` | 固定机械动作优先写脚本 |
+| 内容区 UI 视觉返工、状态补全或目标功能开启 | 内容区视觉审计 | `.agents/skills/redesign-content-panel/SKILL.md`、`docs/plans/SVG内容区复刻施工方案.md` | 不套用网页设计值；不触碰地图几何、车控协议或签名身份 |
 | 文档、Skill、源码地图快检 | 仓库自检 | `scripts/check-project-docs.mjs`、`scripts/check-skills.mjs`、`scripts/check-code-map.mjs` | 不替代真实 APK 构建或车机验证 |
 | 明确要求归档、交接或提交前检查 | 任务收尾 | `.agents/skills/task-closeout/SKILL.md` | 不默认提交、发布或设备写操作 |
 | 能力适合多个新项目 | 模板反馈 | `.agents/skills/template-feedback/SKILL.md` | 未去专有化或未获要求时不改模板源 |
