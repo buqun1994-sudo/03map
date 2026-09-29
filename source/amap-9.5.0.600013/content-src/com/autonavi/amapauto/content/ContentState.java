@@ -33,13 +33,14 @@ public final class ContentState {
     public int controlIndex;
     public boolean mediaDataAvailable;
     public boolean mediaPreview;
-    public String mediaSource = "本机";
+    public String mediaSource = "本机音乐";
     public boolean mediaPlaying;
     public int mediaGeneration;
     public String mediaTitle = "暂无媒体";
     public String mediaArtist = "未连接";
     public boolean mediaPlaybackAvailable;
     public boolean mediaNextAvailable;
+    public int mediaPlaybackTarget = -1;
     public Bitmap mediaArtwork;
     public int ventilationLevel = -1;
     public int heatingLevel = -1;
@@ -54,6 +55,8 @@ public final class ContentState {
     public long commandSequence;
     public String commandMessage = "";
     public String pendingVehicleCommand = "";
+    public int pendingSeatLevel = -1;
+    public boolean pendingLocked;
     public String[] dockItems = ContentRegistry.defaultDockItems();
 
     public ContentState copy() {
@@ -84,6 +87,7 @@ public final class ContentState {
         copy.mediaArtist = mediaArtist;
         copy.mediaPlaybackAvailable = mediaPlaybackAvailable;
         copy.mediaNextAvailable = mediaNextAvailable;
+        copy.mediaPlaybackTarget = mediaPlaybackTarget;
         copy.mediaArtwork = mediaArtwork;
         copy.ventilationLevel = ventilationLevel;
         copy.heatingLevel = heatingLevel;
@@ -98,6 +102,8 @@ public final class ContentState {
         copy.commandSequence = commandSequence;
         copy.commandMessage = commandMessage;
         copy.pendingVehicleCommand = pendingVehicleCommand;
+        copy.pendingSeatLevel = pendingSeatLevel;
+        copy.pendingLocked = pendingLocked;
         copy.dockItems = dockItems.clone();
         return copy;
     }

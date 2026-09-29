@@ -34,6 +34,8 @@ unzip -l "$INPUT_APK" | rg 'AndroidManifest|classes|lib/|resources.arsc'
 
 上述 APKTool 命令仅验证资源与 Smali 的**中间包**；内容区 Java 尚未编译 / 注入时缺少 `ContentRuntime` 等类，绝对不可安装或宣称为完整候选包。完整包必须执行下文的 `build-content-apk.sh` 主链；需要精确处理已有 DEX 时使用完整的 baksmali / smali 分发包，逐个确认输入输出，不覆盖原始文件。
 
+即使 `-o` 输出到忽略目录，也**不能直接对正式 `source/amap-9.5.0.600013/` 执行 `apktool b`**：APKTool 会在输入目录下生成 `build/`、DEX 和资源中间文件。资源最小回编只对被忽略的全新施工副本执行；误生成时先确认没有 Git 跟踪文件，再将整个生成目录移至忽略区，运行 `node scripts/check-code-map.mjs` 复核正式源码边界。
+
 每个结构性动作后立即检查命名空间、类型归属、项目包含关系、Smali 语法和资源引用，不把多轮错误堆到最后处理。
 
 施工副本和正式源码的 `apktool.yml` 均不得保留 `doNotCompress: - so`；最终 `lib/**/*.so` 必须使用 Deflate。

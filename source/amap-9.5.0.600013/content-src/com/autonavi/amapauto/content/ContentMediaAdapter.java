@@ -282,38 +282,39 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private String sourceForPackage(String packageName) {
         if (packageName == null) {
-            return "本机";
+            return "本机音乐";
         }
         String lowerPackage = packageName.toLowerCase();
         if (lowerPackage.contains("bluetooth") || lowerPackage.contains("btmusic")) {
-            return "蓝牙";
+            return "蓝牙音乐";
         }
         if (lowerPackage.contains("netease") || lowerPackage.contains("cloudmusic")) {
-            return "网易云";
+            return "网易云音乐";
         }
         if (lowerPackage.contains("wecar") || lowerPackage.contains("mengbo")) {
             return "爱趣听";
         }
         if (lowerPackage.contains("usb")) {
-            return "U盘";
+            return "USB音乐";
         }
-        return "本机";
+        return "本机音乐";
     }
 
     private int sourceCode(String source) {
-        if ("U盘".equals(source)) {
+        String normalized = ContentRegistry.normalizeMediaSource(source);
+        if ("USB音乐".equals(normalized)) {
             return 1;
         }
-        if ("蓝牙".equals(source)) {
+        if ("蓝牙音乐".equals(normalized)) {
             return 2;
         }
-        if ("本机".equals(source)) {
+        if ("本机音乐".equals(normalized)) {
             return 3;
         }
-        if ("爱趣听".equals(source)) {
+        if ("爱趣听".equals(normalized)) {
             return 4;
         }
-        if ("网易云".equals(source)) {
+        if ("网易云音乐".equals(normalized)) {
             return 9;
         }
         return -1;

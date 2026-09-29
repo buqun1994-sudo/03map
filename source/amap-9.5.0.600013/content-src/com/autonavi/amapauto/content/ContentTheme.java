@@ -35,15 +35,15 @@ public final class ContentTheme {
 
     public static ContentTheme light() {
         return new ContentTheme(
-                Color.rgb(237, 242, 250),
-                Color.rgb(246, 248, 252),
+                Color.rgb(244, 244, 244),
+                Color.rgb(233, 233, 233),
                 Color.rgb(255, 255, 255),
-                Color.rgb(32, 38, 51),
-                Color.rgb(91, 100, 116),
-                Color.rgb(99, 108, 123),
-                Color.rgb(214, 222, 233),
-                Color.rgb(36, 99, 190),
-                Color.rgb(223, 234, 251),
+                Color.rgb(39, 48, 59),
+                Color.rgb(102, 102, 102),
+                Color.rgb(115, 115, 115),
+                Color.rgb(218, 218, 218),
+                Color.rgb(47, 141, 255),
+                Color.rgb(255, 255, 255),
                 Color.rgb(29, 113, 66),
                 Color.rgb(143, 89, 17),
                 Color.rgb(179, 46, 44));

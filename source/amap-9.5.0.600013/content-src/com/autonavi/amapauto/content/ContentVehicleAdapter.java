@@ -149,6 +149,9 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private boolean serviceBound;
     private boolean running;
     private boolean writeQueued;
+    private int lastChargeConnection = Integer.MIN_VALUE;
+    private int lastChargeBms = Integer.MIN_VALUE;
+    private int lastChargeSchedule = Integer.MIN_VALUE;
 
     public ContentVehicleAdapter(Context context) {
         this.context = context.getApplicationContext();
@@ -391,13 +394,20 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int connection = readInt(currentBinder, CHARGE_CONNECTION, AREA_DRIVER);
         int bms = readInt(currentBinder, CHARGE_BMS, AREA_DRIVER);
         int schedule = readInt(currentBinder, CHARGE_SCHEDULE, AREA_DRIVER);
+        if (connection != lastChargeConnection || bms != lastChargeBms
+                || schedule != lastChargeSchedule) {
+            Log.i(TAG, "charge raw connection=" + connection + " bms=" + bms
+                    + " schedule=" + schedule);
+            lastChargeConnection = connection;
+            lastChargeBms = bms;
+            lastChargeSchedule = schedule;
+        }
         int seatRaw = readInt(currentBinder, SEAT_HEAT_VENT, AREA_DRIVER);
         int massageSwitchRaw = readInt(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
         int massageStrengthRaw = readInt(currentBinder, MASSAGE_STRENGTH, AREA_DRIVER);
         int massageModeRaw = readInt(currentBinder, MASSAGE_MODE, AREA_DRIVER);
         int lockRaw = readInt(currentBinder, LOCK_STATE, AREA_DRIVER);
-        int chargeState = connection == 0 && bms == 0 && schedule == 0
-                ? ContentState.CHARGE_DEFAULT : ContentState.CHARGE_UNKNOWN;
+        int chargeState = resolveChargeState(connection, bms, schedule);
         int ventilation = seatRaw == 1 ? 0 : seatRaw >= 5 && seatRaw <= 7
                 ? seatRaw - 4 : seatRaw >= 2 && seatRaw <= 4 ? 0 : -1;
         int heating = seatRaw == 1 ? 0 : seatRaw >= 2 && seatRaw <= 4
@@ -414,6 +424,22 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 chargeState, connection, bms, schedule, Float.NaN, -1,
                 ventilation, heating, massage, massageModeRaw, massageSwitchKnown,
                 massageActive, seatKnown, lockKnown, lockRaw == 1);
+    }
+
+    static int resolveChargeState(int connection, int bms, int schedule) {
+        if (connection == 0 && bms == 0 && schedule == 0) {
+            return ContentState.CHARGE_DEFAULT;
+        }
+        if (bms == 3 && (connection == 1 || connection == 2)) {
+            return ContentState.CHARGE_CHARGING;
+        }
+        if (connection != 1) {
+            return ContentState.CHARGE_UNKNOWN;
+        }
+        if (bms == 6 && schedule == 1) {
+            return ContentState.CHARGE_SCHEDULED;
+        }
+        return ContentState.CHARGE_PLUGGED;
     }
 
     private int readInt(IBinder currentBinder, int functionId, int area) {

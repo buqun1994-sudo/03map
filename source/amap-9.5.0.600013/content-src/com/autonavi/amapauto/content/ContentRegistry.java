@@ -51,7 +51,45 @@ public final class ContentRegistry {
     }
 
     public static String[] mediaSources() {
-        return new String[]{"蓝牙", "爱趣听", "网易云", "U盘", "本机"};
+        return new String[]{"蓝牙音乐", "爱趣听", "网易云音乐", "USB音乐", "本机音乐"};
+    }
+
+    public static String normalizeMediaSource(String source) {
+        if ("蓝牙".equals(source) || "蓝牙音乐".equals(source)) {
+            return "蓝牙音乐";
+        }
+        if ("爱趣听".equals(source)) {
+            return "爱趣听";
+        }
+        if ("网易云".equals(source) || "网易云音乐".equals(source)) {
+            return "网易云音乐";
+        }
+        if ("U盘".equals(source) || "U盘音乐".equals(source)
+                || "USB".equals(source) || "USB音乐".equals(source)) {
+            return "USB音乐";
+        }
+        if (source == null || source.length() == 0 || "本机".equals(source)
+                || "本机音乐".equals(source)) {
+            return "本机音乐";
+        }
+        return null;
+    }
+
+    public static String mediaSourceIcon(String source) {
+        String normalized = normalizeMediaSource(source);
+        if ("蓝牙音乐".equals(normalized)) {
+            return "source_bluetooth";
+        }
+        if ("爱趣听".equals(normalized)) {
+            return "source_aiquting";
+        }
+        if ("网易云音乐".equals(normalized)) {
+            return "source_neteasy";
+        }
+        if ("USB音乐".equals(normalized)) {
+            return "source_usb";
+        }
+        return "source_local";
     }
 
     public static String[] defaultDockItems() {

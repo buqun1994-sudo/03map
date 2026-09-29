@@ -183,6 +183,21 @@ public final class ContentIconView extends View {
         if ("source".equals(iconKey)) {
             return "content_oem_ico_media_music";
         }
+        if ("source_bluetooth".equals(iconKey)) {
+            return "content_oem_ico_bluetooth";
+        }
+        if ("source_aiquting".equals(iconKey)) {
+            return "content_oem_ico_media_aiquting";
+        }
+        if ("source_neteasy".equals(iconKey)) {
+            return "content_oem_ico_media_neteasy";
+        }
+        if ("source_usb".equals(iconKey)) {
+            return "content_oem_ico_devices_usb";
+        }
+        if ("source_local".equals(iconKey)) {
+            return "content_oem_ico_media_local";
+        }
         if ("climate".equals(iconKey)) {
             return "content_oem_ico_ac_ac";
         }

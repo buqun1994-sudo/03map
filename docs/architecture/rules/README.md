@@ -8,5 +8,5 @@
 |---|---|---|
 | AI 协作 | `ai-collaboration.md` | 本项目对上下文、执行、验证和交接的翻译 |
 | 工具链 | `toolchain.md` | ADB、APKTool、Smali、签名工具的稳定调用约束 |
-| 验证 | `testing.md` | APK 静态、安装、启动、窗口和日志证据规则 |
+| 验证 | `testing.md` | APK 静态、安装、启动、窗口、日志及有原型时的视觉证据规则 |
 | 安全 | `security.md` | APK 来源、签名材料、设备数据和发布边界 |
