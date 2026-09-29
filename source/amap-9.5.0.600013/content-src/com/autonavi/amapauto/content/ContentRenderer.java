@@ -18,6 +18,10 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -72,6 +76,8 @@ public final class ContentRenderer implements ContentStore.Listener {
     private static final String ROLE_MEDIA = "media";
     private static final String ROLE_DOCK_BASE = "dock_base";
     private static final String ROLE_DOCK_BUTTON = "dock_button";
+    private static final String ROLE_SOURCE_BUTTON = "source_button";
+    private static final String ROLE_PRESS_CONTAINER = "press_container";
 
     private final Context context;
     private final ViewGroup host;
@@ -196,7 +202,7 @@ public final class ContentRenderer implements ContentStore.Listener {
 
         verticalRoot = new LinearLayout(context);
         verticalRoot.setOrientation(LinearLayout.VERTICAL);
-        verticalRoot.setClipChildren(true);
+        verticalRoot.setClipChildren(false);
         panel.addView(verticalRoot, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -303,13 +309,13 @@ public final class ContentRenderer implements ContentStore.Listener {
         row.addView(leftTopCluster, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
 
-        temperatureText = makeText(16.0f, Typeface.NORMAL, ROLE_PRIMARY);
+        temperatureText = makeText(16.0f, Typeface.BOLD, ROLE_PRIMARY);
         temperatureText.setGravity(Gravity.CENTER_VERTICAL);
         temperatureText.setSingleLine(true);
         leftTopCluster.addView(temperatureText, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        timeText = makeText(16.0f, Typeface.NORMAL, ROLE_PRIMARY);
+        timeText = makeText(17.0f, Typeface.BOLD, ROLE_PRIMARY);
         timeText.setGravity(Gravity.CENTER_VERTICAL);
         timeText.setSingleLine(true);
         timeText.setEllipsize(TextUtils.TruncateAt.END);
@@ -340,7 +346,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         rightTopCluster.addView(chargingText, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        rangeText = makeText(14.0f, Typeface.NORMAL, ROLE_PRIMARY);
+        rangeText = makeText(16.0f, Typeface.BOLD, ROLE_PRIMARY);
         rangeText.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
         rangeText.setSingleLine(true);
         rightTopCluster.addView(rangeText, new LinearLayout.LayoutParams(
@@ -434,6 +440,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         layoutShortcutTiles();
 
         LinearLayout sliderRow = new LinearLayout(context);
+        sliderRow.setClipChildren(false);
         shortcutLowerContainer.addView(sliderRow, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, shortcutTileSize() * 2 + dp(23)));
         brightnessSlider = new ContentSystemSlider(context, store.systemPort(), contentTypeface,
@@ -497,6 +504,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         controlScroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
         controlScroller.setFillViewport(false);
         controlScroller.setClipChildren(false);
+        controlScroller.setClipToPadding(false);
         LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 120);
         controlParams.bottomMargin = 16;
@@ -585,14 +593,14 @@ public final class ContentRenderer implements ContentStore.Listener {
         content.addView(separator, new LinearLayout.LayoutParams(dp(1), dp(40)));
 
         sourceButton = new FrameLayout(context);
-        LinearLayout sourceContent = new LinearLayout(context);
-        sourceContent.setOrientation(LinearLayout.HORIZONTAL);
-        sourceContent.setGravity(Gravity.CENTER);
+        sourceButton.setTag(ROLE_SOURCE_BUTTON);
+        FrameLayout sourceSurface = new FrameLayout(context);
+        sourceSurface.setTag(ROLE_CARD);
+        sourceSurface.setClipChildren(false);
         sourceIcon = new ContentIconView(context);
         sourceIcon.setIcon("source_local");
-        sourceContent.addView(sourceIcon, new LinearLayout.LayoutParams(48, 48));
-        sourceButton.addView(sourceContent, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        sourceSurface.addView(sourceIcon, new FrameLayout.LayoutParams(36, 36, Gravity.CENTER));
+        sourceButton.addView(sourceSurface, new FrameLayout.LayoutParams(72, 72, Gravity.CENTER));
         sourceButton.setContentDescription("媒体来源");
         sourceButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -641,7 +649,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setPadding(dp(14), dp(10), dp(14), dp(10));
-        card.setTag(ROLE_SURFACE);
+        card.setTag(ROLE_CARD);
+        applySoftShadow(card);
         ContentIconView climateIcon = new ContentIconView(context);
         climateIcon.setIcon("climate");
         climateIcon.setAvailable(false);
@@ -680,6 +689,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         dockViewport = new HorizontalScrollView(context);
         dockViewport.setFillViewport(true);
         dockViewport.setClipChildren(false);
+        dockViewport.setClipToPadding(false);
         dockViewport.setHorizontalScrollBarEnabled(false);
         dockViewport.setOverScrollMode(View.OVER_SCROLL_NEVER);
         dockContainer = new LinearLayout(context);
@@ -698,7 +708,7 @@ public final class ContentRenderer implements ContentStore.Listener {
                 Math.max(300, panelWidth - 24), ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout lockButton = createDockButton("lock", "车锁");
-        lockDockIcon = (ContentIconView) lockButton.getChildAt(0);
+        lockDockIcon = iconFromDockButton(lockButton);
         lockButton.setContentDescription("车锁");
         lockButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -737,6 +747,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         tile.setPadding(dp(2), dp(2), dp(2), dp(2));
         tile.setTag(ROLE_CARD);
         applySoftShadow(tile);
+        tile.setLongClickable(false);
         ContentIconView icon = new ContentIconView(context);
         icon.setIcon(iconKey);
         tile.addView(icon, new LinearLayout.LayoutParams(dp(40), dp(40)));
@@ -789,7 +800,6 @@ public final class ContentRenderer implements ContentStore.Listener {
         dockButtons.clear();
         dockIconViews.clear();
         for (int slot = 0; slot < state.dockItems.length; slot++) {
-            final int dockSlot = slot;
             final String itemId = state.dockItems[slot];
             LinearLayout button = createDockButton(iconForItem(itemId), labelForItem(itemId));
             button.setContentDescription(labelForItem(itemId));
@@ -799,16 +809,10 @@ public final class ContentRenderer implements ContentStore.Listener {
                     onDockClick(itemId);
                 }
             });
-            button.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View view) {
-                    showDockEditPopup(dockSlot);
-                    return true;
-                }
-            });
+            button.setLongClickable(false);
             bindPressEffect(button);
             dockButtons.add(button);
-            dockIconViews.add((ContentIconView) button.getChildAt(0));
+            dockIconViews.add(iconFromDockButton(button));
             dockSlots.addView(button, new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
         }
@@ -821,11 +825,19 @@ public final class ContentRenderer implements ContentStore.Listener {
         button.setGravity(Gravity.CENTER);
         button.setTag(ROLE_DOCK_BUTTON);
         button.setPadding(dp(2), dp(2), dp(2), dp(2));
+        FrameLayout pressSurface = new FrameLayout(context);
+        pressSurface.setTag(ROLE_PRESS_CONTAINER);
         ContentIconView icon = new ContentIconView(context);
         icon.setIcon(iconKey);
-        button.addView(icon, new LinearLayout.LayoutParams(50, 50));
+        pressSurface.addView(icon, new FrameLayout.LayoutParams(36, 36, Gravity.CENTER));
+        button.addView(pressSurface, new LinearLayout.LayoutParams(72, 72));
         button.setContentDescription(label);
         return button;
+    }
+
+    private ContentIconView iconFromDockButton(View button) {
+        ViewGroup group = (ViewGroup) button;
+        return (ContentIconView) ((ViewGroup) group.getChildAt(0)).getChildAt(0);
     }
 
     private void onDockClick(String itemId) {
@@ -853,9 +865,10 @@ public final class ContentRenderer implements ContentStore.Listener {
                 && detailedStatus != lastDetailedStatus;
         boolean statusChanged = lastChargeState != Integer.MIN_VALUE
                 && (modeChanged || detailedStatus && state.chargeState != lastChargeState);
-        temperatureText.setText(Float.isNaN(state.temperatureC)
-                ? "--" : String.format(Locale.CHINA, "%.1f°C", state.temperatureC));
-        String statusText = "";
+        String temperature = Float.isNaN(state.temperatureC)
+                ? "--" : String.format(Locale.CHINA, "%.1f", state.temperatureC);
+        temperatureText.setText(withMutedUnit(temperature, "°C"));
+        CharSequence statusText = "";
         if (detailedStatus) {
             if (state.chargeState == ContentState.CHARGE_PLUGGED) {
                 statusText = "已插枪·状态待确认";
@@ -865,11 +878,19 @@ public final class ContentRenderer implements ContentStore.Listener {
                 boolean hasPower = !Float.isNaN(state.chargePowerKw)
                         && state.chargePowerKw >= 0.0f;
                 boolean hasMinutes = state.chargeRemainingMinutes >= 0;
-                String power = hasPower ? String.format(Locale.CHINA,
-                        "功率 %.1f kW", state.chargePowerKw) : "";
-                String minutes = hasMinutes ? "剩余 " + state.chargeRemainingMinutes + " 分钟" : "";
-                statusText = hasPower && hasMinutes ? power + " · " + minutes
-                        : hasPower ? power : hasMinutes ? minutes : "充电中";
+                SpannableStringBuilder status = new SpannableStringBuilder();
+                if (hasPower) {
+                    status.append("功率 ");
+                    appendMutedUnit(status, String.format(Locale.CHINA, "%.1f", state.chargePowerKw), "kW");
+                }
+                if (hasPower && hasMinutes) {
+                    status.append(" · ");
+                }
+                if (hasMinutes) {
+                    status.append("剩余 ");
+                    appendMutedUnit(status, String.valueOf(state.chargeRemainingMinutes), "分钟");
+                }
+                statusText = hasPower || hasMinutes ? status : "充电中";
             } else {
                 statusText = "充电状态待确认";
             }
@@ -891,7 +912,8 @@ public final class ContentRenderer implements ContentStore.Listener {
                 : state.chargeState == ContentState.CHARGE_CHARGING ? theme.positive : theme.secondaryText);
         temperatureText.setVisibility(detailedStatus ? View.GONE : View.VISIBLE);
         chargingText.setVisibility(detailedStatus ? View.VISIBLE : View.GONE);
-        rangeText.setText(state.rangeRaw >= 0 ? String.valueOf(state.rangeRaw) : "--");
+        rangeText.setText(withMutedUnit(state.rangeRaw >= 0
+                ? String.valueOf(state.rangeRaw) : "--", "km"));
         layoutTopBar();
         if (statusChanged && activityActive) {
             animateTopStatus(detailedStatus, modeChanged);
@@ -905,6 +927,23 @@ public final class ContentRenderer implements ContentStore.Listener {
         batteryIcon.setContentDescription(state.batteryPercent < 0 ? "动力电池不可用"
                 : "动力电池" + state.batteryPercent + "%"
                 + (state.chargeState == ContentState.CHARGE_DEFAULT ? "，未插枪" : ""));
+    }
+
+    private CharSequence withMutedUnit(String value, String unit) {
+        SpannableStringBuilder text = new SpannableStringBuilder(value);
+        appendMutedUnit(text, "", unit);
+        return text;
+    }
+
+    private void appendMutedUnit(SpannableStringBuilder text, String value, String unit) {
+        text.append(value);
+        int start = text.length();
+        text.append(unit);
+        int end = text.length();
+        text.setSpan(new ForegroundColorSpan(theme.mutedText), start, end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        text.setSpan(new StyleSpan(Typeface.NORMAL), start, end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
     private void layoutTopBar() {
@@ -1458,6 +1497,8 @@ public final class ContentRenderer implements ContentStore.Listener {
             setSoftBackground(view, theme.surface, dp(7));
         } else if (ROLE_MEDIA.equals(tag) || ROLE_DOCK_BASE.equals(tag)) {
             setSoftBackground(view, theme.elevated, 12);
+        } else if (ROLE_PRESS_CONTAINER.equals(tag)) {
+            view.setBackground(null);
         } else if (ROLE_SELECTED.equals(tag)) {
             view.setBackground(roundColor(theme.selected, dp(7)));
         } else if (ROLE_DIVIDER.equals(tag)) {
@@ -1698,21 +1739,35 @@ public final class ContentRenderer implements ContentStore.Listener {
                     return false;
                 }
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                    if (ROLE_DOCK_BUTTON.equals(touchedView.getTag())) {
-                        ((ViewGroup) touchedView).getChildAt(0).setBackground(
-                                roundColor(theme.surface, 12));
-                    }
+                    setPressBackground(touchedView, true);
                     animatePress(touchedView, 0.96f, PRESS_DOWN_DURATION_MS);
                 } else if (event.getActionMasked() == MotionEvent.ACTION_UP
                         || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-                    if (ROLE_DOCK_BUTTON.equals(touchedView.getTag())) {
-                        ((ViewGroup) touchedView).getChildAt(0).setBackground(null);
-                    }
+                    setPressBackground(touchedView, false);
                     animatePress(touchedView, 1.0f, PRESS_UP_DURATION_MS);
                 }
                 return false;
             }
         });
+    }
+
+    private void setPressBackground(View view, boolean pressed) {
+        Object tag = view.getTag();
+        if (!ROLE_DOCK_BUTTON.equals(tag) && !ROLE_SOURCE_BUTTON.equals(tag)) {
+            return;
+        }
+        View target = view;
+        if (view instanceof ViewGroup && ((ViewGroup) view).getChildCount() > 0) {
+            target = ((ViewGroup) view).getChildAt(0);
+        }
+        if (pressed) {
+            target.setBackground(roundColor(theme.surface, 36));
+        } else if (ROLE_SOURCE_BUTTON.equals(tag)
+                && !ROLE_PRESS_CONTAINER.equals(target.getTag())) {
+            setSoftBackground(target, theme.surface, dp(7));
+        } else {
+            target.setBackground(null);
+        }
     }
 
     private void animatePress(final View view, float targetScale, long duration) {
@@ -1799,7 +1854,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         view.setTranslationZ(0);
     }
 
-    private static final class DownwardShadowDrawable extends GradientDrawable {
+    static final class DownwardShadowDrawable extends GradientDrawable {
         private final int radius;
         private Bitmap shadow;
         private int cachedWidth;
@@ -2024,28 +2079,25 @@ public final class ContentRenderer implements ContentStore.Listener {
     private void showMediaSourcePopup() {
         LinearLayout menu = popupMenu();
         ContentState state = store.snapshot();
-        float widest = 0.0f;
         for (final String source : ContentRegistry.mediaSources()) {
             if (source.equals(state.mediaSource)) {
                 continue;
             }
-            LinearLayout item = new LinearLayout(context);
-            item.setGravity(Gravity.CENTER_VERTICAL);
+            FrameLayout item = new FrameLayout(context);
             item.setBackground(null);
-            item.setPadding(dp(8), 0, dp(8), 0);
+            item.setTag(ROLE_SOURCE_BUTTON);
+            FrameLayout iconSurface = new FrameLayout(context);
+            iconSurface.setTag(ROLE_PRESS_CONTAINER);
             ContentIconView icon = new ContentIconView(context);
             icon.setIcon(ContentRegistry.mediaSourceIcon(source));
             icon.setColors(theme.text, theme.accent);
-            item.addView(icon, new LinearLayout.LayoutParams(dp(24), dp(24)));
-            TextView label = makeText(13.0f, Typeface.NORMAL, ROLE_PRIMARY);
-            label.setTextColor(theme.text);
-            label.setText(source);
-            label.setSingleLine(true);
-            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            labelParams.leftMargin = dp(6);
+            iconSurface.addView(icon, new FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER));
+            item.addView(iconSurface, new FrameLayout.LayoutParams(dp(72), dp(72),
+                    Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+            PopupLabelView label = new PopupLabelView(context, source);
+            FrameLayout.LayoutParams labelParams = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(24), Gravity.BOTTOM);
             item.addView(label, labelParams);
-            widest = Math.max(widest, label.getPaint().measureText(source));
             item.setContentDescription("切换到" + source);
             bindPressEffect(item);
             item.setOnClickListener(new View.OnClickListener() {
@@ -2056,27 +2108,9 @@ public final class ContentRenderer implements ContentStore.Listener {
                 }
             });
             menu.addView(item, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(58)));
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(96)));
         }
-        showPopup(menu, Math.max(dp(120), (int) Math.ceil(widest) + dp(58)),
-                dp(60) * menu.getChildCount());
-    }
-
-    private void showDockEditPopup(final int slot) {
-        LinearLayout menu = popupMenu();
-        for (final String itemId : ContentRegistry.dockChoices()) {
-            TextView item = popupItem(labelForItem(itemId));
-            item.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    store.replaceDockItem(slot, itemId);
-                    dismissPopup();
-                }
-            });
-            menu.addView(item, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
-        }
-        showPopup(menu, dp(190), dp(58) * menu.getChildCount());
+        showPopup(menu, dp(128), dp(96) * menu.getChildCount() + dp(8));
     }
 
     private LinearLayout popupMenu() {
@@ -2087,20 +2121,9 @@ public final class ContentRenderer implements ContentStore.Listener {
         return menu;
     }
 
-    private TextView popupItem(String text) {
-        TextView item = makeText(15.0f, Typeface.NORMAL, ROLE_PRIMARY);
-        item.setTextColor(theme.text);
-        item.setText(text);
-        item.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
-        item.setPadding(dp(14), 0, dp(12), 0);
-        item.setBackground(null);
-        bindPressEffect(item);
-        return item;
-    }
-
     private void showPopup(View popupContent, int width, int height) {
         dismissPopup();
-        int safeHeight = Math.min(height, dp(320));
+        int safeHeight = Math.min(height, dp(480));
         int safeWidth = Math.min(width, Math.max(dp(1), panelWidth - dp(16)));
         View content = popupContent;
         if (height > safeHeight) {
@@ -2355,6 +2378,30 @@ public final class ContentRenderer implements ContentStore.Listener {
             this.tile = tile;
             this.icon = icon;
             this.labelText = labelText;
+        }
+    }
+
+    private final class PopupLabelView extends View {
+        private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final String text;
+
+        private PopupLabelView(Context context, String text) {
+            super(context);
+            this.text = text;
+            labelPaint.setTypeface(Typeface.create(contentTypeface, Typeface.NORMAL));
+            labelPaint.setTextSize(calibratedSp(13.0f)
+                    * context.getResources().getDisplayMetrics().scaledDensity);
+            setContentDescription(text);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            labelPaint.setColor(theme.text);
+            Paint.FontMetrics metrics = labelPaint.getFontMetrics();
+            float x = (getWidth() - labelPaint.measureText(text)) / 2.0f;
+            float y = (getHeight() - metrics.ascent - metrics.descent) / 2.0f;
+            canvas.drawText(text, x, y, labelPaint);
         }
     }
 }

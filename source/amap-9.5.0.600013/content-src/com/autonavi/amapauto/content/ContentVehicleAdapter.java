@@ -10,7 +10,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.Parcel;
 import android.os.RemoteException;
-import android.os.SystemClock;
 import android.util.Log;
 
 public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
@@ -148,7 +147,6 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private IBinder binder;
     private boolean serviceBound;
     private boolean running;
-    private boolean writeQueued;
     private int lastChargeConnection = Integer.MIN_VALUE;
     private int lastChargeBms = Integer.MIN_VALUE;
     private int lastChargeSchedule = Integer.MIN_VALUE;
@@ -215,7 +213,6 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
             serviceBound = false;
         }
         binder = null;
-        writeQueued = false;
         if (workerHandler != null) {
             workerHandler.removeCallbacksAndMessages(null);
             workerHandler = null;
@@ -287,14 +284,13 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         final IBinder currentBinder;
         final Handler worker;
         synchronized (this) {
-            if (!running || binder == null || workerHandler == null || writeQueued) {
+            if (!running || binder == null || workerHandler == null) {
                 return false;
             }
             currentBinder = binder;
             worker = workerHandler;
-            writeQueued = true;
         }
-        boolean queued = worker.post(new Runnable() {
+        return worker.post(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -316,24 +312,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                             return;
                         }
                     }
-                    if (ensureMassageOn && getData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER) != 2) {
+                    if (ensureMassageOn) {
                         sendData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER, 2);
-                        int confirmedSwitch = -1;
-                        for (int attempt = 0; attempt < 10; attempt++) {
-                            synchronized (ContentVehicleAdapter.this) {
-                                if (!running || binder != currentBinder) {
-                                    throw new RemoteException("vehicle connection changed");
-                                }
-                            }
-                            confirmedSwitch = getData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
-                            if (confirmedSwitch == 2) {
-                                break;
-                            }
-                            SystemClock.sleep(200L);
-                        }
-                        if (confirmedSwitch != 2) {
-                            throw new RemoteException("massage switch unconfirmed");
-                        }
                     }
                     sendData(currentBinder, functionId, AREA_DRIVER, value);
                     worker.removeCallbacks(pollRunnable);
@@ -341,19 +321,9 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 } catch (RemoteException | RuntimeException error) {
                     Log.w(TAG, "vehicle command failed", error);
                     reportCommandFailure(requestId, "车辆控制请求失败，请查看车机状态");
-                } finally {
-                    synchronized (ContentVehicleAdapter.this) {
-                        writeQueued = false;
-                    }
                 }
             }
         });
-        if (!queued) {
-            synchronized (this) {
-                writeQueued = false;
-            }
-        }
-        return queued;
     }
 
     private void reportCommandFailure(final long requestId, final String message) {

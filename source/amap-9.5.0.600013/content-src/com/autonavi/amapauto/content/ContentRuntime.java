@@ -13,6 +13,8 @@ import java.lang.reflect.Method;
 
 public final class ContentRuntime {
     private static final Object LOCK = new Object();
+    private static final int THEME_SYNC_ATTEMPTS = 8;
+    private static final long THEME_SYNC_DELAY_MS = 250L;
     private static volatile int lastAmapThemeMode = ContentState.THEME_LIGHT;
     private static volatile boolean hasAmapThemeMode;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -29,8 +31,8 @@ public final class ContentRuntime {
     private ContentRuntime(Activity activity, ViewGroup host) {
         ownerActivity = new WeakReference<>(activity);
         this.host = host;
-        int initialTheme = hasAmapThemeMode ? lastAmapThemeMode : ContentState.THEME_LIGHT;
         store = new ContentStore(host.getContext());
+        int initialTheme = hasAmapThemeMode ? lastAmapThemeMode : store.snapshot().themeMode;
         store.setThemeMode(initialTheme);
         renderer = new ContentRenderer(contentContext(host.getContext()), host, store, initialTheme);
     }
@@ -76,6 +78,7 @@ public final class ContentRuntime {
                         lastDividerX, lastExpandedDividerX, lastMapWidth);
             }
         }
+        syncAmapTheme(activity, 0);
     }
 
     public static void detach(Activity activity) {
@@ -111,6 +114,7 @@ public final class ContentRuntime {
                 activeRuntime.renderer.resume();
             }
         }
+        syncAmapTheme(activity, 0);
     }
 
     public static void onAmapThemeChanged(int mode) {
@@ -145,6 +149,30 @@ public final class ContentRuntime {
             // Native startup may lag behind the content View; the normal callback remains authoritative.
             return null;
         }
+    }
+
+    private static void syncAmapTheme(final Activity activity, final int attempt) {
+        if (attempt >= THEME_SYNC_ATTEMPTS) {
+            return;
+        }
+        MAIN.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Integer currentTheme = readAmapTheme();
+                synchronized (LOCK) {
+                    if (activeRuntime == null || activeRuntime.ownerActivity.get() != activity) {
+                        return;
+                    }
+                    if (currentTheme != null) {
+                        lastAmapThemeMode = currentTheme;
+                        hasAmapThemeMode = true;
+                        activeRuntime.store.setThemeMode(currentTheme);
+                        return;
+                    }
+                }
+                syncAmapTheme(activity, attempt + 1);
+            }
+        }, attempt == 0 ? 0L : THEME_SYNC_DELAY_MS);
     }
 
     public static void onDividerChanged(float dividerX, float expandedDivider, float mapWidth) {

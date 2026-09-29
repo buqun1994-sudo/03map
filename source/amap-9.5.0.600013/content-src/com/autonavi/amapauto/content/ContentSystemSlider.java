@@ -19,6 +19,7 @@ final class ContentSystemSlider extends FrameLayout {
     private final int kind;
     private final ContentPorts.SystemPort systemPort;
     private final View fill;
+    private final GradientDrawable fillBackground;
     private final TextView value;
     private final ImageView icon;
     private int percent;
@@ -32,25 +33,32 @@ final class ContentSystemSlider extends FrameLayout {
         super(context);
         this.systemPort = systemPort;
         this.kind = kind;
-        setClipToOutline(true);
+        setClipToOutline(false);
         fill = new View(context);
+        fillBackground = shape(0, 0);
+        fill.setBackground(fillBackground);
         addView(fill, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM));
         value = new TextView(context);
-        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f);
+        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
         value.setTypeface(typeface);
         value.setGravity(Gravity.CENTER);
         value.setMaxLines(2);
         value.setIncludeFontPadding(false);
-        addView(value, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(50), Gravity.TOP));
+        FrameLayout.LayoutParams valueParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48), Gravity.TOP);
+        valueParams.topMargin = dp(42);
+        addView(value, valueParams);
         icon = new ImageView(context);
         int resource = context.getResources().getIdentifier(kind == BRIGHTNESS
                 ? "content_oem_ico_brightness_mid" : "content_oem_ico_volume_2",
                 "drawable", context.getPackageName());
         if (resource != 0) icon.setImageResource(resource);
         icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        addView(icon, new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER));
+        FrameLayout.LayoutParams iconParams = new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP);
+        iconParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        iconParams.topMargin = dp(10);
+        addView(icon, iconParams);
         setOnTouchListener(new OnTouchListener() {
             @Override public boolean onTouch(View view, MotionEvent event) {
                 switch (event.getActionMasked()) {
@@ -93,8 +101,8 @@ final class ContentSystemSlider extends FrameLayout {
 
     void setTheme(ContentTheme nextTheme) {
         theme = nextTheme;
-        setBackground(shape(theme.surface, dp(7)));
-        fill.setBackgroundColor(theme.selected);
+        setBackground(new ContentRenderer.DownwardShadowDrawable(theme.surface, dp(7)));
+        fillBackground.setColor(theme.elevated);
         value.setTextColor(theme.text);
         icon.setColorFilter(theme.secondaryText);
     }
@@ -115,15 +123,19 @@ final class ContentSystemSlider extends FrameLayout {
     }
 
     private void preview(float y) {
-        int usable = Math.max(1, getHeight() - dp(50));
+        int usable = Math.max(1, getHeight());
         percent = Math.max(0, Math.min(100, Math.round((getHeight() - y) * 100f / usable)));
         showPercent();
     }
 
     private void showPercent() {
-        int usable = Math.max(0, getHeight() - dp(50));
+        int usable = Math.max(0, getHeight());
         ViewGroup.LayoutParams params = fill.getLayoutParams();
         int height = Math.round(usable * percent / 100f);
+        int radius = dp(7);
+        float topRadius = height >= usable ? radius : 0;
+        fillBackground.setCornerRadii(new float[]{topRadius, topRadius, topRadius, topRadius,
+                radius, radius, radius, radius});
         if (height != params.height) {
             params.height = height;
             fill.setLayoutParams(params);

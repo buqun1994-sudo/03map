@@ -140,6 +140,7 @@ public final class ContentStore {
                 return;
             }
             state.themeMode = resolvedMode;
+            preferenceStore.save(state);
         }
         publish();
     }
@@ -257,25 +258,29 @@ public final class ContentStore {
     public void cycleSeatLevel(String seatId) {
         int nextLevel;
         synchronized (this) {
-            if (state.pendingVehicleCommand.length() != 0 || !vehiclePort.isAvailable()) {
+            if (!vehiclePort.isAvailable()) {
                 return;
             }
             if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(seatId)) {
-                if (state.ventilationLevel < 0) {
+                int currentLevel = pendingLevelLocked(seatId, state.ventilationLevel);
+                if (currentLevel < 0) {
                     return;
                 }
-                nextLevel = nextLevel(state.ventilationLevel);
+                nextLevel = nextLevel(currentLevel);
             } else if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId)) {
-                if (state.heatingLevel < 0) {
+                int currentLevel = pendingLevelLocked(seatId, state.heatingLevel);
+                if (currentLevel < 0) {
                     return;
                 }
-                nextLevel = nextLevel(state.heatingLevel);
+                nextLevel = nextLevel(currentLevel);
             } else if (ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId)) {
                 if (!state.massageSwitchKnown) {
                     return;
                 }
-                nextLevel = state.massageActive && state.massageLevel < 0
-                        ? 0 : nextLevel(state.massageLevel);
+                int currentLevel = pendingLevelLocked(seatId,
+                        state.massageActive ? state.massageLevel : 0);
+                nextLevel = state.massageActive && currentLevel < 0
+                        ? 0 : nextLevel(currentLevel);
             } else {
                 return;
             }
@@ -287,7 +292,6 @@ public final class ContentStore {
         long requestId;
         synchronized (this) {
             if (destroyed || targetLevel < 0 || targetLevel > 3
-                    || state.pendingVehicleCommand.length() != 0
                     || !state.vehicleDataAvailable || state.vehiclePreview
                     || !state.seatControlsKnown || !vehiclePort.isAvailable()) {
                 return;
@@ -306,7 +310,8 @@ public final class ContentStore {
             } else {
                 return;
             }
-            if (actualLevel == targetLevel || actualLevel < 0
+            int currentLevel = pendingLevelLocked(seatId, actualLevel);
+            if (currentLevel == targetLevel || currentLevel < 0
                     && !(ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId)
                             && state.massageActive && targetLevel == 0)) {
                 return;
@@ -459,6 +464,11 @@ public final class ContentStore {
             return 0;
         }
         return currentLevel == 0 ? 3 : currentLevel == 3 ? 2 : currentLevel == 2 ? 1 : 0;
+    }
+
+    private int pendingLevelLocked(String seatId, int actualLevel) {
+        return seatId.equals(state.pendingVehicleCommand) && state.pendingSeatLevel >= 0
+                ? state.pendingSeatLevel : actualLevel;
     }
 
     private int normalizeChargeState(int chargeState) {

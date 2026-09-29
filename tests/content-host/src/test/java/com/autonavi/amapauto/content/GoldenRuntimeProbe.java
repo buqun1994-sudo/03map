@@ -13,7 +13,9 @@ import android.content.pm.PackageManager;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.MotionEvent;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -22,6 +24,7 @@ import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -69,6 +72,7 @@ public class GoldenRuntimeProbe {
             for (View tile : (List<View>) field(fixture.renderer, "shortcutTiles")) {
                 assertEquals(tile.getWidth(), tile.getHeight());
                 assertEquals(2, ((LinearLayout) tile).getChildCount());
+                assertFalse("shortcut long press must not open an edit list", tile.isLongClickable());
                 android.widget.TextView label = (android.widget.TextView) ((LinearLayout) tile).getChildAt(1);
                 assertEquals(0, label.getLayout().getEllipsisCount(0));
             }
@@ -194,7 +198,7 @@ public class GoldenRuntimeProbe {
         assertEquals(5, dockSlots.getChildCount());
         for (int index = 0; index < dockSlots.getChildCount(); index++) {
             assertTrue("dock touch area below 48dp", dockSlots.getChildAt(index).getWidth() >= 96);
-            assertTrue(dockSlots.getChildAt(index).isLongClickable());
+            assertFalse("dock long press must not open an edit list", dockSlots.getChildAt(index).isLongClickable());
         }
         assertTrue(dock.getHeight() >= 96);
         fixture.store.setShowSeconds(true);
@@ -304,7 +308,7 @@ public class GoldenRuntimeProbe {
                     assertEquals(1, time.getLayout().getLineCount());
                     assertTrue("time clipped", time.getPaint().measureText(time.getText().toString())
                             <= time.getWidth());
-                    assertEquals("raw range", "366", range.getText().toString());
+                    assertEquals("range with unit", "366km", range.getText().toString());
                     if (chargeState == ContentState.CHARGE_DEFAULT) {
                         assertEquals("time must follow panel midpoint", width / 2.0f,
                                 timeLocation[0] + time.getWidth() / 2.0f, 4.0f);
@@ -325,19 +329,19 @@ public class GoldenRuntimeProbe {
                     Float.NaN, -1, -1, ContentState.CHARGE_DEFAULT, 0, 0, 0,
                     Float.NaN, -1, 0, 0, 0, -1, true, false, true, true, true));
             fixture.layout(640);
-            assertEquals("--", ((android.widget.TextView) field(fixture.renderer,
+            assertEquals("--°C", ((android.widget.TextView) field(fixture.renderer,
                     "temperatureText")).getText().toString());
-            assertEquals("--", ((android.widget.TextView) field(fixture.renderer,
+            assertEquals("--km", ((android.widget.TextView) field(fixture.renderer,
                     "rangeText")).getText().toString());
             fixture.store.acceptVehicleSnapshot(new ContentPorts.VehicleSnapshot(true, false,
                     25.0f, 70, 366, ContentState.CHARGE_CHARGING, 1, 3, 0,
                     8.7f, -1, 0, 0, 0, -1, true, false, true, true, true));
-            assertEquals("功率 8.7 kW", ((android.widget.TextView) field(fixture.renderer,
+            assertEquals("功率 8.7kW", ((android.widget.TextView) field(fixture.renderer,
                     "chargingText")).getText().toString());
             fixture.store.acceptVehicleSnapshot(new ContentPorts.VehicleSnapshot(true, false,
                     25.0f, 70, 366, ContentState.CHARGE_CHARGING, 1, 3, 0,
                     Float.NaN, 27, 0, 0, 0, -1, true, false, true, true, true));
-            assertEquals("剩余 27 分钟", ((android.widget.TextView) field(fixture.renderer,
+            assertEquals("剩余 27分钟", ((android.widget.TextView) field(fixture.renderer,
                     "chargingText")).getText().toString());
             fixture.store.acceptVehicleSnapshot(new ContentPorts.VehicleSnapshot(true, false,
                     25.0f, 70, 366, ContentState.CHARGE_PLUGGED, 1, 0, 0,
@@ -462,12 +466,21 @@ public class GoldenRuntimeProbe {
                     : (LinearLayout) popupContent;
             assertEquals(4, menu.getChildCount());
             for (int index = 0; index < 4; index++) {
-                LinearLayout item = (LinearLayout) menu.getChildAt(index);
-                assertEquals(labels[index], ((android.widget.TextView) item.getChildAt(1))
-                        .getText().toString());
+                ViewGroup item = (ViewGroup) menu.getChildAt(index);
+                assertEquals(labels[index], item.getChildAt(1).getContentDescription().toString());
+                assertEquals(96, Math.round(item.getLayoutParams().height
+                        / fixture.host.getResources().getDisplayMetrics().density));
+                assertEquals(72, Math.round(item.getChildAt(0).getLayoutParams().width
+                        / fixture.host.getResources().getDisplayMetrics().density));
                 assertEquals(ContentRegistry.mediaSourceIcon(labels[index]),
-                        field(item.getChildAt(0), "iconKey"));
+                        field(((ViewGroup) item.getChildAt(0)).getChildAt(0), "iconKey"));
             }
+            View sourceItem = menu.getChildAt(0);
+            View pressSurface = ((ViewGroup) sourceItem).getChildAt(0);
+            touch(sourceItem, MotionEvent.ACTION_DOWN, 10, 10, 0);
+            assertNotNull("source press background missing", pressSurface.getBackground());
+            touch(sourceItem, MotionEvent.ACTION_CANCEL, 10, 10, 50);
+            assertNull("source press background remained after cancel", pressSurface.getBackground());
             menu.getChildAt(0).performClick();
             assertEquals("source switched before real snapshot", "本机音乐",
                     fixture.store.snapshot().mediaSource);
@@ -586,6 +599,9 @@ public class GoldenRuntimeProbe {
             assertEquals(0, port.seatRequests);
             fixture.store.cycleSeatLevel(ContentRegistry.Shortcuts.SEAT_MASSAGE);
             assertEquals(1, port.seatRequests);
+            fixture.store.cycleSeatLevel(ContentRegistry.Shortcuts.SEAT_MASSAGE);
+            assertEquals(2, port.seatRequests);
+            assertEquals(2, fixture.store.snapshot().pendingSeatLevel);
             assertEquals(ContentRegistry.Shortcuts.SEAT_MASSAGE,
                     fixture.store.snapshot().pendingVehicleCommand);
         } finally {
@@ -597,6 +613,67 @@ public class GoldenRuntimeProbe {
         return new ContentPorts.VehicleSnapshot(true, false, 25.0f, 70, 366,
                 ContentState.CHARGE_DEFAULT, 0, 0, 0, Float.NaN, -1,
                 0, 0, level, -1, true, level > 0, true, true, true);
+    }
+
+    @Test
+    public void rapidSeatClicksAdvanceWhileVehicleSnapshotIsStale() throws Exception {
+        for (String seatId : new String[]{ContentRegistry.Shortcuts.SEAT_VENTILATION,
+                ContentRegistry.Shortcuts.SEAT_HEATING, ContentRegistry.Shortcuts.SEAT_MASSAGE}) {
+            Fixture fixture = new Fixture();
+            try {
+                AcceptVehiclePort port = new AcceptVehiclePort();
+                ((ContentPorts.VehiclePort) field(fixture.store, "vehiclePort")).stop();
+                replacePort(fixture.store, "vehiclePort", port);
+                ContentPorts.VehicleSnapshot initial = ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId)
+                        ? vehicleMassage(0) : vehicle(true, 0);
+                fixture.store.acceptVehicleSnapshot(initial);
+                for (int target : new int[]{3, 2, 1, 0}) {
+                    fixture.store.cycleSeatLevel(seatId);
+                    assertEquals(seatId + " command count", 4 - target, port.seatRequests);
+                    assertEquals(seatId + " requested level", target, port.lastSeatLevel);
+                    assertEquals(seatId + " pending UI", target, fixture.store.snapshot().pendingSeatLevel);
+                    if (target != 0) {
+                        fixture.store.acceptVehicleSnapshot(initial);
+                        assertEquals(seatId + " stale snapshot reset target", target,
+                                fixture.store.snapshot().pendingSeatLevel);
+                    }
+                }
+            } finally {
+                fixture.close();
+            }
+        }
+    }
+
+    @Test
+    public void recreatedRuntimeStartsFromPersistedAmapTheme() throws Exception {
+        ActivityController<Activity> controller = Robolectric.buildActivity(Activity.class).setup();
+        Activity activity = controller.get();
+        Field themeKnown = ContentRuntime.class.getDeclaredField("hasAmapThemeMode");
+        themeKnown.setAccessible(true);
+        boolean previousKnown = themeKnown.getBoolean(null);
+        ContentRuntime runtime = null;
+        try {
+            ContentState saved = new ContentState();
+            saved.themeMode = ContentState.THEME_DARK;
+            new ContentPreferenceStore(activity).save(saved);
+            themeKnown.setBoolean(null, false);
+            Constructor<ContentRuntime> constructor = ContentRuntime.class.getDeclaredConstructor(
+                    Activity.class, ViewGroup.class);
+            constructor.setAccessible(true);
+            runtime = constructor.newInstance(activity, new FrameLayout(activity));
+            assertEquals(ContentState.THEME_DARK,
+                    ((ContentStore) field(runtime, "store")).snapshot().themeMode);
+            assertEquals(ContentState.THEME_DARK,
+                    field(field(runtime, "renderer"), "displayedThemeMode"));
+        } finally {
+            if (runtime != null) {
+                ((ContentStore) field(runtime, "store")).destroy();
+            }
+            activity.getSharedPreferences("content_preferences_v1", Context.MODE_PRIVATE)
+                    .edit().remove("theme_mode").apply();
+            themeKnown.setBoolean(null, previousKnown);
+            controller.pause().stop().destroy();
+        }
     }
 
     @Test
@@ -829,6 +906,19 @@ public class GoldenRuntimeProbe {
             assertEquals(1068, dockLocation[1] + dock.getHeight() - hostLocation[1], 4);
             assertEquals(12, dockLocation[0] - hostLocation[0], 4);
             assertEquals(628, dockLocation[0] + dock.getWidth() - hostLocation[0], 4);
+            Bitmap shadowFrame = Bitmap.createBitmap(640, 1080, Bitmap.Config.ARGB_8888);
+            fixture.host.draw(new Canvas(shadowFrame));
+            View slider = (View) field(fixture.renderer, "brightnessSlider");
+            for (View surface : new View[]{slider, mediaSurface, dock}) {
+                int[] location = new int[2];
+                surface.getLocationOnScreen(location);
+                int sampleX = location[0] - hostLocation[0] + surface.getWidth() / 2;
+                int sampleY = location[1] - hostLocation[1] + surface.getHeight() + 1;
+                assertTrue("bottom shadow clipped: " + surface.getClass().getSimpleName(),
+                        android.graphics.Color.red(shadowFrame.getPixel(sampleX, sampleY))
+                                < android.graphics.Color.red(ContentTheme.light().background));
+            }
+            shadowFrame.recycle();
             System.out.println("VISUAL ANCHORS center="
                     + (timeLocation[0] - hostLocation[0] + time.getWidth() / 2)
                     + " media=(" + (surfaceLocation[0] - hostLocation[0])
