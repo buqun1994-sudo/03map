@@ -8,9 +8,13 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Looper;
+import android.os.Binder;
+import android.os.Parcel;
+import android.os.RemoteException;
 import android.util.DisplayMetrics;
 import android.view.MotionEvent;
 import android.view.Gravity;
@@ -245,7 +249,8 @@ public class GoldenRuntimeProbe {
         assertNull(field(fixture.renderer, "artworkTask"));
         fixture.store.setThemeMode(ContentState.THEME_DARK);
         idle(280);
-        assertEquals(0xff17191d, ((ContentTheme) field(fixture.renderer, "theme")).background);
+        assertEquals(ContentTheme.dark().background,
+                ((ContentTheme) field(fixture.renderer, "theme")).background);
         fixture.store.acceptMediaSnapshot(media(false, artwork));
         assertEquals(View.GONE, background.getVisibility());
         fixture.store.acceptMediaSnapshot(media(true, artwork));
@@ -258,6 +263,25 @@ public class GoldenRuntimeProbe {
         assertFalse("borrowed metadata artwork recycled", artwork.isRecycled());
         artwork.recycle();
         System.out.println("ATMOSPHERE: one global layer, cache reuse, pause/no-cover reset, theme and destroy passed");
+    }
+
+    @Test
+    public void darkThemeUsesNeutralLayeredPalette() {
+        ContentTheme theme = ContentTheme.dark();
+        assertEquals("#0F0F0F background", 0xff0f0f0f, theme.background);
+        assertEquals("neutral surface", 0xff1a1a1a, theme.surface);
+        assertEquals("neutral elevated layer", 0xff232323, theme.elevated);
+        assertEquals("neutral selected layer", 0xff2d2d2d, theme.selected);
+        assertEquals("neutral pressed layer", 0xff414141, theme.pressed);
+        assertEquals("neutral divider", 0xff353535, theme.divider);
+        assertTrue("dark layers must increase in luminance",
+                Color.red(theme.background) < Color.red(theme.surface)
+                        && Color.red(theme.surface) < Color.red(theme.elevated)
+                        && Color.red(theme.elevated) < Color.red(theme.selected)
+                        && Color.red(theme.selected) < Color.red(theme.pressed));
+        assertTrue("dark text must remain lighter than supporting text",
+                Color.red(theme.text) > Color.red(theme.secondaryText)
+                        && Color.red(theme.secondaryText) > Color.red(theme.mutedText));
     }
 
     @Test
@@ -308,7 +332,7 @@ public class GoldenRuntimeProbe {
                     assertEquals(1, time.getLayout().getLineCount());
                     assertTrue("time clipped", time.getPaint().measureText(time.getText().toString())
                             <= time.getWidth());
-                    assertEquals("range with unit", "366km", range.getText().toString());
+                    assertEquals("range without unit", "366", range.getText().toString());
                     if (chargeState == ContentState.CHARGE_DEFAULT) {
                         assertEquals("time must follow panel midpoint", width / 2.0f,
                                 timeLocation[0] + time.getWidth() / 2.0f, 4.0f);
@@ -331,8 +355,13 @@ public class GoldenRuntimeProbe {
             fixture.layout(640);
             assertEquals("--°C", ((android.widget.TextView) field(fixture.renderer,
                     "temperatureText")).getText().toString());
-            assertEquals("--km", ((android.widget.TextView) field(fixture.renderer,
+            assertEquals("--", ((android.widget.TextView) field(fixture.renderer,
                     "rangeText")).getText().toString());
+            fixture.store.acceptVehicleSnapshot(new ContentPorts.VehicleSnapshot(true, false,
+                    25.6f, -1, -1, ContentState.CHARGE_DEFAULT, 0, 0, 0,
+                    Float.NaN, -1, 0, 0, 0, -1, true, false, true, true, true));
+            assertEquals("26°C", ((android.widget.TextView) field(fixture.renderer,
+                    "temperatureText")).getText().toString());
             fixture.store.acceptVehicleSnapshot(new ContentPorts.VehicleSnapshot(true, false,
                     25.0f, 70, 366, ContentState.CHARGE_CHARGING, 1, 3, 0,
                     8.7f, -1, 0, 0, 0, -1, true, false, true, true, true));
@@ -448,8 +477,8 @@ public class GoldenRuntimeProbe {
             ((View) field(fixture.renderer, "sourceButton")).performClick();
             PopupWindow popup = (PopupWindow) field(fixture.renderer, "activePopup");
             assertTrue(popup.isShowing());
-            assertTrue(popup.getWidth() >= 240);
-            assertTrue(popup.getWidth() <= 608);
+            assertEquals(100, popup.getWidth());
+            assertEquals(400, popup.getHeight());
             assertEquals("menu start alpha", 0.0f, popup.getContentView().getAlpha(), 0.01f);
             android.animation.ValueAnimator opening = (android.animation.ValueAnimator)
                     field(fixture.renderer, "popupAnimator");
@@ -467,13 +496,15 @@ public class GoldenRuntimeProbe {
             assertEquals(4, menu.getChildCount());
             for (int index = 0; index < 4; index++) {
                 ViewGroup item = (ViewGroup) menu.getChildAt(index);
-                assertEquals(labels[index], item.getChildAt(1).getContentDescription().toString());
-                assertEquals(96, Math.round(item.getLayoutParams().height
-                        / fixture.host.getResources().getDisplayMetrics().density));
-                assertEquals(72, Math.round(item.getChildAt(0).getLayoutParams().width
-                        / fixture.host.getResources().getDisplayMetrics().density));
+                assertEquals("切换到" + labels[index], item.getContentDescription().toString());
+                assertEquals(88, item.getLayoutParams().height);
+                assertEquals(88, item.getChildAt(0).getLayoutParams().width);
+                assertEquals(index == 3 ? 0 : 12,
+                        ((LinearLayout.LayoutParams) item.getLayoutParams()).bottomMargin);
+                ViewGroup group = (ViewGroup) ((ViewGroup) item.getChildAt(0)).getChildAt(0);
+                assertEquals(labels[index], group.getChildAt(1).getContentDescription().toString());
                 assertEquals(ContentRegistry.mediaSourceIcon(labels[index]),
-                        field(((ViewGroup) item.getChildAt(0)).getChildAt(0), "iconKey"));
+                        field(group.getChildAt(0), "iconKey"));
             }
             View sourceItem = menu.getChildAt(0);
             View pressSurface = ((ViewGroup) sourceItem).getChildAt(0);
@@ -645,18 +676,35 @@ public class GoldenRuntimeProbe {
     }
 
     @Test
-    public void recreatedRuntimeStartsFromPersistedAmapTheme() throws Exception {
+    public void massageBinderUsesResearchValuesAndOrdering() throws Exception {
+        MassageBinder binder = new MassageBinder();
+        ContentVehicleAdapter.sendMassageStrength(binder, 3);
+        assertEquals(java.util.Arrays.asList("241=2", "243=3"), binder.writes);
+        assertEquals(2, binder.switchState);
+        assertEquals(1, binder.mode);
+        assertEquals(3, binder.strength);
+
+        binder = new MassageBinder(2, 1, 1);
+        ContentVehicleAdapter.sendMassageStrength(binder, 2);
+        assertEquals(java.util.Arrays.asList("243=2"), binder.writes);
+        assertEquals(2, binder.switchState);
+        assertEquals(1, binder.mode);
+        assertEquals(2, binder.strength);
+    }
+
+    @Test
+    public void recreatedRuntimeUsesCurrentAmapThemeValue() throws Exception {
         ActivityController<Activity> controller = Robolectric.buildActivity(Activity.class).setup();
         Activity activity = controller.get();
-        Field themeKnown = ContentRuntime.class.getDeclaredField("hasAmapThemeMode");
-        themeKnown.setAccessible(true);
-        boolean previousKnown = themeKnown.getBoolean(null);
+        Field themeMode = ContentRuntime.class.getDeclaredField("lastAmapThemeMode");
+        themeMode.setAccessible(true);
+        Field activeRuntime = ContentRuntime.class.getDeclaredField("activeRuntime");
+        activeRuntime.setAccessible(true);
+        int previousMode = themeMode.getInt(null);
+        ContentRuntime previousRuntime = (ContentRuntime) activeRuntime.get(null);
         ContentRuntime runtime = null;
         try {
-            ContentState saved = new ContentState();
-            saved.themeMode = ContentState.THEME_DARK;
-            new ContentPreferenceStore(activity).save(saved);
-            themeKnown.setBoolean(null, false);
+            themeMode.setInt(null, ContentState.THEME_DARK);
             Constructor<ContentRuntime> constructor = ContentRuntime.class.getDeclaredConstructor(
                     Activity.class, ViewGroup.class);
             constructor.setAccessible(true);
@@ -665,14 +713,59 @@ public class GoldenRuntimeProbe {
                     ((ContentStore) field(runtime, "store")).snapshot().themeMode);
             assertEquals(ContentState.THEME_DARK,
                     field(field(runtime, "renderer"), "displayedThemeMode"));
+            activeRuntime.set(null, runtime);
+            ContentRuntime.onAmapThemeChanged(1);
+            assertEquals(ContentState.THEME_LIGHT,
+                    ((ContentStore) field(runtime, "store")).snapshot().themeMode);
         } finally {
             if (runtime != null) {
                 ((ContentStore) field(runtime, "store")).destroy();
             }
-            activity.getSharedPreferences("content_preferences_v1", Context.MODE_PRIVATE)
-                    .edit().remove("theme_mode").apply();
-            themeKnown.setBoolean(null, previousKnown);
+            activeRuntime.set(null, previousRuntime);
+            themeMode.setInt(null, previousMode);
             controller.pause().stop().destroy();
+        }
+    }
+
+    @Test
+    public void allButtonPressStatesUseSharedRoundedRectangle() throws Exception {
+        Fixture fixture = new Fixture();
+        try {
+            fixture.layout(640);
+            fixture.store.acceptMediaSnapshot(media(false, null));
+            fixture.store.acceptVehicleSnapshot(vehicleMassage(0));
+            idle(100);
+
+            Field radiusField = ContentRenderer.class.getDeclaredField("PRESS_CORNER_PX");
+            radiusField.setAccessible(true);
+            assertTrue("press state must not be circular",
+                    radiusField.getInt(null) < 72 / 2);
+
+            List<View> targets = new java.util.ArrayList<>();
+            targets.add((View) field(fixture.renderer, "mediaPlayButton"));
+            targets.add((View) field(fixture.renderer, "mediaNextButton"));
+            targets.add((View) field(fixture.renderer, "sourceButton"));
+            targets.addAll((List<View>) field(fixture.renderer, "shortcutTiles"));
+            targets.addAll((List<View>) field(fixture.renderer, "dockButtons"));
+            for (View target : targets) {
+                View pressSurface = target;
+                Object tag = target.getTag();
+                if ("control_button".equals(tag) || "source_button".equals(tag)
+                        || "dock_button".equals(tag)) {
+                    pressSurface = ((ViewGroup) target).getChildAt(0);
+                }
+                if ("source_button".equals(tag) || "control_button".equals(tag)) {
+                    assertNull("button has a permanent background", pressSurface.getBackground());
+                }
+                touch(target, MotionEvent.ACTION_DOWN, target.getWidth() / 2.0f,
+                        target.getHeight() / 2.0f, 0);
+                assertTrue("pressed target lacks rounded background",
+                        pressSurface.getBackground() instanceof android.graphics.drawable.GradientDrawable);
+                touch(target, MotionEvent.ACTION_CANCEL, target.getWidth() / 2.0f,
+                        target.getHeight() / 2.0f, 50);
+            }
+        } finally {
+            fixture.close();
         }
     }
 
@@ -794,8 +887,9 @@ public class GoldenRuntimeProbe {
         fixture.store.acceptMediaSnapshot(media(true, null));
         assertEquals("content_oem_ico_media_pause", field(mediaPlay, "resourceName"));
         assertNull("unmatched circular play animation must not run", field(mediaPlay, "loadingTask"));
-        ContentIconView icon = (ContentIconView) ((android.widget.FrameLayout)
-                field(fixture.renderer, "mediaNextButton")).getChildAt(0);
+        ViewGroup mediaNextButton = (ViewGroup) field(fixture.renderer, "mediaNextButton");
+        ContentIconView icon = (ContentIconView) ((ViewGroup) mediaNextButton.getChildAt(0))
+                .getChildAt(0);
         assertTrue("fixture window not focused", icon.hasWindowFocus());
         icon.playAction();
         com.airbnb.lottie.LottieTask<?> current = (com.airbnb.lottie.LottieTask<?>) field(icon, "loadingTask");
@@ -1071,6 +1165,54 @@ public class GoldenRuntimeProbe {
         @Override public void stop() { }
     }
 
+    private static final class MassageBinder extends Binder {
+        private static final String DESCRIPTOR =
+                "com.chery.canmanager.interfaces.IVirturalCarProperty";
+        private final java.util.List<String> writes = new java.util.ArrayList<>();
+        private int switchState;
+        private int mode;
+        private int strength;
+
+        private MassageBinder() {
+            this(1, 0, 0);
+        }
+
+        private MassageBinder(int switchState, int mode, int strength) {
+            attachInterface(null, DESCRIPTOR);
+            this.switchState = switchState;
+            this.mode = mode;
+            this.strength = strength;
+        }
+
+        @Override
+        protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
+                throws RemoteException {
+            data.enforceInterface(DESCRIPTOR);
+            int functionId = data.readInt();
+            data.readInt();
+            if (code == 7) {
+                reply.writeNoException();
+                reply.writeInt(functionId == 0x241 ? switchState
+                        : functionId == 0x245 ? mode : strength);
+                return true;
+            }
+            if (code == 5) {
+                int value = data.readInt();
+                writes.add(Integer.toHexString(functionId) + "=" + value);
+                if (functionId == 0x241) {
+                    switchState = value;
+                    mode = value == 2 ? 1 : 0;
+                    strength = value == 2 ? 1 : 0;
+                } else if (functionId == 0x243) {
+                    strength = value;
+                }
+                reply.writeNoException();
+                return true;
+            }
+            return false;
+        }
+    }
+
     private static Object field(Object owner, String name) throws Exception {
         Field field = owner.getClass().getDeclaredField(name);
         field.setAccessible(true);
@@ -1125,7 +1267,8 @@ public class GoldenRuntimeProbe {
             assertTrue(new File(apk).isFile());
             AssetManager.class.getMethod("addAssetPath", String.class).invoke(assets, apk);
             assertTrue(assets.open("content-oem/ico_media_play_02_f.json").read() >= 0);
-            assertTrue(assets.open("content-fonts/Manrope[wght].ttf").read() >= 0);
+            assertTrue(assets.open("res/HmiRes/gframe_style/assets/Roboto-Regular.ttf").read() >= 0);
+            assertTrue(assets.open("res/HmiRes/gframe_style/assets/Roboto-Bold.ttf").read() >= 0);
             Configuration geometryConfiguration = new Configuration(original.getConfiguration());
             geometryConfiguration.densityDpi = appDensityDpi;
             geometryConfiguration.fontScale = fontScale;

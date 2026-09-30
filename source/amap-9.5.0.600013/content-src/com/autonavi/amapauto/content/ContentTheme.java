@@ -12,12 +12,13 @@ public final class ContentTheme {
     public final int divider;
     public final int accent;
     public final int selected;
+    public final int pressed;
     public final int positive;
     public final int warning;
     public final int error;
 
     private ContentTheme(int background, int surface, int elevated, int text, int secondaryText,
-            int mutedText, int divider, int accent, int selected, int positive, int warning,
+            int mutedText, int divider, int accent, int selected, int pressed, int positive, int warning,
             int error) {
         this.background = background;
         this.surface = surface;
@@ -28,6 +29,7 @@ public final class ContentTheme {
         this.divider = divider;
         this.accent = accent;
         this.selected = selected;
+        this.pressed = pressed;
         this.positive = positive;
         this.warning = warning;
         this.error = error;
@@ -44,6 +46,7 @@ public final class ContentTheme {
                 Color.rgb(218, 218, 218),
                 Color.rgb(47, 141, 255),
                 Color.rgb(255, 255, 255),
+                Color.rgb(210, 221, 232),
                 Color.rgb(29, 113, 66),
                 Color.rgb(143, 89, 17),
                 Color.rgb(179, 46, 44));
@@ -51,18 +54,19 @@ public final class ContentTheme {
 
     public static ContentTheme dark() {
         return new ContentTheme(
-                Color.rgb(23, 25, 29),
-                Color.rgb(37, 40, 45),
-                Color.rgb(48, 52, 59),
-                Color.rgb(244, 246, 250),
-                Color.rgb(173, 181, 194),
-                Color.rgb(159, 168, 183),
-                Color.rgb(66, 72, 83),
-                Color.rgb(131, 180, 255),
-                Color.rgb(39, 59, 86),
-                Color.rgb(106, 217, 143),
-                Color.rgb(241, 185, 94),
-                Color.rgb(255, 130, 127));
+                Color.rgb(15, 15, 15),
+                Color.rgb(26, 26, 26),
+                Color.rgb(35, 35, 35),
+                Color.rgb(218, 218, 218),
+                Color.rgb(162, 162, 162),
+                Color.rgb(133, 133, 133),
+                Color.rgb(53, 53, 53),
+                Color.rgb(126, 159, 197),
+                Color.rgb(45, 45, 45),
+                Color.rgb(65, 65, 65),
+                Color.rgb(112, 187, 137),
+                Color.rgb(209, 160, 100),
+                Color.rgb(219, 119, 114));
     }
 
     public static ContentTheme interpolate(ContentTheme start, ContentTheme end, float fraction) {
@@ -76,6 +80,7 @@ public final class ContentTheme {
                 blend(start.divider, end.divider, fraction),
                 blend(start.accent, end.accent, fraction),
                 blend(start.selected, end.selected, fraction),
+                blend(start.pressed, end.pressed, fraction),
                 blend(start.positive, end.positive, fraction),
                 blend(start.warning, end.warning, fraction),
                 blend(start.error, end.error, fraction));

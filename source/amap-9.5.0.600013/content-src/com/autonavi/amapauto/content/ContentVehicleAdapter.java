@@ -38,6 +38,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private static final long POLL_INTERVAL_MS = 1500L;
     private static final long REBIND_INTERVAL_MS = 3000L;
     private static final long BIND_TIMEOUT_MS = 5000L;
+    private static final long MASSAGE_START_TIMEOUT_MS = 2000L;
 
     private final Context context;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -313,9 +314,10 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                         }
                     }
                     if (ensureMassageOn) {
-                        sendData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER, 2);
+                        sendMassageStrength(currentBinder, value);
+                    } else {
+                        sendData(currentBinder, functionId, AREA_DRIVER, value);
                     }
-                    sendData(currentBinder, functionId, AREA_DRIVER, value);
                     worker.removeCallbacks(pollRunnable);
                     worker.post(pollRunnable);
                 } catch (RemoteException | RuntimeException error) {
@@ -324,6 +326,35 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 }
             }
         });
+    }
+
+    static void ensureMassageReady(IBinder currentBinder) throws RemoteException {
+        int switchState = getData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
+        if (switchState == 1) {
+            sendData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER, 2);
+        } else if (switchState != 2) {
+            throw new RemoteException("massage switch unavailable");
+        }
+        long deadline = android.os.SystemClock.uptimeMillis() + MASSAGE_START_TIMEOUT_MS;
+        do {
+            switchState = getData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
+            int mode = getData(currentBinder, MASSAGE_MODE, AREA_DRIVER);
+            int strength = getData(currentBinder, MASSAGE_STRENGTH, AREA_DRIVER);
+            if (switchState == 2 && mode >= 1 && mode <= 5
+                    && strength >= 1 && strength <= 3) {
+                return;
+            }
+            if (switchState != 1 && switchState != 2
+                    || android.os.SystemClock.uptimeMillis() >= deadline) {
+                throw new RemoteException("massage did not initialize");
+            }
+            android.os.SystemClock.sleep(100L);
+        } while (true);
+    }
+
+    static void sendMassageStrength(IBinder currentBinder, int value) throws RemoteException {
+        ensureMassageReady(currentBinder);
+        sendData(currentBinder, MASSAGE_STRENGTH, AREA_DRIVER, value);
     }
 
     private void reportCommandFailure(final long requestId, final String message) {

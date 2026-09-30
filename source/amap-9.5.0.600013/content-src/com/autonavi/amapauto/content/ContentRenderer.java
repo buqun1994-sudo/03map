@@ -21,7 +21,7 @@ import android.text.TextUtils;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
+import android.text.style.TypefaceSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -50,7 +50,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public final class ContentRenderer implements ContentStore.Listener {
-    private static final String CONTENT_FONT_ASSET = "content-fonts/Manrope[wght].ttf";
+    private static final String AMAP_FONT_DIR = "res/HmiRes/gframe_style/assets/";
     private static final float TEXT_REFERENCE_PIXEL_SCALE = 1.4f;
     private static final TimeInterpolator HEAVY_INTERPOLATOR =
             new PathInterpolator(0.32f, 0.72f, 0.0f, 1.0f);
@@ -78,13 +78,20 @@ public final class ContentRenderer implements ContentStore.Listener {
     private static final String ROLE_DOCK_BUTTON = "dock_button";
     private static final String ROLE_SOURCE_BUTTON = "source_button";
     private static final String ROLE_PRESS_CONTAINER = "press_container";
+    private static final String ROLE_CONTROL_BUTTON = "control_button";
+    private static final int SOURCE_HOTSPOT_PX = 88;
+    private static final int SOURCE_GAP_PX = 12;
+    private static final int SOURCE_MARGIN_PX = 6;
+    private static final int PRESS_CORNER_PX = 24;
 
     private final Context context;
     private final ViewGroup host;
     private final ContentStore store;
     private final Typeface contentTypeface;
+    private final Typeface contentBoldTypeface;
     private final Map<String, TileBinding> tileBindings = new HashMap<>();
     private final Map<View, ValueAnimator> pressAnimators = new HashMap<>();
+    private final Map<View, Drawable> pressBackgrounds = new HashMap<>();
     private final List<View> pageViews = new ArrayList<>();
     private final List<View> controlCards = new ArrayList<>();
     private final List<ContentIconView> dockIconViews = new ArrayList<>();
@@ -168,7 +175,8 @@ public final class ContentRenderer implements ContentStore.Listener {
         this.context = context;
         this.host = host;
         this.store = store;
-        contentTypeface = loadContentTypeface(context);
+        contentTypeface = loadContentTypeface(context, "Roboto-Regular.ttf", Typeface.DEFAULT);
+        contentBoldTypeface = loadContentTypeface(context, "Roboto-Bold.ttf", Typeface.DEFAULT_BOLD);
         theme = initialThemeMode == ContentState.THEME_DARK
                 ? ContentTheme.dark() : ContentTheme.light();
         displayedThemeMode = initialThemeMode == ContentState.THEME_DARK
@@ -567,7 +575,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         content.addView(songInfo, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
         mediaPlayButton = createControlButton("play", "播放");
-        mediaPlayIcon = (ContentIconView) ((FrameLayout) mediaPlayButton).getChildAt(0);
+        mediaPlayIcon = iconFromControlButton(mediaPlayButton);
         mediaPlayButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -581,7 +589,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         mediaNextButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                ((ContentIconView) ((FrameLayout) mediaNextButton).getChildAt(0)).playAction();
+                iconFromControlButton(mediaNextButton).playAction();
                 store.nextMediaTrack();
             }
         });
@@ -595,7 +603,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         sourceButton = new FrameLayout(context);
         sourceButton.setTag(ROLE_SOURCE_BUTTON);
         FrameLayout sourceSurface = new FrameLayout(context);
-        sourceSurface.setTag(ROLE_CARD);
+        sourceSurface.setTag(ROLE_PRESS_CONTAINER);
         sourceSurface.setClipChildren(false);
         sourceIcon = new ContentIconView(context);
         sourceIcon.setIcon("source_local");
@@ -866,7 +874,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         boolean statusChanged = lastChargeState != Integer.MIN_VALUE
                 && (modeChanged || detailedStatus && state.chargeState != lastChargeState);
         String temperature = Float.isNaN(state.temperatureC)
-                ? "--" : String.format(Locale.CHINA, "%.1f", state.temperatureC);
+                ? "--" : String.format(Locale.CHINA, "%.0f", state.temperatureC);
         temperatureText.setText(withMutedUnit(temperature, "°C"));
         CharSequence statusText = "";
         if (detailedStatus) {
@@ -912,8 +920,7 @@ public final class ContentRenderer implements ContentStore.Listener {
                 : state.chargeState == ContentState.CHARGE_CHARGING ? theme.positive : theme.secondaryText);
         temperatureText.setVisibility(detailedStatus ? View.GONE : View.VISIBLE);
         chargingText.setVisibility(detailedStatus ? View.VISIBLE : View.GONE);
-        rangeText.setText(withMutedUnit(state.rangeRaw >= 0
-                ? String.valueOf(state.rangeRaw) : "--", "km"));
+        rangeText.setText(state.rangeRaw >= 0 ? String.valueOf(state.rangeRaw) : "--");
         layoutTopBar();
         if (statusChanged && activityActive) {
             animateTopStatus(detailedStatus, modeChanged);
@@ -942,7 +949,7 @@ public final class ContentRenderer implements ContentStore.Listener {
         int end = text.length();
         text.setSpan(new ForegroundColorSpan(theme.mutedText), start, end,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        text.setSpan(new StyleSpan(Typeface.NORMAL), start, end,
+        text.setSpan(new TypefaceSpan(contentTypeface), start, end,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
@@ -1149,7 +1156,9 @@ public final class ContentRenderer implements ContentStore.Listener {
         binding.icon.setColors(iconColorForItem(state, itemId), theme.accent);
         binding.icon.setAvailable(isItemAvailable(state, itemId));
         boolean active = isItemActive(state, itemId);
-        setSoftBackground(binding.tile, active ? theme.selected : theme.surface, dp(7));
+        if (!pressBackgrounds.containsKey(binding.tile)) {
+            setSoftBackground(binding.tile, active ? theme.selected : theme.surface, dp(7));
+        }
         binding.labelText.setTextColor(active ? theme.text : theme.secondaryText);
         if (binding.lastActive != null && binding.lastActive.booleanValue() != active) {
             animateTileSelection(binding);
@@ -1178,22 +1187,45 @@ public final class ContentRenderer implements ContentStore.Listener {
             icon.setColors(iconColorForItem(state, itemId), theme.accent);
             icon.setAvailable(isItemAvailable(state, itemId));
             icon.setActive(isItemActive(state, itemId));
+            View pressSurface = ((ViewGroup) dockButtons.get(childIndex)).getChildAt(0);
+            if (!pressBackgrounds.containsKey(pressSurface)) {
+                pressSurface.setBackground(isItemActive(state, itemId)
+                        ? roundColor(theme.selected, PRESS_CORNER_PX) : null);
+            }
             dockButtons.get(childIndex).setContentDescription(labelForItem(itemId) + "，"
                     + (isItemAvailable(state, itemId) ? valueForItem(state, itemId) : "暂不可用"));
         }
     }
 
     private void setButtonAvailability(View button, boolean available) {
+        if (!available) {
+            setPressBackground(button, false);
+        }
         button.setEnabled(available);
         button.setAlpha(1.0f);
-        if (button instanceof FrameLayout) {
-            View child = ((FrameLayout) button).getChildAt(0);
+        ContentIconView icon = iconFromButton(button);
+        if (icon != null) {
+            icon.setColors(available ? theme.text : theme.mutedText, theme.accent);
+            icon.setAvailable(available);
+        }
+    }
+
+    private ContentIconView iconFromButton(View button) {
+        if (!(button instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) button;
+        for (int index = 0; index < group.getChildCount(); index++) {
+            View child = group.getChildAt(index);
             if (child instanceof ContentIconView) {
-                ((ContentIconView) child).setColors(available ? theme.text : theme.mutedText,
-                        theme.accent);
-                ((ContentIconView) child).setAvailable(available);
+                return (ContentIconView) child;
+            }
+            ContentIconView nested = iconFromButton(child);
+            if (nested != null) {
+                return nested;
             }
         }
+        return null;
     }
 
     private void animateTopStatus(final boolean detailed, final boolean moveTime) {
@@ -1351,6 +1383,9 @@ public final class ContentRenderer implements ContentStore.Listener {
             topTransitionAnimator.cancel();
             topTransitionAnimator = null;
         }
+        for (View target : new ArrayList<>(pressBackgrounds.keySet())) {
+            target.setBackground(pressBackgrounds.remove(target));
+        }
         for (ValueAnimator animator : new ArrayList<>(pressAnimators.values())) {
             animator.cancel();
         }
@@ -1399,6 +1434,8 @@ public final class ContentRenderer implements ContentStore.Listener {
             }
         }
         if (state.themeMode != displayedThemeMode) {
+            cancelInteractionAnimations();
+            dismissPopup();
             animateTheme(state.themeMode == ContentState.THEME_DARK
                     ? ContentTheme.dark() : ContentTheme.light(), state.themeMode);
         }
@@ -1494,11 +1531,15 @@ public final class ContentRenderer implements ContentStore.Listener {
         } else if (ROLE_ELEVATED.equals(tag)) {
             view.setBackground(roundColor(theme.elevated, dp(7)));
         } else if (ROLE_CARD.equals(tag)) {
-            setSoftBackground(view, theme.surface, dp(7));
+            if (!pressBackgrounds.containsKey(view)) {
+                setSoftBackground(view, theme.surface, dp(7));
+            }
         } else if (ROLE_MEDIA.equals(tag) || ROLE_DOCK_BASE.equals(tag)) {
             setSoftBackground(view, theme.elevated, 12);
         } else if (ROLE_PRESS_CONTAINER.equals(tag)) {
-            view.setBackground(null);
+            if (!pressBackgrounds.containsKey(view)) {
+                view.setBackground(null);
+            }
         } else if (ROLE_SELECTED.equals(tag)) {
             view.setBackground(roundColor(theme.selected, dp(7)));
         } else if (ROLE_DIVIDER.equals(tag)) {
@@ -1697,18 +1738,19 @@ public final class ContentRenderer implements ContentStore.Listener {
         shortcutLowerContainer.setLayoutParams(containerParams);
     }
 
-    private static Typeface loadContentTypeface(Context context) {
+    private static Typeface loadContentTypeface(Context context, String filename, Typeface fallback) {
         try {
-            return Typeface.createFromAsset(context.getAssets(), CONTENT_FONT_ASSET);
+            return Typeface.createFromAsset(context.getAssets(), AMAP_FONT_DIR + filename);
         } catch (RuntimeException exception) {
-            return Typeface.create("sans-serif", Typeface.NORMAL);
+            return fallback;
         }
     }
 
     private TextView makeText(float textSize, int typefaceStyle, String role) {
         TextView textView = new TextView(context);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, calibratedSp(textSize));
-        textView.setTypeface(Typeface.create(contentTypeface, typefaceStyle));
+        textView.setTypeface(typefaceStyle == Typeface.BOLD ? contentBoldTypeface : contentTypeface);
+        textView.setFontFeatureSettings("tnum");
         textView.setIncludeFontPadding(false);
         textView.setTag(role);
         return textView;
@@ -1724,11 +1766,19 @@ public final class ContentRenderer implements ContentStore.Listener {
 
     private FrameLayout createControlButton(String iconKey, String description) {
         FrameLayout button = new FrameLayout(context);
+        button.setTag(ROLE_CONTROL_BUTTON);
+        FrameLayout pressSurface = new FrameLayout(context);
+        pressSurface.setTag(ROLE_PRESS_CONTAINER);
         ContentIconView icon = new ContentIconView(context);
         icon.setIcon(iconKey);
-        button.addView(icon, new FrameLayout.LayoutParams(48, 48, Gravity.CENTER));
+        pressSurface.addView(icon, new FrameLayout.LayoutParams(48, 48, Gravity.CENTER));
+        button.addView(pressSurface, new FrameLayout.LayoutParams(72, 72, Gravity.CENTER));
         button.setContentDescription(description);
         return button;
+    }
+
+    private ContentIconView iconFromControlButton(View button) {
+        return (ContentIconView) ((FrameLayout) ((FrameLayout) button).getChildAt(0)).getChildAt(0);
     }
 
     private void bindPressEffect(final View view) {
@@ -1752,21 +1802,25 @@ public final class ContentRenderer implements ContentStore.Listener {
     }
 
     private void setPressBackground(View view, boolean pressed) {
-        Object tag = view.getTag();
-        if (!ROLE_DOCK_BUTTON.equals(tag) && !ROLE_SOURCE_BUTTON.equals(tag)) {
-            return;
-        }
         View target = view;
-        if (view instanceof ViewGroup && ((ViewGroup) view).getChildCount() > 0) {
+        Object tag = view.getTag();
+        if ((ROLE_DOCK_BUTTON.equals(tag) || ROLE_SOURCE_BUTTON.equals(tag)
+                || ROLE_CONTROL_BUTTON.equals(tag))
+                && view instanceof ViewGroup && ((ViewGroup) view).getChildCount() > 0) {
             target = ((ViewGroup) view).getChildAt(0);
         }
         if (pressed) {
-            target.setBackground(roundColor(theme.surface, 36));
-        } else if (ROLE_SOURCE_BUTTON.equals(tag)
-                && !ROLE_PRESS_CONTAINER.equals(target.getTag())) {
-            setSoftBackground(target, theme.surface, dp(7));
-        } else {
-            target.setBackground(null);
+            if (!pressBackgrounds.containsKey(target)) {
+                pressBackgrounds.put(target, target.getBackground());
+            }
+            target.setBackground(roundColor(theme.pressed, PRESS_CORNER_PX));
+        } else if (pressBackgrounds.containsKey(target)) {
+            target.setBackground(pressBackgrounds.remove(target));
+            if (ROLE_CARD.equals(tag)) {
+                renderShortcutState(store.snapshot());
+            } else if (ROLE_DOCK_BUTTON.equals(tag)) {
+                renderDockState(store.snapshot());
+            }
         }
     }
 
@@ -2079,6 +2133,8 @@ public final class ContentRenderer implements ContentStore.Listener {
     private void showMediaSourcePopup() {
         LinearLayout menu = popupMenu();
         ContentState state = store.snapshot();
+        int itemIndex = 0;
+        int itemCount = ContentRegistry.mediaSources().length - 1;
         for (final String source : ContentRegistry.mediaSources()) {
             if (source.equals(state.mediaSource)) {
                 continue;
@@ -2088,16 +2144,22 @@ public final class ContentRenderer implements ContentStore.Listener {
             item.setTag(ROLE_SOURCE_BUTTON);
             FrameLayout iconSurface = new FrameLayout(context);
             iconSurface.setTag(ROLE_PRESS_CONTAINER);
+            iconSurface.setClipChildren(false);
+            LinearLayout group = new LinearLayout(context);
+            group.setOrientation(LinearLayout.VERTICAL);
+            group.setGravity(Gravity.CENTER_HORIZONTAL);
             ContentIconView icon = new ContentIconView(context);
             icon.setIcon(ContentRegistry.mediaSourceIcon(source));
             icon.setColors(theme.text, theme.accent);
-            iconSurface.addView(icon, new FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER));
-            item.addView(iconSurface, new FrameLayout.LayoutParams(dp(72), dp(72),
-                    Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+            group.addView(icon, new LinearLayout.LayoutParams(dp(32), dp(32)));
             PopupLabelView label = new PopupLabelView(context, source);
-            FrameLayout.LayoutParams labelParams = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(24), Gravity.BOTTOM);
-            item.addView(label, labelParams);
+            group.addView(label, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(24)));
+            iconSurface.addView(group, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER));
+            item.addView(iconSurface, new FrameLayout.LayoutParams(SOURCE_HOTSPOT_PX,
+                    SOURCE_HOTSPOT_PX, Gravity.CENTER));
             item.setContentDescription("切换到" + source);
             bindPressEffect(item);
             item.setOnClickListener(new View.OnClickListener() {
@@ -2107,17 +2169,26 @@ public final class ContentRenderer implements ContentStore.Listener {
                     closePopup(true);
                 }
             });
-            menu.addView(item, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(96)));
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(
+                    SOURCE_HOTSPOT_PX, SOURCE_HOTSPOT_PX);
+            if (itemIndex < itemCount - 1) {
+                itemParams.bottomMargin = SOURCE_GAP_PX;
+            }
+            menu.addView(item, itemParams);
+            itemIndex++;
         }
-        showPopup(menu, dp(128), dp(96) * menu.getChildCount() + dp(8));
+        int popupWidth = SOURCE_MARGIN_PX * 2 + SOURCE_HOTSPOT_PX;
+        int popupHeight = SOURCE_MARGIN_PX * 2 + SOURCE_HOTSPOT_PX * itemCount
+                + SOURCE_GAP_PX * (itemCount - 1);
+        showPopup(menu, popupWidth, popupHeight);
     }
 
     private LinearLayout popupMenu() {
         LinearLayout menu = new LinearLayout(context);
         menu.setOrientation(LinearLayout.VERTICAL);
-        menu.setPadding(dp(4), dp(4), dp(4), dp(4));
-        menu.setBackground(roundColor(theme.elevated, dp(7)));
+        menu.setPadding(SOURCE_MARGIN_PX, SOURCE_MARGIN_PX,
+                SOURCE_MARGIN_PX, SOURCE_MARGIN_PX);
+        menu.setBackground(roundColor(theme.elevated, 12));
         return menu;
     }
 
@@ -2389,7 +2460,7 @@ public final class ContentRenderer implements ContentStore.Listener {
             super(context);
             this.text = text;
             labelPaint.setTypeface(Typeface.create(contentTypeface, Typeface.NORMAL));
-            labelPaint.setTextSize(calibratedSp(13.0f)
+            labelPaint.setTextSize(calibratedSp(12.0f)
                     * context.getResources().getDisplayMetrics().scaledDensity);
             setContentDescription(text);
         }
@@ -2398,6 +2469,11 @@ public final class ContentRenderer implements ContentStore.Listener {
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             labelPaint.setColor(theme.text);
+            labelPaint.setTextScaleX(1.0f);
+            float textWidth = labelPaint.measureText(text);
+            if (textWidth > getWidth() - 4) {
+                labelPaint.setTextScaleX((getWidth() - 4.0f) / textWidth);
+            }
             Paint.FontMetrics metrics = labelPaint.getFontMetrics();
             float x = (getWidth() - labelPaint.measureText(text)) / 2.0f;
             float y = (getHeight() - metrics.ascent - metrics.descent) / 2.0f;

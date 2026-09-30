@@ -140,7 +140,6 @@ public final class ContentStore {
                 return;
             }
             state.themeMode = resolvedMode;
-            preferenceStore.save(state);
         }
         publish();
     }

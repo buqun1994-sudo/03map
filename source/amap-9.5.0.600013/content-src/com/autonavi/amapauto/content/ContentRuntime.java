@@ -13,10 +13,7 @@ import java.lang.reflect.Method;
 
 public final class ContentRuntime {
     private static final Object LOCK = new Object();
-    private static final int THEME_SYNC_ATTEMPTS = 8;
-    private static final long THEME_SYNC_DELAY_MS = 250L;
     private static volatile int lastAmapThemeMode = ContentState.THEME_LIGHT;
-    private static volatile boolean hasAmapThemeMode;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile float lastDividerX = Float.NaN;
     private static volatile float lastExpandedDividerX;
@@ -32,9 +29,9 @@ public final class ContentRuntime {
         ownerActivity = new WeakReference<>(activity);
         this.host = host;
         store = new ContentStore(host.getContext());
-        int initialTheme = hasAmapThemeMode ? lastAmapThemeMode : store.snapshot().themeMode;
-        store.setThemeMode(initialTheme);
-        renderer = new ContentRenderer(contentContext(host.getContext()), host, store, initialTheme);
+        store.setThemeMode(lastAmapThemeMode);
+        renderer = new ContentRenderer(contentContext(host.getContext()), host, store,
+                lastAmapThemeMode);
     }
 
     static Context contentContext(Context original) {
@@ -56,16 +53,12 @@ public final class ContentRuntime {
             return;
         }
         ViewGroup host = (ViewGroup) hostView;
-        Integer currentTheme = readAmapTheme();
-        if (currentTheme != null) {
-            lastAmapThemeMode = currentTheme;
-            hasAmapThemeMode = true;
-        }
+        readInitialAmapTheme();
         Activity activity = host.getContext() instanceof Activity
                 ? (Activity) host.getContext() : null;
         synchronized (LOCK) {
             if (activeRuntime != null && activeRuntime.host == host) {
-                if (currentTheme != null) activeRuntime.store.setThemeMode(currentTheme);
+                activeRuntime.store.setThemeMode(lastAmapThemeMode);
                 return;
             }
             if (activeRuntime != null) {
@@ -78,7 +71,6 @@ public final class ContentRuntime {
                         lastDividerX, lastExpandedDividerX, lastMapWidth);
             }
         }
-        syncAmapTheme(activity, 0);
     }
 
     public static void detach(Activity activity) {
@@ -103,24 +95,18 @@ public final class ContentRuntime {
     }
 
     public static void onHostResumed(Activity activity) {
-        Integer currentTheme = readAmapTheme();
-        if (currentTheme != null) {
-            lastAmapThemeMode = currentTheme;
-            hasAmapThemeMode = true;
-        }
+        readInitialAmapTheme();
         synchronized (LOCK) {
             if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
-                if (currentTheme != null) activeRuntime.store.setThemeMode(currentTheme);
+                activeRuntime.store.setThemeMode(lastAmapThemeMode);
                 activeRuntime.renderer.resume();
             }
         }
-        syncAmapTheme(activity, 0);
     }
 
     public static void onAmapThemeChanged(int mode) {
         final int resolvedMode = mode == 2 ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
         lastAmapThemeMode = resolvedMode;
-        hasAmapThemeMode = true;
         if (Looper.myLooper() != Looper.getMainLooper()) {
             MAIN.post(new Runnable() {
                 @Override public void run() { applyAmapTheme(resolvedMode); }
@@ -138,41 +124,14 @@ public final class ContentRuntime {
         }
     }
 
-    private static Integer readAmapTheme() {
+    private static void readInitialAmapTheme() {
         try {
-            // The existing GAdaAndroid.nativeIsNightMode() is already used by Amap widgets.
             Method query = Class.forName("com.autonavi.amapauto.jni.GAdaAndroid")
                     .getMethod("nativeIsNightMode");
-            return Boolean.TRUE.equals(query.invoke(null))
+            lastAmapThemeMode = Boolean.TRUE.equals(query.invoke(null))
                     ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
         } catch (ReflectiveOperationException | LinkageError unavailable) {
-            // Native startup may lag behind the content View; the normal callback remains authoritative.
-            return null;
         }
-    }
-
-    private static void syncAmapTheme(final Activity activity, final int attempt) {
-        if (attempt >= THEME_SYNC_ATTEMPTS) {
-            return;
-        }
-        MAIN.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                Integer currentTheme = readAmapTheme();
-                synchronized (LOCK) {
-                    if (activeRuntime == null || activeRuntime.ownerActivity.get() != activity) {
-                        return;
-                    }
-                    if (currentTheme != null) {
-                        lastAmapThemeMode = currentTheme;
-                        hasAmapThemeMode = true;
-                        activeRuntime.store.setThemeMode(currentTheme);
-                        return;
-                    }
-                }
-                syncAmapTheme(activity, attempt + 1);
-            }
-        }, attempt == 0 ? 0L : THEME_SYNC_DELAY_MS);
     }
 
     public static void onDividerChanged(float dividerX, float expandedDivider, float mapWidth) {

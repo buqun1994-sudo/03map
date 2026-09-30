@@ -7,7 +7,6 @@ public final class ContentPreferenceStore {
     private static final String PREFERENCES_NAME = "content_preferences_v1";
     private static final String KEY_SHOW_WEEKDAY = "top_bar_show_weekday";
     private static final String KEY_SHOW_SECONDS = "top_bar_show_seconds";
-    private static final String KEY_THEME_MODE = "theme_mode";
     private static final String KEY_PAGE_ID = "current_page_id";
     private static final String KEY_CONTROL_ID = "current_control_id";
     private static final String KEY_DOCK_SLOT_PREFIX = "dock_slot_";
@@ -21,8 +20,6 @@ public final class ContentPreferenceStore {
     public void load(ContentState state) {
         state.showWeekday = preferences.getBoolean(KEY_SHOW_WEEKDAY, true);
         state.showSeconds = preferences.getBoolean(KEY_SHOW_SECONDS, false);
-        state.themeMode = preferences.getInt(KEY_THEME_MODE, state.themeMode)
-                == ContentState.THEME_DARK ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
         String savedPageId = preferences.getString(KEY_PAGE_ID, ContentRegistry.Pages.LYRICS);
         state.pageIndex = indexOf(ContentRegistry.visiblePageIds(), savedPageId, 1);
         String savedControlId = preferences.getString(KEY_CONTROL_ID, ContentRegistry.Controls.MEDIA);
@@ -37,7 +34,6 @@ public final class ContentPreferenceStore {
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean(KEY_SHOW_WEEKDAY, state.showWeekday);
         editor.putBoolean(KEY_SHOW_SECONDS, state.showSeconds);
-        editor.putInt(KEY_THEME_MODE, state.themeMode);
         String[] pageIds = ContentRegistry.visiblePageIds();
         if (state.pageIndex >= 0 && state.pageIndex < pageIds.length) {
             editor.putString(KEY_PAGE_ID, pageIds[state.pageIndex]);
