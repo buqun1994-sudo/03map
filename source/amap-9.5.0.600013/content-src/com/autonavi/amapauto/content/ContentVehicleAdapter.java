@@ -28,6 +28,10 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private static final int CHARGE_CONNECTION = 0x305;
     private static final int CHARGE_BMS = 0x29d;
     private static final int CHARGE_SCHEDULE = 0x308;
+    private static final int CHARGE_HV_VOLTAGE = 0x344;
+    private static final int CHARGE_HV_CURRENT = 0x345;
+    private static final int CHARGE_REMAINING_TIME = 0x43d;
+    private static final int CHARGE_REMAINING_TIME_INVALID = 2047;
     private static final int SEAT_HEAT_VENT = 0x212;
     private static final int MASSAGE_SWITCH = 0x241;
     private static final int MASSAGE_STRENGTH = 0x243;
@@ -395,6 +399,9 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int connection = readInt(currentBinder, CHARGE_CONNECTION, AREA_DRIVER);
         int bms = readInt(currentBinder, CHARGE_BMS, AREA_DRIVER);
         int schedule = readInt(currentBinder, CHARGE_SCHEDULE, AREA_DRIVER);
+        float hvVoltage = readFloat(currentBinder, CHARGE_HV_VOLTAGE, AREA_DRIVER);
+        float hvCurrent = readFloat(currentBinder, CHARGE_HV_CURRENT, AREA_DRIVER);
+        int remainingRaw = readInt(currentBinder, CHARGE_REMAINING_TIME, AREA_DRIVER);
         if (connection != lastChargeConnection || bms != lastChargeBms
                 || schedule != lastChargeSchedule) {
             Log.i(TAG, "charge raw connection=" + connection + " bms=" + bms
@@ -409,6 +416,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int massageModeRaw = readInt(currentBinder, MASSAGE_MODE, AREA_DRIVER);
         int lockRaw = readInt(currentBinder, LOCK_STATE, AREA_DRIVER);
         int chargeState = resolveChargeState(connection, bms, schedule);
+        int remainingMinutes = normalizeChargeRemainingMinutes(remainingRaw);
+        float chargePowerKw = computeChargePowerKw(chargeState, hvVoltage, hvCurrent);
         int ventilation = seatRaw == 1 ? 0 : seatRaw >= 5 && seatRaw <= 7
                 ? seatRaw - 4 : seatRaw >= 2 && seatRaw <= 4 ? 0 : -1;
         int heating = seatRaw == 1 ? 0 : seatRaw >= 2 && seatRaw <= 4
@@ -420,11 +429,28 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         boolean seatKnown = ventilation >= 0 || heating >= 0 || massageSwitchKnown;
         boolean lockKnown = lockRaw == 1 || lockRaw == 2;
         boolean available = !Float.isNaN(temperature) || battery >= 0 || range >= 0
-                || connection >= 0 || bms >= 0 || schedule >= 0 || seatKnown || lockKnown;
+                || connection >= 0 || bms >= 0 || schedule >= 0
+                || !Float.isNaN(chargePowerKw) || remainingMinutes >= 0
+                || seatKnown || lockKnown;
         return new ContentPorts.VehicleSnapshot(available, false, temperature, battery, range,
-                chargeState, connection, bms, schedule, Float.NaN, -1,
+                chargeState, connection, bms, schedule, chargePowerKw, remainingMinutes,
                 ventilation, heating, massage, massageModeRaw, massageSwitchKnown,
                 massageActive, seatKnown, lockKnown, lockRaw == 1);
+    }
+
+    static int normalizeChargeRemainingMinutes(int raw) {
+        return raw >= 0 && raw < CHARGE_REMAINING_TIME_INVALID ? raw : -1;
+    }
+
+    static float computeChargePowerKw(int chargeState, float voltage, float current) {
+        if (chargeState != ContentState.CHARGE_CHARGING
+                || Float.isNaN(voltage) || Float.isInfinite(voltage) || voltage <= 0.0f
+                || Float.isNaN(current) || Float.isInfinite(current) || current <= 0.0f) {
+            return Float.NaN;
+        }
+        float powerKw = voltage * current / 1000.0f;
+        return Float.isNaN(powerKw) || Float.isInfinite(powerKw) || powerKw <= 0.0f
+                ? Float.NaN : powerKw;
     }
 
     static int resolveChargeState(int connection, int bms, int schedule) {

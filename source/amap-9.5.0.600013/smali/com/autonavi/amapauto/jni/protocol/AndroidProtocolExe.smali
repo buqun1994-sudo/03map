@@ -4257,6 +4257,13 @@
 .method public static sendAutoStatus(II)V
     .locals 8
 
+    const/4 v0, 0x1
+
+    if-ne p0, v0, :content_theme_ready_end
+
+    invoke-static {}, Lcom/autonavi/amapauto/content/ContentRuntime;->onAmapReady()V
+
+    :content_theme_ready_end
     .line 1
     invoke-static {}, Lse;->c()Lse;
 

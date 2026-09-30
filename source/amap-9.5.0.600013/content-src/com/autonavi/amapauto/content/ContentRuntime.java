@@ -13,7 +13,11 @@ import java.lang.reflect.Method;
 
 public final class ContentRuntime {
     private static final Object LOCK = new Object();
-    private static volatile int lastAmapThemeMode = ContentState.THEME_LIGHT;
+    private static final int THEME_UNKNOWN = -1;
+    private static volatile int lastAmapThemeMode = THEME_UNKNOWN;
+    private static boolean hasAmapThemeCallback;
+    private static WeakReference<ViewGroup> pendingContentRoot = new WeakReference<>(null);
+    private static boolean pendingHostPaused;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile float lastDividerX = Float.NaN;
     private static volatile float lastExpandedDividerX;
@@ -54,15 +58,17 @@ public final class ContentRuntime {
         }
         ViewGroup host = (ViewGroup) hostView;
         readInitialAmapTheme();
-        Context context = host.getContext();
-        while (context instanceof android.content.ContextWrapper
-                && !(context instanceof Activity)) {
-            Context base = ((android.content.ContextWrapper) context).getBaseContext();
-            if (base == context) break;
-            context = base;
-        }
-        Activity activity = context instanceof Activity ? (Activity) context : null;
+        Activity activity = findActivity(host.getContext());
         synchronized (LOCK) {
+            if (lastAmapThemeMode == THEME_UNKNOWN
+                    || (pendingHostPaused && pendingContentRoot.get() == contentRoot)) {
+                if (pendingContentRoot.get() != contentRoot) pendingHostPaused = false;
+                pendingContentRoot = new WeakReference<>(contentRoot);
+                onAmapReady();
+                return;
+            }
+            pendingContentRoot.clear();
+            pendingHostPaused = false;
             if (activeRuntime != null && activeRuntime.host == host) {
                 activeRuntime.store.setThemeMode(lastAmapThemeMode);
                 return;
@@ -80,6 +86,12 @@ public final class ContentRuntime {
 
     public static void detach(Activity activity) {
         synchronized (LOCK) {
+            ViewGroup pending = pendingContentRoot.get();
+            if (pending != null && (activity == null
+                    || findActivity(pending.getContext()) == activity)) {
+                pendingContentRoot.clear();
+                pendingHostPaused = false;
+            }
             if (activeRuntime == null) {
                 return;
             }
@@ -122,6 +134,10 @@ public final class ContentRuntime {
 
     public static void onHostPaused(Activity activity) {
         synchronized (LOCK) {
+            ViewGroup pending = pendingContentRoot.get();
+            if (pending != null && findActivity(pending.getContext()) == activity) {
+                pendingHostPaused = true;
+            }
             if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
                 activeRuntime.consumedBackDownTime = -1L;
                 activeRuntime.renderer.pause();
@@ -131,6 +147,16 @@ public final class ContentRuntime {
 
     public static void onHostResumed(Activity activity) {
         readInitialAmapTheme();
+        ViewGroup pending;
+        synchronized (LOCK) {
+            pending = pendingContentRoot.get();
+            if (pending != null && findActivity(pending.getContext()) == activity) {
+                pendingHostPaused = false;
+            } else {
+                pending = null;
+            }
+        }
+        if (pending != null) attach(pending);
         synchronized (LOCK) {
             if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
                 activeRuntime.store.setThemeMode(lastAmapThemeMode);
@@ -140,8 +166,14 @@ public final class ContentRuntime {
     }
 
     public static void onAmapThemeChanged(int mode) {
+        // GAdaAndroid reports resolved day/night as 1/2. Unknown/automatic values
+        // are not a resolved light theme and must not erase the last known state.
+        if (mode != 1 && mode != 2) return;
         final int resolvedMode = mode == 2 ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
-        lastAmapThemeMode = resolvedMode;
+        synchronized (LOCK) {
+            hasAmapThemeCallback = true;
+            lastAmapThemeMode = resolvedMode;
+        }
         if (Looper.myLooper() != Looper.getMainLooper()) {
             MAIN.post(new Runnable() {
                 @Override public void run() { applyAmapTheme(resolvedMode); }
@@ -152,20 +184,56 @@ public final class ContentRuntime {
     }
 
     private static void applyAmapTheme(int mode) {
+        ViewGroup pending;
         synchronized (LOCK) {
-            if (activeRuntime != null && lastAmapThemeMode == mode) {
+            if (lastAmapThemeMode != mode) return;
+            if (activeRuntime != null) {
                 activeRuntime.store.setThemeMode(mode);
             }
+            pending = pendingHostPaused ? null : pendingContentRoot.get();
+        }
+        if (pending != null) attach(pending);
+    }
+
+    public static void onAmapReady() {
+        // The existing native request emits resolved day/night through sendAutoStatus
+        // (0x25/0x26). Run outside LOCK; native callbacks may arrive on another thread.
+        MAIN.post(new Runnable() {
+            @Override public void run() { requestInitialAmapTheme(); }
+        });
+    }
+
+    private static void requestInitialAmapTheme() {
+        synchronized (LOCK) {
+            if (lastAmapThemeMode != THEME_UNKNOWN) return;
+        }
+        try {
+            Class.forName("com.autonavi.amapauto.jni.protocol.AndroidProtocolExe")
+                    .getMethod("nativeRequestDayNightMode", int.class).invoke(null, -1);
+        } catch (ReflectiveOperationException | LinkageError unavailable) {
+            // Retry via the existing Amap-ready event or a later host resume.
         }
     }
 
     private static void readInitialAmapTheme() {
+        synchronized (LOCK) {
+            // Bootstrap only: a lifecycle/native query can lag the actual theme
+            // callback when the map engine is starting or moving to background.
+            if (hasAmapThemeCallback) return;
+        }
         try {
             Method query = Class.forName("com.autonavi.amapauto.jni.GAdaAndroid")
                     .getMethod("nativeIsNightMode");
-            lastAmapThemeMode = Boolean.TRUE.equals(query.invoke(null))
-                    ? ContentState.THEME_DARK : ContentState.THEME_LIGHT;
+            Object nightMode = query.invoke(null); // nativeIsNightMode()Z boxes Boolean.
+            if (!(nightMode instanceof Boolean)) return;
+            synchronized (LOCK) {
+                // A callback may arrive during the native call; it remains authoritative.
+                if (!hasAmapThemeCallback && Boolean.TRUE.equals(nightMode)) {
+                    lastAmapThemeMode = ContentState.THEME_DARK;
+                }
+            }
         } catch (ReflectiveOperationException | LinkageError unavailable) {
+            // Engine unavailable: preserve the last known Amap state.
         }
     }
 
@@ -194,6 +262,16 @@ public final class ContentRuntime {
                 activeRuntime.store.acceptMediaSnapshot(snapshot);
             }
         }
+    }
+
+    private static Activity findActivity(Context context) {
+        while (context instanceof android.content.ContextWrapper
+                && !(context instanceof Activity)) {
+            Context base = ((android.content.ContextWrapper) context).getBaseContext();
+            if (base == context) break;
+            context = base;
+        }
+        return context instanceof Activity ? (Activity) context : null;
     }
 
     private static View findContentHost(ViewGroup contentRoot) {

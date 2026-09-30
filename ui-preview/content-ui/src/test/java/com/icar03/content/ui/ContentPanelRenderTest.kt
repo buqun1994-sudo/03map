@@ -67,7 +67,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val ventilation = compose.onNodeWithTag("dock-Ventilation").getUnclippedBoundsInRoot()
         assertTrue("lock touch area must be larger than each dock slot", lock.right - lock.left > ventilation.right - ventilation.left && lock.bottom - lock.top >= 80.dp)
         compose.onNodeWithText("25°C").assertIsDisplayed()
-        compose.onNodeWithText("12:24星期三").assertIsDisplayed()
+        compose.onNodeWithText("12:24 星期三").assertIsDisplayed()
         compose.onNodeWithText("366km").assertIsDisplayed()
         compose.onNodeWithContentDescription("屏幕亮度").assertIsDisplayed()
         compose.onNodeWithContentDescription("媒体音量").assertIsDisplayed()
@@ -260,17 +260,20 @@ open class ContentPanelLightPrototypeRenderTest {
         val selected = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
         val baseline = captureHost("press-baseline")
         val selectedPixel = baseline.getPixel(selected.left.toInt() + 3, selected.center.y.toInt())
-        val expectedSelected = if (dark) android.graphics.Color.rgb(53, 59, 67) else android.graphics.Color.rgb(228, 228, 228)
+        val expectedSelected = if (dark) android.graphics.Color.rgb(45, 45, 45) else android.graphics.Color.rgb(228, 228, 228)
         assertTrue("selected fill must cover the full slot beyond its inner press area", selectedPixel == expectedSelected)
         compose.mainClock.autoAdvance = false
         listOf("dock-Lock", "dock-Ventilation", "media-play", "media-next", "source-button").forEach { tag ->
             val node = compose.onNodeWithTag(tag)
             node.assert(SemanticsMatcher.expectValue(PressActive, false))
             node.performTouchInput { down(center) }
-            compose.mainClock.advanceTimeBy(240)
+            compose.mainClock.advanceTimeBy(320)
             node.assert(SemanticsMatcher.expectValue(PressActive, true))
             val color = node.fetchSemanticsNode().config[PressBackground]
-            assertTrue("held press must animate to nontransparent color: $tag", color != transparent)
+            if (tag.startsWith("dock-")) {
+                assertTrue("Dock press must have no rectangular background", color == transparent)
+                assertTrue("Dock shares shortcut micro scale feedback", node.fetchSemanticsNode().config[PressScale] < .97f)
+            } else assertTrue("held media press must animate to nontransparent color: $tag", color != transparent)
             val outer = node.fetchSemanticsNode().boundsInRoot
             val inner = compose.onNodeWithTag("$tag-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertTrue("inner rectangular press area remains inside unchanged touch slot", inner.left >= outer.left && inner.right <= outer.right && inner.top >= outer.top && inner.bottom <= outer.bottom)
@@ -278,18 +281,18 @@ open class ContentPanelLightPrototypeRenderTest {
             // A circle would leave this point clear; rounded rectangles include it.
             val x = inner.left.toInt() + 9
             val y = inner.top.toInt() + 9
-            assertTrue("rounded rectangle not circle or whole-slot ripple: $tag", held.getPixel(x, y) != baseline.getPixel(x, y))
+            if (!tag.startsWith("dock-")) assertTrue("rounded rectangle not circle or whole-slot ripple: $tag", held.getPixel(x, y) != baseline.getPixel(x, y))
             node.performTouchInput { up() }
-            compose.mainClock.advanceTimeBy(240)
+            compose.mainClock.advanceTimeBy(320)
             node.assert(SemanticsMatcher.expectValue(PressActive, false))
             node.assert(SemanticsMatcher.expectValue(PressBackground, transparent))
         }
         val count = events.size
         compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { down(center) }
-        compose.mainClock.advanceTimeBy(240)
+        compose.mainClock.advanceTimeBy(320)
         compose.onNodeWithTag("dock-SteeringHeat").assert(SemanticsMatcher.expectValue(PressActive, false))
         compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { up() }
-        compose.mainClock.advanceTimeBy(240)
+        compose.mainClock.advanceTimeBy(320)
         assertTrue("unresearched steering placeholder must never write", count == events.size)
         compose.mainClock.autoAdvance = true
         compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(available = false, playbackAvailable = false, nextAvailable = false)) }
@@ -297,10 +300,10 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithTag("media-play").assertIsNotEnabled()
         compose.mainClock.autoAdvance = false
         compose.onNodeWithTag("media-play").performTouchInput { down(center) }
-        compose.mainClock.advanceTimeBy(240)
+        compose.mainClock.advanceTimeBy(320)
         compose.onNodeWithTag("media-play").assert(SemanticsMatcher.expectValue(PressActive, false))
         compose.onNodeWithTag("media-play").performTouchInput { cancel() }
-        compose.mainClock.advanceTimeBy(240)
+        compose.mainClock.advanceTimeBy(320)
         assertTrue("disabled media must not send commands", count == events.size)
         captureHost("press-disabled")
         compose.mainClock.autoAdvance = true
@@ -340,7 +343,14 @@ open class ContentPanelLightPrototypeRenderTest {
                     if (id == ControlId.Ventilation && b > 180 && b > r + 70 && g > r + 30) accent++
                     if (id == ControlId.Heating && r > 180 && r > g + 50 && b < 120) accent++
                     if (id == ControlId.Massage && b > 140 && b > g + 50 && r > g + 25) accent++
-                    val bodyContrast = if (dark) r > 200 && g > 200 && b > 200 else r < 150 && g < 150 && b < 150
+                    val bodyContrast = if (level == 0) {
+                        if (dark) r > 200 && g > 200 && b > 200 else r < 150 && g < 150 && b < 150
+                    } else when (id) {
+                        ControlId.Ventilation -> b > 180 && b > r + 70 && g > r + 30
+                        ControlId.Heating -> r > 180 && r > g + 50 && b < 120
+                        ControlId.Massage -> b > 140 && b > g + 50 && r > g + 25
+                        else -> false
+                    }
                     if (x > bounds.left + bounds.width * .55f && bodyContrast) body++
                 }
                 assertTrue("OEM seat asset must remain visible on its themed surface: $id/$level", visible > 20)
@@ -349,6 +359,58 @@ open class ContentPanelLightPrototypeRenderTest {
             }
         }
         resources.values.forEach { assertTrue("each level must select a distinct OEM asset", it.size == 4) }
+    }
+
+    @Test fun batteryLayersLockColorAndMediaOpacityFollowTruth() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, batteryPercent = 80))
+        mountInteractionState(state)
+        fun assertBattery(charging: Boolean) {
+            compose.runOnIdle { state.value = state.value.copy(charging = charging) }
+            compose.waitForIdle()
+            val frame = captureHost(if (charging) "battery-charging" else "battery-idle")
+            val bounds = compose.onNodeWithTag("top-battery", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            var green = 0
+            var neutral = 0
+            for (y in bounds.top.toInt() until bounds.bottom.toInt()) for (x in bounds.left.toInt() until bounds.right.toInt()) {
+                val c = frame.getPixel(x, y)
+                val r = android.graphics.Color.red(c); val g = android.graphics.Color.green(c); val b = android.graphics.Color.blue(c)
+                if (g > r + 40 && g > b + 50) green++
+                if (if (dark) r > 170 && kotlin.math.abs(r - g) < 10 && kotlin.math.abs(g - b) < 10 else r < 100 && g < 100 && b < 100) neutral++
+            }
+            assertTrue("battery interior is green: $charging", green > 2)
+            assertTrue("battery outline retains theme base color: $charging", neutral > 2)
+            compose.onNodeWithTag("top-battery", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource,
+                if (charging) R.drawable.content_oem_ico_battery_charging else R.drawable.content_oem_ico_battery_4))
+        }
+        assertBattery(false); assertBattery(true)
+        for (target in listOf(0, 1, 0)) {
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
+                (ControlId.Lock to ControlState(actual = target))) }
+            compose.waitForIdle()
+            val expected = if (target == 0) androidx.compose.ui.graphics.Color(0xFF3FA9FF)
+                else if (dark) androidx.compose.ui.graphics.Color(0xFFE8E8E8) else androidx.compose.ui.graphics.Color(0xFF27303B)
+            listOf("shortcut-icon-Lock", "dock-icon-Lock").forEach { tag ->
+                compose.onNodeWithTag(tag, useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemTint, expected.value.toLong()))
+            }
+        }
+        compose.mainClock.autoAdvance = false
+        val play = compose.onNodeWithTag("media-play")
+        play.performTouchInput { down(center) }
+        var previous = 0f
+        for (duration in listOf(32L, 48L, 64L, 80L)) {
+            compose.mainClock.advanceTimeBy(duration)
+            val color = androidx.compose.ui.graphics.Color(play.fetchSemanticsNode().config[PressBackground].toULong())
+            assertTrue("media opacity must rise monotonically", color.alpha >= previous)
+            if (color.alpha > 0f) {
+                val rgb = if (dark) 65f / 255 else 226f / 255
+                assertTrue("media fill RGB remains fixed instead of flashing black", kotlin.math.abs(color.red - rgb) < .005f && kotlin.math.abs(color.green - rgb) < .005f && kotlin.math.abs(color.blue - rgb) < .005f)
+            }
+            previous = color.alpha
+        }
+        play.performTouchInput { cancel() }
+        compose.mainClock.advanceTimeBy(320)
+        play.assert(SemanticsMatcher.expectValue(PressBackground, androidx.compose.ui.graphics.Color.Transparent.value.toLong()))
+        compose.mainClock.autoAdvance = true
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

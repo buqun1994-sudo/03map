@@ -12,7 +12,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -51,6 +51,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.VectorGroup
+import androidx.compose.ui.graphics.vector.VectorPath
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +66,7 @@ import kotlin.math.roundToInt
 internal val NaturalTextWidth = SemanticsPropertyKey<Float>("NaturalTextWidth")
 internal val TemperatureVisible = SemanticsPropertyKey<Boolean>("TemperatureVisible")
 internal val PressActive = SemanticsPropertyKey<Boolean>("PressActive")
+internal val PressScale = SemanticsPropertyKey<Float>("PressScale")
 internal val PressBackground = SemanticsPropertyKey<Long>("PressBackground")
 internal val OemTint = SemanticsPropertyKey<Long>("OemTint")
 internal val OemResource = SemanticsPropertyKey<Int>("OemResource")
@@ -139,7 +145,7 @@ private fun PrototypeTopBar(state: ContentUiState) {
         val density = LocalDensity.current
         val measurer = rememberTextMeasurer()
         val compact = maxWidth < 600.dp
-        val style = MaterialTheme.typography.titleLarge.copy(fontSize = if (maxWidth < 400.dp) 18.sp else 20.sp)
+        val style = MaterialTheme.typography.titleLarge
         val gap = if (compact) 4.dp else 8.dp
         val batterySize = if (compact) 24.dp else 32.dp
         val availablePx = with(density) { (maxWidth - 24.dp - batterySize).toPx() }
@@ -147,9 +153,11 @@ private fun PrototypeTopBar(state: ContentUiState) {
         fun width(text: String) = measurer.measure(AnnotatedString(text), style, softWrap = false, maxLines = 1).size.width.toFloat()
         val temperature = state.temperature.replace("°C", "°").replace("°", "°C")
         val range = state.range + state.rangeUnit
-        val fullTime = state.time + state.weekday
-        val minuteTime = state.time.take(5) + state.weekday
-        val shortWeekdayTime = state.time.take(5) + state.weekday.replace("星期", "周")
+        fun timeWithWeekday(time: String, weekday: String) = time + if (weekday.isEmpty()) "" else " " + weekday
+        val fullTime = timeWithWeekday(state.time, state.weekday)
+        val minuteTime = timeWithWeekday(state.time.take(5), state.weekday)
+        val shortWeekdayTime = timeWithWeekday(state.time.take(5), state.weekday.replace("星期", "周"))
+        val temperatureGap = gap + 4.dp
         val fullStatus = state.chargeStatus
         val statuses = if (fullStatus == null) listOf("") else listOf(
             fullStatus,
@@ -165,7 +173,7 @@ private fun PrototypeTopBar(state: ContentUiState) {
         ).distinct()
         fun required(time: String, status: String, showTemperature: Boolean): Float {
             val texts = listOf(time, status, range, if (showTemperature) temperature else "").filter { it.isNotEmpty() }
-            return texts.sumOf { width(it).toDouble() }.toFloat() + gapPx * (texts.size + 1)
+            return texts.sumOf { width(it).toDouble() }.toFloat() + gapPx * (texts.size + 1) + if (fullStatus != null && showTemperature) with(density) { 4.dp.toPx() } else 0f
         }
         // Optional temperature yields first, then seconds; weekday and primary values survive.
         val choices = listOf(Triple(fullTime, statuses.first(), true), Triple(fullTime, statuses.first(), false)) +
@@ -187,13 +195,22 @@ private fun PrototypeTopBar(state: ContentUiState) {
             .testTag("top-bar").semantics { this[TemperatureVisible] = showTemperature },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) {
             TopBarText(time, "top-time", style, width(time), description = fullTime)
-            if (fullStatus != null && showTemperature) TopBarText(temperature, "top-temperature", style, width(temperature))
+            if (fullStatus != null && showTemperature) Row(Modifier.padding(start = temperatureGap - gap)) {
+                TopBarText(temperature, "top-temperature", style, width(temperature))
+            }
             Spacer(Modifier.weight(1f))
             if (fullStatus == null && showTemperature) TopBarText(temperature, "top-temperature", style, width(temperature))
             if (fullStatus != null) TopBarText(status, "charge-status", style, width(status), description = fullStatus)
             TopBarText(range, "top-range", style, width(range))
+            val base = MaterialTheme.colorScheme.primary
+            val green = Color(0xFF76E65B)
+            val colors = when {
+                state.charging -> mapOf(0 to base, 1 to base, 2 to green)
+                battery == R.drawable.content_oem_ico_battery_0 -> mapOf(0 to base)
+                else -> mapOf(0 to green, 1 to base)
+            }
             OemIcon(battery, Modifier.size(batterySize).testTag("top-battery"), state.batteryDescription,
-                if (state.previewMode || state.batteryPercent != null) Color(0xFF76E65B) else MaterialTheme.colorScheme.onSurfaceVariant)
+                tint = Color.Unspecified, pathColors = colors)
         }
     }
 }
@@ -254,7 +271,8 @@ private fun shortcutIcon(id: ShortcutId, state: ContentUiState): Int? = when (id
 }
 
 @Composable
-private fun shortcutTint(id: ShortcutId): Color = when {
+private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color = when {
+    id == ShortcutId.Lock && state.controls.getValue(ControlId.Lock).known && state.controls.getValue(ControlId.Lock).displayed == 0 -> Color(0xFF3FA9FF)
     id == ShortcutId.SteeringHeat -> MaterialTheme.colorScheme.onSurfaceVariant
     id.control != null && id.control != ControlId.Lock -> Color.Unspecified
     else -> MaterialTheme.colorScheme.primary
@@ -275,9 +293,15 @@ private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (Conten
     val enabled = id != ShortcutId.SteeringHeat && (control == null || control.available && !control.pending)
     val selected = control != null && control.displayed > 0
     val tag = if (id.control != null) "control-${id.name}" else "shortcut-${id.name}"
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by pressScale(pressed && enabled)
     Surface(
-        onClick = { shortcutEvent(id, state)?.let(onEvent) }, enabled = enabled,
         modifier = Modifier.fillMaxWidth().height(height).testTag(tag)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Button) {
+                shortcutEvent(id, state)?.let(onEvent)
+            }
             .downwardSoftShadow(MaterialTheme.colorScheme.surfaceVariant, state.dark)
             .semantics { contentDescription = id.label; stateDescription = shortcutStatus(id, state) },
         shape = RoundedCornerShape(12.dp),
@@ -286,7 +310,7 @@ private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (Conten
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             val icon = shortcutIcon(id, state)
             if (icon != null) {
-                OemIcon(icon, Modifier.size(52.dp).testTag("shortcut-icon-${id.name}"), tint = shortcutTint(id))
+                OemIcon(icon, Modifier.size(52.dp).testTag("shortcut-icon-${id.name}"), tint = shortcutTint(id, state), pathColors = seatBodyColors(id, state))
                 Spacer(Modifier.height(8.dp))
             }
             Text(id.label, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp), maxLines = if (id == ShortcutId.SteeringHeat) 2 else 1)
@@ -386,11 +410,11 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                                 .fillMaxHeight().background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                                 .semantics { this.selected = selected; stateDescription = shortcutStatus(id, state) }
                             RoundedPressButton(slot, "dock-${id.name}", id.label, enabled, compact,
-                                onClick = { shortcutEvent(id, state)?.let(onEvent) }) {
+                                onClick = { shortcutEvent(id, state)?.let(onEvent) }, rectangular = false) {
                                 val icon = shortcutIcon(id, state)
                                 if (icon == null) Text("方向盘加热", style = MaterialTheme.typography.labelMedium, maxLines = 2)
                                 else OemIcon(icon, Modifier.size(if (compact) 32.dp else 48.dp).testTag("dock-icon-${id.name}"),
-                                    tint = shortcutTint(id))
+                                    tint = shortcutTint(id, state), pathColors = seatBodyColors(id, state))
                             }
                         }
                     }
@@ -403,22 +427,25 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
 @Composable
 private fun RoundedPressButton(
     modifier: Modifier, tag: String, description: String, enabled: Boolean, compact: Boolean,
-    onClick: () -> Unit, content: @Composable () -> Unit,
+    onClick: () -> Unit, rectangular: Boolean = true, content: @Composable () -> Unit,
 ) {
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val active = pressed && enabled
-    val background by animateColorAsState(
-        if (active) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent,
-        tween(200, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "rounded-press",
-    )
+    // Fixed RGB with animated opacity avoids interpolating Transparent's black RGB.
+    val opacity by animateFloatAsState(if (active && rectangular) 1f else 0f,
+        tween(if (active) 200 else 240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "press-opacity")
+    val scale by pressScale(active)
+    val background = if (opacity == 0f) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = opacity)
     Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(tag)
         .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-        .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong() },
+        .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong(); this[PressScale] = scale },
         contentAlignment = Alignment.Center) {
         Box(Modifier.size(if (compact) 48.dp else 72.dp).testTag("$tag-press-area")
             .background(background, RoundedCornerShape(if (compact) 12.dp else 16.dp)),
-            contentAlignment = Alignment.Center) { content() }
+            contentAlignment = Alignment.Center) {
+            Box(Modifier.graphicsLayer { scaleX = scale; scaleY = scale }, contentAlignment = Alignment.Center) { content() }
+        }
     }
 }
 
@@ -544,9 +571,56 @@ private fun seatIcon(id: ControlId, state: ContentUiState): Int {
 }
 
 @Composable
-private fun OemIcon(resource: Int, modifier: Modifier, description: String? = null, tint: Color = MaterialTheme.colorScheme.primary) {
-    Icon(painter = painterResource(resource), contentDescription = description,
-        modifier = modifier.semantics { this[OemTint] = tint.value.toLong(); this[OemResource] = resource }, tint = tint)
+private fun pressScale(active: Boolean) = animateFloatAsState(if (active) .94f else 1f,
+    tween(if (active) 200 else 240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "press-scale")
+
+private fun seatBodyColors(id: ShortcutId, state: ContentUiState): Map<Int, Color> {
+    val control = id.control ?: return emptyMap()
+    if (state.controls.getValue(control).displayed <= 0) return emptyMap()
+    val accent = when (control) {
+        ControlId.Ventilation -> Color(0xFF3FA9FF)
+        ControlId.Heating -> Color(0xFFFF6400)
+        ControlId.Massage -> Color(0xFFA14FEC)
+        ControlId.Lock -> return emptyMap()
+    }
+    return mapOf(0 to accent)
+}
+
+/** Recolor registered OEM layers only; geometry, clipping and level alpha stay intact. */
+internal fun oemLayerColors(original: ImageVector, colors: Map<Int, Color>): ImageVector {
+    var pathIndex = 0
+    val builder = ImageVector.Builder(original.name, original.defaultWidth, original.defaultHeight,
+        original.viewportWidth, original.viewportHeight, original.tintColor, original.tintBlendMode, original.autoMirror)
+    fun append(group: VectorGroup) {
+        builder.addGroup(group.name, group.rotation, group.pivotX, group.pivotY, group.scaleX, group.scaleY,
+            group.translationX, group.translationY, group.clipPathData)
+        group.forEach { node ->
+            when (node) {
+                is VectorGroup -> append(node)
+                is VectorPath -> {
+                    val fill = colors[pathIndex++]?.let { SolidColor(it) } ?: node.fill
+                    builder.addPath(node.pathData, node.pathFillType, node.name, fill, node.fillAlpha,
+                        node.stroke, node.strokeAlpha, node.strokeLineWidth, node.strokeLineCap,
+                        node.strokeLineJoin, node.strokeLineMiter, node.trimPathStart, node.trimPathEnd, node.trimPathOffset)
+                }
+            }
+        }
+        builder.clearGroup()
+    }
+    append(original.root)
+    return builder.build()
+}
+
+@Composable
+private fun OemIcon(resource: Int, modifier: Modifier, description: String? = null,
+    tint: Color = MaterialTheme.colorScheme.primary, pathColors: Map<Int, Color> = emptyMap()) {
+    val semantics = modifier.semantics { this[OemTint] = tint.value.toLong(); this[OemResource] = resource }
+    if (pathColors.isEmpty()) Icon(painter = painterResource(resource), contentDescription = description, modifier = semantics, tint = tint)
+    else {
+        val original = ImageVector.vectorResource(resource)
+        val layered = remember(original, pathColors) { oemLayerColors(original, pathColors) }
+        Icon(imageVector = layered, contentDescription = description, modifier = semantics, tint = Color.Unspecified)
+    }
 }
 
 @Preview(name = "原型浅色默认态", widthDp = 640, heightDp = 1080, locale = "zh")

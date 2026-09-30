@@ -146,6 +146,7 @@ open class ContentComposeHostTest {
         root.addView(host, FrameLayout.LayoutParams(-1, -1))
         activity.setContentView(root)
         try {
+            ContentRuntime.onAmapThemeChanged(if (dark) 2 else 1)
             ContentRuntime.attach(root); ContentRuntime.attach(root)
             advanceHostFrames(root)
             assertEquals(1, host.childCount)
