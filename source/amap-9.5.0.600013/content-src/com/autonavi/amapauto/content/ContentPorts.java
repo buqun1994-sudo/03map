@@ -43,7 +43,10 @@ public final class ContentPorts {
                 }
                 AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
                 int max = audio == null ? 0 : audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                return new SystemSnapshot(max > 0,
+                boolean writable = context.checkCallingOrSelfPermission(
+                        android.Manifest.permission.MODIFY_AUDIO_SETTINGS)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                return new SystemSnapshot(max > 0 && writable,
                         max > 0 ? Math.round(audio.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max) : 0);
             } catch (SecurityException | IllegalArgumentException exception) {
                 return new SystemSnapshot(false, 0);
@@ -96,6 +99,10 @@ public final class ContentPorts {
 
     public interface MediaPort {
         boolean isAvailable();
+
+        default boolean isSourceAvailable() {
+            return false;
+        }
 
         boolean requestPlayback(boolean playing);
 

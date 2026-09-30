@@ -1932,6 +1932,15 @@
 .method public onKeyDown(ILandroid/view/KeyEvent;)Z
     .locals 5
 
+    const/4 v0, 0x4
+    if-ne p1, v0, :content_back_passthrough
+    invoke-static {p0, p2}, Lcom/autonavi/amapauto/content/ContentRuntime;->onBackKeyDown(Landroid/app/Activity;Landroid/view/KeyEvent;)Z
+    move-result v0
+    if-eqz v0, :content_back_passthrough
+    const/4 v0, 0x1
+    return v0
+
+    :content_back_passthrough
     .line 1
     invoke-static {}, Lse;->c()Lse;
 
@@ -2112,6 +2121,15 @@
 .method public onKeyUp(ILandroid/view/KeyEvent;)Z
     .locals 4
 
+    const/4 v0, 0x4
+    if-ne p1, v0, :content_back_up_passthrough
+    invoke-static {p0, p2}, Lcom/autonavi/amapauto/content/ContentRuntime;->onBackKeyUp(Landroid/app/Activity;Landroid/view/KeyEvent;)Z
+    move-result v0
+    if-eqz v0, :content_back_up_passthrough
+    const/4 v0, 0x1
+    return v0
+
+    :content_back_up_passthrough
     .line 1
     const/16 v0, 0x19
 

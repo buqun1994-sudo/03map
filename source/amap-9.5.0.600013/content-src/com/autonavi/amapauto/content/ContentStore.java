@@ -55,13 +55,26 @@ public final class ContentStore {
     private long pendingVehicleRequestId;
     private long nextMediaRequestId;
     private long pendingMediaRequestId;
+    private long nextSourceRequestId;
+    private long pendingSourceRequestId;
+    private Runnable sourceTimeout;
     private boolean destroyed;
 
     public ContentStore(Context context) {
+        this(context, new ContentVehicleAdapter(context), new ContentMediaAdapter(context),
+                new ContentPorts.AndroidSystemPort(context));
+    }
+
+    /** The store owns injected ports and stops them when destroyed. */
+    public ContentStore(Context context, ContentPorts.VehiclePort vehiclePort,
+            ContentPorts.MediaPort mediaPort, ContentPorts.SystemPort systemPort) {
+        if (vehiclePort == null || mediaPort == null || systemPort == null) {
+            throw new IllegalArgumentException("Content ports must not be null");
+        }
         preferenceStore = new ContentPreferenceStore(context);
-        vehiclePort = new ContentVehicleAdapter(context);
-        mediaPort = new ContentMediaAdapter(context);
-        systemPort = new ContentPorts.AndroidSystemPort(context);
+        this.vehiclePort = vehiclePort;
+        this.mediaPort = mediaPort;
+        this.systemPort = systemPort;
         preferenceStore.load(state);
         acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable());
         acceptMediaSnapshot(ContentPorts.MediaSnapshot.unavailable());
@@ -92,6 +105,18 @@ public final class ContentStore {
         return systemPort;
     }
 
+    public synchronized boolean isVehicleControlAvailable() {
+        return !destroyed && vehiclePort.isAvailable();
+    }
+
+    public synchronized boolean isLockControlAvailable() {
+        return !destroyed && vehiclePort.isLockAvailable();
+    }
+
+    public synchronized boolean isMediaSourceAvailable() {
+        return !destroyed && mediaPort.isSourceAvailable();
+    }
+
     public void addListener(Listener listener) {
         if (listener == null) {
             return;
@@ -117,6 +142,7 @@ public final class ContentStore {
         }
         commandHandler.removeCallbacks(commandTimeout);
         commandHandler.removeCallbacks(mediaFeedbackTimeout);
+        if (sourceTimeout != null) commandHandler.removeCallbacks(sourceTimeout);
         mediaCommandExecutor.shutdownNow();
         vehiclePort.stop();
         mediaPort.stop();
@@ -225,12 +251,14 @@ public final class ContentStore {
             return;
         }
         synchronized (this) {
+            if (destroyed || snapshot.dataAvailable && snapshot.generation < state.mediaGeneration) return;
             state.mediaDataAvailable = snapshot.dataAvailable;
             state.mediaPreview = snapshot.preview;
-            String mediaSource = ContentRegistry.normalizeMediaSource(snapshot.source);
-            state.mediaSource = mediaSource == null ? "本机音乐" : mediaSource;
+            String mediaSource = snapshot.source == null || snapshot.source.isEmpty()
+                    ? null : ContentRegistry.normalizeMediaSource(snapshot.source);
+            if (snapshot.dataAvailable && mediaSource != null) state.mediaSource = mediaSource;
             state.mediaPlaying = snapshot.playing;
-            state.mediaGeneration = Math.max(0, snapshot.generation);
+            state.mediaGeneration = Math.max(state.mediaGeneration, Math.max(0, snapshot.generation));
             state.mediaTitle = snapshot.title == null || snapshot.title.length() == 0
                     ? "暂无媒体" : snapshot.title;
             state.mediaArtist = snapshot.artist == null || snapshot.artist.length() == 0
@@ -238,6 +266,10 @@ public final class ContentStore {
             state.mediaPlaybackAvailable = snapshot.playbackAvailable;
             state.mediaNextAvailable = snapshot.nextAvailable;
             state.mediaArtwork = snapshot.artwork;
+            if (!state.pendingSource.isEmpty() && snapshot.dataAvailable && !snapshot.preview
+                    && state.pendingSource.equals(mediaSource)) {
+                finishSourceCommandLocked(true, "");
+            }
             if (state.mediaPlaybackTarget >= 0) {
                 if (!snapshot.playbackAvailable) {
                     state.mediaPlaybackTarget = -1;
@@ -429,16 +461,58 @@ public final class ContentStore {
     }
 
     public void selectMediaSource(String source) {
-        if (source == null || source.length() == 0) {
-            return;
+        if (source == null || source.isEmpty()) return;
+        final String selectedSource = ContentRegistry.normalizeMediaSource(source);
+        final long requestId;
+        synchronized (this) {
+            if (destroyed || selectedSource == null || !mediaPort.isSourceAvailable()
+                    || selectedSource.equals(state.pendingSource)) return;
+            requestId = ++nextSourceRequestId;
+            pendingSourceRequestId = requestId;
+            state.pendingSource = selectedSource;
+            state.commandStatus = ContentState.COMMAND_PENDING;
+            state.commandMessage = "";
+            if (sourceTimeout != null) commandHandler.removeCallbacks(sourceTimeout);
+            sourceTimeout = new Runnable() {
+                @Override public void run() {
+                    synchronized (ContentStore.this) {
+                        if (destroyed || pendingSourceRequestId != requestId) return;
+                        finishSourceCommandLocked(false, "媒体来源未确认，请检查车机当前来源");
+                    }
+                    publish();
+                }
+            };
+            commandHandler.postDelayed(sourceTimeout, MEDIA_FEEDBACK_TIMEOUT_MS);
         }
-        final String selectedSource = source;
-        queueMediaCommand(new Callable<Boolean>() {
-            @Override
-            public Boolean call() {
-                return mediaPort.requestSource(selectedSource);
+        publish();
+        mediaCommandExecutor.execute(new Runnable() {
+            @Override public void run() {
+                synchronized (ContentStore.this) {
+                    if (destroyed || pendingSourceRequestId != requestId) return;
+                }
+                boolean accepted;
+                try { accepted = mediaPort.requestSource(selectedSource); }
+                catch (RuntimeException error) { accepted = false; }
+                if (accepted) return;
+                commandHandler.post(new Runnable() {
+                    @Override public void run() {
+                        synchronized (ContentStore.this) {
+                            if (destroyed || pendingSourceRequestId != requestId) return;
+                            finishSourceCommandLocked(false, "媒体来源切换未发送，请检查车机媒体服务");
+                        }
+                        publish();
+                    }
+                });
             }
-        }, "媒体来源切换未发送，请检查车机媒体服务");
+        });
+    }
+
+    private void finishSourceCommandLocked(boolean confirmed, String message) {
+        if (sourceTimeout != null) commandHandler.removeCallbacks(sourceTimeout);
+        sourceTimeout = null;
+        state.pendingSource = "";
+        pendingSourceRequestId = 0L;
+        recordCommandResultLocked(confirmed, message);
     }
 
     public void replaceDockItem(int slot, String itemId) {

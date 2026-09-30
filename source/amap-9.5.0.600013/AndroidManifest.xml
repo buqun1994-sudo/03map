@@ -36,6 +36,11 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <queries>
+        <package android:name="com.tencent.wecarflow"/>
+        <package android:name="com.chery.virtualcarservice"/>
+    </queries>
     <uses-permission android:name="com.autonavi.amapautolite_com.huawei.lbs.permission.ACCESS_BIND_LBSSERVICE"/>
     <uses-permission android:name="com.autonavi.amapautolite_com.vivo.permission.location.GARAGE_RESULT_ACCESS"/>
     <application android:allowBackup="false" android:appComponentFactory="androidx.core.app.CoreComponentFactory" android:debuggable="false" android:extractNativeLibs="true" android:icon="@drawable/v3_icon" android:label="@string/app_name" android:name="com.autonavi.amapauto.app.MapApplicationProxy" android:networkSecurityConfig="@xml/network_security_config" android:resizeableActivity="false" android:supportsRtl="true" android:theme="@style/Theme.Background">

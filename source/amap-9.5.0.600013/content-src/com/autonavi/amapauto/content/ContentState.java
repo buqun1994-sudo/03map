@@ -34,6 +34,7 @@ public final class ContentState {
     public boolean mediaDataAvailable;
     public boolean mediaPreview;
     public String mediaSource = "本机音乐";
+    public String pendingSource = "";
     public boolean mediaPlaying;
     public int mediaGeneration;
     public String mediaTitle = "暂无媒体";
@@ -81,6 +82,7 @@ public final class ContentState {
         copy.mediaDataAvailable = mediaDataAvailable;
         copy.mediaPreview = mediaPreview;
         copy.mediaSource = mediaSource;
+        copy.pendingSource = pendingSource;
         copy.mediaPlaying = mediaPlaying;
         copy.mediaGeneration = mediaGeneration;
         copy.mediaTitle = mediaTitle;

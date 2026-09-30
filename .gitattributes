@@ -1,0 +1,4 @@
+# Preserve imported OEM mirror bytes; permit their original empty final line only.
+ui-preview/content-ui/src/main/res/drawable/content_oem_*.xml whitespace=-blank-at-eof
+# The generated Windows wrapper retains CRLF; CR is an end-of-line character.
+ui-preview/gradlew.bat whitespace=cr-at-eol

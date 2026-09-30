@@ -15,7 +15,7 @@ for (const asset of manifest.assets) {
   }
   destinations.add(asset.destination);
   const bytes = fs.readFileSync(path.join(sourceRoot, asset.destination));
-  const text = decoder.decode(bytes);
+  const text = asset.format === 'PNG' ? '' : decoder.decode(bytes);
   const digest = crypto.createHash('sha256').update(bytes).digest('hex');
   if (digest !== asset.deployedSha256 || !/^[a-f0-9]{64}$/.test(asset.sourceApkSha256)
       || !/^[a-f0-9]{64}$/.test(asset.sourceSha256)) {
@@ -36,6 +36,12 @@ for (const asset of manifest.assets) {
     };
     inspect(composition);
     animations++;
+  } else if (asset.format === 'PNG') {
+    if (bytes.length < 33 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        || bytes.toString('ascii', 12, 16) !== 'IHDR'
+        || bytes.readUInt32BE(16) !== asset.pixelWidth || bytes.readUInt32BE(20) !== asset.pixelHeight) {
+      throw new Error(`位图签名或尺寸不匹配：${asset.destination}`);
+    }
   } else if (!(asset.format === 'Vector' && text.includes('<vector')
       || asset.format === 'Shape' && text.includes('<shape')
       || asset.format === 'Values' && text.includes('<resources>'))) {

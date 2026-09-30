@@ -1,0 +1,419 @@
+{
+  "upstreamManifest": "source/amap-9.5.0.600013/assets/content-oem/asset-manifest.json",
+  "assets": [
+    {
+      "destination": "res/drawable/content_oem_ico_lock_close.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_lock_close.xml",
+      "sourceSha256": "07fe4bdf5d2a6a0e1f9e781f0d3d0ec224bbfbee1a4ae103c08c48a59dcadab0",
+      "deployedSha256": "fa7c435f81cf54b003ea4eb54b5109cca4f8275570887d8ad882f8cee99f4c04"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_lock_open.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_lock_open.xml",
+      "sourceSha256": "fb7da79731f608131127eae144f23b769c2d8b2f5c3128ef48fb669ad819e25e",
+      "deployedSha256": "e2362311eb9e280a246f260fc8c505956dce1eff2d05c43a6a5deb4d3996c156"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_media_play.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_media_play.xml",
+      "sourceSha256": "939f055847dcf0a81fa5059eeec7e6559088cb2e98c39bc16442c556ed9451b0",
+      "deployedSha256": "24df3837f864ccf1c6089b046c29235d1d53fa895d6c1ad1c56fbb5f7d878048"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_media_pause.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_media_pause.xml",
+      "sourceSha256": "f75360aed93549faa46812caa1cef74ff7cd2c91f58797ef28be80cdab85909f",
+      "deployedSha256": "55c18406c55f14f21a9e4baf9fba92d6871d91e148e53cf0f12f148e719be9b5"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_media_next.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_media_next.xml",
+      "sourceSha256": "ea0b5cadeb6f0186374dfd637810a336d2e475496e6a576543bc17162d75decc",
+      "deployedSha256": "0b2de2d7ae64d6054bf84dfed7987c74f33dba41f79655fd8c06e8ea1e6a4988"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_media_music.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_media_music.xml",
+      "sourceSha256": "c06e785c15cd8739346335a0329986004386dc7832801733d4ceba5925d07a9d",
+      "deployedSha256": "43247d17916ab8db2d0ca22ee562af0a41c08d61e650a8504eedc5aee56e5a4b"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_home_applist.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_home_applist.xml",
+      "sourceSha256": "ac25f406290c68447e700b845a9c64bd4f13a46b89bf6ba08d69745f55148839",
+      "deployedSha256": "ebcec942def1e564e0dd417b78c735a4a36e8494bd9aa017b0a70295aa9fa035"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_battery_4.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_battery_4.xml",
+      "sourceSha256": "0d044638d9e111c5083676f554eda0063d4e27c601f35341312c31eb038f219e",
+      "deployedSha256": "41ecbe5d78b0d286b1eb5a9589ec9c5f9242a23b2d0ddf55e81a608917c1b97b"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_ventilate_l_off_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_ventilate_l_off_day.xml",
+      "sourceSha256": "bd95a1e5d211d558bca75f0bf861cb026aaa5b6843360afc20b38ab2f52714c0",
+      "deployedSha256": "cfcf3a263ee0b5c92b6f65c44e02a13e59f1c390eff9275f94cbe5a5f559c55b"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_ventilate_l_1_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_ventilate_l_1_day.xml",
+      "sourceSha256": "79018d5888a5d77264b2858482f00ac37030d3e19e2e2e698020775ec40b6fda",
+      "deployedSha256": "246b95549e7dcda0164fc7172994bde07c29fc3d9efabb989cd240be5ece9111"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_ventilate_l_2_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_ventilate_l_2_day.xml",
+      "sourceSha256": "5ec52a8069b6fd5cccea6307f96e84f144194c8b3d9763ee4be07ae4e81ab25f",
+      "deployedSha256": "d0e9ef2fee318d7c697b714519cf6262430032c8e37637f4c5133a1ef3f67744"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_ventilate_l_3_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_ventilate_l_3_day.xml",
+      "sourceSha256": "f16eefd64a8a97e8a313ebf3d1a2a72ae94b9f5f7cd797450709c748b9b064b3",
+      "deployedSha256": "d19cdd07c7435754c5f7e9b6256aa6c936378507812d337df18fafb2790e05af"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_heat_l_off_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_heat_l_off_day.xml",
+      "sourceSha256": "39641e042600e6c259b24986db64a447d97cb1d6ad12b6d906d285eb99209ee2",
+      "deployedSha256": "e26accb623a9db4b6e0503b25ad391da1de2329b4bce14d57997aa9abc82d7de"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_heat_l_1_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_heat_l_1_day.xml",
+      "sourceSha256": "68c091d062a9424486f26a19105d67dc40b68622446fd239414f8c9c212f70de",
+      "deployedSha256": "7ef104d8e49297c063ab8e871afb2c3112bc7f4c2b19df75dc0b0d4da9737537"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_heat_l_2_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_heat_l_2_day.xml",
+      "sourceSha256": "784be7983567b89c3868ce9b94a4bbb28251d20bf4a769bd10734676433388c4",
+      "deployedSha256": "0a2e4717d0d90b83672451bdf164a0efef8a7e9d9d251a81e4b389da47e4c944"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_heat_l_3_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_heat_l_3_day.xml",
+      "sourceSha256": "887c0e46be765b796b3c48260758e47c3a7c57a995506d62e19ff3112412ce9a",
+      "deployedSha256": "7a900a4efbd6e28039416f989e124792caa6717acae376ba1f44d6dc6c13cfa0"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_massage_l_off_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_massage_l_off_day.xml",
+      "sourceSha256": "35a65837106c3c1e8c76f6b59774a17899a54d9e6c82a7658b79afe9500f9f7d",
+      "deployedSha256": "5d7f5084153adc82379f3d129d70b2f46b380dfac845c7a35cc0805b0ffcd8f5"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_massage_l_1_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_massage_l_1_day.xml",
+      "sourceSha256": "c5d6dea11098d2d145c89ae3c5dcb402ef3957c461e9667d73e59a3f1e3ecdd0",
+      "deployedSha256": "08e472c0917d7ef79d038d1d2f6eb09922a204c1ec8ad739441c71c3e4844e34"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_massage_l_2_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_massage_l_2_day.xml",
+      "sourceSha256": "488e3d6a91f2a52b0191c2001d1b5b0a2a47329439ce6d3a173e38201477a3d2",
+      "deployedSha256": "4e5cabe19f0e09ee3f7ffe91f06df511590845cc2d83c28e754ab18fc084f65c"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_massage_l_3_day.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_massage_l_3_day.xml",
+      "sourceSha256": "b1122c12dee9c161d0c0ef2ff74642b92ca1aa4020fd851633f812833b2fed03",
+      "deployedSha256": "5ff41d65364201835b89049163e87ac17227c33ea55ec77ae03802809d06407e"
+    },
+    {
+      "destination": "res/drawable/content_oem_ic_settings.xml",
+      "sourcePackage": "com.android.systemui",
+      "sourceVersion": "10.2.1.361",
+      "sourceApkSha256": "c0506dc39f4a9f0eb33a2fb940f8bb40537d332ca025cbc936e38cf0ac92dc36",
+      "sourceApkEntry": "res/drawable/ic_settings.xml",
+      "sourceSha256": "5094fcc6bcdd57a8948520ed3f7e0bb9fa267d885ab1d3b25e38380d5ef4f024",
+      "deployedSha256": "00b7523df2540e8712312f684d0533c756e84ac357567d8636305dad83ae82f1"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_bluetooth.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_bluetooth.xml",
+      "sourceSha256": "4c45164e4a7f53311161c4ec1e3a245f9f2345846059f02e3fcb91e00dc44e0d",
+      "deployedSha256": "91613396cd7c7288ec1469244be48732f95561d6eaa8c6d47561762b05bec308"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_media_aiquting.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_media_aiquting.xml",
+      "sourceSha256": "64e76774240191c1767e1869bead9840945e8734383cdd4f173a50346002520f",
+      "deployedSha256": "05c99aa06c76ed19bbf0c714b2c1ef0566428e6b2d94480628dea2f9a6a82f22"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_media_neteasy.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_media_neteasy.xml",
+      "sourceSha256": "e976742127566ce74521dc1f77d22ddbcfa0073c39efbbfb4bf1a806b8a46a5a",
+      "deployedSha256": "1394661fb0a87ec0b4ca49e9645805615d4c329498d0eff7f4c520d2d913982c"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_devices_usb.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_devices_usb.xml",
+      "sourceSha256": "1eb84b7772493a861a4f6d71dd2e2462f868a68fa5c6e2dd3fa1d02b7a6de952",
+      "deployedSha256": "1628ab14b34e72bff938bb986cdcb8741335d5fe750e9873e670e648447a2845"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_media_local.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_media_local.xml",
+      "sourceSha256": "4d7436e77c83d7c17275ca73b6436dcea048cc00097c0f4737130b03e6214cd5",
+      "deployedSha256": "aa72aee104e531a8fabe555c6bbdb1cdec2e91f88df085367801d0e8ed5d4a54"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_brightness_mid.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_brightness_mid.xml",
+      "sourceSha256": "cbf0409de722e7e7c2863d08a48c5c36a2f0d5405a5dd5cd923652c31e7c10ac",
+      "deployedSha256": "c0c8d944b1a53f825ee9edf57bb31923524b655e20c3f37d097f10607520c885"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_volume_2.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_volume_2.xml",
+      "sourceSha256": "09d433ff071655b074dcc327d83720b7ec69a3235166794309b94acb35641485",
+      "deployedSha256": "9d1c0124639fe5c141b1537d4c99477b6f131996fd637bd3d913854e1ddfa6a7"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_ventilate_l_off_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_ventilate_l_off_night.xml",
+      "sourceSha256": "d36c963a9e7fb31dfdd69abdfe0c77b5e2242c1a2c3cc0f7ee44a5fe7ec8c5ae",
+      "deployedSha256": "ede06b58983a4f4efb5b2f52b363c8de05b142cc83bb69cbdfeade5839b6284d"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_ventilate_l_1_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_ventilate_l_1_night.xml",
+      "sourceSha256": "79018d5888a5d77264b2858482f00ac37030d3e19e2e2e698020775ec40b6fda",
+      "deployedSha256": "246b95549e7dcda0164fc7172994bde07c29fc3d9efabb989cd240be5ece9111"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_ventilate_l_2_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_ventilate_l_2_night.xml",
+      "sourceSha256": "5ec52a8069b6fd5cccea6307f96e84f144194c8b3d9763ee4be07ae4e81ab25f",
+      "deployedSha256": "d0e9ef2fee318d7c697b714519cf6262430032c8e37637f4c5133a1ef3f67744"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_ventilate_l_3_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_ventilate_l_3_night.xml",
+      "sourceSha256": "f16eefd64a8a97e8a313ebf3d1a2a72ae94b9f5f7cd797450709c748b9b064b3",
+      "deployedSha256": "d19cdd07c7435754c5f7e9b6256aa6c936378507812d337df18fafb2790e05af"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_heat_l_off_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_heat_l_off_night.xml",
+      "sourceSha256": "157b44a66b235d6c8a47072dbf8e7d3e8d1d61c329964df6e7323f9a75d2ffb1",
+      "deployedSha256": "6924d67b2740be8519acc3b5b76fef23c36db7edb35b4fcda16086c04336a143"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_heat_l_1_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_heat_l_1_night.xml",
+      "sourceSha256": "b846a93fcae11cbcaa3d7abd59062a7bbde091249bb751520191df1cb0b06934",
+      "deployedSha256": "f2cd93cf896eb5d22936b0bb56616ac0835710a3d186c87deca68f8609bc8d0c"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_heat_l_2_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_heat_l_2_night.xml",
+      "sourceSha256": "3c49d56767008694af5be9ede953a3831ad887547b575edc69398d300fb371cf",
+      "deployedSha256": "061b280ad9a30d7f9ac289d12a2fe41942ce923134439f62f6f029f9f71c4705"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_heat_l_3_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_heat_l_3_night.xml",
+      "sourceSha256": "54bbac0415b54eb316153c1e312e8bf7ed552ddb835836c838a93bfa6b9e086a",
+      "deployedSha256": "e1b4e1d85d90356a69c3d17a7dd5734dc157b289b55293d882204ebc6c18285e"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_massage_l_off_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_massage_l_off_night.xml",
+      "sourceSha256": "e202563812d323e84a3f6fd16282dfa50b79ca5b62248a75ad1b3436b1e9b07f",
+      "deployedSha256": "8acee210a1187733912d170ca078a897558f570ee3c1b84dc64f4051c434fd05"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_massage_l_1_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_massage_l_1_night.xml",
+      "sourceSha256": "aece3b251a921cb547c08802469ba392fa9ef9b5c452527f43d7ca1e2fa577d8",
+      "deployedSha256": "b8208be22fccaa3053a09b961d42a55701aa3f82bd868645260031b0fb20542c"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_massage_l_2_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_massage_l_2_night.xml",
+      "sourceSha256": "765d477350b50b92be5335909e3867b1881535a3e95c322df544594efcafd0a2",
+      "deployedSha256": "4bb5c6392d3570ab84a9f65eca0d2b8911c40394a8063b3f213426e1934c437b"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_skin_seat_massage_l_3_night.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_skin_seat_massage_l_3_night.xml",
+      "sourceSha256": "b858b28878cf6fcaa0c8a2d5d57109006410289987bbad75a68bb1283ac07ebe",
+      "deployedSha256": "99d8ccab473cee3b44462b4f7d1f1dd6d0948c64d12194387c2177071e7983e9"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_battery_0.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_battery_0.xml",
+      "sourceSha256": "f9eed697b2cad861dda6669bfced372910f609d75e0eb87672daa9306006127a",
+      "deployedSha256": "e4d0fd583722c9dfda93a3ef6e8ecc62e9d829d18fbe1df10a1f58555865c341"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_battery_1.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_battery_1.xml",
+      "sourceSha256": "8d0547327ccf60c1c362fcfbd410349367f9ef8dd108618128a86a35f2ceacfe",
+      "deployedSha256": "ed4baa407e3ac2fbacd157ef650be25e33cba88c2fcbebd00ad1948ea0f9ca27"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_battery_2.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_battery_2.xml",
+      "sourceSha256": "7ebde76b6996aa3f84723c76630637d68310d46c86b8d5dd070137c980790021",
+      "deployedSha256": "a96780cbfa2522bbcb51892187d93b4443c96755a6930b57738a6346cfdb8904"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_battery_3.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_battery_3.xml",
+      "sourceSha256": "ff048de3a425df48394ac7e26a10486b62c794e6d5945c1be61da36a75103094",
+      "deployedSha256": "dbd0728f706f7d96f9ffe1f1239edd73a79ddb528641fdc9809fbc36c6f9b289"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_battery_5.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_battery_5.xml",
+      "sourceSha256": "75e609d4ab17c2d7383ad61068e600bf8f9fc9deb957d45e3f0357023a7ded2f",
+      "deployedSha256": "20788ef8599cf593154653c0b1613520ea3ad5b7a4c6258ca21473048cc027e5"
+    },
+    {
+      "destination": "res/drawable/content_oem_ico_battery_charging.xml",
+      "sourcePackage": "com.android.systemui.plugin",
+      "sourceVersion": "10.2.1.542",
+      "sourceApkSha256": "f6b07acc60b8530b860f3cb0312fc5e3745ad6d00301dd71bf7410a764ef1caf",
+      "sourceApkEntry": "res/drawable-anydpi-v21/ico_battery_charging.xml",
+      "sourceSha256": "f91f855c3f7e06c7513222d51ae449bcad25914ca071e538aaa9ef6a2da8a1fe",
+      "deployedSha256": "ceee6fbca5058435a4564c353944beb27eda9b17c294cd8a8f9fe04ff94e2b4a"
+    }
+  ]
+}

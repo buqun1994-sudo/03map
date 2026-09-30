@@ -23,15 +23,15 @@ public final class ContentRuntime {
     private final WeakReference<Activity> ownerActivity;
     private final ViewGroup host;
     private final ContentStore store;
-    private final ContentRenderer renderer;
+    private long consumedBackDownTime = -1L;
+    private final com.icar03.content.host.ContentComposeHost renderer;
 
     private ContentRuntime(Activity activity, ViewGroup host) {
         ownerActivity = new WeakReference<>(activity);
         this.host = host;
         store = new ContentStore(host.getContext());
         store.setThemeMode(lastAmapThemeMode);
-        renderer = new ContentRenderer(contentContext(host.getContext()), host, store,
-                lastAmapThemeMode);
+        renderer = new com.icar03.content.host.ContentComposeHost(host.getContext(), host, store);
     }
 
     static Context contentContext(Context original) {
@@ -54,8 +54,14 @@ public final class ContentRuntime {
         }
         ViewGroup host = (ViewGroup) hostView;
         readInitialAmapTheme();
-        Activity activity = host.getContext() instanceof Activity
-                ? (Activity) host.getContext() : null;
+        Context context = host.getContext();
+        while (context instanceof android.content.ContextWrapper
+                && !(context instanceof Activity)) {
+            Context base = ((android.content.ContextWrapper) context).getBaseContext();
+            if (base == context) break;
+            context = base;
+        }
+        Activity activity = context instanceof Activity ? (Activity) context : null;
         synchronized (LOCK) {
             if (activeRuntime != null && activeRuntime.host == host) {
                 activeRuntime.store.setThemeMode(lastAmapThemeMode);
@@ -65,7 +71,6 @@ public final class ContentRuntime {
                 activeRuntime.destroy();
             }
             activeRuntime = new ContentRuntime(activity, host);
-            activeRuntime.renderer.build();
             if (!Float.isNaN(lastDividerX)) {
                 activeRuntime.renderer.updateDivider(
                         lastDividerX, lastExpandedDividerX, lastMapWidth);
@@ -86,9 +91,39 @@ public final class ContentRuntime {
         }
     }
 
+    public static boolean onBackPressed(Activity activity) {
+        synchronized (LOCK) {
+            return activeRuntime != null && activeRuntime.ownerActivity.get() == activity
+                    && activeRuntime.renderer.handleBack();
+        }
+    }
+
+    public static boolean onBackKeyDown(Activity activity, android.view.KeyEvent event) {
+        synchronized (LOCK) {
+            if (activeRuntime == null || activeRuntime.ownerActivity.get() != activity) return false;
+            if (activeRuntime.consumedBackDownTime == event.getDownTime()) {
+                if (event.isCanceled()) activeRuntime.consumedBackDownTime = -1L;
+                return true;
+            }
+            if (event.isCanceled() || !activeRuntime.renderer.handleBack()) return false;
+            activeRuntime.consumedBackDownTime = event.getDownTime();
+            return true;
+        }
+    }
+
+    public static boolean onBackKeyUp(Activity activity, android.view.KeyEvent event) {
+        synchronized (LOCK) {
+            if (activeRuntime == null || activeRuntime.ownerActivity.get() != activity
+                    || activeRuntime.consumedBackDownTime != event.getDownTime()) return false;
+            activeRuntime.consumedBackDownTime = -1L;
+            return true;
+        }
+    }
+
     public static void onHostPaused(Activity activity) {
         synchronized (LOCK) {
             if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
+                activeRuntime.consumedBackDownTime = -1L;
                 activeRuntime.renderer.pause();
             }
         }
@@ -169,5 +204,6 @@ public final class ContentRuntime {
 
     private void destroy() {
         renderer.destroy();
+        store.destroy();
     }
 }
