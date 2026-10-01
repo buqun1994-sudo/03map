@@ -59,15 +59,38 @@ public final class ContentStore {
     private long pendingSourceRequestId;
     private Runnable sourceTimeout;
     private boolean destroyed;
+    private final ContentPorts.LyricsPort lyricsPort;
+    private final com.icar03.content.runtime.lyrics.ContentLyricsTimeline lyricsTimeline =
+            new com.icar03.content.runtime.lyrics.ContentLyricsTimeline();
+    private ContentPorts.MediaSnapshot latestMedia = ContentPorts.MediaSnapshot.unavailable();
+    private int lyricsConsumers;
+    private android.graphics.Bitmap fallbackArtwork;
+    private final Runnable advanceLyrics = new Runnable() {
+        @Override public void run() {
+            boolean changed;
+            synchronized (ContentStore.this) {
+                if (destroyed || lyricsConsumers == 0) return;
+                changed = alignLyricsLocked();
+            }
+            if (changed) publish();
+        }
+    };
 
     public ContentStore(Context context) {
         this(context, new ContentVehicleAdapter(context), new ContentMediaAdapter(context),
-                new ContentPorts.AndroidSystemPort(context));
+                new ContentPorts.AndroidSystemPort(context),
+                new com.icar03.content.runtime.lyrics.ContentLyricsEngine(context));
     }
 
     /** The store owns injected ports and stops them when destroyed. */
     public ContentStore(Context context, ContentPorts.VehiclePort vehiclePort,
             ContentPorts.MediaPort mediaPort, ContentPorts.SystemPort systemPort) {
+        this(context, vehiclePort, mediaPort, systemPort, null);
+    }
+
+    public ContentStore(Context context, ContentPorts.VehiclePort vehiclePort,
+            ContentPorts.MediaPort mediaPort, ContentPorts.SystemPort systemPort,
+            ContentPorts.LyricsPort lyricsPort) {
         if (vehiclePort == null || mediaPort == null || systemPort == null) {
             throw new IllegalArgumentException("Content ports must not be null");
         }
@@ -75,6 +98,7 @@ public final class ContentStore {
         this.vehiclePort = vehiclePort;
         this.mediaPort = mediaPort;
         this.systemPort = systemPort;
+        this.lyricsPort = lyricsPort;
         preferenceStore.load(state);
         acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable());
         acceptMediaSnapshot(ContentPorts.MediaSnapshot.unavailable());
@@ -140,6 +164,8 @@ public final class ContentStore {
         synchronized (this) {
             destroyed = true;
         }
+        commandHandler.removeCallbacks(advanceLyrics);
+        if (lyricsPort != null) lyricsPort.stop();
         commandHandler.removeCallbacks(commandTimeout);
         commandHandler.removeCallbacks(mediaFeedbackTimeout);
         if (sourceTimeout != null) commandHandler.removeCallbacks(sourceTimeout);
@@ -252,6 +278,21 @@ public final class ContentStore {
         }
         synchronized (this) {
             if (destroyed || snapshot.dataAvailable && snapshot.generation < state.mediaGeneration) return;
+            boolean newRecording = !snapshot.recordingKey().equals(state.mediaRecordingKey);
+            latestMedia = snapshot;
+            if (newRecording || !snapshot.dataAvailable || snapshot.preview) {
+                state.lyricsLines = java.util.Collections.emptyList();
+                state.lyricsStatus = ContentPorts.LyricsSnapshot.EMPTY;
+                state.lyricsActiveIndex = -1;
+                state.lyricsTimelineReady = false;
+                fallbackArtwork = null;
+            }
+            state.mediaRecordingKey = snapshot.recordingKey();
+            state.mediaId = snapshot.mediaId;
+            state.mediaAlbum = snapshot.album;
+            state.mediaDurationMs = snapshot.durationMs;
+            if (snapshot.dataAvailable && !snapshot.preview) lyricsTimeline.update(snapshot);
+            else lyricsTimeline.reset();
             state.mediaDataAvailable = snapshot.dataAvailable;
             state.mediaPreview = snapshot.preview;
             String mediaSource = snapshot.source == null || snapshot.source.isEmpty()
@@ -265,7 +306,8 @@ public final class ContentStore {
                     ? "未连接" : snapshot.artist;
             state.mediaPlaybackAvailable = snapshot.playbackAvailable;
             state.mediaNextAvailable = snapshot.nextAvailable;
-            state.mediaArtwork = snapshot.artwork;
+            state.mediaArtwork = snapshot.artwork != null && !snapshot.artwork.isRecycled()
+                    ? snapshot.artwork : fallbackArtwork;
             if (!state.pendingSource.isEmpty() && snapshot.dataAvailable && !snapshot.preview
                     && state.pendingSource.equals(mediaSource)) {
                 finishSourceCommandLocked(true, "");
@@ -282,8 +324,79 @@ public final class ContentStore {
                     commandHandler.removeCallbacks(mediaFeedbackTimeout);
                 }
             }
+            alignLyricsLocked();
         }
         publish();
+        synchronized (this) {
+            if (!destroyed && lyricsConsumers > 0 && lyricsPort != null && latestMedia == snapshot) {
+                lyricsPort.update(snapshot);
+            }
+        }
+    }
+
+    /** Binding leases suspend requests/timeline work while the content host is stopped. */
+    public synchronized void startLyrics() {
+        if (destroyed || ++lyricsConsumers != 1) return;
+        if (lyricsPort != null) {
+            lyricsPort.start(new ContentPorts.LyricsSnapshotListener() {
+                @Override public void onLyricsSnapshot(ContentPorts.LyricsSnapshot snapshot) {
+                    acceptLyricsSnapshot(snapshot);
+                }
+            });
+            lyricsPort.update(latestMedia);
+        }
+        alignLyricsLocked();
+    }
+
+    public synchronized void stopLyrics() {
+        if (lyricsConsumers == 0 || --lyricsConsumers != 0) return;
+        commandHandler.removeCallbacks(advanceLyrics);
+        if (lyricsPort != null) lyricsPort.stop();
+    }
+
+    public void acceptLyricsSnapshot(ContentPorts.LyricsSnapshot snapshot) {
+        synchronized (this) {
+            if (destroyed || lyricsConsumers == 0 || snapshot == null
+                    || !state.mediaDataAvailable || state.mediaPreview
+                    || snapshot.mediaGeneration != state.mediaGeneration
+                    || !snapshot.recordingKey.equals(state.mediaRecordingKey)) return;
+            state.lyricsStatus = snapshot.status;
+            state.lyricsLines = snapshot.lines;
+            if (snapshot.artwork != null && !snapshot.artwork.isRecycled()) {
+                fallbackArtwork = snapshot.artwork;
+                if (latestMedia.artwork == null || latestMedia.artwork.isRecycled())
+                    state.mediaArtwork = fallbackArtwork;
+            }
+            alignLyricsLocked();
+        }
+        publish();
+    }
+
+    private boolean alignLyricsLocked() {
+        commandHandler.removeCallbacks(advanceLyrics);
+        int previous = state.lyricsActiveIndex;
+        boolean previouslyReady = state.lyricsTimelineReady;
+        state.lyricsTimelineReady = lyricsTimeline.ready();
+        int index = -1;
+        long position = lyricsTimeline.positionMs();
+        for (int i = 0; i < state.lyricsLines.size(); i++) {
+            if (state.lyricsLines.get(i).timeMs > position) break;
+            index = i;
+        }
+        // Unknown progress may preview the first matched line while playing, but pause keeps the
+        // currently displayed line; neither case advances the timeline.
+        if (!state.lyricsTimelineReady) {
+            index = state.mediaPlaying && !state.lyricsLines.isEmpty() ? 0
+                    : previous >= 0 && previous < state.lyricsLines.size() ? previous : -1;
+        }
+        state.lyricsActiveIndex = index;
+        if (!destroyed && lyricsConsumers > 0 && state.mediaPlaying && state.lyricsTimelineReady
+                && lyricsTimeline.speed() > 0f && index + 1 < state.lyricsLines.size()) {
+            long remaining = state.lyricsLines.get(index + 1).timeMs - position;
+            long delay = Math.max(16L, (long) Math.ceil(remaining / lyricsTimeline.speed()));
+            commandHandler.postDelayed(advanceLyrics, delay);
+        }
+        return previous != index || previouslyReady != state.lyricsTimelineReady;
     }
 
     public void cycleSeatLevel(String seatId) {

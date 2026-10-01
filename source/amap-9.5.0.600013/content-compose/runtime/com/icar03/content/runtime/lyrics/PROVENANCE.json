@@ -1,0 +1,204 @@
+{
+  "sourceProject": "03lyrics",
+  "historicalUpstream": "https://github.com/tcrrry/desktop-lyrics",
+  "projectSource": "https://github.com/buqun1994-sudo/03lyrics",
+  "sourcePolicy": "03lyrics/AGENTS.md: disk production source is engineering truth; upstream root contains no license file; migration does not create a new license or public release authorization. Existing source attribution is preserved.",
+  "scope": "Lyrics matching/search/cache/cancellation/line parsing/timeline only. No overlays, accessibility, windows, settings, commercial runtime, APK identity or assets.",
+  "files": [
+    {
+      "destination": "RecordingIdentity.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/RecordingIdentity.kt",
+      "sourceSha256": "6982f80824db9dd7e06523fce3a162302c40799c42c1d4cea2531db425bca6d8",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "RecordingEvidence.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/RecordingEvidence.kt",
+      "sourceSha256": "33ab0441ce68c5cbbf94211d8c1d369e5a20173497d9adf5fa6b5ab0450b57bd",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "LyricsResolutionModels.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsResolutionModels.kt",
+      "sourceSha256": "86d7d1667d1a43706c913c66ee75e33899bce1ed970d479366f9f5fab6f1ce26",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "LyricsSource.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsSource.kt",
+      "sourceSha256": "c88fd1f511de9e9674d3a85a396f77b7f1ad6a6df0b95130744c95411df06639",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "LyricsSearchPlanner.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsSearchPlanner.kt",
+      "sourceSha256": "000268b5d6d27ea50857492d832150b90b0d62a84d52e8ffb7309f9a8dcb586c",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "LyricsCandidateSelector.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsCandidateSelector.kt",
+      "sourceSha256": "4e9ab260e968fa6ea301c4532e3d74fd1a333d2decdb92d959404d412e7a6e48",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained",
+        "Cover fallback also requires matching duration and album whenever these public media fields are known; automatic lyrics admission/ranking/proof policy is unchanged"
+      ]
+    },
+    {
+      "destination": "LyricsResolutionSession.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsResolutionSession.kt",
+      "sourceSha256": "beb63af8b1d06fffa9dd831bc81b39ce034e9407bdc8df922565c7dd04f0c067",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "DirectLyricsRepository.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/DirectLyricsRepository.kt",
+      "sourceSha256": "cd04faa97bfb85321c428a8ef48f0e23321a15d09ad3cfe3de59fe1f8bb9aea8",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained",
+        "Map log tag"
+      ]
+    },
+    {
+      "destination": "PublicLyricsSources.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/PublicLyricsSources.kt",
+      "sourceSha256": "1cb6fa12f638c3e96e64fcfdf1082582b684577738cdee40e0c5ac29bd65a55c",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "LyricsResolutionCoordinator.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsResolutionCoordinator.kt",
+      "sourceSha256": "f6c41831117276484648525b9bd84d2a9b50152d8621d6e739a1aabfcfe5f74b",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "LyricsCache.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsCache.kt",
+      "sourceSha256": "dace9b1f3289e062139e0a8ed8e4eeb7f7636db82ec53ab1fd81ef00e4691224",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained",
+        "Map log tag",
+        "Separate private map cache database name"
+      ]
+    },
+    {
+      "destination": "MediaSessionMetadataPolicy.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/MediaSessionMetadataPolicy.kt",
+      "sourceSha256": "58dc9c3dcf63309c3483a25bbfeb0895216a271bfc44c0ffa20901c5fca2cfe7",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained"
+      ]
+    },
+    {
+      "destination": "MediaSessionTimelineTracker.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/MediaSessionTimelineTracker.kt",
+      "sourceSha256": "d4ae390e9a315eb4ed06c0531855fbdff3e0bba54cfab687544c0a79cc28a0bc",
+      "adaptations": [
+        "Kotlin package relocated to map runtime",
+        "Source attribution retained",
+        "Read-only current(durationMs) samples the established monotonic anchor; it never treats a UI wake-up as a publisher event"
+      ]
+    },
+    {
+      "destination": "LyricsCacheModels.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsSettingsModels.kt",
+      "sourceSha256": "a94e175ceec418088d8b110a398b0830ce6e9798bf9e60791cbc592dc7c67eba",
+      "sourceLines": [
+        "99-229",
+        "311-368"
+      ],
+      "adaptations": [
+        "Only cache identity/statistics/selection/manual ranking domain types retained; display preferences, settings state and broadcasts omitted",
+        "LyricsPlaybackCache narrow interface extracted from LyricsPlaybackStore.kt lines 399-406"
+      ]
+    },
+    {
+      "destination": "LyricsCacheModels.kt",
+      "source": "app/src/main/kotlin/com/ninepointnine/desktoplyrics/LyricsPlaybackStore.kt",
+      "sourceSha256": "bdd773d5f949676ce8f7e8fdb2927be85c59e1aa88f9ed181964cf64fc877bef",
+      "sourceLines": [
+        "399-406"
+      ],
+      "adaptations": [
+        "Cache interface only; no second playback Store"
+      ]
+    },
+    {
+      "destination": "LrcParser.kt",
+      "source": "app/src/main/assets/lyrics_overlay.html",
+      "sourceSha256": "c19e596423271cab6b6e714466c6feb81813479334fe78e345db2b230a59a11c",
+      "sourceLines": [
+        "488-558"
+      ],
+      "adaptations": [
+        "Native Kotlin line parser and same-source translation alignment; HTML/WebView not included"
+      ]
+    }
+  ],
+  "localAdapters": [
+    {
+      "file": "ContentLyricsEngine.kt",
+      "purpose": "ContentStore-owned lifecycle effect, current recording correlation, latest-request cancellation, serialized cache IO and bounded cover fallback"
+    },
+    {
+      "file": "ContentLyricsTimeline.kt",
+      "purpose": "One Store-owned monotonic timeline, no UI clock or publisher polling"
+    },
+    {
+      "file": "LrcParser.kt",
+      "purpose": "Native line parser and one-to-one translation alignment from production HTML"
+    }
+  ],
+  "migratedTests": [
+    {
+      "destination": "LyricsResolutionCoordinatorTest.kt",
+      "source": "app/src/test/kotlin/com/ninepointnine/desktoplyrics/LyricsResolutionCoordinatorTest.kt",
+      "sourceSha256": "74fdd1fbe81544be338a35debd6b5c5b0e86fb76987ed58de9c6e7641ffa4212",
+      "adaptations": [
+        "Package relocated; original behavior tests retained"
+      ]
+    },
+    {
+      "destination": "LyricsSearchPlannerTest.kt",
+      "source": "app/src/test/kotlin/com/ninepointnine/desktoplyrics/LyricsSearchPlannerTest.kt",
+      "sourceSha256": "5ce70f781ae889d5fb26dba09373f44f32c93c84d9757f077a4df691394e1eff",
+      "adaptations": [
+        "Package relocated; original behavior tests retained"
+      ]
+    }
+  ],
+  "newTests": [
+    "LrcParserTest.kt",
+    "ContentLyricsTimelineTest.kt",
+    "LyricsAdmissionCacheTest.kt",
+    "ContentLyricsEngineTest.kt"
+  ]
+}

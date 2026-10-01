@@ -72,6 +72,12 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 source = source, targetSource = MediaSource.entries.firstOrNull { it.label == state.pendingSource }, available = realMedia,
                 playbackAvailable = realMedia && state.mediaPlaybackAvailable,
                 nextAvailable = realMedia && state.mediaNextAvailable, sourceAvailable = capabilities.source),
+            lyrics = if (metadataReady) LyricsState(
+                recordingKey = state.mediaRecordingKey,
+                lines = state.lyricsLines.map { LyricLine(it.timeMs, it.text, it.translation) },
+                activeIndex = state.lyricsActiveIndex, loading = state.lyricsStatus == ContentPorts.LyricsSnapshot.LOADING,
+                timelineReady = state.lyricsTimelineReady,
+            ) else LyricsState(),
             message = state.commandMessage.takeIf { state.commandStatus == ContentState.COMMAND_FAILED && it.isNotBlank() },
         )
     }

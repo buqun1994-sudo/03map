@@ -2,13 +2,13 @@
 
 > **职责：** 只记录当前状态、已完成闭环、阻断和下一步。历史细节分别留在代码地图、研究文档、验证矩阵和归档文档，不在这里复制流水账。
 
-## 当前状态：第四轮反馈及末帧修正完成，实车未验收
+## 当前状态：03歌词与媒体氛围主链完成，车机实测阻断
 
-沿唯一Store完成本轮五项反馈：浅色完整恢复保存提交`8fd9bec`的E9／E4／E2和白Dock／菜单；深色两滑条填充统一选中48；爱趣听恢复原厂简笔线图；三类主驾座椅及五来源消费真实原厂路径；去掉应用自加P档／零速拒绝，驾驶条件由原车系统处理。共享`OemIcon.kt`正向单次播放、保留同一Drawable末帧，冷缓存保持上一实际帧后原子进0，快速回切不冻结中间帧；未新增业务真值副本。
+沿唯一 `ContentMediaAdapter → ContentStore → ContentBinding / ContentUiMapper → Compose` 主链完成03歌词正式接入：歌词解析／候选准入／proof缓存／内置LRC／可信时间线和受门禁封面回退均由 `ContentLyricsEngine` 持有；中间留白直接绘制透明壁纸歌词视窗，未知进度播放只预览首句，暂停保留已显示句。媒体适配器保留来源隔离，接入原生Bitmap、标准URI有界解码和公开MediaBrowser来源证据；播放时后台生成封面色场，由API28兼容Canvas网格缓慢流动，暂停／切歌／无封面／生命周期停止清除。
 
-最终137/137（UI67／Runtime36／Host23／Preview11）、四Lint、OEM86／25 Lottie、56＋3依赖锁、文档导航与正式签名构建及同包宿主门禁均通过。当前候选为[signed.apk](../apk-work/9.5.0.600013/source-build.4kLb0D/signed.apk)，158340448 bytes，SHA `486c0e4280033fbda1a693e1de5315f6899b0ff43be8a7cca1a21a48092970dc`；包内25原厂动画和manifest与正式源码字节相同。原签名／包身份／5408 IDs／63地图库哈希保持。
+本轮UI69项、runtime82项共151项测试，失败／错误／跳过0；文档、Skill、代码地图和差异检查通过。正式源码签名构建及宿主门禁通过，交付包为 [signed.apk](../apk-work/9.5.0.600013/source-build.wWgamn/signed.apk)，158475616 bytes，SHA `564d58bd0c01858c7575d11b9c72e7a651b9b78f03b7b7e7ded83e4f7df0efa5`；包身份 `com.autonavi.amapautolite`、版本 `9.5.0.600013`／`26000001`，证书 SHA `a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc` 保持，原63个native哈希和5408个原public resource ID不变。完整证据见[03歌词与媒体氛围主链验证记录](testing/03歌词与媒体氛围主链验证记录-20261001.md)。
 
-本轮逐项根因、真正中间／末帧及冷缓存证据见[第四轮验证记录](testing/Compose第四轮反馈修正验证记录.md)，座椅／来源owner和帧矩阵见[研究补充](research/座椅与媒体来源原厂动画补充.md)。唯一发现入口仍未找到身份匹配车机，未安装／真实写车控；Android9视觉／帧连续性、系统限制／回读、来源／主题时序和真实充电／地图仍待同包现场确认。本轮源码与文档保留工作树，尚未提交。
+唯一设备入口 `node scripts/find-vehicle-adb.mjs --serial-only` 在392ms内扫描253个地址，未找到 S56_HQX / SDK 28目标设备；本轮未安装、启动或执行实车写入，真实媒体服务、网络歌词／封面、动态背景和地图首帧仍待同包车机现场验证。03lyrics仓库保持只读，迁移来源及适配记录在正式源码 `content-compose/runtime/com/icar03/content/runtime/lyrics/PROVENANCE.json`。
 
 ## 第三轮反馈（历史候选，实车未验收）
 

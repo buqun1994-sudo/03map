@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.roundToInt
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 /** Shared never destroys the caller's store; Owned transfers lifetime to this binding. */
 enum class StoreOwnership { Shared, Owned }
@@ -40,12 +42,17 @@ class ContentBinding(
     private val mutableAmbient = MutableStateFlow<Bitmap?>(null)
     val ambientArtwork: StateFlow<Bitmap?> = mutableAmbient.asStateFlow()
     private var ambientSource: Bitmap? = null
+    private var ambientBitmapGeneration = 0
+    private var ambientSequence = 0L
+    private var ambientJob: Future<*>? = null
+    private val artworkWorker = Executors.newSingleThreadExecutor()
 
     fun start() {
         checkMain()
         if (closed || running) return
         running = true
         val epoch = ++generation
+        store.startLyrics()
         readSystem()
         listener = ContentStore.Listener { snapshot ->
             val copy = snapshot.copy()
@@ -66,13 +73,18 @@ class ContentBinding(
         checkMain()
         if (!running) return
         running = false
+        store.stopLyrics()
         generation++
+        ambientSequence++
+        ambientJob?.cancel(true)
+        ambientJob = null
         listener?.let(store::removeListener)
         listener = null
         handler.removeCallbacksAndMessages(null)
         sourcesOpen = false
         feedback = null
         mutableArtwork.value = null
+        mutableAmbient.value?.takeUnless { it.isRecycled }?.recycle()
         mutableAmbient.value = null
         ambientSource = null
         mutableState.value = inactive(mutableState.value)
@@ -90,6 +102,7 @@ class ContentBinding(
         if (closed) return
         stop()
         closed = true
+        artworkWorker.shutdownNow()
         if (ownership == StoreOwnership.Owned) store.destroy()
     }
 
@@ -167,11 +180,36 @@ class ContentBinding(
         val projected = mapper.map(snapshot, brightness, volume, RuntimeCapabilities(
             store.isVehicleControlAvailable, store.isLockControlAvailable, store.isMediaSourceAvailable))
         mutableState.value = projected.copy(sourcesOpen = sourcesOpen, message = feedback ?: projected.message)
-        mutableArtwork.value = snapshot.mediaArtwork?.takeIf { snapshot.mediaDataAvailable && !snapshot.mediaPreview && !it.isRecycled }
-        val source = mutableArtwork.value.takeIf { projected.media.playing }
-        if (source !== ambientSource) {
+        mutableArtwork.value = snapshot.mediaArtwork?.takeIf {
+            snapshot.mediaDataAvailable && !snapshot.mediaPreview && snapshot.pendingSource.isEmpty() && !it.isRecycled
+        }
+        val source = mutableArtwork.value.takeIf { projected.media.playing && running }
+        val bitmapGeneration = source?.generationId ?: 0
+        if (source !== ambientSource || bitmapGeneration != ambientBitmapGeneration) {
             ambientSource = source
-            mutableAmbient.value = source?.let(::softenArtwork)
+            ambientBitmapGeneration = bitmapGeneration
+            val sequence = ++ambientSequence
+            ambientJob?.cancel(true)
+            ambientJob = null
+            // Show a cheap blurred seed immediately; the richer colour field replaces it off the UI thread.
+            val seed = source?.let(::softenArtwork)
+            mutableAmbient.value?.takeUnless { it.isRecycled }?.recycle()
+            mutableAmbient.value = seed
+            if (source != null) {
+                val epoch = generation
+                ambientJob = artworkWorker.submit {
+                    val field = createAmbientField(source)
+                    handler.post {
+                        if (running && generation == epoch && ambientSequence == sequence
+                            && ambientSource === source && source.generationId == bitmapGeneration) {
+                            if (field != null) {
+                                mutableAmbient.value?.takeUnless { it.isRecycled }?.recycle()
+                                mutableAmbient.value = field
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

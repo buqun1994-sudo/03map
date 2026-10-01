@@ -1,7 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <queries>
+        <intent><action android:name="android.media.browse.MediaBrowserService" /></intent>
+        <package android:name="com.android.bluetooth" />
         <package android:name="com.tencent.wecarflow" />
         <package android:name="com.chery.virtualcarservice" />
     </queries>

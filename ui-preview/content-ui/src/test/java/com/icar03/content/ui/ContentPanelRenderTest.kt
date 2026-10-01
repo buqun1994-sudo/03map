@@ -99,6 +99,32 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test
+    fun lyricsDataUsesTransparentWallpaperViewportAndActiveIndex() {
+        val state = previewState().copy(
+            page = PanelPage.Lyrics,
+            lyrics = LyricsState(
+                recordingKey = "demo-recording",
+                lines = listOf(
+                    LyricLine(0L, "第一句", "first"),
+                    LyricLine(8_000L, "第二句", "second"),
+                ),
+                activeIndex = 1,
+                timelineReady = true,
+            ),
+        )
+        compose.setContent {
+            ContentTheme(dark) {
+                ContentPanel(state.copy(dark = dark), onEvent = { events += it }, modifier = Modifier.testTag(hostTag))
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("wallpaper-lyrics").assertIsDisplayed()
+        compose.onNode(SemanticsMatcher.expectValue(ActiveLyric, 1)).assertIsDisplayed()
+        compose.onNodeWithText("暂无歌词").assertDoesNotExist()
+        compose.onNodeWithText("此处仅预览歌词空态。").assertDoesNotExist()
+    }
+
+    @Test
     fun light_empty_state_keeps_prototype_geometry_and_disables_media() {
         compose.setContent {
             val view = LocalView.current

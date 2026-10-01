@@ -39,6 +39,8 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <queries>
         <package android:name="com.tencent.wecarflow"/>
+        <package android:name="com.android.bluetooth"/>
+        <intent><action android:name="android.media.browse.MediaBrowserService"/></intent>
         <package android:name="com.chery.virtualcarservice"/>
     </queries>
     <uses-permission android:name="com.autonavi.amapautolite_com.huawei.lbs.permission.ACCESS_BIND_LBSSERVICE"/>

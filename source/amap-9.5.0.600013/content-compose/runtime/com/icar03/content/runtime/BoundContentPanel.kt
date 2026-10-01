@@ -12,6 +12,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.autonavi.amapauto.content.ContentStore
 import com.icar03.content.ui.ContentPanel
 import com.icar03.content.ui.ContentTheme
+import com.icar03.content.ui.MediaAmbientBackground
 
 /** Does not create a store or connect a device; the caller supplies the existing store. */
 @Composable
@@ -42,13 +43,13 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier) {
     val state by binding.state.collectAsState()
     val artwork by binding.artwork.collectAsState()
     val ambient by binding.ambientArtwork.collectAsState()
-    val ambientBitmap = ambient?.takeUnless { it.isRecycled }?.asImageBitmap()
+    val ambientBitmap = ambient?.takeUnless { it.isRecycled }
     val bitmap = artwork?.takeUnless { it.isRecycled }?.asImageBitmap()
     ContentTheme(dark = state.dark) {
         ContentPanel(state, binding::dispatch, modifier,
             artwork = bitmap?.let { image -> { Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } },
             ambientBackground = ambientBitmap?.let { image ->
-                { Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                { MediaAmbientBackground(image, state.dark) }
             })
     }
 }

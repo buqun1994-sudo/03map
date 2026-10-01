@@ -29,13 +29,18 @@ data class MediaState(
     val playbackAvailable: Boolean = available, val nextAvailable: Boolean = available,
     val sourceAvailable: Boolean = available,
 ) { val pending: Boolean get() = targetPlaying != null || targetSource != null }
+data class LyricLine(val timeMs: Long, val text: String, val translation: String = "")
+data class LyricsState(
+    val recordingKey: String = "", val lines: List<LyricLine> = emptyList(),
+    val activeIndex: Int = -1, val loading: Boolean = false, val timelineReady: Boolean = false,
+)
 data class ContentUiState(
     val dark: Boolean = false, val page: PanelPage = PanelPage.Shortcuts,
     val scenario: PreviewScenario = PreviewScenario.Ready,
     val temperature: String = "25°", val time: String = "12:24", val range: String = "366",
     val controls: Map<ControlId, ControlState> = ControlId.entries.associateWith { ControlState(if (it == ControlId.Lock) 1 else 0) },
     val brightness: LevelState = LevelState(.65f), val volume: LevelState = LevelState(.38f),
-    val media: MediaState = MediaState(), val sourcesOpen: Boolean = false,
+    val media: MediaState = MediaState(), val lyrics: LyricsState = LyricsState(), val sourcesOpen: Boolean = false,
     val scenariosOpen: Boolean = false, val message: String? = null,
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,

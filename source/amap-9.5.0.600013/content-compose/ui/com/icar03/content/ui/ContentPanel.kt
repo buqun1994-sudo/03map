@@ -104,9 +104,9 @@ fun ContentPanel(
             PrototypeTopBar(state)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (state.previewMode) {
-                    Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) {
-                        if (state.page == PanelPage.Shortcuts) PrototypeGrid(state, dispatch) else LyricsCard(state, dispatch)
-                    }
+                    if (state.page == PanelPage.Shortcuts) {
+                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                    } else LyricsPage(state, dispatch)
                 } else {
                     val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
                     val currentPage by rememberUpdatedState(state.page)
@@ -122,12 +122,14 @@ fun ContentPanel(
                     }
                     HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages")) { index ->
                         CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
-                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) {
-                            if (PanelPage.entries[index] == PanelPage.Shortcuts) PrototypeGrid(state, dispatch) else LyricsCard(state, dispatch)
-                            if (state.message != null) Text(state.message,
-                                Modifier.padding(vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        if (PanelPage.entries[index] == PanelPage.Shortcuts) {
+                            Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) {
+                                PrototypeGrid(state, dispatch)
+                                if (state.message != null) Text(state.message,
+                                    Modifier.padding(vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        } else LyricsPage(state, dispatch)
                         }
                     }
                 }
@@ -386,7 +388,7 @@ private fun PrototypeMediaCard(media: MediaState, onEvent: (ContentEvent) -> Uni
     val icon = if (compact) 28.dp else 42.dp
     Surface(Modifier.fillMaxSize().testTag("media-card").downwardSoftShadow(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.background.luminance() < 0.2f), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 0.dp) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.width(if (compact) 48.dp else 120.dp).fillMaxHeight(), color = MaterialTheme.colorScheme.surfaceVariant) {
+            Surface(Modifier.width(if (compact) 72.dp else 120.dp).fillMaxHeight(), color = MaterialTheme.colorScheme.surfaceVariant) {
                 Box(contentAlignment = Alignment.Center) { if (artwork != null) artwork() else OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(48.dp), "音乐封面") }
             }
             Column(Modifier.weight(1f).padding(horizontal = if (compact) 4.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -538,25 +540,29 @@ private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) 
 }
 
 @Composable
-private fun LyricsCard(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+    if (state.lyrics.lines.isNotEmpty()) {
+        androidx.compose.runtime.key(state.lyrics.recordingKey) {
+            WallpaperLyrics(state.lyrics, state.dark)
+        }
+        return
+    }
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    Surface(Modifier.fillMaxWidth().height(286.dp), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 1.dp) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(24.dp))
-            Text("暂无歌词", style = MaterialTheme.typography.headlineMedium)
-            if (!state.previewMode && state.media.sourceAvailable) TextButton(
-                onClick = { onEvent(ContentEvent.OpenSources) },
-                modifier = Modifier.heightIn(min = 48.dp).testTag("lyrics-source-action"),
-                interactionSource = interactions,
-            ) {
-                CompositionLocalProvider(LocalIconPressed provides pressed) {
-                    OemIcon(sourceIcon(state.media.targetSource ?: state.media.source), Modifier.size(24.dp), tint = sourceTint(), animateOnPress = true, animateOnAction = false)
-                }
-                Spacer(Modifier.width(8.dp))
-                Text("选择媒体来源")
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).testTag("lyrics-empty"),
+        verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.Start) {
+        Text(if (state.lyrics.loading) "正在匹配歌词…" else "暂无歌词", style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground)
+        if (!state.previewMode && state.media.sourceAvailable) TextButton(
+            onClick = { onEvent(ContentEvent.OpenSources) },
+            modifier = Modifier.padding(top = 12.dp).heightIn(min = 48.dp).testTag("lyrics-source-action"),
+            interactionSource = interactions,
+        ) {
+            CompositionLocalProvider(LocalIconPressed provides pressed) {
+                OemIcon(sourceIcon(state.media.targetSource ?: state.media.source), Modifier.size(24.dp), tint = sourceTint(), animateOnPress = true, animateOnAction = false)
             }
-            if (state.previewMode) Text("此处仅预览歌词空态。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(8.dp))
+            Text("选择媒体来源")
         }
     }
 }

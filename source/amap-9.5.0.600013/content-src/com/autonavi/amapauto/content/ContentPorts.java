@@ -183,6 +183,14 @@ public final class ContentPorts {
         public final boolean playbackAvailable;
         public final boolean nextAvailable;
         public final Bitmap artwork;
+        public final String mediaId;
+        public final String album;
+        public final long durationMs;
+        public final long positionMs;
+        /** Publisher's monotonic lastPositionUpdateTime; zero means unavailable. */
+        public final long positionElapsedRealtimeMs;
+        public final float playbackSpeed;
+        public final String embeddedLyrics;
 
         public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
                 boolean playing, int generation, String title, String artist,
@@ -194,6 +202,25 @@ public final class ContentPorts {
         public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
                 boolean playing, int generation, String title, String artist,
                 boolean playbackAvailable, boolean nextAvailable, Bitmap artwork) {
+            this(dataAvailable, preview, source, playing, generation, title, artist,
+                    playbackAvailable, nextAvailable, artwork, "", "", 0L, -1L, 0L, 0f);
+        }
+
+        public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
+                boolean playing, int generation, String title, String artist,
+                boolean playbackAvailable, boolean nextAvailable, Bitmap artwork,
+                String mediaId, String album, long durationMs, long positionMs,
+                long positionElapsedRealtimeMs, float playbackSpeed) {
+            this(dataAvailable, preview, source, playing, generation, title, artist,
+                    playbackAvailable, nextAvailable, artwork, mediaId, album, durationMs,
+                    positionMs, positionElapsedRealtimeMs, playbackSpeed, "");
+        }
+
+        public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
+                boolean playing, int generation, String title, String artist,
+                boolean playbackAvailable, boolean nextAvailable, Bitmap artwork,
+                String mediaId, String album, long durationMs, long positionMs,
+                long positionElapsedRealtimeMs, float playbackSpeed, String embeddedLyrics) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.source = source;
@@ -204,11 +231,70 @@ public final class ContentPorts {
             this.playbackAvailable = playbackAvailable;
             this.nextAvailable = nextAvailable;
             this.artwork = artwork;
+            this.mediaId = mediaId == null ? "" : mediaId;
+            this.album = album == null ? "" : album;
+            this.durationMs = Math.max(0L, durationMs);
+            this.positionMs = Math.max(-1L, positionMs);
+            this.positionElapsedRealtimeMs = Math.max(0L, positionElapsedRealtimeMs);
+            this.playbackSpeed = Float.isNaN(playbackSpeed) || Float.isInfinite(playbackSpeed)
+                    ? 0f : playbackSpeed;
+            this.embeddedLyrics = embeddedLyrics == null ? "" : embeddedLyrics;
+        }
+
+        /** Transport correlation only; matching/cache identity belongs to the lyrics core. */
+        public String recordingKey() {
+            return String.valueOf(source) + '\u001f' + mediaId + '\u001f'
+                    + String.valueOf(title) + '\u001f' + String.valueOf(artist) + '\u001f'
+                    + album + '\u001f' + durationMs;
         }
 
         public static MediaSnapshot unavailable() {
             return new MediaSnapshot(false, false, "本机", false, 0,
                     "暂无媒体", "未连接", false, false);
+        }
+    }
+
+    public interface LyricsSnapshotListener {
+        void onLyricsSnapshot(LyricsSnapshot snapshot);
+    }
+
+    public interface LyricsPort {
+        void start(LyricsSnapshotListener listener);
+        void update(MediaSnapshot snapshot);
+        void stop();
+    }
+
+    public static final class LyricsLine {
+        public final long timeMs;
+        public final String text;
+        public final String translation;
+
+        public LyricsLine(long timeMs, String text, String translation) {
+            this.timeMs = Math.max(0L, timeMs);
+            this.text = text == null ? "" : text;
+            this.translation = translation == null ? "" : translation;
+        }
+    }
+
+    public static final class LyricsSnapshot {
+        public static final int EMPTY = 0;
+        public static final int LOADING = 1;
+        public static final int READY = 2;
+        public static final int UNAVAILABLE = 3;
+        public final String recordingKey;
+        public final int mediaGeneration;
+        public final int status;
+        public final java.util.List<LyricsLine> lines;
+        public final Bitmap artwork;
+
+        public LyricsSnapshot(String recordingKey, int mediaGeneration, int status,
+                java.util.List<LyricsLine> lines, Bitmap artwork) {
+            this.recordingKey = recordingKey == null ? "" : recordingKey;
+            this.mediaGeneration = mediaGeneration;
+            this.status = status;
+            this.lines = java.util.Collections.unmodifiableList(new java.util.ArrayList<>(
+                    lines == null ? java.util.Collections.<LyricsLine>emptyList() : lines));
+            this.artwork = artwork;
         }
     }
 
