@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.width
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -166,7 +167,8 @@ open class ContentPanelLightPrototypeRenderTest {
             assertTrue("source groups share one left starting point", kotlin.math.abs(group.left.value - cloudGroup.left.value) <= 1)
             assertTrue("source text must fit menu", label.right <= menu.right - 8.dp)
         }
-        compose.onNodeWithTag("source-icon-AiMusic", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemTint, androidx.compose.ui.graphics.Color.Unspecified.value.toLong()))
+        compose.onNodeWithTag("source-icon-AiMusic", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemTint, (if (dark) androidx.compose.ui.graphics.Color(0xFFE8E8E8) else androidx.compose.ui.graphics.Color(0xFF27303B)).value.toLong()))
+        compose.onNodeWithTag("source-icon-AiMusic", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_media_aiquting))
         compose.onNodeWithTag("source-Bluetooth").assertIsSelected()
         captureHost("prototype-sources")
         MediaSource.entries.forEach { source ->
@@ -254,13 +256,13 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun roundedPressFeedbackIsLocalAnimatedAndDisabledDoesNotFire() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, controls = previewState().controls + (ControlId.Lock to ControlState(actual = 0))))
         mountInteractionState(state)
         val transparent = androidx.compose.ui.graphics.Color.Transparent.value.toLong()
         val selected = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
         val baseline = captureHost("press-baseline")
         val selectedPixel = baseline.getPixel(selected.left.toInt() + 3, selected.center.y.toInt())
-        val expectedSelected = if (dark) android.graphics.Color.rgb(45, 45, 45) else android.graphics.Color.rgb(228, 228, 228)
+        val expectedSelected = if (dark) android.graphics.Color.rgb(72, 72, 72) else android.graphics.Color.rgb(228,228,228)
         assertTrue("selected fill must cover the full slot beyond its inner press area", selectedPixel == expectedSelected)
         compose.mainClock.autoAdvance = false
         listOf("dock-Lock", "dock-Ventilation", "media-play", "media-next", "source-button").forEach { tag ->
@@ -272,7 +274,7 @@ open class ContentPanelLightPrototypeRenderTest {
             val color = node.fetchSemanticsNode().config[PressBackground]
             if (tag.startsWith("dock-")) {
                 assertTrue("Dock press must have no rectangular background", color == transparent)
-                assertTrue("Dock shares shortcut micro scale feedback", node.fetchSemanticsNode().config[PressScale] < .97f)
+                assertTrue("Dock icon retains subtle deformation alongside shared touch-origin Ripple", node.fetchSemanticsNode().config[PressScale] < .97f)
             } else assertTrue("held media press must animate to nontransparent color: $tag", color != transparent)
             val outer = node.fetchSemanticsNode().boundsInRoot
             val inner = compose.onNodeWithTag("$tag-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
@@ -402,7 +404,7 @@ open class ContentPanelLightPrototypeRenderTest {
             val color = androidx.compose.ui.graphics.Color(play.fetchSemanticsNode().config[PressBackground].toULong())
             assertTrue("media opacity must rise monotonically", color.alpha >= previous)
             if (color.alpha > 0f) {
-                val rgb = if (dark) 65f / 255 else 226f / 255
+                val rgb = if (dark) 92f / 255 else 226f / 255
                 assertTrue("media fill RGB remains fixed instead of flashing black", kotlin.math.abs(color.red - rgb) < .005f && kotlin.math.abs(color.green - rgb) < .005f && kotlin.math.abs(color.blue - rgb) < .005f)
             }
             previous = color.alpha
@@ -411,6 +413,348 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.mainClock.advanceTimeBy(320)
         play.assert(SemanticsMatcher.expectValue(PressBackground, androidx.compose.ui.graphics.Color.Transparent.value.toLong()))
         compose.mainClock.autoAdvance = true
+    }
+
+
+    @Test fun selectionContrastAndDockGeometryFollowDisplayedTruth() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(controls = previewState().controls +
+            (ControlId.Lock to ControlState(actual = 0)) + (ControlId.Ventilation to ControlState(actual = 2))))
+        mountInteractionState(state)
+        compose.onNodeWithTag("control-Lock").assertIsSelected()
+        compose.onNodeWithTag("dock-Lock").assertIsSelected()
+        compose.onNodeWithTag("control-Ventilation").assertIsSelected()
+        compose.onNodeWithTag("dock-Ventilation").assertIsSelected()
+        val frame = captureHost("selection-contrast")
+        val expectedFill = if (dark) android.graphics.Color.rgb(72,72,72) else android.graphics.Color.WHITE
+        for (tag in listOf("brightness-fill", "volume-fill")) {
+            val fill = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertTrue("slider fill uses selected light layer in dark and original white in light", frame.getPixel(fill.left.toInt()+5, fill.top.toInt()+5) == expectedFill)
+        }
+        fun sample(tag: String): Int {
+            val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            return frame.getPixel(bounds.left.toInt() + 3, bounds.top.toInt() + bounds.height.toInt() / 2)
+        }
+        val selected = if (dark) android.graphics.Color.rgb(72,72,72) else android.graphics.Color.rgb(228,228,228)
+        val normal = if (dark) android.graphics.Color.rgb(26,26,26) else android.graphics.Color.rgb(233,233,233)
+        assertTrue("unlock selected fills whole dock slot", sample("dock-Lock") == selected)
+        assertTrue("selected ventilation does not fill entire dock slot", sample("dock-Ventilation") == (if (dark) normal else android.graphics.Color.WHITE))
+        assertTrue("selected shortcut follows theme selection", sample("control-Ventilation") == selected)
+        assertTrue("nonselected shortcut is darker", sample("control-Heating") == normal)
+        val inner = compose.onNodeWithTag("dock-Ventilation-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("seat selected rectangle matches media button geometry", frame.getPixel(inner.left.toInt()+5, inner.center.y.toInt()) == selected)
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Lock to ControlState(actual = 1))) }
+        compose.onNodeWithTag("control-Lock").assertIsNotSelected()
+        compose.onNodeWithTag("dock-Lock").assertIsNotSelected()
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Lock to ControlState(actual = 1, target = 0))) }
+        compose.onNodeWithTag("dock-Lock").assertIsSelected().assertIsNotEnabled()
+        compose.runOnIdle { state.value = state.value.copy(sourcesOpen = true) }
+        val menu = captureHost("menu-contrast")
+        val bounds = compose.onNodeWithTag("sources-menu").fetchSemanticsNode().boundsInRoot
+        val row = compose.onNodeWithTag("source-Bluetooth").fetchSemanticsNode().boundsInRoot
+        assertTrue("menu follows restored light and retained dark surface", menu.getPixel(bounds.left.toInt()+3, bounds.center.y.toInt()) == (if (dark) normal else android.graphics.Color.WHITE))
+        assertTrue("selected source follows theme layer", menu.getPixel(row.left.toInt()+4, row.center.y.toInt()) == (if (dark) selected else normal))
+    }
+
+    @Test fun touchOriginRippleAndIconMotionAreSharedWithoutDoubleSound() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState())
+        mountInteractionState(state)
+        com.autonavi.amapauto.jni.GAdaAndroid.clicks = 0
+        compose.mainClock.autoAdvance = false
+        for ((button, icon) in listOf("control-Ventilation" to "shortcut-icon-Ventilation", "dock-Ventilation" to "dock-icon-Ventilation")) {
+            val node = compose.onNodeWithTag(button)
+            node.assert(SemanticsMatcher.expectValue(PressFeedback, "touch-ripple"))
+            node.performTouchInput { down(androidx.compose.ui.geometry.Offset(12f,12f)) }
+            compose.mainClock.advanceTimeBy(320)
+            node.assert(SemanticsMatcher.expectValue(PressActive, true))
+            val scale = compose.onNodeWithTag(icon, useUnmergedTree = true).fetchSemanticsNode().config[IconMotion]
+            assertTrue("every shortcut/dock icon deforms while pressed", scale < .97f)
+            node.performTouchInput { cancel() }
+            compose.mainClock.advanceTimeBy(320)
+            node.assert(SemanticsMatcher.expectValue(PressActive, false))
+        }
+        assertTrue("cancel never sounds or dispatches", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 0 && events.isEmpty())
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithTag("dock-Ventilation").performClick()
+        assertTrue("one accepted button produces exactly one native click", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 1)
+        compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { click() }
+        assertTrue("disabled has no sound", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 1)
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Ventilation to ControlState(actual = 2))) }
+        assertTrue("readback has no click sound", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 1)
+    }
+
+    @Test fun dividerTracksActualContentWidth() {
+        val width = androidx.compose.runtime.mutableStateOf(640.dp)
+        compose.setContent { ContentTheme(dark) { ContentPanel(ContentUiState(), {}, Modifier.width(width.value).testTag(hostTag)) } }
+        for (value in listOf(640, 520, 400, 640)) {
+            compose.runOnIdle { width.value = value.dp }
+            val host = compose.onNodeWithTag(hostTag).fetchSemanticsNode().boundsInRoot
+            val divider = compose.onNodeWithTag("content-divider", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertTrue("divider remains aligned with content edge during viewport changes", kotlin.math.abs(divider.right - host.right) <= 1 && kotlin.math.abs(divider.height - host.height) <= 1)
+            assertTrue("divider is subtle and does not consume map geometry", divider.width <= 1.1f)
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test fun registeredOemAnimationPlaysAndSettlesWithoutSnapshotReplay() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        for (asset in listOf("ico_lock_open_f.json", "ico_lock_close_f.json", "ico_media_next_f.json", "ico_media_play_02_f.json", "ico_media_pause_02_f.json")) {
+            val loaded = com.airbnb.lottie.LottieCompositionFactory.fromAssetSync(context, "content-oem/$asset")
+            assertTrue("registered animation must be loadable: $asset / ${loaded.exception}", loaded.value != null)
+        }
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState())
+        mountInteractionState(state)
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_lock_close))
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationVisible, true))
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Lock to ControlState(actual = 0))) }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(96)
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_lock_open))
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_lock_open_f.json"))
+        captureHost("oem-lock-open-mid")
+        compose.mainClock.advanceTimeBy(1600)
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+        val lockTail = iconPixels(captureHost("oem-lock-open-tail"), "dock-icon-Lock")
+        compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
+        compose.mainClock.advanceTimeBy(96)
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+        assertTrue("timestamp must preserve the rendered last frame", lockTail.contentEquals(iconPixels(captureHost("oem-lock-open-tail-tick"), "dock-icon-Lock")))
+        compose.onNodeWithTag("media-next").performClick()
+        compose.mainClock.advanceTimeBy(96)
+        compose.onNode(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_media_next_f.json"), useUnmergedTree = true).assertExists()
+        captureHost("oem-next-mid")
+        compose.mainClock.advanceTimeBy(1600)
+        compose.onNodeWithTag("media-next-icon", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+        compose.onNodeWithTag("media-next-icon", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+        val nextTail = iconPixels(captureHost("oem-next-tail"), "media-next-icon")
+        repeat(8) {
+            compose.mainClock.advanceTimeByFrame()
+            assertTrue("next must retain its tail without a first-frame flash", nextTail.contentEquals(iconPixels(captureHost("oem-next-hold-$it"), "media-next-icon")))
+        }
+        val view = (compose.onNodeWithTag(hostTag).fetchSemanticsNode().root as ViewRootForTest).view
+        val focusDispatch = android.view.ViewTreeObserver::class.java.getDeclaredMethod("dispatchOnWindowFocusChange", java.lang.Boolean.TYPE).apply { isAccessible = true }
+        compose.runOnIdle { focusDispatch.invoke(view.viewTreeObserver, false) }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(96)
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationVisible, false))
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Lock to ControlState(actual = 1))) }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(96)
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationAsset, ""))
+        compose.runOnIdle { focusDispatch.invoke(view.viewTreeObserver, true) }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(96)
+        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationAsset, ""))
+        compose.mainClock.autoAdvance = true
+    }
+
+    private fun preloadOemAnimations(assets: List<String>) {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        assets.forEach { asset ->
+            val result = com.airbnb.lottie.LottieCompositionFactory.fromAssetSync(context, "content-oem/$asset")
+            assertTrue("raw OEM asset must parse: $asset / ${result.exception}", result.value != null)
+        }
+    }
+
+    private fun iconPixels(frame: Bitmap, tag: String): IntArray {
+        val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val w = bounds.width.toInt(); val h = bounds.height.toInt()
+        return IntArray(w * h).also { frame.getPixels(it, 0, w, bounds.left.toInt(), bounds.top.toInt(), w, h) }
+    }
+
+    @Test fun allSeatLevelsUseOriginalSegmentsAndRetainTheirTail() {
+        val suffix = if (dark) "wh" else "bk"
+        val families = mapOf(ControlId.Ventilation to "ventilate", ControlId.Heating to "heat", ControlId.Massage to "massage")
+        preloadOemAnimations(families.values.map { "ico_skin_seat_${it}_l_$suffix.json" })
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        mountInteractionState(state)
+        compose.mainClock.autoAdvance = false
+        for (level in listOf(3, 2, 1, 0)) {
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls.mapValues { (id, value) -> if (id in families) value.copy(actual = level) else value }) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(384)
+            families.forEach { (id, family) ->
+                val asset = "ico_skin_seat_${family}_l_$suffix.json"
+                for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                    val node = compose.onNodeWithTag("$prefix-${id.name}", useUnmergedTree = true)
+                    node.assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
+                    val progress = node.fetchSemanticsNode().config[IconAnimationProgress]
+                    assertTrue("selected OEM segment must be moving", progress > .1f && progress < .8f)
+                }
+            }
+            val first = captureHost("oem-seat-$level-mid-a")
+            compose.mainClock.advanceTimeBy(384)
+            val second = captureHost("oem-seat-$level-mid-b")
+            if (level > 0) families.keys.forEach { id ->
+                assertTrue("${id.name} must change actual path pixels after generic 260ms pulse settles",
+                    !iconPixels(first, "dock-icon-${id.name}").contentEquals(iconPixels(second, "dock-icon-${id.name}")))
+            }
+            compose.mainClock.advanceTimeBy(400)
+            val tail = captureHost("oem-seat-$level-tail")
+            families.keys.forEach { id ->
+                val node = compose.onNodeWithTag("dock-icon-${id.name}", useUnmergedTree = true)
+                node.assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
+                node.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                node.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            }
+            compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
+            compose.mainClock.advanceTimeBy(96)
+            val held = captureHost("oem-seat-$level-held")
+            families.keys.forEach { id ->
+                assertTrue("${id.name} last frame must survive unchanged truth and timestamp updates", iconPixels(tail, "dock-icon-${id.name}").contentEquals(iconPixels(held, "dock-icon-${id.name}")))
+            }
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun allFiveSourcesPlayTheirOwnPathsAndLiftDoesNotResetTheFrame() {
+        val assets = linkedMapOf(MediaSource.AiMusic to "ico_media_aiquting.json", MediaSource.CloudMusic to "ico_media_neteasy.json",
+            MediaSource.Usb to "ico_devices_usb.json", MediaSource.Local to "ico_media_local.json", MediaSource.Bluetooth to "ico_bluetooth_1.json")
+        preloadOemAnimations(assets.values.toList())
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(sourcesOpen = true, previewMode = false))
+        mountInteractionState(state)
+        compose.mainClock.autoAdvance = false
+        for ((source, asset) in assets) {
+            val tag = "source-icon-${source.name}"
+            val row = compose.onNodeWithTag("source-${source.name}")
+            row.performTouchInput { down(center) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(384)
+            compose.onNodeWithTag(tag, useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
+            val a = iconPixels(captureHost("oem-source-${source.name}-mid-a"), tag)
+            compose.mainClock.advanceTimeBy(256)
+            val b = iconPixels(captureHost("oem-source-${source.name}-mid-b"), tag)
+            assertTrue("${source.label} must animate path pixels while press scale is stable", !a.contentEquals(b))
+            val beforeRelease = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().config[IconAnimationProgress]
+            row.performTouchInput { cancel() }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(32)
+            val afterRelease = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().config[IconAnimationProgress]
+            assertTrue("lifting must continue toward tail rather than rewind", afterRelease >= beforeRelease)
+            assertTrue("cancel must never dispatch a source command", events.isEmpty())
+            compose.mainClock.advanceTimeBy(600)
+            compose.onNodeWithTag(tag, useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(source = source)) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(384)
+            compose.onNodeWithTag("media-source-icon", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
+            compose.mainClock.advanceTimeBy(800)
+            val tail = iconPixels(captureHost("oem-source-${source.name}-tail"), "media-source-icon")
+            compose.mainClock.advanceTimeBy(96)
+            assertTrue("persistent source icon must keep the last original frame", tail.contentEquals(iconPixels(captureHost("oem-source-${source.name}-held"), "media-source-icon")))
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun mediaTransitionEndsOnTheCorrectFilledTargetAndNeverRewinds() {
+        preloadOemAnimations(listOf("ico_media_play_02_f.json", "ico_media_pause_02_f.json"))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        mountInteractionState(state)
+        compose.mainClock.autoAdvance = false
+        for (playing in listOf(true, false)) {
+            compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(playing = playing)) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeUntil(512) {
+                compose.onNodeWithTag("media-play-icon", useUnmergedTree = true).fetchSemanticsNode().config[IconAnimationPlaying]
+            }
+            var previous = compose.onNodeWithTag("media-play-icon", useUnmergedTree = true).fetchSemanticsNode().config[IconAnimationProgress]
+            assertTrue("each transition must begin at its zero frame", previous <= .1f)
+            repeat(40) {
+                compose.mainClock.advanceTimeByFrame()
+                val node = compose.onNodeWithTag("media-play-icon", useUnmergedTree = true)
+                val fraction = node.fetchSemanticsNode().config[IconAnimationProgress]
+                assertTrue("timeline must advance once from 0 toward 1", fraction >= previous)
+                previous = fraction
+            }
+            compose.onNodeWithTag("media-play-icon", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            compose.onNodeWithTag("media-play-icon", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+            val frame = captureHost("oem-media-${if (playing) "pause" else "play"}-tail")
+            val bounds = compose.onNodeWithTag("media-play-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val center = frame.getPixel(bounds.center.x.toInt(), bounds.center.y.toInt())
+            val empty = frame.getPixel(bounds.left.toInt()+1, bounds.top.toInt()+1)
+            assertTrue("tail must be two pause bars or one filled play triangle", if (playing) center == empty else center != empty)
+            val terminal = iconPixels(frame, "media-play-icon")
+            repeat(8) {
+                compose.mainClock.advanceTimeByFrame()
+                assertTrue("completed media transition must retain identical tail pixels", terminal.contentEquals(iconPixels(captureHost("oem-media-${if (playing) "pause" else "play"}-hold-$it"), "media-play-icon")))
+            }
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun uncachedMediaTransitionKeepsItsPreviousFrameUntilZeroFrameIsReady() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        com.airbnb.lottie.LottieCompositionFactory.clearCache(context)
+        val executor = com.airbnb.lottie.LottieTask.EXECUTOR
+        val queued = java.util.ArrayDeque<Runnable>()
+        com.airbnb.lottie.LottieTask.EXECUTOR = java.util.concurrent.Executor { queued.add(it) }
+        try {
+            val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+            mountInteractionState(state)
+            compose.mainClock.autoAdvance = false
+            val icon = compose.onNodeWithTag("media-play-icon", useUnmergedTree = true)
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationReady, false))
+            compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(playing = true)) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(320)
+            assertTrue("cold asset parse must still be deferred", queued.isNotEmpty())
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationReady, false))
+            icon.assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_media_play_f))
+            val held = captureHost("oem-cold-media-waiting")
+            val bounds = icon.fetchSemanticsNode().boundsInRoot
+            assertTrue("must keep old filled play glyph until new zero frame is ready", held.getPixel(bounds.center.x.toInt(), bounds.center.y.toInt()) != held.getPixel(bounds.left.toInt()+1, bounds.top.toInt()+1))
+            while (queued.isNotEmpty()) queued.removeFirst().run()
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeUntil(512) { icon.fetchSemanticsNode().config[IconAnimationPlaying] }
+            val start = icon.fetchSemanticsNode().config[IconAnimationProgress]
+            assertTrue("loaded frame must enter at zero instead of flashing the target", start <= .1f)
+            compose.mainClock.advanceTimeBy(800)
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            val tail = iconPixels(captureHost("oem-cold-media-tail"), "media-play-icon")
+            // Drop cache again: the reverse transition must keep this actual
+            // retained Lottie tail throughout the next asset's loading gap.
+            com.airbnb.lottie.LottieCompositionFactory.clearCache(context)
+            compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(playing = false)) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(320)
+            assertTrue("reverse parse must be deferred too", queued.isNotEmpty())
+            assertTrue("next cold transition must preserve the previous Drawable tail", tail.contentEquals(iconPixels(captureHost("oem-cold-media-reverse-waiting"), "media-play-icon")))
+            while (queued.isNotEmpty()) queued.removeFirst().run()
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeUntil(512) { icon.fetchSemanticsNode().config[IconAnimationPlaying] }
+            assertTrue("reverse transition must enter at zero", icon.fetchSemanticsNode().config[IconAnimationProgress] <= .1f)
+            compose.mainClock.advanceTimeBy(800)
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            // Now interrupt an in-flight A with a cold B and return to A before
+            // B parses. The consumed A key must settle, never freeze mid-frame.
+            preloadOemAnimations(listOf("ico_media_play_02_f.json"))
+            compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(playing = true)) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeUntil(512) { icon.fetchSemanticsNode().config[IconAnimationPlaying] }
+            compose.mainClock.advanceTimeBy(128)
+            val interrupted = icon.fetchSemanticsNode().config[IconAnimationProgress]
+            assertTrue("A must actually be mid-transition", interrupted > 0f && interrupted < 1f)
+            com.airbnb.lottie.LottieCompositionFactory.clearCache(context)
+            compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(playing = false)) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(64)
+            assertTrue("intermediate B parse must remain deferred", queued.isNotEmpty())
+            compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(playing = true)) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(64)
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+            while (queued.isNotEmpty()) queued.removeFirst().run()
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(320)
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+        } finally {
+            com.airbnb.lottie.LottieTask.EXECUTOR = executor
+            compose.mainClock.autoAdvance = true
+            com.airbnb.lottie.LottieCompositionFactory.clearCache(context)
+        }
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

@@ -35,10 +35,10 @@ const collect=directory=>fs.readdirSync(directory,{withFileTypes:true}).flatMap(
 const existing=new Set(fs.readdirSync(source).filter(n=>/^smali(?:_classes\d+)?$/.test(n)).flatMap(n=>collect(path.join(source,n)).map(p=>`L${path.relative(path.join(source,n),p).slice(0,-6)};`)));
 for(const type of definitions)if(existing.has(type))duplicates.push(type);
 const types=[...new Set(parsed.flatMap(p=>p.types))].map(name=>name.replace(/^\[+/,''));
-const library=/^L(?:com\/icar03\/(?:compose|content)\/|com\/autonavi\/amapauto\/content\/|kotlin(?:x)?\/|org\/jetbrains\/annotations\/|com\/google\/common\/util\/concurrent\/|androidx\/graphics\/path\/)/;
+const library=/^L(?:com\/icar03\/(?:compose|content)\/|com\/autonavi\/amapauto\/content\/|kotlin(?:x)?\/|org\/jetbrains\/annotations\/|com\/google\/common\/util\/concurrent\/|com\/airbnb\/lottie\/|okio\/|androidx\/graphics\/path\/)/;
 const missing=types.filter(name=>library.test(name)&&!definitions.has(name)&&!existing.has(name));
 const leaked=types.filter(name=>/^L(?:androidx\/|android\/support\/)/.test(name)&&!name.startsWith('Landroidx/graphics/path/'));
-const legacy=types.filter(name=>/Lcom\/airbnb\/|Lcom\/autonavi\/amapauto\/content\/(?:ContentRenderer|ContentIconView|ContentSystemSlider|ContentTheme);/.test(name));
+const legacy=types.filter(name=>/Lcom\/autonavi\/amapauto\/content\/(?:ContentRenderer|ContentIconView|ContentSystemSlider|ContentTheme);/.test(name));
 for(const name of ['Lcom/autonavi/amapauto/content/ContentRuntime;','Lcom/autonavi/amapauto/content/ContentStore;',
   'Lcom/icar03/content/host/ContentComposeHost;','Lcom/icar03/content/runtime/ContentBinding;',
   'Lcom/icar03/content/ui/ContentPanelKt;','Lcom/icar03/compose/androidx/compose/ui/platform/ComposeView;',
@@ -62,5 +62,6 @@ for(const method of ['Lcom/autonavi/amapauto/content/ContentMediaListener;-><ini
   'Lcom/autonavi/amapauto/content/ContentRuntime;->onDividerChanged(FFF)V']) {
   if(!methods.has(method))throw new Error(`External Compose ABI method missing: ${method}`);
 }
+if(types.includes('Ljavax/annotation/Nullable;'))throw new Error('Optional Okio JSR-305 metadata survived R8; keep executable closure strict');
 if(duplicates.length||missing.length||leaked.length||legacy.length)throw new Error(JSON.stringify({duplicates,missing,leaked,legacy}));
 console.log(`Compose DEX closure verified: ${parsed.length} DEX, ${definitions.size} definitions; no duplicates, unresolved runtime types or legacy renderer/library leakage`);

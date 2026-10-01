@@ -44,6 +44,23 @@ class ContentRuntimeTest {
         assertTrue(ui.controls.values.all { !it.available && !it.known && it.actual == -1 })
     }
 
+    @Test fun completedChargingSnapshotSurvivesStoreWhileUnknownEnumDoesNot() {
+        val store = store()
+        fun chargeSnapshot(state: Int) = ContentPorts.VehicleSnapshot(
+            true, false, 25f, 100, 366, state, 2, 0, 0, Float.NaN, 0,
+            0, 0, 0, 0, true, false, true, true, true)
+        try {
+            store.acceptVehicleSnapshot(chargeSnapshot(ContentState.CHARGE_COMPLETE))
+            assertEquals(ContentState.CHARGE_COMPLETE, store.snapshot().chargeState)
+            assertEquals("充电完成", ContentUiMapper().map(store.snapshot()).chargeStatus)
+            assertFalse(ContentUiMapper().map(store.snapshot()).charging)
+            for (unknown in listOf(-2, 4, 6, Int.MAX_VALUE)) {
+                store.acceptVehicleSnapshot(chargeSnapshot(unknown))
+                assertEquals(ContentState.CHARGE_UNKNOWN, store.snapshot().chargeState)
+            }
+        } finally { store.destroy() }
+    }
+
     @Test fun mapperOnlyPublishesValidRealBatteryAndCharging() {
         val state = ContentState().apply {
             vehicleDataAvailable = true; batteryPercent = 60; chargeState = ContentState.CHARGE_CHARGING
@@ -53,7 +70,7 @@ class ContentRuntimeTest {
         val valid = mapper.map(state)
         assertEquals(60, valid.batteryPercent)
         assertTrue(valid.charging)
-        assertEquals("充电中 · 功率 12.5 kW · 剩余 40分钟", valid.chargeStatus)
+        assertEquals("剩余40分钟·12.5kW", valid.chargeStatus)
         for (percent in listOf(0, 100)) { state.batteryPercent = percent; assertEquals(percent, mapper.map(state).batteryPercent) }
         state.batteryPercent = 101; state.chargePowerKw = Float.NaN; state.chargeRemainingMinutes = -1
         assertNull(mapper.map(state).batteryPercent)
@@ -100,6 +117,33 @@ class ContentRuntimeTest {
         assertNull(preview.media.title)
     }
 
+    @Test fun mapperHidesOldMediaMetadataWhileSourceSwitchIsPending() {
+        val state = ContentState().apply {
+            mediaDataAvailable = true
+            mediaSource = MediaSource.Bluetooth.label
+            pendingSource = MediaSource.AiMusic.label
+            mediaTitle = "蓝牙旧歌曲"
+            mediaArtist = "蓝牙旧作者"
+            mediaPlaybackAvailable = true
+            mediaNextAvailable = true
+        }
+        val ui = ContentUiMapper().map(state)
+        assertEquals(MediaSource.Bluetooth, ui.media.source)
+        assertEquals(MediaSource.AiMusic, ui.media.targetSource)
+        assertNull(ui.media.title)
+        assertNull(ui.media.artist)
+        state.pendingSource = ""
+        state.mediaSource = MediaSource.AiMusic.label
+        state.mediaTitle = "爱趣听新歌曲"
+        state.mediaArtist = "爱趣听新作者"
+        val confirmed = ContentUiMapper().map(state)
+        assertEquals(MediaSource.AiMusic, confirmed.media.source)
+        assertNull(confirmed.media.targetSource)
+        assertEquals("爱趣听新歌曲", confirmed.media.title)
+        assertEquals("爱趣听新作者", confirmed.media.artist)
+    }
+
+
     @Test fun vehicleEventsUseStorePendingAndReadbackWithoutChangingActual() {
         val vehicle = Vehicle(); val store = store(v = vehicle)
         store.acceptVehicleSnapshot(vehicleSnapshot())
@@ -117,6 +161,62 @@ class ContentRuntimeTest {
         assertEquals(1, binding.state.value.controls.getValue(ControlId.Lock).actual)
     }
 
+    @Test fun vehicleCommandsUsePendingAndAwaitReadback() {
+        val vehicle = Vehicle(); val store = store(v = vehicle)
+        store.acceptVehicleSnapshot(vehicleSnapshot())
+        val binding = binding(store); binding.start()
+
+        binding.dispatch(ContentEvent.ControlTapped(ControlId.Ventilation))
+        assertEquals(ContentRegistry.Shortcuts.SEAT_VENTILATION, vehicle.seat)
+        assertEquals(3, vehicle.level)
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.Ventilation).actual)
+        assertEquals(3, binding.state.value.controls.getValue(ControlId.Ventilation).target)
+        store.acceptVehicleSnapshot(vehicleSnapshot(ventilation = 3))
+
+        binding.dispatch(ContentEvent.ControlTapped(ControlId.Heating))
+        assertEquals(ContentRegistry.Shortcuts.SEAT_HEATING, vehicle.seat)
+        assertEquals(3, vehicle.level)
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.Heating).actual)
+        assertEquals(3, binding.state.value.controls.getValue(ControlId.Heating).target)
+        store.acceptVehicleSnapshot(vehicleSnapshot(ventilation = 3, heating = 3))
+
+        binding.dispatch(ContentEvent.ControlTapped(ControlId.Massage))
+        assertEquals(ContentRegistry.Shortcuts.SEAT_MASSAGE, vehicle.seat)
+        assertEquals(3, vehicle.level)
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.Massage).actual)
+        assertEquals(3, binding.state.value.controls.getValue(ControlId.Massage).target)
+        store.acceptVehicleSnapshot(vehicleSnapshot(ventilation = 3, heating = 3, massageLevel = 3, massageActive = true))
+
+        binding.dispatch(ContentEvent.ControlTapped(ControlId.Lock))
+        assertEquals(false, vehicle.lockTarget)
+        assertEquals(1, binding.state.value.controls.getValue(ControlId.Lock).actual)
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.Lock).target)
+        store.acceptVehicleSnapshot(vehicleSnapshot(ventilation = 3, heating = 3, massageLevel = 3, massageActive = true, locked = false))
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.Lock).actual)
+        assertNull(binding.state.value.controls.getValue(ControlId.Lock).target)
+    }
+
+    @Test fun vehicleRejectAndTimeoutRollbackPendingWithoutChangingActual() {
+        val vehicle = Vehicle(); val store = store(v = vehicle)
+        store.acceptVehicleSnapshot(vehicleSnapshot())
+        val binding = binding(store); binding.start()
+        vehicle.accept = false
+        binding.dispatch(ContentEvent.ControlTapped(ControlId.Ventilation))
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.Ventilation).actual)
+        assertNull(binding.state.value.controls.getValue(ControlId.Ventilation).target)
+        assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
+        assertEquals("座椅车控命令未发送，请检查车机状态", binding.state.value.message)
+
+        vehicle.accept = true
+        binding.dispatch(ContentEvent.ControlTapped(ControlId.Ventilation))
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.Ventilation).actual)
+        assertEquals(3, binding.state.value.controls.getValue(ControlId.Ventilation).target)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.Ventilation).actual)
+        assertNull(binding.state.value.controls.getValue(ControlId.Ventilation).target)
+        assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
+        assertEquals("车辆状态未确认，请查看车机状态", binding.state.value.message)
+    }
     @Test fun sourceDispatchIsNotOptimisticAndRequiresCapability() {
         val media = Media(); val store = store(m = media)
         store.acceptMediaSnapshot(mediaSnapshot())
@@ -290,7 +390,7 @@ class ContentRuntimeTest {
         val mapper = ContentUiMapper()
         assertEquals("25°C", mapper.map(state).temperature)
         assertEquals("km", mapper.map(state).rangeUnit)
-        assertEquals("已插枪·等待充电", mapper.map(state).chargeStatus)
+        assertEquals("已插枪", mapper.map(state).chargeStatus)
         assertTrue(mapper.map(state).weekday.isNotEmpty())
         state.showWeekday = false
         assertEquals("", mapper.map(state).weekday)
@@ -394,9 +494,15 @@ class ContentRuntimeTest {
         shadowOf(Looper.getMainLooper()).idle()
     }
 
-    private fun vehicleSnapshot(ventilation: Int = 0) = ContentPorts.VehicleSnapshot(
+    private fun vehicleSnapshot(
+        ventilation: Int = 0,
+        heating: Int = 0,
+        massageLevel: Int = 0,
+        massageActive: Boolean = false,
+        locked: Boolean = true,
+    ) = ContentPorts.VehicleSnapshot(
         true, false, 25f, 60, 123, ContentState.CHARGE_DEFAULT, 0, 0, 0, Float.NaN, -1,
-        ventilation, 0, 0, 0, true, false, true, true, true)
+        ventilation, heating, massageLevel, 0, true, massageActive, true, true, locked)
     private fun mediaSnapshot(source: String = MediaSource.Bluetooth.label, playing: Boolean = false) =
         ContentPorts.MediaSnapshot(true, false, source, playing, 1, "真实歌曲", "真实作者", true, true)
 
@@ -406,7 +512,7 @@ class ContentRuntimeTest {
         override fun isAvailable() = true
         override fun isLockAvailable() = true
         override fun requestLock(locked: Boolean, requestId: Long): Boolean { lockTarget = locked; return accept }
-        override fun requestSeatLevel(seatId: String, level: Int, requestId: Long): Boolean { seat = seatId; this.level = level; return true }
+        override fun requestSeatLevel(seatId: String, level: Int, requestId: Long): Boolean { seat = seatId; this.level = level; return accept }
         override fun start(listener: ContentPorts.VehicleSnapshotListener) { listener.onVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable()) }
         override fun stop() { stops++ }
     }

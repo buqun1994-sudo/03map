@@ -36,8 +36,6 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private static final int MASSAGE_SWITCH = 0x241;
     private static final int MASSAGE_STRENGTH = 0x243;
     private static final int MASSAGE_MODE = 0x245;
-    private static final int GEAR_SELECTION = 0x255;
-    private static final int VEHICLE_SPEED = 0x401;
     private static final int AREA_DRIVER = 0;
     private static final long POLL_INTERVAL_MS = 1500L;
     private static final long REBIND_INTERVAL_MS = 3000L;
@@ -305,18 +303,6 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                             return;
                         }
                     }
-                    int gear = getData(currentBinder, GEAR_SELECTION, AREA_DRIVER);
-                    float speed = getDataFloat(currentBinder, VEHICLE_SPEED, AREA_DRIVER);
-                    if (gear != 11 || Float.isNaN(speed) || speed < 0.0f || speed > 0.1f) {
-                        reportCommandFailure(requestId, "请在 P 档停车后操作车控");
-                        return;
-                    }
-                    synchronized (ContentVehicleAdapter.this) {
-                        if (!running || binder != currentBinder) {
-                            reportCommandFailure(requestId, "车控连接中断，请稍后重试");
-                            return;
-                        }
-                    }
                     if (ensureMassageOn) {
                         sendMassageStrength(currentBinder, value);
                     } else {
@@ -399,7 +385,9 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int connection = readInt(currentBinder, CHARGE_CONNECTION, AREA_DRIVER);
         int bms = readInt(currentBinder, CHARGE_BMS, AREA_DRIVER);
         int schedule = readInt(currentBinder, CHARGE_SCHEDULE, AREA_DRIVER);
-        float hvVoltage = readFloat(currentBinder, CHARGE_HV_VOLTAGE, AREA_DRIVER);
+        // S56 CSV: voltage 0x344 is INT32 (40); current 0x345 is FLOAT (60).
+        // getDataFloat rejects INT32 properties with the OEM -1000 sentinel.
+        float hvVoltage = readInt(currentBinder, CHARGE_HV_VOLTAGE, AREA_DRIVER);
         float hvCurrent = readFloat(currentBinder, CHARGE_HV_CURRENT, AREA_DRIVER);
         int remainingRaw = readInt(currentBinder, CHARGE_REMAINING_TIME, AREA_DRIVER);
         if (connection != lastChargeConnection || bms != lastChargeBms
@@ -416,6 +404,11 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int massageModeRaw = readInt(currentBinder, MASSAGE_MODE, AREA_DRIVER);
         int lockRaw = readInt(currentBinder, LOCK_STATE, AREA_DRIVER);
         int chargeState = resolveChargeState(connection, bms, schedule);
+        // Completion is a product projection of exact full SOC + connected +
+        // known idle BMS, not a newly guessed vendor enum or rounded battery value.
+        if ((connection == 1 || connection == 2) && bms == 0 && soc == 100.0f) {
+            chargeState = ContentState.CHARGE_COMPLETE;
+        }
         int remainingMinutes = normalizeChargeRemainingMinutes(remainingRaw);
         float chargePowerKw = computeChargePowerKw(chargeState, hvVoltage, hvCurrent);
         int ventilation = seatRaw == 1 ? 0 : seatRaw >= 5 && seatRaw <= 7
@@ -460,7 +453,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         if (bms == 3 && (connection == 1 || connection == 2)) {
             return ContentState.CHARGE_CHARGING;
         }
-        if (connection != 1) {
+        if (connection != 1 && connection != 2) {
             return ContentState.CHARGE_UNKNOWN;
         }
         if (bms == 6 && schedule == 1) {

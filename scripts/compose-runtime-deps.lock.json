@@ -360,11 +360,25 @@
       "sha256": "57e8d93260d18d5b9007c9eed3c64ad159de90c8609ebfc74a347cbd514535a4"
     },
     {
+      "group": "com.airbnb.android",
+      "name": "lottie",
+      "version": "6.6.7",
+      "type": "aar",
+      "sha256": "4ef8098c5224016d36585765853df4a970fa2632f64a392c008ce82161733672"
+    },
+    {
       "group": "com.google.guava",
       "name": "listenablefuture",
       "version": "1.0",
       "type": "jar",
       "sha256": "e4ad7607e5c0477c6f890ef26a49cb8d1bb4dffb650bab4502afee64644e3069"
+    },
+    {
+      "group": "com.squareup.okio",
+      "name": "okio",
+      "version": "1.17.6",
+      "type": "jar",
+      "sha256": "8e88b055523cc80613dfb844d598740e10ada62f4bd98304cdd140c5854cc3b6"
     },
     {
       "group": "org.jetbrains",

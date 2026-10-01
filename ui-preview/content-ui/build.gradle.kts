@@ -13,6 +13,7 @@ android {
     sourceSets.getByName("main") {
         java.setSrcDirs(listOf("../../source/amap-9.5.0.600013/content-compose/ui"))
         res.setSrcDirs(listOf(layout.buildDirectory.dir("formal-oem-res")))
+        assets.setSrcDirs(listOf(layout.buildDirectory.dir("formal-oem-assets")))
     }
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
@@ -20,9 +21,14 @@ val exportFormalOemResources by tasks.registering(Sync::class) {
     from("../../source/amap-9.5.0.600013/res") { include("drawable/content_oem_*.xml", "drawable/content_oem_*.png", "values/content_oem_values.xml") }
     into(layout.buildDirectory.dir("formal-oem-res"))
 }
-tasks.named("preBuild") { dependsOn(exportFormalOemResources) }
+val exportFormalOemAssets by tasks.registering(Sync::class) {
+    from("../../source/amap-9.5.0.600013/assets") { include("content-oem/*.json") }
+    into(layout.buildDirectory.dir("formal-oem-assets"))
+}
+tasks.named("preBuild") { dependsOn(exportFormalOemResources, exportFormalOemAssets) }
 
 dependencies {
+    implementation("com.airbnb.android:lottie:6.6.7") { exclude(group = "androidx.appcompat") }
     implementation("androidx.compose.ui:ui:1.7.6")
     implementation("androidx.compose.foundation:foundation:1.7.6")
     implementation("androidx.compose.material3:material3:1.3.1")

@@ -40,6 +40,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 state.massageSwitchKnown && (massage in 0..3 || state.massageActive)),
         )
         val source = MediaSource.entries.firstOrNull { it.label == ContentRegistry.normalizeMediaSource(state.mediaSource) } ?: MediaSource.Local
+        val metadataReady = realMedia && state.pendingSource.isEmpty()
         return ContentUiState(
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
@@ -52,20 +53,20 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             batteryDescription = if (realVehicle && state.batteryPercent in 0..100) "电量 ${state.batteryPercent}%" else "电量未知",
             chargeStatus = if (!realVehicle) "充电状态待确认" else when (state.chargeState) {
                 ContentState.CHARGE_DEFAULT -> null
-                ContentState.CHARGE_PLUGGED -> "已插枪·等待充电"
-                ContentState.CHARGE_SCHEDULED -> "预约等待中"
+                ContentState.CHARGE_PLUGGED -> "已插枪"
+                ContentState.CHARGE_SCHEDULED -> "预约充电中"
+                ContentState.CHARGE_COMPLETE -> "充电完成"
                 ContentState.CHARGE_CHARGING -> buildList {
-                    add("充电中")
-                    if (state.chargePowerKw.isFinite() && state.chargePowerKw >= 0) add("功率 ${format(state.chargePowerKw)} kW")
-                    if (state.chargeRemainingMinutes >= 0) add("剩余 ${state.chargeRemainingMinutes}分钟")
-                }.joinToString(" · ")
+                    if (state.chargeRemainingMinutes >= 0) add("剩余${state.chargeRemainingMinutes}分钟")
+                    if (state.chargePowerKw.isFinite() && state.chargePowerKw > 0) add("${String.format(locale, "%.1f", state.chargePowerKw)}kW")
+                }.joinToString("·").ifEmpty { "充电中" }
                 else -> "充电状态待确认"
             },
             controls = controls,
             brightness = LevelState(brightness.percent / 100f, available = brightness.available),
             volume = LevelState(volume.percent / 100f, available = volume.available),
-            media = MediaState(title = state.mediaTitle.takeIf { realMedia && it.isNotBlank() },
-                artist = state.mediaArtist.takeIf { realMedia && it.isNotBlank() },
+            media = MediaState(title = state.mediaTitle.takeIf { metadataReady && it.isNotBlank() },
+                artist = state.mediaArtist.takeIf { metadataReady && it.isNotBlank() },
                 playing = realMedia && state.mediaPlaying,
                 targetPlaying = when (state.mediaPlaybackTarget) { 0 -> false; 1 -> true; else -> null },
                 source = source, targetSource = MediaSource.entries.firstOrNull { it.label == state.pendingSource }, available = realMedia,

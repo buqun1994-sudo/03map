@@ -1,0 +1,270 @@
+package com.icar03.content.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.VectorGroup
+import androidx.compose.ui.graphics.vector.VectorPath
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.airbnb.lottie.LottieComposition
+import com.airbnb.lottie.LottieCompositionFactory
+import com.airbnb.lottie.LottieListener
+import com.airbnb.lottie.LottieDrawable
+import com.airbnb.lottie.LottieProperty
+import com.airbnb.lottie.SimpleColorFilter
+import com.airbnb.lottie.model.KeyPath
+import com.airbnb.lottie.value.LottieValueCallback
+import com.airbnb.lottie.value.LottieFrameInfo
+
+internal val OemTint = SemanticsPropertyKey<Long>("OemTint")
+internal val IconMotion = SemanticsPropertyKey<Float>("IconMotion")
+internal val IconAnimationReady = SemanticsPropertyKey<Boolean>("IconAnimationReady")
+internal val IconAnimationVisible = SemanticsPropertyKey<Boolean>("IconAnimationVisible")
+internal val IconAnimationPlaying = SemanticsPropertyKey<Boolean>("IconAnimationPlaying")
+internal val IconAnimationRetained = SemanticsPropertyKey<Boolean>("IconAnimationRetained")
+internal val IconAnimationProgress = SemanticsPropertyKey<Float>("IconAnimationProgress")
+internal val IconAnimationAsset = SemanticsPropertyKey<String>("IconAnimationAsset")
+internal val LocalIconVisible = compositionLocalOf { true }
+internal val LocalIconPressed = compositionLocalOf { false }
+internal val LocalIconAction = compositionLocalOf { 0 }
+internal val OemResource = SemanticsPropertyKey<Int>("OemResource")
+
+/** Recolor registered OEM layers only; geometry, clipping and level alpha stay intact. */
+internal fun oemLayerColors(original: ImageVector, colors: Map<Int, Color>): ImageVector {
+    var pathIndex = 0
+    val builder = ImageVector.Builder(original.name, original.defaultWidth, original.defaultHeight,
+        original.viewportWidth, original.viewportHeight, original.tintColor, original.tintBlendMode, original.autoMirror)
+    fun append(group: VectorGroup) {
+        builder.addGroup(group.name, group.rotation, group.pivotX, group.pivotY, group.scaleX, group.scaleY,
+            group.translationX, group.translationY, group.clipPathData)
+        group.forEach { node ->
+            when (node) {
+                is VectorGroup -> append(node)
+                is VectorPath -> {
+                    val fill = colors[pathIndex++]?.let { SolidColor(it) } ?: node.fill
+                    builder.addPath(node.pathData, node.pathFillType, node.name, fill, node.fillAlpha,
+                        node.stroke, node.strokeAlpha, node.strokeLineWidth, node.strokeLineCap,
+                        node.strokeLineJoin, node.strokeLineMiter, node.trimPathStart, node.trimPathEnd, node.trimPathOffset)
+                }
+            }
+        }
+        builder.clearGroup()
+    }
+    append(original.root)
+    return builder.build()
+}
+
+private fun animationFor(resource: Int): String? = when (resource) {
+    R.drawable.content_oem_ico_lock_close -> "ico_lock_close_f.json"
+    R.drawable.content_oem_ico_lock_open -> "ico_lock_open_f.json"
+    R.drawable.content_oem_ico_media_next_f -> "ico_media_next_f.json"
+    // OEM names describe the command; their last frame is the opposite button.
+    R.drawable.content_oem_ico_media_play_f -> "ico_media_pause_02_f.json"
+    R.drawable.content_oem_ico_media_pause_f -> "ico_media_play_02_f.json"
+    R.drawable.content_oem_ico_bluetooth -> "ico_bluetooth_1.json"
+    R.drawable.content_oem_ico_media_aiquting -> "ico_media_aiquting.json"
+    R.drawable.content_oem_ico_media_neteasy -> "ico_media_neteasy.json"
+    R.drawable.content_oem_ico_devices_usb -> "ico_devices_usb.json"
+    R.drawable.content_oem_ico_media_local -> "ico_media_local.json"
+    else -> null
+}
+
+/** One displayed frame; the next asset may load without replacing this image. */
+private data class OemFrame(
+    val resource: Int,
+    val tint: Color,
+    val pathColors: Map<Int, Color>,
+    val asset: String?,
+    val frames: IntRange?,
+    val colors: Map<List<String>, Color>,
+    val strokeColors: Map<Int, Color>,
+    val mediaGlyph: Boolean,
+    val composition: LottieComposition? = null,
+)
+
+/** Shared asset consumer. Triggers are presentation events, never business truth. */
+@Composable
+internal fun OemIcon(
+    resource: Int, modifier: Modifier, description: String? = null,
+    tint: Color = MaterialTheme.colorScheme.primary, pathColors: Map<Int, Color> = emptyMap(),
+    motionKey: Any? = null, animationAsset: String? = animationFor(resource),
+    animationColors: Map<List<String>, Color> = emptyMap(), animationFrames: IntRange? = null,
+    animationStrokeColors: Map<Int, Color> = emptyMap(),
+    animateOnPress: Boolean = false, animateOnAction: Boolean = true,
+) {
+    val mediaGlyph = resource == R.drawable.content_oem_ico_media_play_f || resource == R.drawable.content_oem_ico_media_pause_f
+    val action = if (animateOnAction) LocalIconAction.current else 0
+    val transition = remember { Animatable(1f) }
+    val owner = LocalLifecycleOwner.current
+    val view = LocalView.current
+    var started by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+    var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
+    val visible = started && focused && LocalIconVisible.current
+    val pressed = LocalIconPressed.current && visible
+    val scale by pressScale(pressed)
+    DisposableEffect(owner, view) {
+        val observer = LifecycleEventObserver { _, _ -> started = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) }
+        val tree = view.viewTreeObserver
+        val focus = android.view.ViewTreeObserver.OnWindowFocusChangeListener { focused = it }
+        owner.lifecycle.addObserver(observer)
+        tree.addOnWindowFocusChangeListener(focus)
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            if (tree.isAlive) tree.removeOnWindowFocusChangeListener(focus)
+        }
+    }
+    // Menu rows leave after a selection. Their path animation begins on DOWN;
+    // the persistent source button plays the new target through the same consumer.
+    var pressAction by remember { mutableIntStateOf(0) }
+    LaunchedEffect(pressed) { if (animateOnPress && pressed) pressAction++ }
+    val key = listOf(motionKey ?: resource, action, pressAction)
+    var previous by remember { mutableStateOf(key) }
+    LaunchedEffect(key, visible) {
+        val changed = previous != key
+        previous = key
+        if (changed && visible) {
+            transition.snapTo(.9f)
+            transition.animateTo(1f, tween(260, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
+        } else transition.snapTo(1f)
+    }
+    val context = LocalContext.current.applicationContext
+    var composition by remember(animationAsset) { mutableStateOf<LottieComposition?>(null) }
+    var loadFailed by remember(animationAsset) { mutableStateOf(false) }
+    DisposableEffect(animationAsset) {
+        if (animationAsset == null) onDispose { } else {
+            val task = LottieCompositionFactory.fromAsset(context, "content-oem/$animationAsset")
+            val listener = LottieListener<LottieComposition> { composition = it }
+            val failure = LottieListener<Throwable> { loadFailed = true }
+            task.addListener(listener).addFailureListener(failure)
+            onDispose { task.removeListener(listener); task.removeFailureListener(failure) }
+        }
+    }
+    val progress = remember { Animatable(1f) }
+    var drawing by remember { mutableStateOf(false) }
+    val targetFrame = OemFrame(resource, tint, pathColors, animationAsset, animationFrames,
+        animationColors, animationStrokeColors, mediaGlyph)
+    var renderedFrame by remember { mutableStateOf(targetFrame) }
+    var playedKey by remember { mutableStateOf(key) }
+    val loaded = composition
+    val canRender = visible
+    LaunchedEffect(key, loaded, loadFailed, canRender, animationAsset, animationFrames) {
+        drawing = false
+        if (!canRender) { playedKey = key; renderedFrame = targetFrame; return@LaunchedEffect }
+        if (playedKey == key) {
+            // A theme-only asset change adopts its stable Vector, without replay.
+            if (renderedFrame.asset != animationAsset) renderedFrame = targetFrame
+            // A→cold B→A can return to the last consumed key after A was
+            // cancelled mid-play. Treat that interruption as a stable tail,
+            // never as a completed animation frozen at an intermediate frame.
+            else if (renderedFrame.composition != null && progress.value < 1f) progress.snapTo(1f)
+            return@LaunchedEffect
+        }
+        if (animationAsset == null || loadFailed) {
+            playedKey = key
+            renderedFrame = targetFrame
+            return@LaunchedEffect
+        }
+        // Cold loading retains the previous Vector/Drawable. Never show the
+        // target Vector before going back to the new animation's first frame.
+        if (loaded == null) return@LaunchedEffect
+        val playing = key
+        playedKey = playing
+        progress.snapTo(0f)
+        renderedFrame = targetFrame.copy(composition = loaded)
+        drawing = true
+        try {
+            val duration = animationFrames?.let { (it.last - it.first) * 1000f / loaded.frameRate } ?: loaded.duration
+            progress.animateTo(1f, tween(duration.toInt().coerceAtLeast(200),
+                easing = androidx.compose.animation.core.LinearEasing))
+        } finally { if (playing == playedKey) drawing = false }
+    }
+    // Theme interpolation may recolor the same displayed state without changing
+    // playback keys or resetting its progress. A pending different state holds
+    // the complete old frame recipe until its asset can enter at progress zero.
+    val frame = if (renderedFrame.resource == resource && renderedFrame.asset == animationAsset)
+        targetFrame.copy(composition = renderedFrame.composition) else renderedFrame
+    val semantics = modifier.graphicsLayer { scaleX = scale * transition.value; scaleY = scale * transition.value }
+        .semantics {
+            this[OemTint] = frame.tint.value.toLong(); this[OemResource] = frame.resource
+            this[IconMotion] = scale * transition.value
+            this[IconAnimationReady] = composition != null
+            this[IconAnimationVisible] = visible
+            this[IconAnimationPlaying] = drawing && canRender && frame.composition != null
+            this[IconAnimationRetained] = frame.composition != null && canRender
+            this[IconAnimationProgress] = if (frame.composition != null && canRender) progress.value else 1f
+            this[IconAnimationAsset] = if (frame.composition != null && canRender) frame.asset ?: "" else ""
+            if (description != null) contentDescription = description
+        }
+    if (canRender && frame.composition != null) {
+        val drawable = remember(frame) {
+            LottieDrawable().apply {
+                setComposition(frame.composition!!)
+                @Suppress("DEPRECATION")
+                enableMergePathsForKitKatAndAbove(!frame.mediaGlyph)
+                if (frame.tint != Color.Unspecified) addValueCallback(KeyPath("**"), LottieProperty.COLOR_FILTER,
+                    LottieValueCallback<android.graphics.ColorFilter>(SimpleColorFilter(frame.tint.toArgb())))
+                // These two OEM assets contain the old button disc as path 1.
+                // Keep their original symbol paths 2/3 and baked transforms; the
+                // content panel already supplies the button's press surface.
+                if (frame.mediaGlyph) addValueCallback(KeyPath("**", "路径 1"), LottieProperty.PATH,
+                    LottieValueCallback(android.graphics.Path()))
+                if (frame.strokeColors.isNotEmpty()) addValueCallback(KeyPath("**"), LottieProperty.STROKE_COLOR,
+                    object : LottieValueCallback<Int>() {
+                        override fun getValue(frameInfo: LottieFrameInfo<Int>): Int {
+                            val original = frameInfo.startValue ?: frameInfo.endValue ?: 0
+                            return frame.strokeColors[original]?.toArgb() ?: original
+                        }
+                    })
+                frame.colors.forEach { (path, color) ->
+                    val keyPath = KeyPath(*path.toTypedArray())
+                    addValueCallback(keyPath, LottieProperty.COLOR, LottieValueCallback(color.toArgb()))
+                    addValueCallback(keyPath, LottieProperty.STROKE_COLOR, LottieValueCallback(color.toArgb()))
+                }
+            }
+        }
+        DisposableEffect(drawable) { onDispose { drawable.cancelAnimation() } }
+        Canvas(semantics) {
+            drawable.setBounds(0, 0, size.width.toInt(), size.height.toInt())
+            if (frame.frames == null) drawable.progress = progress.value
+            else frame.frames.let { drawable.frame = (it.first + progress.value * (it.last - it.first)).roundToInt() }
+            if (frame.mediaGlyph) scale(1.6f) { drawIntoCanvas { drawable.draw(it.nativeCanvas) } }
+            else drawIntoCanvas { drawable.draw(it.nativeCanvas) }
+        }
+    } else if (frame.pathColors.isEmpty()) Icon(painter = painterResource(frame.resource), contentDescription = description, modifier = semantics, tint = frame.tint)
+    else {
+        val original = ImageVector.vectorResource(frame.resource)
+        val layered = remember(original, frame.pathColors) { oemLayerColors(original, frame.pathColors) }
+        Icon(imageVector = layered, contentDescription = description, modifier = semantics, tint = Color.Unspecified)
+    }
+}

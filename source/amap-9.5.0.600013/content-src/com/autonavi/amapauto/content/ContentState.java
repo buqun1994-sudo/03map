@@ -10,6 +10,7 @@ public final class ContentState {
     public static final int CHARGE_PLUGGED = 1;
     public static final int CHARGE_SCHEDULED = 2;
     public static final int CHARGE_CHARGING = 3;
+    public static final int CHARGE_COMPLETE = 5;
     public static final int COMMAND_NONE = 0;
     public static final int COMMAND_FAILED = 1;
     public static final int COMMAND_PENDING = 2;

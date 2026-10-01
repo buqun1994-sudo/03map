@@ -545,8 +545,10 @@ public final class ContentStore {
     }
 
     private int normalizeChargeState(int chargeState) {
-        return chargeState < ContentState.CHARGE_UNKNOWN || chargeState > ContentState.CHARGE_CHARGING
-                ? ContentState.CHARGE_UNKNOWN : chargeState;
+        return chargeState == ContentState.CHARGE_COMPLETE
+                || (chargeState >= ContentState.CHARGE_UNKNOWN
+                    && chargeState <= ContentState.CHARGE_CHARGING)
+                ? chargeState : ContentState.CHARGE_UNKNOWN;
     }
 
     private void queueMediaCommand(final Callable<Boolean> command, final String failureMessage) {

@@ -29,7 +29,8 @@ for (const asset of manifest.assets) {
     }
     const inspect = (value) => {
       if (!value || typeof value !== 'object') return;
-      if (typeof value.x === 'string' || value.ef?.length || value.p && value.u) {
+      if (typeof value.x === 'string' || value.ef?.length || value.ty === 2
+          || typeof value.p === 'string' && typeof value.u === 'string') {
         throw new Error(`动画存在未承载的表达式、效果或图片依赖：${asset.destination}`);
       }
       Object.values(value).forEach(inspect);
