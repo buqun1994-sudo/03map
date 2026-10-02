@@ -19,12 +19,12 @@ description: 当 03地图 施工中出现可复用的 APK、解包、窗口、�
 
 ## 写入要求
 
-每条规则写清触发条件、动作、验证方式和适用边界；保留“静态确认”和“实机确认”的区别。出现旧版本类名、路径、坐标或实验包时，明确标注历史，不让它进入当前主链。
+新增限制先核对用户要求、已验证技术原因或具体个人风险；无依据的外部偏好和单次判断不升级为禁令。每条保留规则写清依据、触发条件、动作、验证方式和适用边界；保留“静态确认”和“实机确认”的区别。出现旧版本类名、路径、坐标或实验包时，明确标注历史，不让它进入当前主链。
 
 ## 验证
 
 修改规则或 Skill 后执行：
 
-1. python3 /Users/q/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/<skill-name>（若命中 Skill）。
+1. python3 "$SKILL_CREATOR_ROOT/scripts/quick_validate.py" .agents/skills/<skill-name>（若命中 Skill，且本机已有该验证器；根目录按本机实际路径设置）。
 2. `node scripts/check-project-docs.mjs`、`node scripts/check-skills.mjs`、`node scripts/check-code-map.mjs`（若对应文件存在）。
 3. `git diff --check`。

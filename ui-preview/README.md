@@ -26,7 +26,7 @@ UI 库不依赖宿主模块、不读取车辆或 Android 系统服务；同一�
 固定版本：AGP **8.9.2**、Gradle **8.11.1**、Kotlin 与 Compose compiler 插件 **2.1.0**、Compose UI/Foundation/icons **1.7.6**、Material3 **1.3.1**、Activity Compose **1.9.3**；compileSdk/targetSdk **35**，minSdk **28**，JDK **17**。所有依赖使用明确版本，没有动态版本。该组合按本地工具链缓存选择，不以“最新版”为目标。
 
 1. 设置 JDK 17 的 `JAVA_HOME`；安装 Android SDK Platform 35。
-2. 在被忽略的 `local.properties` 配置 `sdk.dir`，或设置 `ANDROID_HOME`。不要将本机绝对路径提交到源码。
+2. 在被忽略的 `local.properties` 配置 `sdk.dir`，或设置 `ANDROID_HOME`。可共享命令使用变量或相对路径；本机配置按现有忽略规则管理。
 3. 在本目录运行：
 
 ```sh
@@ -35,7 +35,7 @@ UI 库不依赖宿主模块、不读取车辆或 Android 系统服务；同一�
 ./gradlew :app:lintDebug :content-ui:lintDebug
 ```
 
-首次构建可能需要下载固定依赖，已缓存后可加 `--offline`。测试需要的 Robolectric SDK 也可能首次下载；离线缺依赖不应报告为测试通过。产物位于 `app/build/outputs/apk/debug/`，仅是新身份的调试预览包，不是地图交付包。不要执行 install/connected 测试任务，本轮没有连接设备的授权。
+首次构建可能需要下载固定依赖，已缓存后可加 `--offline`。测试需要的 Robolectric SDK 也可能首次下载；离线缺依赖不应报告为测试通过。产物位于 `app/build/outputs/apk/debug/`，仅是新身份的调试预览包，不是地图交付包。初建预览层时只做本机验证，未运行 install/connected；后续任务需要设备测试时可执行，不继承该轮的范围限制。
 
 ## Android Studio 预览
 
@@ -68,4 +68,4 @@ Robolectric/Compose 渲染测试使用 Android 14 / mdpi，覆盖 640×1080 的�
 
 ## 明确未做
 
-没有高德集成、地图占位或假地图；没有连接车机重新提取资源；没有 Binder、CarPropertyManager、系统设置写入或真实媒体接口；没有车辆连接/安装；没有生产签名和 Git 提交。正式产品语义、视觉与设备安全门禁仍由仓库原主线文档负责，本预览不反向覆盖。
+没有高德集成、地图占位或假地图；没有连接车机重新提取资源；没有 Binder、CarPropertyManager、系统设置写入或真实媒体接口；没有车辆连接/安装；没有生产签名和 Git 提交。正式产品语义、视觉与个人风险仍由仓库主线文档负责，本预览不反向覆盖。

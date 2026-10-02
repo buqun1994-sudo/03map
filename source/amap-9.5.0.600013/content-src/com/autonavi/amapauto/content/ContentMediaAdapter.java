@@ -1,8 +1,10 @@
 package com.autonavi.amapauto.content;
 
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
 import android.media.AudioAttributes;
@@ -14,6 +16,8 @@ import android.media.session.MediaSession;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.os.Binder;
+import android.os.Build;
+import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -46,6 +50,16 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private static final String CALLBACK_DESCRIPTOR = "com.mengbo.mediaservice.IPlayInfoCallBack";
     private static final long REFRESH_DELAY_MS = 800L;
     private static final long SONG_METADATA_GRACE_MS = 1500L;
+    private static final long ARTWORK_FAILURE_TTL_MS = 10_000L;
+    private static final int ARTWORK_FAILURE_LIMIT = 32;
+    private static final String AVRCP_POSITION = "android.bluetooth.avrcp-controller.profile.action.PLAYBACK_POS_CHANGED";
+    private static final String AVRCP_POSITION_LEGACY = "android.bluetooth.avrcp-controller.profile.action.PLAYBACK_POS_CHANGEDS";
+    private static final String AVRCP_TRACK = "android.bluetooth.avrcp-controller.profile.action.TRACK_EVENT";
+    private static final String AVRCP_PLAY_STATUS = "android.bluetooth.avrcp-controller.profile.action.PLAY_STATUS";
+    private static final String AVRCP_STATUS = "android.bluetooth.avrcp-controller.profile.action.PLAYBACK_STATUS_CHANGED";
+    private static final String[] AVRCP_ACTIONS = {
+        AVRCP_POSITION, AVRCP_POSITION_LEGACY, AVRCP_TRACK, AVRCP_PLAY_STATUS, AVRCP_STATUS
+    };
     private static final java.util.regex.Pattern LRC_TIMESTAMPS = java.util.regex.Pattern.compile("\\[\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?\\]");
 
     private final Context context;
@@ -75,7 +89,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private final LruCache<String, Bitmap> artworkCache = new LruCache<String, Bitmap>(3 * 1024 * 1024) {
         @Override protected int sizeOf(String key, Bitmap bitmap) { return bitmap.getAllocationByteCount(); }
     };
-    private final Set<String> failedArtwork = new HashSet<>();
+    private final Map<String, Long> failedArtwork = new LinkedHashMap<>();
     private ServiceConnection sourceConnection;
     private IBinder sourceService;
     private Binder sourceCallback;
@@ -88,6 +102,16 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private MediaSession.Token confirmedSongToken;
     private long metadataMissingSince = -1L;
     private Runnable metadataGraceTimeout;
+    private BroadcastReceiver avrcpReceiver;
+    private long nextAvrcpEventSequence;
+    private long avrcpEventSequence;
+    private long avrcpPositionMs = -1L;
+    private long avrcpDurationMs;
+    private int avrcpPlaybackState = -1;
+    private long avrcpElapsedRealtimeMs;
+    private long avrcpSourceEpoch = -1L;
+    private MediaSession.Token avrcpToken;
+    private String avrcpRecordingKey = "";
 
     public ContentMediaAdapter(Context context) {
         this.context = context.getApplicationContext();
@@ -202,12 +226,15 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         } catch (RuntimeException error) { Log.w(TAG, "media session access unavailable", error); }
         bindSourceStatus(epoch);
         refreshSessions(epoch);
+        startAvrcpMonitor(epoch);
         handler.postDelayed(discovery, 5000L);
     }
 
     @Override public synchronized void stop() {
         running = false;
         lifecycle++;
+        stopAvrcpMonitor();
+        clearAvrcpEvent();
         handler.removeCallbacksAndMessages(null);
         if (sessionManager != null && sessionListener != null) {
             try { sessionManager.removeOnActiveSessionsChangedListener(sessionListener); }
@@ -253,6 +280,142 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         sessionManager = null;
         sessionListener = null;
         listener = null;
+    }
+
+    private void startAvrcpMonitor(final long epoch) {
+        IntentFilter filter = new IntentFilter();
+        for (String action : AVRCP_ACTIONS) filter.addAction(action);
+        BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                acceptAvrcpEvent(intent, epoch);
+            }
+        };
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(receiver, filter, null, handler, Context.RECEIVER_EXPORTED);
+            } else {
+                context.registerReceiver(receiver, filter, null, handler);
+            }
+            avrcpReceiver = receiver;
+        } catch (RuntimeException error) {
+            Log.w(TAG, "AVRCP event monitor unavailable", error);
+        }
+    }
+
+    private void stopAvrcpMonitor() {
+        if (avrcpReceiver != null) {
+            try { context.unregisterReceiver(avrcpReceiver); } catch (RuntimeException ignored) { }
+        }
+        avrcpReceiver = null;
+    }
+
+    private synchronized void acceptAvrcpEvent(Intent intent, long epoch) {
+        if (!isCurrent(epoch) || intent == null || controller == null) return;
+        ObservedController selected = observed.get(controller.getSessionToken());
+        if (!isBluetooth(controller) || selected == null || selected.destroyed
+                || !matchesActualSource(selected)) return;
+        String selectedSource = actualSource != null ? actualSource : sourceForController(controller);
+        if (!"蓝牙音乐".equals(selectedSource)) return;
+        String action = intent.getAction();
+        if (!java.util.Arrays.asList(AVRCP_ACTIONS).contains(action)) return;
+        MediaFields fields = mediaFields(safeMetadata(controller));
+        if (songIdentityFor(controller, fields) != ContentPorts.MediaSongIdentity.SONG) return;
+        Bundle extras;
+        try { extras = intent.getExtras(); } catch (RuntimeException error) { return; }
+        Object playback = avrcpExtra(extras, "android.bluetooth.avrcp-controller.profile.extra.PLAYBACK");
+        boolean positionNotification = AVRCP_POSITION.equals(action) || AVRCP_POSITION_LEGACY.equals(action);
+        Long position;
+        if (AVRCP_PLAY_STATUS.equals(action) || AVRCP_STATUS.equals(action)) {
+            position = avrcpInteger(avrcpExtra(extras,
+                    "android.bluetooth.avrcp-controller.extra.SONG_POS"), 86_400_000L);
+        } else {
+            position = firstAvrcpInteger(extras, 86_400_000L,
+                    "android.bluetooth.avrcp-controller.profile.extra.SONG_POS",
+                    "android.bluetooth.avrcp-controller.extra.PLAY_SONG_POS");
+            if (position == null && playback instanceof PlaybackState) {
+                long value = ((PlaybackState) playback).getPosition();
+                if (value >= 0L && value <= 86_400_000L) position = value;
+            }
+        }
+        Integer playbackState = null;
+        if (!positionNotification) {
+            Long state = playback instanceof PlaybackState
+                    ? avrcpInteger(((PlaybackState) playback).getState(), PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM)
+                    : avrcpInteger(playback, PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM);
+            if (state != null) playbackState = state.intValue();
+            if (playbackState == null) playbackState = avrcpPlaybackState(avrcpExtra(extras,
+                    "android.bluetooth.avrcp-controller.extra.PLAY_STATUS_ID"));
+        }
+        Long duration = AVRCP_PLAY_STATUS.equals(action)
+                ? avrcpInteger(avrcpExtra(extras, "android.bluetooth.avrcp-controller.extra.SONG_LEN"),
+                        86_400_000L) : null;
+        if (duration != null && duration >= 1000L && fields.durationMs >= 1000L
+                && Math.abs(duration - fields.durationMs) > 2000L) return;
+        if (position == null && playbackState == null) return;
+        String recordingKey = avrcpRecordingKey(fields);
+        if (!sameToken(avrcpToken, controller) || avrcpSourceEpoch != sourceEpoch
+                || !avrcpRecordingKey.equals(recordingKey)) clearAvrcpEvent();
+        avrcpToken = controller.getSessionToken();
+        avrcpSourceEpoch = sourceEpoch;
+        avrcpRecordingKey = recordingKey;
+        avrcpPositionMs = position == null ? -1L : position;
+        if (duration != null && duration >= 1000L) avrcpDurationMs = duration;
+        if (playbackState != null) avrcpPlaybackState = playbackState;
+        avrcpElapsedRealtimeMs = SystemClock.elapsedRealtime();
+        avrcpEventSequence = ++nextAvrcpEventSequence;
+        Log.i(TAG, "AVRCP accepted sequence=" + avrcpEventSequence
+                + " position=" + avrcpPositionMs + " state=" + avrcpPlaybackState);
+        publishSnapshot(epoch);
+    }
+
+    private void clearAvrcpEvent() {
+        avrcpEventSequence = 0L;
+        avrcpPositionMs = -1L;
+        avrcpDurationMs = 0L;
+        avrcpPlaybackState = -1;
+        avrcpElapsedRealtimeMs = 0L;
+        avrcpSourceEpoch = -1L;
+        avrcpToken = null;
+        avrcpRecordingKey = "";
+    }
+
+    private static String avrcpRecordingKey(MediaFields fields) {
+        return (fields.mediaId + '\u001f' + fields.title + '\u001f' + fields.artist + '\u001f' + fields.album)
+                .trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    @SuppressWarnings("deprecation")
+    private static Object avrcpExtra(Bundle extras, String key) {
+        try { return extras == null ? null : extras.get(key); } catch (RuntimeException error) { return null; }
+    }
+
+    private static Long firstAvrcpInteger(Bundle extras, long maximum, String... keys) {
+        for (String key : keys) {
+            Long value = avrcpInteger(avrcpExtra(extras, key), maximum);
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    private static Long avrcpInteger(Object value, long maximum) {
+        if (!(value instanceof Number)) return null;
+        double number = ((Number) value).doubleValue();
+        if (Double.isNaN(number) || Double.isInfinite(number) || number < 0d || number > maximum) return null;
+        long integer = (long) number;
+        return integer == number ? integer : null;
+    }
+
+    private static Integer avrcpPlaybackState(Object value) {
+        Long state = avrcpInteger(value, 4L);
+        if (state == null) return null;
+        switch (state.intValue()) {
+            case 0: return PlaybackState.STATE_STOPPED;
+            case 1: return PlaybackState.STATE_PLAYING;
+            case 2: return PlaybackState.STATE_PAUSED;
+            case 3: return PlaybackState.STATE_FAST_FORWARDING;
+            case 4: return PlaybackState.STATE_REWINDING;
+            default: return null;
+        }
     }
 
     private synchronized boolean isCurrent(long epoch) { return running && lifecycle == epoch; }
@@ -437,6 +600,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             PlaybackState initialPlayback = safePlayback(item.controller);
             item.lastPosition = initialPlayback == null ? -1L : initialPlayback.getPosition();
             item.lastPositionUpdate = initialPlayback == null ? 0L : initialPlayback.getLastPositionUpdateTime();
+            item.lastPlaybackState = initialPlayback == null ? PlaybackState.STATE_NONE : initialPlayback.getState();
             item.callback = new MediaController.Callback() {
                 private void changed(boolean metadata) {
                     synchronized (ContentMediaAdapter.this) {
@@ -449,6 +613,9 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                         }
                         PlaybackState position = safePlayback(item.controller);
                         if (position != null) {
+                            if (!metadata && position.getState() != item.lastPlaybackState
+                                    && sameToken(avrcpToken, item.controller)) avrcpPlaybackState = -1;
+                            item.lastPlaybackState = position.getState();
                             if (!metadata && item.lastPosition >= 0L && position.getPosition() - item.lastPosition >= 250L
                                     && position.getLastPositionUpdateTime() > item.lastPositionUpdate
                                     && freshPlaybackEvidence(safeMetadata(item.controller), position, sourceChangedAt)) {
@@ -622,23 +789,38 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         long actions = playback == null ? 0L : playback.getActions();
         Bitmap artwork = bitmapArtwork(metadata);
         if (songIdentity == ContentPorts.MediaSongIdentity.SONG && artwork == null && metadata != null) {
-            String uri = artworkUri(metadata);
-            if (!uri.isEmpty() && !identity.isEmpty()) artwork = uriArtwork(epoch, source + '\u001f' + identity, uri);
-            else cancelArtwork();
+            List<String> uris = artworkUris(metadata);
+            if (!uris.isEmpty() && !identity.isEmpty()) {
+                artwork = uriArtwork(epoch, source + '\u001f' + avrcpRecordingKey(fields), uris);
+            } else cancelArtwork();
         } else cancelArtwork();
         long position = playback == null || playback.getPosition() < 0L ? -1L : playback.getPosition();
         long updateTime = playback == null ? 0L : playback.getLastPositionUpdateTime();
         if (position < 0L || updateTime <= 0L || updateTime > SystemClock.elapsedRealtime()) updateTime = 0L;
         float speed = playback == null ? 0f : playback.getPlaybackSpeed();
-        if (!Float.isFinite(speed) || speed < 0f) speed = 0f;
-        boolean playing = playback != null && playback.getState() == PlaybackState.STATE_PLAYING;
+        if (!Float.isFinite(speed)) speed = 0f;
+        boolean matchingAvrcp = correlated && "蓝牙音乐".equals(source) && isBluetooth(current)
+                && songIdentity == ContentPorts.MediaSongIdentity.SONG
+                && avrcpSourceEpoch == sourceEpoch && sameToken(avrcpToken, current)
+                && avrcpRecordingKey.equals(avrcpRecordingKey(fields))
+                && (avrcpDurationMs < 1000L || fields.durationMs < 1000L
+                        || Math.abs(avrcpDurationMs - fields.durationMs) <= 2000L);
+        if (!matchingAvrcp) clearAvrcpEvent();
+        long duration = fields.durationMs >= 1000L ? fields.durationMs
+                : matchingAvrcp && avrcpDurationMs >= 1000L ? avrcpDurationMs : fields.durationMs;
+        int playbackState = playback == null ? PlaybackState.STATE_NONE : playback.getState();
+        int effectiveState = matchingAvrcp && avrcpPlaybackState >= 0 ? avrcpPlaybackState : playbackState;
+        boolean playing = effectiveState == PlaybackState.STATE_PLAYING
+                || effectiveState == PlaybackState.STATE_FAST_FORWARDING
+                || effectiveState == PlaybackState.STATE_REWINDING;
         listener.onMediaSnapshot(new ContentPorts.MediaSnapshot(true, false, source, playing, generation,
                 fields.title.isEmpty() ? "暂无媒体" : fields.title,
                 fields.artist.isEmpty() ? "未连接" : fields.artist,
                 (actions & (PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE)) != 0L,
                 (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L, artwork,
-                fields.mediaId, fields.album, fields.durationMs, position, updateTime,
-                playing ? speed : 0f, fields.embeddedLyrics, songIdentity));
+                fields.mediaId, fields.album, duration, position, updateTime,
+                playing ? speed : 0f, fields.embeddedLyrics, songIdentity, playbackState,
+                avrcpEventSequence, avrcpPositionMs, avrcpPlaybackState, avrcpElapsedRealtimeMs));
     }
 
     private ContentPorts.MediaSongIdentity resolveSongIdentity(
@@ -736,6 +918,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private void clearConfirmedSong() {
         cancelMetadataGrace();
+        clearAvrcpEvent();
         confirmedSongToken = null;
         metadataMissingSince = -1L;
     }
@@ -760,49 +943,90 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return candidate != null && "com.android.bluetooth".equals(candidate.getPackageName());
     }
 
-    private Bitmap uriArtwork(final long epoch, String identity, final String uri) {
-        final String key = sourceEpoch + "\u001f" + identity + "\u001f" + uri;
-        Bitmap cached = artworkCache.get(key);
-        if (cached != null && !cached.isRecycled()) {
-            if (artworkRequestKey != null && !key.equals(artworkRequestKey)) cancelArtwork();
-            return cached;
+    private Bitmap uriArtwork(final long epoch, final String identity, final List<String> uris) {
+        final String requestKey = sourceEpoch + "\u001f" + identity + "\u001f" + String.join("\u001f", uris);
+        for (String uri : uris) {
+            Bitmap cached = artworkCache.get(identity + '\u001f' + uri);
+            if (cached != null && !cached.isRecycled()) {
+                cancelArtwork();
+                return cached;
+            }
         }
-        if (key.equals(artworkRequestKey) || failedArtwork.contains(key) || artworkExecutor == null) return null;
+        if (requestKey.equals(artworkRequestKey) || artworkExecutor == null) return null;
+        List<String> candidates = new ArrayList<>();
+        long now = SystemClock.elapsedRealtime();
+        for (String uri : uris) {
+            String cacheKey = identity + '\u001f' + uri;
+            Long failedUntil = failedArtwork.get(cacheKey);
+            if (failedUntil == null || now >= failedUntil) {
+                failedArtwork.remove(cacheKey);
+                candidates.add(uri);
+            }
+        }
         cancelArtwork();
-        artworkRequestKey = key;
+        if (candidates.isEmpty()) return null;
+        artworkRequestKey = requestKey;
         final long sequence = ++artworkSequence;
         final long sourceVersion = sourceEpoch;
+        final MediaSession.Token token = controller.getSessionToken();
+        final String recording = avrcpRecordingKey(mediaFields(safeMetadata(controller)));
         final CancellationSignal cancellation = new CancellationSignal();
         artworkCancellation = cancellation;
         artworkTimeout = () -> {
             synchronized (ContentMediaAdapter.this) {
-                if (!isCurrent(epoch) || sequence != artworkSequence || !key.equals(artworkRequestKey)) return;
-                rememberArtworkFailure(key);
+                if (!isCurrent(epoch) || sequence != artworkSequence || !requestKey.equals(artworkRequestKey)) return;
+                for (String uri : candidates) rememberArtworkFailure(identity + '\u001f' + uri);
                 cancelArtwork();
                 publishSnapshot(epoch);
             }
         };
-        handler.postDelayed(artworkTimeout, 3000L);
+        handler.postDelayed(artworkTimeout, Math.min(13_000L, 3_000L * candidates.size() + 1_000L));
         artworkTask = artworkExecutor.submit(() -> {
-            final Bitmap loaded = ContentMediaArtwork.decode(context, uri, cancellation);
+            Bitmap result = null;
+            String resultUri = null;
+            List<String> failures = new ArrayList<>();
+            for (String uri : candidates) {
+                if (cancellation.isCanceled() || Thread.currentThread().isInterrupted()) break;
+                result = ContentMediaArtwork.decode(context, uri, cancellation);
+                if (result != null && !result.isRecycled()) {
+                    resultUri = uri;
+                    break;
+                }
+                failures.add(uri);
+            }
+            final Bitmap loaded = result;
+            final String loadedUri = resultUri;
             handler.post(() -> {
                 synchronized (ContentMediaAdapter.this) {
+                    MediaMetadata currentMetadata = safeMetadata(controller);
+                    MediaFields currentFields = mediaFields(currentMetadata);
+                    ObservedController selected = controller == null ? null : observed.get(controller.getSessionToken());
                     boolean currentRequest = isCurrent(epoch) && sourceEpoch == sourceVersion
-                            && sequence == artworkSequence && key.equals(artworkRequestKey)
+                            && sequence == artworkSequence && requestKey.equals(artworkRequestKey)
+                            && sameToken(token, controller) && selected != null && !selected.destroyed
+                            && matchesActualSource(selected)
+                            && recording.equals(avrcpRecordingKey(currentFields))
+                            && uris.equals(artworkUris(currentMetadata))
+                            && songIdentityFor(controller, currentFields) == ContentPorts.MediaSongIdentity.SONG
                             && !cancellation.isCanceled();
                     if (!currentRequest) {
                         if (loaded != null && !loaded.isRecycled()) loaded.recycle();
+                        if (isCurrent(epoch) && sequence == artworkSequence && requestKey.equals(artworkRequestKey)) {
+                            cancelArtwork();
+                            publishSnapshot(epoch);
+                        }
                         return;
                     }
                     artworkTask = null;
                     artworkCancellation = null;
                     if (artworkTimeout != null) handler.removeCallbacks(artworkTimeout);
                     artworkTimeout = null;
+                    for (String uri : failures) rememberArtworkFailure(identity + '\u001f' + uri);
                     if (loaded != null && !loaded.isRecycled()) {
-                        artworkCache.put(key, loaded);
+                        String cacheKey = identity + '\u001f' + loadedUri;
+                        artworkCache.put(cacheKey, loaded);
+                        failedArtwork.remove(cacheKey);
                         generation++;
-                    } else {
-                        rememberArtworkFailure(key);
                     }
                     artworkRequestKey = null;
                     publishSnapshot(epoch);
@@ -813,9 +1037,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     }
 
     private void rememberArtworkFailure(String key) {
-        // A bounded negative cache prevents clock/snapshot reads from retrying one bad URI.
-        if (failedArtwork.size() >= 8) failedArtwork.clear();
-        failedArtwork.add(key);
+        failedArtwork.remove(key);
+        while (failedArtwork.size() >= ARTWORK_FAILURE_LIMIT) {
+            failedArtwork.remove(failedArtwork.keySet().iterator().next());
+        }
+        failedArtwork.put(key, SystemClock.elapsedRealtime() + ARTWORK_FAILURE_TTL_MS);
     }
 
     private void cancelArtwork() {
@@ -841,17 +1067,20 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return null;
     }
 
-    private static String artworkUri(MediaMetadata metadata) {
-        if (metadata == null) return "";
+    private static List<String> artworkUris(MediaMetadata metadata) {
+        java.util.LinkedHashSet<String> uris = new java.util.LinkedHashSet<>();
+        if (metadata == null) return new ArrayList<>();
         for (String key : new String[] { MediaMetadata.METADATA_KEY_ALBUM_ART_URI,
                 MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI }) {
             String uri = text(metadata, key);
-            if (!uri.isEmpty()) return uri;
+            if (!uri.isEmpty() && uri.length() <= 8192) uris.add(uri);
         }
         try {
             MediaDescription description = metadata.getDescription();
-            return description.getIconUri() == null ? "" : description.getIconUri().toString();
-        } catch (RuntimeException ignored) { return ""; }
+            String uri = description.getIconUri() == null ? "" : description.getIconUri().toString().trim();
+            if (!uri.isEmpty() && uri.length() <= 8192) uris.add(uri);
+        } catch (RuntimeException ignored) { }
+        return new ArrayList<>(uris);
     }
 
     private static String firstEmbeddedLyrics(CharSequence... values) {
@@ -937,6 +1166,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         long identityObservedAt;
         long lastPosition = -1L;
         long lastPositionUpdate;
+        int lastPlaybackState = PlaybackState.STATE_NONE;
         long progressSourceEpoch = -1L;
         long confirmedSourceEpoch = -1L;
         boolean destroyed;

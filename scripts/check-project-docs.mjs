@@ -116,12 +116,6 @@ if (docsIndex.includes("apk-work/9.5.0.600013/decode")) {
   failures.push("文档仍把临时 apk-work decode 路径写成正式源码入口");
 }
 
-const personalPath = /(?:\/Users\/[^/]+\/|[A-Za-z]:\\\\Users\\\\[^\\]+\\\\)/;
-for (const [path, content] of contents) {
-  if (path === ".codex/local-context.properties.example") continue;
-  if (personalPath.test(content)) failures.push(`${path} 写入个人绝对路径`);
-}
-
 if (failures.length > 0) {
   console.error("项目文档检查失败：");
   for (const failure of failures) console.error(`- ${failure}`);

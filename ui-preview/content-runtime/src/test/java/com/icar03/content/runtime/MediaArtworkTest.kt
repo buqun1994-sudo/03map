@@ -35,10 +35,14 @@ class MediaArtworkTest {
     private val app get() = RuntimeEnvironment.getApplication()
     private fun imageFile(edge: Int = 64): File {
         val file = File.createTempFile("media-artwork-", ".png", app.cacheDir)
-        val bitmap = Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+        writeImage(file, edge)
+        return file
+    }
+
+    private fun writeImage(file: File, edge: Int = 64, color: Int = Color.BLUE) {
+        val bitmap = Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888).apply { eraseColor(color) }
         file.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
         bitmap.recycle()
-        return file
     }
 
     @Test fun fileArtworkDecodesToAtMost512PixelsIncludingOddDimensionRounding() {
@@ -107,6 +111,157 @@ class MediaArtworkTest {
             adapter.stop()
             assertFalse(decoded.isRecycled)
         } finally { adapter.stop(); file.delete() }
+    }
+
+    @Test fun failedFirstUriFallsBackToArtUriAndReusesTheSuccessfulBitmap() {
+        val file = imageFile(); val controller = session(file)
+        shadowOf(controller).setMetadata(MediaMetadata.Builder(controller.metadata)
+            .putString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI, "content://missing-provider/first")
+            .putString(MediaMetadata.METADATA_KEY_ART_URI, Uri.fromFile(file).toString()).build())
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            awaitArtwork(adapter)
+            val decoded = seen.last().artwork!!
+            assertEquals(Color.BLUE, decoded.getPixel(0, 0))
+            val failures = ContentMediaAdapter::class.java.getDeclaredField("failedArtwork").apply { isAccessible = true }
+                .get(adapter) as Map<*, *>
+            assertEquals(1, failures.size)
+            repeat(5) { publish(adapter) }
+            assertSame(decoded, seen.last().artwork)
+            assertNull(artworkTask(adapter))
+            adapter.stop()
+            assertFalse(decoded.isRecycled)
+        } finally { adapter.stop(); file.delete() }
+    }
+
+    @Test fun displayIconUriIsTriedAfterBothHigherPriorityCandidatesFail() {
+        val file = imageFile(); val controller = session(file)
+        shadowOf(controller).setMetadata(MediaMetadata.Builder(controller.metadata)
+            .putString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI, "content://missing-provider/album")
+            .putString(MediaMetadata.METADATA_KEY_ART_URI, "content://missing-provider/art")
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI, Uri.fromFile(file).toString()).build())
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            awaitArtwork(adapter)
+            assertEquals(Color.BLUE, seen.last().artwork!!.getPixel(0, 0))
+            @Suppress("UNCHECKED_CAST")
+            val uris = ContentMediaAdapter::class.java.getDeclaredMethod("artworkUris", MediaMetadata::class.java)
+                .apply { isAccessible = true }.invoke(null, controller.metadata) as List<String>
+            assertEquals(listOf("content://missing-provider/album", "content://missing-provider/art",
+                Uri.fromFile(file).toString()), uris)
+        } finally { adapter.stop(); file.delete() }
+    }
+
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun transientSameUriFailureDoesNotBecomeAPermanentBlacklistOrFetchStorm() {
+        val file = imageFile().apply { writeText("temporarily invalid image") }; session(file)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            awaitArtwork(adapter)
+            assertNull(seen.last().artwork)
+            writeImage(file)
+            repeat(10) { publish(adapter) }
+            assertNull(artworkTask(adapter))
+            assertNull(seen.last().artwork)
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(9))
+            publish(adapter)
+            assertNull(artworkTask(adapter))
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
+            publish(adapter)
+            assertNotNull(artworkTask(adapter))
+            awaitArtwork(adapter)
+            assertEquals(Color.BLUE, seen.last().artwork!!.getPixel(0, 0))
+        } finally { adapter.stop(); file.delete() }
+    }
+
+    @Test fun postedArtworkCannotCrossASourceSwitchAndPublishedCacheSurvivesASameSongReturn() {
+        val file = imageFile(); session(file)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            artworkTask(adapter)!!.get(3, TimeUnit.SECONDS)
+            changeSource(adapter, "网易云音乐")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertNull(seen.last().artwork)
+            changeSource(adapter, "蓝牙音乐")
+            awaitArtwork(adapter)
+            val published = seen.last().artwork!!
+            changeSource(adapter, "网易云音乐")
+            assertNull(seen.last().artwork)
+            changeSource(adapter, "蓝牙音乐")
+            assertSame(published, seen.last().artwork)
+            assertNull(artworkTask(adapter))
+            assertFalse(published.isRecycled)
+        } finally { adapter.stop(); file.delete() }
+    }
+
+    @Test fun newControllerTokenCannotConsumeAnAlreadyPostedOldTokenBitmap() {
+        val file = imageFile(); val old = session(file)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            artworkTask(adapter)!!.get(3, TimeUnit.SECONDS)
+            writeImage(file, color = Color.RED)
+            val replacement = session(file)
+            assertNotEquals(old.sessionToken, replacement.sessionToken)
+            val epoch = ContentMediaAdapter::class.java.getDeclaredField("lifecycle").apply { isAccessible = true }.getLong(adapter)
+            ContentMediaAdapter::class.java.getDeclaredMethod("updateController", List::class.java, java.lang.Long.TYPE)
+                .apply { isAccessible = true }.invoke(adapter, listOf(replacement), epoch)
+            awaitArtwork(adapter)
+            assertEquals(Color.RED, seen.last().artwork!!.getPixel(0, 0))
+        } finally { adapter.stop(); file.delete() }
+    }
+
+    @Test fun completedArtworkIsRejectedWhenMetadataChangesBeforeItsCallbackIsDelivered() {
+        val file = imageFile(); val controller = session(file)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            artworkTask(adapter)!!.get(3, TimeUnit.SECONDS)
+            shadowOf(controller).setMetadata(MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "replacement")
+                .putString(MediaMetadata.METADATA_KEY_TITLE, "replacement")
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, "artist")
+                .putLong(MediaMetadata.METADATA_KEY_DURATION, 180_000L).build())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("replacement", seen.last().title)
+            assertNull(seen.last().artwork)
+            val cache = ContentMediaAdapter::class.java.getDeclaredField("artworkCache").apply { isAccessible = true }
+                .get(adapter) as android.util.LruCache<*, *>
+            assertEquals(0, cache.size())
+        } finally { adapter.stop(); file.delete() }
+    }
+
+    private fun artworkTask(adapter: ContentMediaAdapter): Future<*>? =
+        ContentMediaAdapter::class.java.getDeclaredField("artworkTask").apply { isAccessible = true }
+            .get(adapter) as Future<*>?
+
+    private fun awaitArtwork(adapter: ContentMediaAdapter) {
+        artworkTask(adapter)!!.get(3, TimeUnit.SECONDS)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun publish(adapter: ContentMediaAdapter) {
+        val epoch = ContentMediaAdapter::class.java.getDeclaredField("lifecycle").apply { isAccessible = true }.getLong(adapter)
+        ContentMediaAdapter::class.java.getDeclaredMethod("publishSnapshot", java.lang.Long.TYPE)
+            .apply { isAccessible = true }.invoke(adapter, epoch)
+    }
+
+    private fun changeSource(adapter: ContentMediaAdapter, source: String) {
+        ContentMediaAdapter::class.java.getDeclaredMethod("changeActualSource", String::class.java)
+            .apply { isAccessible = true }.invoke(adapter, source)
+        val epoch = ContentMediaAdapter::class.java.getDeclaredField("lifecycle").apply { isAccessible = true }.getLong(adapter)
+        ContentMediaAdapter::class.java.getDeclaredMethod("reconcileControllers", java.lang.Long.TYPE)
+            .apply { isAccessible = true }.invoke(adapter, epoch)
     }
 
     @Test fun stopInvalidatesAlreadyPostedArtworkCompletionBeforeRestart() {

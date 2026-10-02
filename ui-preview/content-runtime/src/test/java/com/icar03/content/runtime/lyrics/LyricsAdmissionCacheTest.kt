@@ -81,8 +81,13 @@ class LyricsAdmissionCacheTest {
         try {
             assertTrue(cache.writeAutomatic(identity, ResolvedLyrics(result, proof)))
             assertTrue(cache.writeManual(identity, manual))
+            assertFalse(cache.writeAutomatic(identity, ResolvedLyrics(result, proof)))
+            assertFalse(cache.recordRefresh(identity, System.currentTimeMillis()))
             assertEquals(LyricsCacheSelection.MANUAL, cache.read(identity, false)!!.selection)
             assertEquals(manual.lyrics, cache.read(identity, false)!!.result.lyrics)
+            assertFalse(cache.read(identity, false)!!.needsRefresh(Long.MAX_VALUE))
+            assertTrue(cache.clearManual(identity))
+            assertEquals(result.lyrics, cache.read(identity, false)!!.result.lyrics)
         } finally { cache.close() }
     }
 

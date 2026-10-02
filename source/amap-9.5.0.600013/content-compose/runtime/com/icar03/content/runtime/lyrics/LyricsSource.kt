@@ -25,6 +25,15 @@ internal interface LyricsCatalogSource : LyricsBodySource {
         deadlineNanos: Long,
         cancellation: LyricsCancellationSignal
     ): List<LyricsResult>
+
+    fun loadCover(
+        candidate: LyricsResult,
+        deadlineNanos: Long,
+        cancellation: LyricsCancellationSignal
+    ): String {
+        cancellation.throwIfCancelled()
+        return candidate.cover
+    }
 }
 
 internal interface LyricsExactAndFallbackSource : LyricsBodySource {
@@ -46,6 +55,12 @@ internal fun interface LyricsResolver {
         query: LyricsLookup,
         cancellation: LyricsCancellationSignal
     ): LyricsResolutionOutcome
+
+    fun resolveLyricsProgressive(
+        query: LyricsLookup,
+        cancellation: LyricsCancellationSignal,
+        onProvisional: (LyricsResolutionOutcome.Found) -> Unit
+    ): LyricsResolutionOutcome = resolveLyrics(query, cancellation)
 }
 
 internal fun interface LyricsCoverResolver {
@@ -53,6 +68,13 @@ internal fun interface LyricsCoverResolver {
         query: LyricsLookup,
         cancellation: LyricsCancellationSignal
     ): String
+
+    fun resolveCovers(
+        query: LyricsLookup,
+        cancellation: LyricsCancellationSignal
+    ): List<String> = listOfNotNull(
+        resolveCover(query, cancellation).takeIf(String::isNotBlank)
+    )
 }
 
 internal class LyricsCancellationSignal {
@@ -113,7 +135,7 @@ internal object SystemLyricsMonotonicClock : LyricsMonotonicClock {
 
 internal data class LyricsResolutionConfig(
     val catalogDeadlineMs: Long = 1_800L,
-    val totalDeadlineMs: Long = 3_800L,
+    val totalDeadlineMs: Long = 20_000L,
     val maximumBodyLanes: Int = 2
 ) {
     init {

@@ -37,11 +37,23 @@ internal data class LyricsResult(
     val candidateTrack: String = "",
     val candidateArtist: String = "",
     val candidateAlbum: String = "",
-    val lyricsKind: LyricsKind = LyricsKind.NONE
+    val lyricsKind: LyricsKind = LyricsKind.NONE,
+    val wordLyrics: String = "",
+    val romanizedLyrics: String = "",
+    val plainLyrics: String = "",
+    val backgroundLyrics: String = "",
+    val ttmlLyrics: String = "",
+    val identitySource: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("lyrics", lyrics)
         .put("translatedLyrics", translatedLyrics)
+        .put("wordLyrics", wordLyrics)
+        .put("romanizedLyrics", romanizedLyrics)
+        .put("plainLyrics", plainLyrics)
+        .put("backgroundLyrics", backgroundLyrics)
+        .put("ttmlLyrics", ttmlLyrics)
+        .put("identitySource", identitySource)
         .put("duration", durationMs)
         .put("cover", cover)
         .put("source", source)
@@ -56,7 +68,8 @@ internal data class LyricsResult(
         sourceId = sourceId,
         track = candidateTrack,
         artist = candidateArtist,
-        album = candidateAlbum
+        album = candidateAlbum,
+        identitySource = identitySource
     )
 }
 
@@ -66,7 +79,8 @@ internal data class LyricsCandidateSnapshot(
     val sourceId: String,
     val track: String,
     val artist: String,
-    val album: String
+    val album: String,
+    val identitySource: String = ""
 ) {
     fun toResult(): LyricsResult = LyricsResult(
         durationMs = durationMs,
@@ -74,7 +88,8 @@ internal data class LyricsCandidateSnapshot(
         sourceId = sourceId,
         candidateTrack = track,
         candidateArtist = artist,
-        candidateAlbum = album
+        candidateAlbum = album,
+        identitySource = identitySource
     )
 
     fun toJson(): JSONObject = JSONObject()
@@ -84,6 +99,7 @@ internal data class LyricsCandidateSnapshot(
         .put("track", track)
         .put("artist", artist)
         .put("album", album)
+        .put("identitySource", identitySource)
 
     companion object {
         fun fromJson(value: JSONObject?): LyricsCandidateSnapshot? {
@@ -94,7 +110,8 @@ internal data class LyricsCandidateSnapshot(
                 sourceId = value.optString("sourceId"),
                 track = value.optString("track"),
                 artist = value.optString("artist"),
-                album = value.optString("album")
+                album = value.optString("album"),
+                identitySource = value.optString("identitySource")
             )
         }
     }
@@ -147,6 +164,7 @@ internal sealed interface LyricsResolutionOutcome {
     data object NoMatch : LyricsResolutionOutcome
     data object InvalidMetadata : LyricsResolutionOutcome
     data class RetryableFailure(val reason: LyricsFailureReason) : LyricsResolutionOutcome
+    data class SourceFailure(val reason: LyricsFailureReason) : LyricsResolutionOutcome
     data object Cancelled : LyricsResolutionOutcome
 }
 

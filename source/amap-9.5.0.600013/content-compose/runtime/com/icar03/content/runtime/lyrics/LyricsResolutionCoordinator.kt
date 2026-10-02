@@ -27,7 +27,8 @@ internal class LyricsResolutionCoordinator internal constructor(
     private var activeLyricsCancellation: LyricsCancellationSignal? = null
     private val activeCoverCancellations = mutableSetOf<LyricsCancellationSignal>()
 
-    suspend fun resolveLatest(query: LyricsLookup): LyricsResolutionOutcome {
+    suspend fun resolveLatest(query: LyricsLookup,
+        onProvisional: (LyricsResolutionOutcome.Found) -> Unit = {}): LyricsResolutionOutcome {
         val requestGeneration = synchronized(stateLock) {
             if (closed.get()) return LyricsResolutionOutcome.Cancelled
             latestRequestGeneration += 1L
@@ -55,7 +56,9 @@ internal class LyricsResolutionCoordinator internal constructor(
 
             val outcome = try {
                 executeBlocking(cancellation) {
-                    lyricsResolver.resolveLyrics(query, cancellation)
+                    lyricsResolver.resolveLyricsProgressive(query, cancellation) { provisional ->
+                        if (isLatest(requestGeneration) && !cancellation.isCancelled) onProvisional(provisional)
+                    }
                 }
             } finally {
                 synchronized(stateLock) {
@@ -73,16 +76,18 @@ internal class LyricsResolutionCoordinator internal constructor(
         }
     }
 
-    suspend fun resolveCover(query: LyricsLookup): String {
-        if (closed.get()) return ""
+    suspend fun resolveCover(query: LyricsLookup): String = resolveCovers(query).firstOrNull().orEmpty()
+
+    suspend fun resolveCovers(query: LyricsLookup): List<String> {
+        if (closed.get()) return emptyList()
         val cancellation = LyricsCancellationSignal()
         val accepted = synchronized(stateLock) {
             if (closed.get()) false else activeCoverCancellations.add(cancellation)
         }
-        if (!accepted) return ""
+        if (!accepted) return emptyList()
         return try {
             executeBlocking(cancellation) {
-                coverResolver.resolveCover(query, cancellation)
+                coverResolver.resolveCovers(query, cancellation)
             }
         } finally {
             synchronized(stateLock) {

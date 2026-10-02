@@ -296,6 +296,267 @@ class ContentMediaSessionTest {
         } finally { adapter.stop() }
     }
 
+    @Test fun actualAvrcpProgressIsBoundToBluetoothWithoutInventingControllerPosition() {
+        val c = controller("com.android.bluetooth")
+        val zero = PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0L, 0f, 0L).build()
+        shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(zero); add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }
+        try {
+            assertEquals("蓝牙音乐", seen.last().source)
+            assertEquals(0L, seen.last().avrcpEventSequence)
+            sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 30_000L)
+                .putExtra(SONG_LEN, 180_000L).putExtra(RAW_STATUS, 1.toByte()))
+            val actual = seen.last()
+            assertTrue(actual.avrcpEventSequence > 0L)
+            assertEquals(30_000L, actual.avrcpPositionMs)
+            assertEquals(PlaybackState.STATE_PLAYING, actual.avrcpPlaybackState)
+            assertEquals(0L, actual.positionMs)
+            assertEquals(0L, actual.positionElapsedRealtimeMs)
+            assertEquals(0f, actual.playbackSpeed, 0f)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+            reconcile(adapter)
+            assertEquals(actual.avrcpEventSequence, seen.last().avrcpEventSequence)
+            assertEquals(actual.avrcpElapsedRealtimeMs, seen.last().avrcpElapsedRealtimeMs)
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(RAW_STATUS, 2.toByte()))
+            assertFalse(seen.last().playing)
+            assertEquals(-1L, seen.last().avrcpPositionMs)
+            assertEquals(PlaybackState.STATE_PLAYING, seen.last().playbackState)
+            assertEquals(PlaybackState.STATE_PAUSED, seen.last().avrcpPlaybackState)
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(RAW_STATUS, 1.toByte()))
+            assertTrue(seen.last().playing)
+            val paused = PlaybackState.Builder().setState(PlaybackState.STATE_PAUSED, 0L, 0f).build()
+            shadowOf(c).setPlaybackState(paused)
+            shadowOf(c).callbacks.forEach { it.onPlaybackStateChanged(paused) }
+            assertFalse(seen.last().playing)
+            assertEquals(-1, seen.last().avrcpPlaybackState)
+            assertEquals(PlaybackState.STATE_PAUSED, seen.last().playbackState)
+            val buffering = PlaybackState.Builder().setState(PlaybackState.STATE_BUFFERING, 0L, 0f).build()
+            shadowOf(c).setPlaybackState(buffering)
+            shadowOf(c).callbacks.forEach { it.onPlaybackStateChanged(buffering) }
+            assertFalse(seen.last().playing)
+            assertEquals(PlaybackState.STATE_BUFFERING, seen.last().playbackState)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun fullPlayStatusAndTrackParcelableUseAndroidStateWithoutSourceBinder() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("A"))
+        shadowOf(c).setPlaybackState(PlaybackState.Builder().setState(PlaybackState.STATE_PAUSED, 0L, 0f, 0L).build())
+        add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }
+        try {
+            assertEquals("蓝牙音乐", seen.last().source)
+            sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 90_000L)
+                .putExtra(SONG_LEN, 180_000L).putExtra(PROFILE_PLAYBACK, PlaybackState.STATE_PLAYING))
+            assertTrue(seen.last().playing)
+            assertEquals(PlaybackState.STATE_PLAYING, seen.last().avrcpPlaybackState)
+            assertEquals(90_000L, seen.last().avrcpPositionMs)
+            assertEquals(0L, seen.last().positionMs)
+            sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 91_000L)
+                .putExtra(PROFILE_PLAYBACK, PlaybackState.Builder().setState(PlaybackState.STATE_PAUSED, 5L, 0f).build()))
+            assertFalse(seen.last().playing)
+            assertEquals(91_000L, seen.last().avrcpPositionMs)
+            assertEquals(PlaybackState.STATE_PAUSED, seen.last().avrcpPlaybackState)
+            sendAvrcp(Intent(AVRCP_TRACK).putExtra(PROFILE_PLAYBACK,
+                PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 15_000L, 1f).build()))
+            assertTrue(seen.last().playing)
+            assertEquals(15_000L, seen.last().avrcpPositionMs)
+            sendAvrcp(Intent(AVRCP_POSITION).putExtra(PROFILE_POS, 16_000L)
+                .putExtra(PROFILE_PLAYBACK, PlaybackState.STATE_STOPPED))
+            assertTrue(seen.last().playing)
+            assertEquals(16_000L, seen.last().avrcpPositionMs)
+            assertEquals(PlaybackState.STATE_PLAYING, seen.last().avrcpPlaybackState)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun avrcpDecoderPreservesRealZeroAndRejectsMissingFractionalOrConflictingEvidence() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }
+        try {
+            changeSource(adapter, "蓝牙音乐")
+            val count = seen.size
+            sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_LEN, 180_000L))
+            for (value in listOf(-1.0, 0.25, Double.NaN, Double.POSITIVE_INFINITY, 86_400_001.0, 4_294_967_295.0)) {
+                sendAvrcp(Intent(AVRCP_STATUS).putExtra(SONG_POS, value))
+            }
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(SONG_POS, "30000"))
+            sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 30_000L).putExtra(SONG_LEN, 200_000L))
+            assertEquals(count, seen.size)
+            sendAvrcp(Intent(AVRCP_POSITION).putExtra(PROFILE_POS, 0L))
+            assertEquals(0L, seen.last().avrcpPositionMs)
+            val first = seen.last().avrcpEventSequence
+            sendAvrcp(Intent(AVRCP_POSITION_LEGACY).putExtra(LEGACY_POS, 500L))
+            assertEquals(500L, seen.last().avrcpPositionMs)
+            assertTrue(seen.last().avrcpEventSequence > first)
+            sendAvrcp(Intent(AVRCP_TRACK).putExtra(PROFILE_PLAYBACK, PlaybackState.STATE_BUFFERING))
+            assertEquals(PlaybackState.STATE_BUFFERING, seen.last().avrcpPlaybackState)
+            assertEquals(-1L, seen.last().avrcpPositionMs)
+            assertFalse(seen.last().playing)
+            for ((raw, expected) in listOf(0 to PlaybackState.STATE_STOPPED,
+                1 to PlaybackState.STATE_PLAYING, 2 to PlaybackState.STATE_PAUSED,
+                3 to PlaybackState.STATE_FAST_FORWARDING, 4 to PlaybackState.STATE_REWINDING)) {
+                sendAvrcp(Intent(AVRCP_STATUS).putExtra(RAW_STATUS, raw.toByte()))
+                assertEquals(expected, seen.last().avrcpPlaybackState)
+            }
+        } finally { adapter.stop() }
+    }
+
+    @Test fun avrcpEvidenceIsClearedByRecordingSourceAndControllerChanges() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }
+        try {
+            changeSource(adapter, "蓝牙音乐")
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(SONG_POS, 30_000L))
+            val first = seen.last().avrcpEventSequence
+            update(c, metadata("B"), playback(position = 0L))
+            assertEquals(0L, seen.last().avrcpEventSequence)
+            assertEquals(-1L, seen.last().avrcpPositionMs)
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(SONG_POS, 0L))
+            assertTrue(seen.last().avrcpEventSequence > first)
+            changeSource(adapter, "网易云音乐")
+            assertEquals(0L, seen.last().avrcpEventSequence)
+            val count = seen.size
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(SONG_POS, 45_000L))
+            assertEquals(count, seen.size)
+            changeSource(adapter, "蓝牙音乐")
+            assertEquals(0L, seen.last().avrcpEventSequence)
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(SONG_POS, 20_000L))
+            val replacement = controller("com.android.bluetooth")
+            shadowOf(replacement).setMetadata(metadata("B"))
+            shadowOf(replacement).setPlaybackState(playback(position = 0L))
+            val epoch = ContentMediaAdapter::class.java.getDeclaredField("lifecycle").apply { isAccessible = true }.getLong(adapter)
+            ContentMediaAdapter::class.java.getDeclaredMethod("updateController", List::class.java, java.lang.Long.TYPE)
+                .apply { isAccessible = true }.invoke(adapter, listOf(replacement), epoch)
+            assertEquals(0L, seen.last().avrcpEventSequence)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun avrcpBroadcastFlowsThroughTheFormalStoreAndTickerWithoutNewControllerPositions() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("A"))
+        shadowOf(c).setPlaybackState(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0L, 0f, 0L).build())
+        add(c)
+        val adapter = ContentMediaAdapter(app)
+        val store = com.autonavi.amapauto.content.ContentStore(app, ContentPorts.PreviewVehiclePort(), adapter,
+            object : ContentPorts.SystemPort {
+                override fun read(kind: Int) = ContentPorts.SystemSnapshot(false, 0)
+                override fun write(kind: Int, percent: Int) = false
+            })
+        try {
+            changeSource(adapter, "蓝牙音乐")
+            store.startLyrics()
+            val initial = store.snapshot()
+            store.acceptLyricsSnapshot(ContentPorts.LyricsSnapshot(initial.mediaRecordingKey,
+                initial.mediaGeneration, ContentPorts.LyricsSnapshot.READY,
+                listOf(ContentPorts.LyricsLine(0L, "First", ""), ContentPorts.LyricsLine(1_000L, "Second", "")), null))
+            assertFalse(store.snapshot().lyricsTimelineReady)
+            assertEquals(0, store.snapshot().lyricsActiveIndex)
+            sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 0L).putExtra(SONG_LEN, 180_000L)
+                .putExtra(RAW_STATUS, 1.toByte()))
+            assertTrue(store.snapshot().lyricsTimelineReady)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_200L))
+            assertEquals(1, store.snapshot().lyricsActiveIndex)
+            assertEquals(1_200L, store.snapshot().lyricsPositionMs)
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(RAW_STATUS, 2.toByte()))
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+            assertEquals(1_200L, store.snapshot().lyricsPositionMs)
+            assertEquals(0f, store.snapshot().lyricsPlaybackSpeed, 0f)
+        } finally { store.destroy() }
+    }
+
+    @Test fun completeAvrcpDurationFillsOnlyTheBoundRecordingsMissingPublicDuration() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("A", duration = 0L))
+        shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }
+        try {
+            changeSource(adapter, "蓝牙音乐")
+            sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 30_000L).putExtra(SONG_LEN, 180_000L))
+            assertEquals(180_000L, seen.last().durationMs)
+            reconcile(adapter)
+            assertEquals(180_000L, seen.last().durationMs)
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(RAW_STATUS, 2.toByte()))
+            assertEquals(180_000L, seen.last().durationMs)
+            update(c, metadata("B", duration = 0L), playback(position = 0L))
+            assertEquals(0L, seen.last().durationMs)
+            assertEquals(0L, seen.last().avrcpEventSequence)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun avrcpNeverAttachesToANonSongBluetoothSession() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("Call")); shadowOf(c).setPlaybackState(playback(position = 0L))
+        setAudio(c, AudioAttributes.USAGE_VOICE_COMMUNICATION, AudioAttributes.CONTENT_TYPE_SPEECH)
+        add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }
+        try {
+            changeSource(adapter, "蓝牙音乐")
+            val count = seen.size
+            sendAvrcp(Intent(AVRCP_STATUS).putExtra(SONG_POS, 30_000L).putExtra(RAW_STATUS, 1.toByte()))
+            assertEquals(count, seen.size)
+            assertEquals(0L, seen.last().avrcpEventSequence)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun oldAvrcpReceiverCannotPublishAfterStopOrIntoANewLifecycle() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }
+        changeSource(adapter, "蓝牙音乐")
+        val old = ContentMediaAdapter::class.java.getDeclaredField("avrcpReceiver").apply { isAccessible = true }
+            .get(adapter) as android.content.BroadcastReceiver
+        val event = Intent(AVRCP_STATUS).putExtra(SONG_POS, 30_000L)
+        adapter.stop()
+        val stoppedCount = seen.size
+        old.onReceive(app, event)
+        assertEquals(stoppedCount, seen.size)
+        try {
+            adapter.start { seen += it }
+            changeSource(adapter, "蓝牙音乐")
+            val count = seen.size
+            old.onReceive(app, event)
+            assertEquals(count, seen.size)
+            assertEquals(0L, seen.last().avrcpEventSequence)
+            sendAvrcp(event)
+            assertTrue(seen.last().avrcpEventSequence > 0L)
+        } finally { adapter.stop() }
+    }
+
+    private fun sendAvrcp(intent: Intent) {
+        app.sendBroadcast(intent)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private companion object {
+        const val AVRCP_POSITION = "android.bluetooth.avrcp-controller.profile.action.PLAYBACK_POS_CHANGED"
+        const val AVRCP_POSITION_LEGACY = "android.bluetooth.avrcp-controller.profile.action.PLAYBACK_POS_CHANGEDS"
+        const val AVRCP_TRACK = "android.bluetooth.avrcp-controller.profile.action.TRACK_EVENT"
+        const val AVRCP_PLAY_STATUS = "android.bluetooth.avrcp-controller.profile.action.PLAY_STATUS"
+        const val AVRCP_STATUS = "android.bluetooth.avrcp-controller.profile.action.PLAYBACK_STATUS_CHANGED"
+        const val PROFILE_POS = "android.bluetooth.avrcp-controller.profile.extra.SONG_POS"
+        const val LEGACY_POS = "android.bluetooth.avrcp-controller.extra.PLAY_SONG_POS"
+        const val SONG_POS = "android.bluetooth.avrcp-controller.extra.SONG_POS"
+        const val SONG_LEN = "android.bluetooth.avrcp-controller.extra.SONG_LEN"
+        const val RAW_STATUS = "android.bluetooth.avrcp-controller.extra.PLAY_STATUS_ID"
+        const val PROFILE_PLAYBACK = "android.bluetooth.avrcp-controller.profile.extra.PLAYBACK"
+    }
+
     @Test fun stoppedCallbackCannotPublishIntoANewLifecycle() {
         val c = controller("com.android.bluetooth")
         shadowOf(c).setMetadata(metadata("old")); shadowOf(c).setPlaybackState(playback()); add(c)

@@ -16,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,7 +36,8 @@ class ContentLyricsEngine internal constructor(
     context: Context,
     private val resourcesFactory: (Context) -> LyricsEngineResources,
     private val ioDispatcher: CoroutineDispatcher,
-    private val coverLoader: (String, LyricsCancellationSignal) -> Bitmap?
+    private val coverLoader: (String, LyricsCancellationSignal) -> Bitmap?,
+    private val coverRetryWait: suspend (Long) -> Unit = { delay(it) }
 ) : ContentPorts.LyricsPort {
     constructor(context: Context) : this(
         context,
@@ -45,6 +47,7 @@ class ContentLyricsEngine internal constructor(
     )
 
     private val appContext = context.applicationContext
+    private val coverCache = ContentCoverCache(appContext)
     private val handler = Handler(Looper.getMainLooper())
     private val lifecycle = AtomicLong()
     private val cacheMutex = Mutex()
@@ -64,6 +67,7 @@ class ContentLyricsEngine internal constructor(
     private var fallbackArtwork: Bitmap? = null
     private var selected: ResolvedLyrics? = null
     private var lines: List<ContentPorts.LyricsLine> = emptyList()
+    private var timed = true
     private var status = EMPTY
     private var lastPublished: ContentPorts.LyricsSnapshot? = null
     private var lastPublishedLines: List<ContentPorts.LyricsLine>? = null
@@ -117,6 +121,7 @@ class ContentLyricsEngine internal constructor(
             cancelOperations()
             selected = null
             lines = emptyList()
+            timed = true
             fallbackArtwork = null
             lastPublished = null
             status = if (next == null) EMPTY else if (next.identity().isUsable) LOADING else UNAVAILABLE
@@ -165,8 +170,7 @@ class ContentLyricsEngine internal constructor(
                         runtime.cache.read(identity, recordUse = false)
                     }
                     if (!isCurrent(life, epoch, state)) return@launch
-                    val usable = persisted?.takeIf { it.result == embedded.result }
-                    applyResult(usable?.result ?: embedded.result, usable?.resolved ?: embedded)
+                    applyResult(persisted?.result ?: embedded.result, persisted?.resolved ?: embedded)
                     return@launch
                 }
                 if (cached != null && !applyResult(cached.result, cached.resolved)) return@launch
@@ -175,22 +179,32 @@ class ContentLyricsEngine internal constructor(
                     if (lines.isEmpty()) { status = UNAVAILABLE; publish() }
                     return@launch
                 }
-                val outcome = runtime.resolveLyrics(identity.lookup())
+                val outcome = runtime.resolveLyricsProgressive(identity.lookup()) { provisional ->
+                    onMain {
+                        val resolved = provisional.resolved
+                        if (isCurrent(life, epoch, state) && proofValidForCurrent(resolved) && lines.isEmpty()) {
+                            applyResult(resolved.result, resolved)
+                        }
+                    }
+                }
                 if (!isCurrent(life, epoch, state)) return@launch
                 val resolved = (outcome as? LyricsResolutionOutcome.Found)?.resolved
                 if (resolved != null &&
                     LyricsCandidateSelector.isProofValid(identity.lookup(), resolved.result, resolved.proof) &&
-                    LrcParser.parse(resolved.result.lyrics).isNotEmpty()) {
+                    resolved.result.contentKind() != LyricsKind.NONE) {
                     if (!proofValidForCurrent(resolved)) {
                         restartForCurrentMetadata()
                         return@launch
                     }
+                    val upgrade = cached == null || shouldUpgrade(identity.lookup(), selected, resolved)
                     val persisted = withCache {
-                        runtime.cache.writeAutomatic(identity, resolved)
+                        if (upgrade) runtime.cache.writeAutomatic(identity, resolved)
+                        if (cached != null) runtime.cache.recordRefresh(identity, System.currentTimeMillis())
                         runtime.cache.read(identity, recordUse = false)
                     }
                     if (!isCurrent(life, epoch, state)) return@launch
-                    applyResult(persisted?.result ?: resolved.result, persisted?.resolved ?: resolved)
+                    if (persisted != null) applyResult(persisted.result, persisted.resolved)
+                    else if (upgrade) applyResult(resolved.result, resolved)
                 } else if (lines.isEmpty() && outcome != LyricsResolutionOutcome.Cancelled) {
                     status = UNAVAILABLE
                     publish()
@@ -221,17 +235,36 @@ class ContentLyricsEngine internal constructor(
         coverCancellation = cancellation
         coverJob = currentScope.launch {
             try {
-                val source = runtime.resolveCover(query)
-                if (!isCurrent(life, epoch, state) || source.isBlank() ||
-                    media?.artwork?.isRecycled == false) return@launch
-                val bitmap = withContext(ioDispatcher) { coverLoader(source, cancellation) }
+                val cached = withContext(ioDispatcher) { coverCache.read(query) }
                 if (!isCurrent(life, epoch, state) || media?.artwork?.isRecycled == false) {
-                    // This bitmap has never been handed to ContentStore.
-                    bitmap?.recycle()
+                    cached?.recycle()
                     return@launch
                 }
-                fallbackArtwork = bitmap?.takeUnless(Bitmap::isRecycled)
-                publish()
+                if (cached != null) { fallbackArtwork = cached; publish(); return@launch }
+                for (waitMs in longArrayOf(0L, 300L, 600L, 1_200L)) {
+                    if (waitMs > 0L) coverRetryWait(waitMs)
+                    currentCoroutineContext().ensureActive()
+                    if (!isCurrent(life, epoch, state) || media?.artwork?.isRecycled == false) return@launch
+                    val sources = try { runtime.resolveCovers(query) }
+                    catch (error: CancellationException) { throw error }
+                    catch (_: Exception) { emptyList() }
+                    for (source in sources.distinct().take(4)) {
+                        val bitmap = try {
+                            withContext(ioDispatcher) { coverLoader(source, cancellation) }
+                        } catch (error: CancellationException) { throw error }
+                        catch (_: Exception) { null }
+                        if (!isCurrent(life, epoch, state) || media?.artwork?.isRecycled == false) {
+                            bitmap?.recycle()
+                            return@launch
+                        }
+                        if (bitmap != null && !bitmap.isRecycled) {
+                            fallbackArtwork = bitmap
+                            publish()
+                            withContext(ioDispatcher) { coverCache.write(query, bitmap) }
+                            return@launch
+                        }
+                    }
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -252,12 +285,42 @@ class ContentLyricsEngine internal constructor(
             return false
         }
         selected = proof
-        lines = Collections.unmodifiableList(LrcParser.align(result.lyrics, result.translatedLyrics).map {
-            ContentPorts.LyricsLine(it.timeMs, it.text, it.translation)
-        })
+        val parsed = result.timedLines()
+        timed = parsed.isNotEmpty()
+        val document = result.ttmlLyrics.takeIf(String::isNotBlank)?.let {
+            runCatching { TtmlLyricsParser.parse(it) }.getOrNull()
+        }
+        val speakers = parsed.map { it.speaker }.filter {
+            it.isNotBlank() && document?.agentTypes?.get(it) != "group"
+        }.distinct()
+        lines = Collections.unmodifiableList(if (timed) parsed.map { line ->
+            val side = when {
+                document?.agentTypes?.get(line.speaker) == "group" -> 3
+                speakers.size < 2 || line.speaker.isBlank() -> 0
+                speakers.indexOf(line.speaker) % 2 == 0 -> 1
+                else -> 2
+            }
+            ContentPorts.LyricsLine(line.timeMs, line.text, line.translation, line.romanization,
+                line.words.map { ContentPorts.LyricsWord(it.startTimeMs, it.endTimeMs, it.text) },
+                line.endTimeMs ?: -1L,
+                line.backgroundWords.map { ContentPorts.LyricsWord(it.startTimeMs, it.endTimeMs, it.text) }, side)
+        } else result.plainText().lineSequence().map(String::trim).filter(String::isNotBlank)
+            .take(4_096).map { ContentPorts.LyricsLine(0L, it, "") }.toList())
         status = if (lines.isEmpty()) UNAVAILABLE else READY
         publish()
         return true
+    }
+
+    private fun shouldUpgrade(query: LyricsLookup, previous: ResolvedLyrics?, next: ResolvedLyrics): Boolean {
+        previous ?: return true
+        if (previous.result == next.result) return false
+        val ranked = LyricsContentRanker.rank(query, listOf(
+            LyricsCandidateSelection(previous.result, previous.proof),
+            LyricsCandidateSelection(next.result, next.proof)))
+        val oldQuality = ranked.firstOrNull { it.candidate === previous.result }?.quality ?: return true
+        val newQuality = ranked.firstOrNull { it.candidate === next.result }?.quality ?: return false
+        return newQuality.kind == LyricsKind.SYNCHRONIZED && oldQuality.kind != LyricsKind.SYNCHRONIZED ||
+            newQuality.kind == oldQuality.kind && newQuality.score > oldQuality.score
     }
 
     private fun proofValidForCurrent(resolved: ResolvedLyrics): Boolean = binding?.identity()?.lookup()?.let {
@@ -354,8 +417,8 @@ class ContentLyricsEngine internal constructor(
         val previous = lastPublished
         val key = current.recordingKey()
         if (previous != null && previous.recordingKey == key && previous.mediaGeneration == current.generation &&
-            previous.status == status && lastPublishedLines === lines && previous.artwork === artwork) return
-        val result = ContentPorts.LyricsSnapshot(key, current.generation, status, lines, artwork)
+            previous.status == status && previous.timed == timed && lastPublishedLines === lines && previous.artwork === artwork) return
+        val result = ContentPorts.LyricsSnapshot(key, current.generation, status, lines, artwork, timed)
         lastPublished = result
         lastPublishedLines = lines
         listener?.onLyricsSnapshot(result)
@@ -382,7 +445,11 @@ class ContentLyricsEngine internal constructor(
 internal interface LyricsEngineResources : Closeable {
     val cache: LyricsPlaybackCache
     suspend fun resolveLyrics(query: LyricsLookup): LyricsResolutionOutcome
+    suspend fun resolveLyricsProgressive(query: LyricsLookup,
+        onProvisional: (LyricsResolutionOutcome.Found) -> Unit): LyricsResolutionOutcome = resolveLyrics(query)
     suspend fun resolveCover(query: LyricsLookup): String
+    suspend fun resolveCovers(query: LyricsLookup): List<String> =
+        listOfNotNull(resolveCover(query).takeIf(String::isNotBlank))
     fun cancelCurrent()
     fun cancelAll()
 }
@@ -392,7 +459,10 @@ private class DirectLyricsEngineResources(context: Context) : LyricsEngineResour
     private val repository = DirectLyricsRepository()
     private val coordinator = LyricsResolutionCoordinator(repository, repository)
     override suspend fun resolveLyrics(query: LyricsLookup) = coordinator.resolveLatest(query)
+    override suspend fun resolveLyricsProgressive(query: LyricsLookup,
+        onProvisional: (LyricsResolutionOutcome.Found) -> Unit) = coordinator.resolveLatest(query, onProvisional)
     override suspend fun resolveCover(query: LyricsLookup) = coordinator.resolveCover(query)
+    override suspend fun resolveCovers(query: LyricsLookup) = coordinator.resolveCovers(query)
     override fun cancelCurrent() = coordinator.cancelCurrent()
     override fun cancelAll() { coordinator.close(); repository.close() }
     override fun close() { cancelAll(); cache.close() }

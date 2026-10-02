@@ -200,6 +200,7 @@ internal object LyricsManualSearchPolicy {
 internal interface LyricsPlaybackCache {
     fun read(identity: LyricsPlaybackIdentity, recordUse: Boolean): LyricsCache.Entry?
     fun writeAutomatic(identity: LyricsPlaybackIdentity, resolved: ResolvedLyrics): Boolean
+    fun recordRefresh(identity: LyricsPlaybackIdentity, nowMs: Long): Boolean = false
     fun writeManual(identity: LyricsPlaybackIdentity, result: LyricsResult): Boolean
     fun clearManual(identity: LyricsPlaybackIdentity): Boolean
     fun clearCurrent(identity: LyricsPlaybackIdentity): Boolean

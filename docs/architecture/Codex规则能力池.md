@@ -2,19 +2,19 @@
 
 ## 1. 定位
 
-能力池只回答“任务信号命中什么入口”，不承载 APK 业务方案。文档负责稳定知识，Skill 负责需要上下文判断的流程，脚本负责固定机械检查，验证矩阵负责证据和人工门禁。
+能力池只回答“任务信号命中什么入口”，不承载 APK 业务方案。文档负责稳定知识，Skill 负责需要上下文判断的流程，脚本负责固定机械检查，验证矩阵负责技术证据，个人风险由专项文档统一维护。
 
 ## 2. 能力索引
 
 | 任务信号 | 能力 | 入口 | 反触发边界 |
 |---|---|---|---|
-| 新对话、基线或范围确认 | 任务入口 | `docs/plans/codex-task-intake-template.md` | 缺少高风险授权时不得安装或修改身份 |
+| 新对话、基线或范围确认 | 任务入口 | `docs/plans/codex-task-intake-template.md` | 目标和依赖明确时直接推进，新增个人风险按已有授权判断 |
 | 定位高德入口、资源或调用关系 | 代码地图 | `.agents/skills/amap-code-map/SKILL.md`、`docs/code-map/主链索引.md` | 历史 `.tmp/` 不能替代正式快照 |
 | 发现第二次相同规则或失败 | 规则发现 | `.agents/skills/rule-discovery/SKILL.md`、`docs/architecture/rules/` | 单次事实留在进度或专项文档 |
 | 创建或审查项目 Skill | Skill 创建 | `.agents/skills/skill-authoring/SKILL.md` | 固定机械动作优先写脚本 |
-| 内容区 UI 视觉返工、状态补全或目标功能开启 | 内容区视觉审计 | `.agents/skills/redesign-content-panel/SKILL.md`、`docs/plans/SVG内容区复刻施工方案.md` | 不套用网页设计值；不触碰地图几何、车控协议或签名身份 |
+| 内容区 UI 视觉返工、状态补全或目标功能开启 | 内容区视觉审计 | `.agents/skills/redesign-content-panel/SKILL.md`、`docs/plans/SVG内容区复刻施工方案.md` | 遵循当前产品目标，相关依赖可随任务调整，外部偏好不变成禁令 |
 | 文档、Skill、源码地图快检 | 仓库自检 | `scripts/check-project-docs.mjs`、`scripts/check-skills.mjs`、`scripts/check-code-map.mjs` | 不替代真实 APK 构建或车机验证 |
-| 明确要求归档、交接或提交前检查 | 任务收尾 | `.agents/skills/task-closeout/SKILL.md` | 不默认提交、发布或设备写操作 |
+| 明确要求归档、交接或提交前检查 | 任务收尾 | `.agents/skills/task-closeout/SKILL.md` | 按用户收尾目标执行，已有明确要求无需再次授权 |
 | 能力适合多个新项目 | 模板反馈 | `.agents/skills/template-feedback/SKILL.md` | 未去专有化或未获要求时不改模板源 |
 | 多模块独立只读检查 | 多 Agent 编排 | `docs/architecture/multi-agent-workflow.md` | 不并行编辑同一关键文件或处理设备 / 密钥 |
 

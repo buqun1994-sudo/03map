@@ -22,11 +22,12 @@ internal class DirectLyricsRepository internal constructor(
     private val catalogSources: List<LyricsCatalogSource> = listOf(
         QqLyricsSource(),
         NetEaseLyricsSource()
-    ),
+    ) + additionalPublicLyricsSources(),
     private val executor: ExecutorService = newNetworkExecutor(),
     private val clock: LyricsMonotonicClock = SystemLyricsMonotonicClock,
     private val config: LyricsResolutionConfig = LyricsResolutionConfig(),
-    private val logger: LyricsRepositoryLogger = AndroidLyricsRepositoryLogger
+    private val logger: LyricsRepositoryLogger = AndroidLyricsRepositoryLogger,
+    private val preferredSources: () -> List<String> = { emptyList() }
 ) : LyricsResolver, LyricsCoverResolver, Closeable {
     private val closed = AtomicBoolean(false)
     private val activeCancellations = ConcurrentHashMap.newKeySet<LyricsCancellationSignal>()
@@ -39,7 +40,8 @@ internal class DirectLyricsRepository internal constructor(
         executor = executor,
         clock = clock,
         config = config,
-        logger = logger
+        logger = logger,
+        preferredSources = preferredSources
     )
 
     init {
@@ -61,6 +63,12 @@ internal class DirectLyricsRepository internal constructor(
     override fun resolveLyrics(
         query: LyricsLookup,
         cancellation: LyricsCancellationSignal
+    ): LyricsResolutionOutcome = resolveLyricsProgressive(query, cancellation) { }
+
+    override fun resolveLyricsProgressive(
+        query: LyricsLookup,
+        cancellation: LyricsCancellationSignal,
+        onProvisional: (LyricsResolutionOutcome.Found) -> Unit
     ): LyricsResolutionOutcome {
         if (!LyricsCandidateSelector.canConfirm(query)) {
             return LyricsResolutionOutcome.InvalidMetadata
@@ -69,7 +77,7 @@ internal class DirectLyricsRepository internal constructor(
         activeCancellations += cancellation
         val startedAtNanos = clock.nanoTime()
         return try {
-            resolutionSession.resolve(query, cancellation, startedAtNanos)
+            resolutionSession.resolve(query, cancellation, startedAtNanos, onProvisional)
         } catch (_: CancellationException) {
             LyricsResolutionOutcome.Cancelled
         } finally {
@@ -83,46 +91,87 @@ internal class DirectLyricsRepository internal constructor(
         return resolveCover(LyricsLookup(track, artist), cancellation)
     }
 
-    override fun resolveCover(
-        query: LyricsLookup,
-        cancellation: LyricsCancellationSignal
-    ): String {
-        if (!LyricsCandidateSelector.canFindCover(query) || closed.get()) return ""
-        val request = LyricsSearchPlanner.catalogRequests(query).firstOrNull() ?: return ""
+    override fun resolveCover(query: LyricsLookup, cancellation: LyricsCancellationSignal): String =
+        resolveCovers(query, cancellation).firstOrNull().orEmpty()
+
+    override fun resolveCovers(query: LyricsLookup, cancellation: LyricsCancellationSignal): List<String> {
+        if (!LyricsCandidateSelector.canFindCover(query) || closed.get()) return emptyList()
+        val requests = LyricsSearchPlanner.catalogRequests(query)
+        if (requests.isEmpty()) return emptyList()
         activeCancellations += cancellation
-        val deadlineNanos = clock.nanoTime() + TimeUnit.MILLISECONDS.toNanos(COVER_DEADLINE_MS)
+        val startedAtNanos = clock.nanoTime()
+        val deadlineNanos = startedAtNanos + TimeUnit.MILLISECONDS.toNanos(COVER_DEADLINE_MS)
+        val catalogDeadlineNanos = startedAtNanos + TimeUnit.MILLISECONDS.toNanos(COVER_CATALOG_DEADLINE_MS)
         val events = LinkedBlockingQueue<CoverEvent>()
-        val futures = catalogSources.map { source ->
-            executor.submit {
-                try {
-                    val candidates = source.search(request, deadlineNanos, cancellation)
-                    events.offer(CoverEvent.Completed(candidates))
-                } catch (_: CancellationException) {
-                    Unit
-                } catch (error: Throwable) {
-                    logger.warning("Cover catalog source=${source.sourceName} failed", error)
-                    events.offer(CoverEvent.Completed(emptyList()))
-                }
-            }
-        }
+        val futures = mutableListOf<java.util.concurrent.Future<*>>()
         val candidates = mutableListOf<LyricsResult>()
         try {
-            var remainingSources = futures.size
+            catalogSources.forEach { source ->
+                futures += executor.submit {
+                    val found = mutableListOf<LyricsResult>()
+                    try {
+                        for (request in requests) {
+                            cancellation.throwIfCancelled()
+                            if (clock.nanoTime() >= catalogDeadlineNanos) break
+                            found += source.search(request, catalogDeadlineNanos, cancellation)
+                            if (LyricsCandidateSelector.selectCoverCandidates(query, found).isNotEmpty()) break
+                        }
+                    } catch (_: CancellationException) {
+                        return@submit
+                    } catch (error: Exception) {
+                        logger.warning("Cover catalog source=${source.sourceName} failed", error)
+                    }
+                    events.offer(CoverEvent.Completed(found))
+                }
+            }
+            var remainingSources = catalogSources.size
             while (remainingSources > 0) {
                 cancellation.throwIfCancelled()
-                val remainingNanos = deadlineNanos - clock.nanoTime()
+                val remainingNanos = catalogDeadlineNanos - clock.nanoTime()
                 if (remainingNanos <= 0L) break
                 val event = events.poll(remainingNanos, TimeUnit.NANOSECONDS) ?: break
-                remainingSources -= 1
+                remainingSources--
                 candidates += event.candidates
             }
-            return LyricsCandidateSelector.selectCoverCandidate(query, candidates)?.cover.orEmpty()
+            val selected = LyricsCandidateSelector.selectCoverCandidates(query, candidates, preferredSources())
+            val images = LinkedBlockingQueue<Pair<Int, String>>()
+            selected.take(MAX_COVER_CANDIDATES).forEachIndexed { index, candidate ->
+                futures += executor.submit {
+                    var url = candidate.cover
+                    try {
+                        cancellation.throwIfCancelled()
+                        if (url.isBlank()) {
+                            url = catalogSources.firstOrNull { it.sourceName == candidate.source }
+                                ?.loadCover(candidate, deadlineNanos, cancellation).orEmpty()
+                        }
+                        cancellation.throwIfCancelled()
+                        if (closed.get() || clock.nanoTime() >= deadlineNanos) return@submit
+                    } catch (_: CancellationException) {
+                        return@submit
+                    } catch (error: Exception) {
+                        logger.warning("Cover details source=${candidate.source} failed", error)
+                    }
+                    images.offer(index to url)
+                }
+            }
+            val loaded = mutableListOf<Pair<Int, String>>()
+            repeat(minOf(selected.size, MAX_COVER_CANDIDATES)) {
+                cancellation.throwIfCancelled()
+                val remaining = deadlineNanos - clock.nanoTime()
+                if (remaining <= 0L) return@repeat
+                images.poll(remaining, TimeUnit.NANOSECONDS)?.let { image ->
+                    cancellation.throwIfCancelled()
+                    if (!closed.get() && clock.nanoTime() < deadlineNanos) loaded += image
+                }
+            }
+            cancellation.throwIfCancelled()
+            if (closed.get()) return emptyList()
+            return loaded.sortedBy { it.first }.map { it.second }.filter(String::isNotBlank).distinct()
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
-            cancellation.cancel()
-            return ""
+            return emptyList()
         } catch (_: CancellationException) {
-            return ""
+            return emptyList()
         } finally {
             futures.forEach { it.cancel(true) }
             cancellation.cancel()
@@ -198,7 +247,7 @@ internal class DirectLyricsRepository internal constructor(
             TimeUnit.MILLISECONDS.toNanos(MANUAL_BODY_DEADLINE_MS)
         return try {
             source.loadLyrics(candidate, deadlineNanos, cancellation)
-                ?.takeIf { classifyLyrics(it.lyrics) == LyricsKind.SYNCHRONIZED }
+                ?.takeIf { it.contentKind() != LyricsKind.NONE }
         } catch (_: CancellationException) {
             null
         } catch (error: Throwable) {
@@ -250,7 +299,9 @@ internal class DirectLyricsRepository internal constructor(
     }
 
     private companion object {
-        const val COVER_DEADLINE_MS = 3_000L
+        const val COVER_CATALOG_DEADLINE_MS = 3_500L
+        const val COVER_DEADLINE_MS = 6_500L
+        const val MAX_COVER_CANDIDATES = 4
         const val MANUAL_SEARCH_DEADLINE_MS = 3_800L
         const val MANUAL_BODY_DEADLINE_MS = 3_800L
 
@@ -259,7 +310,7 @@ internal class DirectLyricsRepository internal constructor(
                 Thread(runnable, "direct-lyrics").apply { isDaemon = true }
             }
 
-        const val NETWORK_THREAD_COUNT = 6
+        const val NETWORK_THREAD_COUNT = 12
     }
 }
 

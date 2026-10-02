@@ -26,13 +26,19 @@ internal class LyricsCache(
         val proof: LyricsSelectionProof?,
         val updatedAtMs: Long,
         val selection: LyricsCacheSelection = LyricsCacheSelection.AUTOMATIC,
-        val translationResolved: Boolean = true
+        val translationResolved: Boolean = true,
+        val qualityVersion: Int = LyricsCachePolicy.QUALITY_VERSION,
+        val refreshAttempts: Int = 0,
+        val lastRefreshAtMs: Long = updatedAtMs
     ) {
         val resolved: ResolvedLyrics? get() = proof?.let { ResolvedLyrics(result, it) }
 
         fun needsRefresh(nowMs: Long): Boolean =
             selection == LyricsCacheSelection.AUTOMATIC &&
-                (!translationResolved || nowMs - updatedAtMs >= LyricsCachePolicy.REFRESH_AFTER_MS)
+                (qualityVersion != LyricsCachePolicy.QUALITY_VERSION ||
+                    (refreshAttempts < LyricsCachePolicy.MAX_REFRESH_ATTEMPTS &&
+                        nowMs >= lastRefreshAtMs &&
+                        nowMs - lastRefreshAtMs >= LyricsCachePolicy.REFRESH_AFTER_MS))
     }
 
     private val helper = CacheDatabase(context.applicationContext, databaseName)
@@ -105,28 +111,39 @@ internal class LyricsCache(
     ): Boolean {
         val result = resolved.result
         val query = LyricsLookup(track, artist, album, playbackDurationMs)
-        if (closed || classifyLyrics(result.lyrics) != LyricsKind.SYNCHRONIZED ||
+        val selection = LyricsCandidateSelection(result, resolved.proof)
+        if (closed || result.contentKind() == LyricsKind.NONE ||
             !LyricsCandidateSelector.hasMatchingDuration(playbackDurationMs, result.durationMs) ||
             !LyricsCandidateSelector.isProofValid(query, result, resolved.proof)
-        ) {
-            return false
-        }
+        ) return false
         return runCatching {
+            if (LyricsContentRanker.rank(query, listOf(selection)).isEmpty()) return@runCatching false
             val cacheKey = key(track, artist, album, result.durationMs)
-            val payload = encodeResolved(resolved, query)
-            val byteSize = cacheEntrySize(cacheKey, payload)
-            if (byteSize > LyricsCachePolicy.MAX_BYTES) return@runCatching false
-
             val database = helper.writableDatabase
             database.beginTransaction()
             try {
-                val existing = existingMetadata(database, cacheKey)
+                if (findManualEntries(database, query).isNotEmpty()) return@runCatching false
+                val previous = findAutomaticEntries(database, query)
+                if (previous.any { !isStrictUpgrade(query, it.entry, selection) }) return@runCatching false
                 val nowMs = System.currentTimeMillis()
+                val savedAtMs = updatedAtMs.coerceIn(0L, nowMs)
+                val currentBudgets = previous.map(CachedEntry::entry)
+                    .filter { it.qualityVersion == LyricsCachePolicy.QUALITY_VERSION }
+                val payload = encodeResolved(
+                    resolved, query,
+                    refreshAttempts = currentBudgets.maxOfOrNull(Entry::refreshAttempts) ?: 0,
+                    lastRefreshAtMs = currentBudgets.maxOfOrNull(Entry::lastRefreshAtMs) ?: savedAtMs
+                )
+                val byteSize = cacheEntrySize(cacheKey, payload)
+                if (byteSize > LyricsCachePolicy.MAX_BYTES) return@runCatching false
+                val existing = existingMetadata(database, cacheKey)
+                    ?: previous.firstOrNull()?.let { existingMetadata(database, it.cacheKey) }
                 val useCount = existing?.useCount ?: 1
                 val lastUsedAtMs = existing?.lastUsedAtMs ?: nowMs
                 val evictionScore = existing?.evictionScore
                     ?: LyricsCachePolicy.evictionScore(lastUsedAtMs, useCount)
-                val removedBytes = deleteReplacedRows(database, TABLE_CACHE, cacheKey)
+                val removedBytes = deleteKeys(database, TABLE_CACHE, previous.map(CachedEntry::cacheKey)) +
+                    deleteReplacedRows(database, TABLE_CACHE, cacheKey)
                 val inserted = database.insertWithOnConflict(
                     TABLE_CACHE,
                     null,
@@ -135,7 +152,7 @@ internal class LyricsCache(
                         put(COLUMN_RECORDING_KEY, cacheKey)
                         put(COLUMN_PAYLOAD, payload)
                         put(COLUMN_BYTE_SIZE, byteSize)
-                        put(COLUMN_UPDATED_AT, updatedAtMs.coerceIn(0L, nowMs))
+                        put(COLUMN_UPDATED_AT, savedAtMs)
                         put(COLUMN_LAST_USED_AT, lastUsedAtMs)
                         put(COLUMN_USE_COUNT, useCount)
                         put(COLUMN_EVICTION_SCORE, evictionScore)
@@ -145,8 +162,9 @@ internal class LyricsCache(
                 check(inserted != -1L) { "Automatic lyrics insert failed" }
                 var totalBytes = totalBytes(database) - removedBytes + byteSize
                 if (totalBytes > LyricsCachePolicy.MAX_BYTES) {
-                    totalBytes = trimToTarget(database, totalBytes)
+                    totalBytes = trimToTarget(database, totalBytes, protectedAutomaticKey = cacheKey)
                 }
+                if (totalBytes > LyricsCachePolicy.MAX_BYTES) return@runCatching false
                 writeTotalBytes(database, totalBytes)
                 database.setTransactionSuccessful()
             } finally {
@@ -159,13 +177,82 @@ internal class LyricsCache(
     }
 
     @Synchronized
+    override fun recordRefresh(identity: LyricsPlaybackIdentity, nowMs: Long): Boolean {
+        if (closed || !identity.isUsable) return false
+        return runCatching {
+            val database = helper.writableDatabase
+            database.beginTransaction()
+            try {
+                val query = identity.lookup()
+                if (findManualEntries(database, query).isNotEmpty()) return@runCatching false
+                val cached = findAutomaticEntries(database, query).minWithOrNull(
+                    compareBy<CachedEntry> { abs(identity.durationMs - it.entry.result.durationMs) }
+                        .thenByDescending { it.entry.updatedAtMs }
+                ) ?: return@runCatching false
+                val previous = cached.entry
+                val attempts = if (previous.qualityVersion == LyricsCachePolicy.QUALITY_VERSION) {
+                    previous.refreshAttempts
+                } else 0
+                if (attempts >= LyricsCachePolicy.MAX_REFRESH_ATTEMPTS) return@runCatching false
+                // The caller records only a valid Found; put may already have upgraded its body.
+                val payload = JSONObject(cached.payload)
+                    .put("qualityVersion", LyricsCachePolicy.QUALITY_VERSION)
+                    .put("refreshAttempts", attempts + 1)
+                    .put("lastRefreshAtMs", maxOf(previous.lastRefreshAtMs, nowMs.coerceAtLeast(0L)))
+                    .toString()
+                val byteSize = cacheEntrySize(cached.cacheKey, payload)
+                var totalBytes = totalBytes(database) - cached.byteSize + byteSize
+                if (totalBytes > LyricsCachePolicy.MAX_BYTES) {
+                    totalBytes = trimToTarget(database, totalBytes, protectedAutomaticKey = cached.cacheKey)
+                }
+                if (totalBytes > LyricsCachePolicy.MAX_BYTES) return@runCatching false
+                val changed = database.update(
+                    TABLE_CACHE,
+                    ContentValues().apply {
+                        put(COLUMN_PAYLOAD, payload)
+                        put(COLUMN_BYTE_SIZE, byteSize)
+                    },
+                    "$COLUMN_KEY = ?",
+                    arrayOf(cached.cacheKey)
+                )
+                check(changed == 1) { "Lyrics refresh metadata update failed" }
+                writeTotalBytes(database, totalBytes)
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
+            true
+        }.onFailure { error ->
+            Log.w(LOG_TAG, "Unable to record lyrics cache refresh", error)
+        }.getOrDefault(false)
+    }
+
+    private fun isStrictUpgrade(
+        query: LyricsLookup,
+        previous: Entry,
+        selection: LyricsCandidateSelection
+    ): Boolean {
+        val resolved = previous.resolved ?: return false
+        if (!LyricsCandidateSelector.hasMatchingDuration(resolved.result.durationMs, selection.candidate.durationMs)) {
+            return false
+        }
+        val baseline = LyricsCandidateSelection(resolved.result, resolved.proof)
+        val ranked = LyricsContentRanker.rank(query, listOf(baseline, selection))
+        val old = ranked.firstOrNull { it.selection == baseline } ?: return false
+        val next = ranked.firstOrNull { it.selection == selection } ?: return false
+        return ranked.first().selection == selection &&
+            ((next.quality.kind == LyricsKind.SYNCHRONIZED && old.quality.kind == LyricsKind.PLAIN) ||
+                (next.quality.kind == old.quality.kind && next.quality.score > old.quality.score))
+    }
+
+    @Synchronized
     fun putManual(
         identity: LyricsPlaybackIdentity,
         result: LyricsResult,
         updatedAtMs: Long = System.currentTimeMillis()
     ): Boolean {
         if (closed || !identity.isUsable ||
-            classifyLyrics(result.lyrics) != LyricsKind.SYNCHRONIZED
+            result.contentKind() == LyricsKind.NONE
         ) {
             return false
         }
@@ -195,11 +282,12 @@ internal class LyricsCache(
                     SQLiteDatabase.CONFLICT_REPLACE
                 )
                 check(inserted != -1L) { "Manual lyrics insert failed" }
+                if (tableCount(database, TABLE_MANUAL) > MANUAL_ENTRY_LIMIT) return@runCatching false
                 var totalBytes = totalBytes(database) - previousBytes + byteSize
-                totalBytes = trimManualCount(database, totalBytes, cacheKey)
                 if (totalBytes > LyricsCachePolicy.MAX_BYTES) {
-                    totalBytes = trimToTarget(database, totalBytes, cacheKey)
+                    totalBytes = trimToTarget(database, totalBytes)
                 }
+                if (totalBytes > LyricsCachePolicy.MAX_BYTES) return@runCatching false
                 writeTotalBytes(database, totalBytes)
                 database.setTransactionSuccessful()
             } finally {
@@ -315,7 +403,7 @@ internal class LyricsCache(
     private fun trimToTarget(
         database: SQLiteDatabase,
         startingBytes: Long,
-        protectedManualKey: String? = null
+        protectedAutomaticKey: String? = null
     ): Long {
         var totalBytes = startingBytes
         while (totalBytes > LyricsCachePolicy.TRIM_TARGET_BYTES) {
@@ -323,8 +411,8 @@ internal class LyricsCache(
             database.query(
                 TABLE_CACHE,
                 arrayOf(COLUMN_KEY, COLUMN_BYTE_SIZE),
-                null,
-                null,
+                protectedAutomaticKey?.let { "$COLUMN_KEY != ?" },
+                protectedAutomaticKey?.let { arrayOf(it) },
                 null,
                 null,
                 "$COLUMN_EVICTION_SCORE ASC, $COLUMN_LAST_USED_AT ASC",
@@ -344,54 +432,6 @@ internal class LyricsCache(
                 victims.map { it.first }.toTypedArray()
             )
         }
-        if (totalBytes <= LyricsCachePolicy.TRIM_TARGET_BYTES) return totalBytes.coerceAtLeast(0L)
-        val selection = if (protectedManualKey == null) {
-            null
-        } else {
-            "$COLUMN_KEY != ?"
-        }
-        val selectionArgs = protectedManualKey?.let { arrayOf(it) }
-        while (totalBytes > LyricsCachePolicy.TRIM_TARGET_BYTES) {
-            val victim = database.query(
-                TABLE_MANUAL,
-                arrayOf(COLUMN_KEY, COLUMN_BYTE_SIZE),
-                selection,
-                selectionArgs,
-                null,
-                null,
-                "$COLUMN_UPDATED_AT ASC",
-                "1"
-            ).use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
-            } ?: break
-            database.delete(TABLE_MANUAL, "$COLUMN_KEY = ?", arrayOf(victim.first))
-            totalBytes -= victim.second
-        }
-        return totalBytes.coerceAtLeast(0L)
-    }
-
-    private fun trimManualCount(
-        database: SQLiteDatabase,
-        startingBytes: Long,
-        protectedKey: String
-    ): Long {
-        var totalBytes = startingBytes
-        while (tableCount(database, TABLE_MANUAL) > MANUAL_ENTRY_LIMIT) {
-            val victim = database.query(
-                TABLE_MANUAL,
-                arrayOf(COLUMN_KEY, COLUMN_BYTE_SIZE),
-                "$COLUMN_KEY != ?",
-                arrayOf(protectedKey),
-                null,
-                null,
-                "$COLUMN_UPDATED_AT ASC",
-                "1"
-            ).use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
-            } ?: break
-            database.delete(TABLE_MANUAL, "$COLUMN_KEY = ?", arrayOf(victim.first))
-            totalBytes -= victim.second
-        }
         return totalBytes.coerceAtLeast(0L)
     }
 
@@ -403,7 +443,7 @@ internal class LyricsCache(
         val placeholders = List(keys.size) { "?" }.joinToString(",")
         return database.query(
             TABLE_CACHE,
-            arrayOf(COLUMN_KEY, COLUMN_PAYLOAD, COLUMN_UPDATED_AT, COLUMN_USE_COUNT),
+            arrayOf(COLUMN_KEY, COLUMN_PAYLOAD, COLUMN_UPDATED_AT, COLUMN_USE_COUNT, COLUMN_BYTE_SIZE),
             "$COLUMN_RECORDING_KEY IN ($placeholders)",
             keys.toTypedArray(),
             null,
@@ -418,7 +458,7 @@ internal class LyricsCache(
                     if (entry.proof?.let {
                         LyricsCandidateSelector.isProofValid(query, entry.result, it)
                     } != true) continue
-                    add(CachedEntry(cursor.getString(0), entry, cursor.getInt(3)))
+                    add(CachedEntry(cursor.getString(0), entry, cursor.getInt(3), cursor.getString(1), cursor.getLong(4)))
                 }
             }
         }
@@ -542,9 +582,17 @@ internal class LyricsCache(
         check(inserted != -1L) { "Lyrics cache statistics insert failed" }
     }
 
-    private fun encodeResolved(resolved: ResolvedLyrics, query: LyricsLookup): String = resolved.result.toJson()
+    private fun encodeResolved(
+        resolved: ResolvedLyrics,
+        query: LyricsLookup,
+        refreshAttempts: Int,
+        lastRefreshAtMs: Long
+    ): String = resolved.result.toJson()
         .put("selectionProof", resolved.proof.toJson())
         .put("playbackIdentity", LyricsPlaybackIdentity(query.track, query.artist, query.album, query.durationMs).toJson())
+        .put("qualityVersion", LyricsCachePolicy.QUALITY_VERSION)
+        .put("refreshAttempts", refreshAttempts)
+        .put("lastRefreshAtMs", lastRefreshAtMs)
         .toString()
 
     private fun decodeAutomaticEntry(payload: String, updatedAtMs: Long): Entry? {
@@ -556,7 +604,10 @@ internal class LyricsCache(
             result = result,
             proof = proof,
             updatedAtMs = updatedAtMs,
-            translationResolved = value.has("translatedLyrics")
+            translationResolved = value.has("translatedLyrics"),
+            qualityVersion = value.optInt("qualityVersion", 0).coerceAtLeast(0),
+            refreshAttempts = value.optInt("refreshAttempts", 0).coerceIn(0, LyricsCachePolicy.MAX_REFRESH_ATTEMPTS),
+            lastRefreshAtMs = value.optLong("lastRefreshAtMs", updatedAtMs).coerceAtLeast(0L)
         )
     }
 
@@ -594,7 +645,9 @@ internal class LyricsCache(
     private data class CachedEntry(
         val cacheKey: String,
         val entry: Entry,
-        val useCount: Int
+        val useCount: Int,
+        val payload: String,
+        val byteSize: Long
     )
 
     private data class ManualCachedEntry(
@@ -773,19 +826,25 @@ internal class LyricsCache(
 
         private fun decodeResult(value: JSONObject): LyricsResult? {
             val lyrics = cleanLyrics(value.optString("lyrics"))
-            if (classifyLyrics(lyrics) != LyricsKind.SYNCHRONIZED) return null
-            return LyricsResult(
+            val result = LyricsResult(
                 lyrics = lyrics,
                 translatedLyrics = synchronizedLyricsOrEmpty(value.optString("translatedLyrics")),
+                wordLyrics = cleanLyrics(value.optString("wordLyrics")),
+                romanizedLyrics = synchronizedLyricsOrEmpty(value.optString("romanizedLyrics")),
+                plainLyrics = cleanLyrics(value.optString("plainLyrics")),
+                backgroundLyrics = cleanLyrics(value.optString("backgroundLyrics")),
+                ttmlLyrics = cleanLyrics(value.optString("ttmlLyrics")),
+                identitySource = value.optString("identitySource"),
                 durationMs = value.optLong("duration", 0L),
                 cover = value.optString("cover"),
                 source = value.optString("source"),
                 sourceId = value.optString("sourceId"),
                 candidateTrack = value.optString("candidateTrack"),
                 candidateArtist = value.optString("candidateArtist"),
-                candidateAlbum = value.optString("candidateAlbum"),
-                lyricsKind = LyricsKind.SYNCHRONIZED
+                candidateAlbum = value.optString("candidateAlbum")
             )
+            val kind = result.contentKind()
+            return result.copy(lyricsKind = kind).takeIf { kind != LyricsKind.NONE }
         }
 
         private const val LOG_TAG = "ContentLyrics"
@@ -856,7 +915,9 @@ internal class LyricsCache(
 internal object LyricsCachePolicy {
     const val MAX_BYTES = 128L * 1024L * 1024L
     const val TRIM_TARGET_BYTES = MAX_BYTES * 9L / 10L
-    const val REFRESH_AFTER_MS = 30L * 24L * 60L * 60L * 1000L
+    const val QUALITY_VERSION = 1
+    const val REFRESH_AFTER_MS = 6L * 60L * 60L * 1000L
+    const val MAX_REFRESH_ATTEMPTS = 3
     private const val MAX_USE_COUNT = 30
     private const val FREQUENCY_BONUS_MS = 7L * 24L * 60L * 60L * 1000L
 

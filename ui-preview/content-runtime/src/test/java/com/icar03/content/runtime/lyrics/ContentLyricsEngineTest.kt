@@ -198,6 +198,162 @@ class ContentLyricsEngineTest {
         assertEquals(0, loads)
     }
 
+    @Test fun provisionalShowsImmediatelyButOnlyFinalBodyIsPersisted() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, snapshots)
+        engine.update(media())
+        drain()
+        val query = runtime.lookups.single()
+        runtime.provisional.getValue("Song")(found(query))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.READY, snapshots.last().status)
+        assertEquals(0, runtime.cache.writes)
+        val result = found(query).resolved.result.copy(wordLyrics = "[1000,600](1000,600,0)Song lyric")
+        runtime.pendingLyrics.remove("Song")!!.resume(found(query, result))
+        drain()
+        assertEquals(1, runtime.cache.writes)
+        assertEquals(1, snapshots.last().lines.single().words.size)
+        assertEquals(1_600L, snapshots.last().lines.single().words.single().endTimeMs)
+    }
+
+    @Test fun unchangedFinalStillPersistsTheFirstProvisional() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, snapshots)
+        engine.update(media())
+        drain()
+        runtime.provisional.getValue("Song")(found(runtime.lookups.single()))
+        drain()
+        runtime.finishLyrics("Song")
+        drain()
+        assertEquals(1, runtime.cache.writes)
+        assertEquals(1, runtime.cache.entries.size)
+    }
+
+    @Test fun aLateProvisionalFromThePreviousRecordingIsRejected() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, snapshots)
+        engine.update(media(title = "Old"))
+        drain()
+        val callback = runtime.provisional.getValue("Old")
+        engine.update(media(title = "New", generation = 2))
+        drain()
+        val publications = snapshots.size
+        callback(found(runtime.lookups.first()))
+        drain()
+        assertEquals(publications, snapshots.size)
+        assertTrue(snapshots.last().lines.isEmpty())
+        assertEquals(0, runtime.cache.writes)
+    }
+
+    @Test fun aLowerQualityRefreshCannotReplaceTheAlreadyDisplayedWords() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val query = LyricsLookup("Song", "Artist", "Album", 200_000L)
+        val identity = LyricsPlaybackIdentity(query.track, query.artist, query.album, query.durationMs)
+        val previous = found(query, found(query).resolved.result.copy(
+            wordLyrics = "[1000,600](1000,600,0)Song lyric")).resolved
+        runtime.cache.entries[identity] = LyricsCache.Entry(previous.result, previous.proof, 0L)
+        val engine = engine(runtime, snapshots)
+        engine.update(media())
+        drain()
+        assertEquals(1, snapshots.last().lines.single().words.size)
+        runtime.finishLyrics("Song")
+        drain()
+        assertEquals(0, runtime.cache.writes)
+        assertEquals(1, runtime.cache.refreshes)
+        assertEquals(previous.result, runtime.cache.entries.getValue(identity).result)
+        assertEquals(1, snapshots.last().lines.single().words.size)
+    }
+
+    @Test fun aManualAdoptionDuringAnAutomaticRoundWinsTheFinalCommit() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, snapshots)
+        engine.update(media())
+        drain()
+        val query = runtime.lookups.single()
+        val identity = LyricsPlaybackIdentity(query.track, query.artist, query.album, query.durationMs)
+        val manual = found(query).resolved.result.copy(lyrics = "[00:01.0]Manual adoption")
+        runtime.cache.entries[identity] = LyricsCache.Entry(manual, null, System.currentTimeMillis(),
+            selection = LyricsCacheSelection.MANUAL)
+        runtime.finishLyrics("Song")
+        drain()
+        assertEquals(0, runtime.cache.writes)
+        assertEquals("Manual adoption", snapshots.last().lines.single().text)
+    }
+
+    @Test fun plainTextIsReadyButNeverInventsATimeline() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, snapshots)
+        engine.update(media())
+        drain()
+        val query = runtime.lookups.single()
+        val result = found(query).resolved.result.copy(lyrics = "", plainLyrics = "One line\nAnother line")
+        runtime.pendingLyrics.remove("Song")!!.resume(found(query, result))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.READY, snapshots.last().status)
+        assertFalse(snapshots.last().timed)
+        assertEquals(listOf("One line", "Another line"), snapshots.last().lines.map { it.text })
+        assertTrue(snapshots.last().lines.all { it.words.isEmpty() && it.endTimeMs == -1L })
+        assertEquals(1, runtime.cache.writes)
+    }
+
+    @Test fun ttmlPreservesDuetAndBackgroundEndBeyondTheNextMainLine() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, snapshots)
+        engine.update(media())
+        drain()
+        val query = runtime.lookups.single()
+        val raw = """<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata">
+            <head><metadata><ttm:agent xml:id="a" type="person"/><ttm:agent xml:id="b" type="person"/></metadata></head>
+            <body><div><p begin="1" end="2" ttm:agent="a"><span begin="1" end="2.2">Main</span><span ttm:role="x-bg" begin="2.5" end="4.5">Echo</span></p>
+            <p begin="3" end="4" ttm:agent="b">Next</p></div></body></tt>"""
+        runtime.pendingLyrics.remove("Song")!!.resume(found(query, found(query).resolved.result.copy(lyrics = "", ttmlLyrics = raw)))
+        drain()
+        val rows = snapshots.last().lines
+        assertTrue(snapshots.last().timed)
+        assertEquals(listOf(1, 2), rows.map { it.speakerSide })
+        assertEquals(2_000L, rows.first().endTimeMs)
+        assertEquals(2_200L, rows.first().words.single().endTimeMs)
+        assertEquals(4_500L, rows.first().backgroundWords.single().endTimeMs)
+    }
+
+    @Test fun coverRetryDecodesTheSecondImageAndRestartUsesThePersistedBitmap() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val waits = mutableListOf<Long>()
+        val loads = mutableListOf<String>()
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).apply { eraseColor(0xff2c8f63.toInt()) }
+        runtime.coverOptions = { if (runtime.coverRounds == 1) emptyList() else listOf("broken", "good") }
+        val context = RuntimeEnvironment.getApplication()
+        val engine = ContentLyricsEngine(context, { runtime }, Dispatchers.Unconfined,
+            { url, _ -> loads += url; if (url == "good") bitmap else null }, { waits += it })
+            .also { engines += it; it.start(snapshots::add) }
+        val current = media(title = "CoverRetrySynthetic")
+        engine.update(current)
+        drain()
+        assertEquals(listOf(300L), waits)
+        assertEquals(listOf("broken", "good"), loads)
+        assertSame(bitmap, snapshots.last().artwork)
+        engine.stop()
+        drain()
+        val offline = Runtime().apply { coverOptions = { error("Persisted cover must avoid a network request") } }
+        val restored = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val restart = ContentLyricsEngine(context, { offline }, Dispatchers.Unconfined,
+            { _, _ -> error("Persisted cover must avoid image download") }, { })
+            .also { engines += it; it.start(restored::add) }
+        restart.update(current)
+        drain()
+        assertEquals(0, offline.coverRounds)
+        assertEquals(bitmap.getPixel(0, 0), restored.last().artwork!!.getPixel(0, 0))
+        assertFalse(bitmap.isRecycled)
+    }
+
     private fun engine(runtime: Runtime, snapshots: MutableList<ContentPorts.LyricsSnapshot>) =
         ContentLyricsEngine(RuntimeEnvironment.getApplication(), { runtime }, Dispatchers.Unconfined,
             { _, _ -> null }).also { engines += it; it.start(snapshots::add) }
@@ -214,12 +370,24 @@ class ContentLyricsEngineTest {
         LyricsEngineResources {
         val lookups = mutableListOf<LyricsLookup>()
         val pendingLyrics = linkedMapOf<String, Continuation<LyricsResolutionOutcome>>()
+        val provisional = linkedMapOf<String, (LyricsResolutionOutcome.Found) -> Unit>()
+        var coverRounds = 0
+        var coverOptions: (() -> List<String>)? = null
         var pendingCover: Continuation<String>? = null
         var cancelled = 0
         var closed = false
         override suspend fun resolveLyrics(query: LyricsLookup): LyricsResolutionOutcome = suspendCoroutine {
             lookups += query
             pendingLyrics[query.track] = it
+        }
+        override suspend fun resolveLyricsProgressive(query: LyricsLookup,
+            onProvisional: (LyricsResolutionOutcome.Found) -> Unit): LyricsResolutionOutcome {
+            provisional[query.track] = onProvisional
+            return resolveLyrics(query)
+        }
+        override suspend fun resolveCovers(query: LyricsLookup): List<String> {
+            coverRounds++
+            return coverOptions?.invoke() ?: super.resolveCovers(query)
         }
         override suspend fun resolveCover(query: LyricsLookup): String = if (waitForCover) {
             suspendCoroutine { pendingCover = it }
@@ -233,9 +401,15 @@ class ContentLyricsEngineTest {
     private class MemoryCache : LyricsPlaybackCache {
         val entries = linkedMapOf<LyricsPlaybackIdentity, LyricsCache.Entry>()
         var writes = 0
+        var refreshes = 0
+        override fun recordRefresh(identity: LyricsPlaybackIdentity, nowMs: Long): Boolean {
+            refreshes++
+            return true
+        }
         override fun read(identity: LyricsPlaybackIdentity, recordUse: Boolean) = entries[identity]
         override fun writeAutomatic(identity: LyricsPlaybackIdentity, resolved: ResolvedLyrics): Boolean {
-            if (!LyricsCandidateSelector.isProofValid(identity.lookup(), resolved.result, resolved.proof)) return false
+            if (entries[identity]?.selection == LyricsCacheSelection.MANUAL ||
+                !LyricsCandidateSelector.isProofValid(identity.lookup(), resolved.result, resolved.proof)) return false
             writes++
             entries[identity] = LyricsCache.Entry(resolved.result, resolved.proof, System.currentTimeMillis())
             return true
@@ -252,6 +426,10 @@ class ContentLyricsEngineTest {
             val result = LyricsResult(lyrics = "[00:01.0]${query.track} lyric", durationMs = query.durationMs,
                 source = SOURCE_QQ, sourceId = query.track, candidateTrack = query.track,
                 candidateArtist = query.artist, candidateAlbum = query.album, lyricsKind = LyricsKind.SYNCHRONIZED)
+            return found(query, result)
+        }
+
+        private fun found(query: LyricsLookup, result: LyricsResult): LyricsResolutionOutcome.Found {
             val proof = LyricsCandidateSelector.selectCandidatesWithProof(query, listOf(result)).single().proof
             return LyricsResolutionOutcome.Found(ResolvedLyrics(result, proof))
         }

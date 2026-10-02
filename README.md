@@ -13,7 +13,7 @@
 - “把地图改成启动即进入全屏动态分屏，并验证三种视角的相机焦点。”
 - “抓取启动崩溃日志，定位签名校验、资源、Surface 或地图服务问题并继续修复。”
 
-AI 会直接调用本机 `adb`、`apktool`、`baksmali/smali`、`aapt2`、`zipalign` 和 `apksigner` 完成机械操作；只有无线调试断开、系统授权弹窗或高风险动作需要用户介入。
+AI 会直接调用本机 `adb`、`apktool`、`baksmali/smali`、`aapt2`、`zipalign` 和 `apksigner` 完成机械操作；只有设备连接、系统弹窗、缺失输入或超出已明确目标的具体个人风险需要用户介入。
 
 ## 文档入口
 
@@ -37,4 +37,4 @@ AI 会直接调用本机 `adb`、`apktool`、`baksmali/smali`、`aapt2`、`zipal
 
 ## 当前状态
 
-当前输入 APK 和必要身份凭据保存在被忽略的 `apk-archive/9.5.0.600013/`；历史 `480×480` 悬浮记录不再作为当前目标。实验可在 `apk-work/9.5.0.600013/` 进行，但提交前必须将 Java / Smali / Manifest / 资源改动回写 `source/`，并从 Git 源码重新构建；APK、截图、日志、DEX 和签名材料不进入 Git。构建入口：`bash scripts/build-content-apk.sh`；仅签名验证通过的 `signed.apk` 可交付，缺签名材料时构建失败。
+当前输入 APK 和必要身份凭据保存在被忽略的 `apk-archive/9.5.0.600013/`；历史 `480×480` 悬浮记录不再作为当前目标。实验可在 `apk-work/9.5.0.600013/` 进行，但提交前必须将 Java / Smali / Manifest / 资源改动回写 `source/`，并从 Git 源码重新构建；APK、DEX 等生成物按现有忽略规则管理，凭据与含隐私证据按 [个人风险口径](docs/security/安全与密钥边界.md) 处理，脱敏截图或日志摘要可按需入库。构建入口：`bash scripts/build-content-apk.sh`；仅签名验证通过的 `signed.apk` 可交付，缺签名材料时构建失败。

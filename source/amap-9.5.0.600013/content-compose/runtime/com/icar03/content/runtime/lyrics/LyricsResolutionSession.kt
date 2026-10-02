@@ -17,23 +17,24 @@ internal class LyricsResolutionSession(
     private val executor: ExecutorService,
     private val clock: LyricsMonotonicClock,
     private val config: LyricsResolutionConfig,
-    private val logger: LyricsRepositoryLogger
+    private val logger: LyricsRepositoryLogger,
+    private val preferredSources: () -> List<String> = { emptyList() },
+    private val supplemental: ((LyricsLookup, List<LyricsResult>, Long, LyricsCancellationSignal) -> List<LyricsResult>)? = null
 ) {
     fun resolve(
         query: LyricsLookup,
         cancellation: LyricsCancellationSignal,
-        startedAtNanos: Long
+        startedAtNanos: Long,
+        onProvisional: (LyricsResolutionOutcome.Found) -> Unit = {}
     ): LyricsResolutionOutcome {
+        if (!LyricsCandidateSelector.canConfirm(query)) return LyricsResolutionOutcome.InvalidMetadata
         val totalDeadlineNanos = config.deadlineAfter(startedAtNanos, config.totalDeadlineMs)
-        val catalogDeadlineNanos = minOf(
-            totalDeadlineNanos,
-            config.deadlineAfter(startedAtNanos, config.catalogDeadlineMs)
-        )
         val events = LinkedBlockingQueue<ResolutionEvent>()
         val futures = mutableListOf<Future<*>>()
-        val candidates = mutableListOf<LyricsResult>()
+        val candidates = linkedMapOf<String, LyricsResult>()
         val activeBodySources = mutableSetOf<String>()
         val startedCandidateIds = mutableSetOf<String>()
+        val sourcePreferences = preferredSources()
         val catalogStates = catalogSources.associate { source ->
             source.sourceName to CatalogSourceState(
                 source = source,
@@ -42,53 +43,103 @@ internal class LyricsResolutionSession(
         }
         val trace = LyricsResolutionTrace()
         var exactInFlight = true
-        var fuzzyStarted = false
-        var fuzzyInFlight = false
+        var fuzzyInFlight = true
+        var enrichmentStarted = false
+        var enrichmentInFlight = false
+        var provisionalSent = false
         var retryableFailure: LyricsFailureReason? = null
+        var terminalFailure: LyricsFailureReason? = null
         val cancellationRegistration = cancellation.register {
             events.offer(ResolutionEvent.Cancelled)
         }
 
-        submitSearch(
-            operation = SearchOperation.LrcLibExact,
-            deadlineNanos = catalogDeadlineNanos,
-            cancellation = cancellation,
-            events = events,
-            futures = futures
-        ) {
-            listOfNotNull(
-                exactAndFallbackSource.exact(query, catalogDeadlineNanos, cancellation)
-            )
-        }
-        catalogStates.values.forEach { state ->
-            startNextCatalogSearch(
-                state = state,
-                deadlineNanos = catalogDeadlineNanos,
-                cancellation = cancellation,
-                events = events,
-                futures = futures
-            )
+        fun closeSearch(operation: SearchOperation) {
+            when (operation) {
+                SearchOperation.LrcLibExact -> exactInFlight = false
+                SearchOperation.LrcLibFuzzy -> fuzzyInFlight = false
+                SearchOperation.Enrichment -> enrichmentInFlight = false
+                is SearchOperation.Catalog -> catalogStates[operation.sourceName]?.let { state ->
+                    state.searchInFlight = false
+                    state.firstRequestClosed = true
+                }
+            }
         }
 
         try {
+            cancellation.throwIfCancelled()
+            submitSearch(
+                operation = SearchOperation.LrcLibExact,
+                deadlineNanos = totalDeadlineNanos,
+                cancellation = cancellation,
+                events = events,
+                futures = futures
+            ) {
+                listOfNotNull(exactAndFallbackSource.exact(query, totalDeadlineNanos, cancellation))
+            }
+            submitSearch(
+                operation = SearchOperation.LrcLibFuzzy,
+                deadlineNanos = totalDeadlineNanos,
+                cancellation = cancellation,
+                events = events,
+                futures = futures
+            ) {
+                exactAndFallbackSource.fallback(query, totalDeadlineNanos, cancellation)
+            }
+            catalogStates.values.forEach { state ->
+                startNextCatalogSearch(state, totalDeadlineNanos, cancellation, events, futures)
+            }
+
             while (true) {
                 cancellation.throwIfCancelled()
-
-                val ranked = LyricsCandidateSelector.selectCandidatesWithProof(query, candidates)
-                ranked.firstOrNull { selection ->
-                    classifyLyrics(selection.candidate.lyrics) == LyricsKind.SYNCHRONIZED
-                }?.let { selection ->
-                    return found(
-                        query,
-                        candidates,
-                        selection,
-                        selection.candidate,
-                        startedAtNanos,
-                        trace
+                val selections = LyricsCandidateSelector.selectCandidatesWithProof(query, candidates.values)
+                val ranked = LyricsContentRanker.rank(query, selections, sourcePreferences)
+                cancellation.throwIfCancelled()
+                if (clock.nanoTime() >= totalDeadlineNanos) {
+                    return finish(
+                        query, candidates.values.toList(), ranked, LyricsFailureReason.DEADLINE,
+                        terminalFailure, startedAtNanos, trace
                     )
                 }
+
+                if (!provisionalSent) {
+                    ranked.firstOrNull { it.quality.kind == LyricsKind.SYNCHRONIZED }?.let { first ->
+                        cancellation.throwIfCancelled()
+                        provisionalSent = true
+                        try {
+                            onProvisional(found(query, candidates.values.toList(), first, startedAtNanos, trace, true))
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            logger.warning("Lyrics provisional callback failed", error)
+                        }
+                    }
+                }
+                cancellation.throwIfCancelled()
+
+                // Wait for both ID-producing primary catalogs before the single enrichment round.
+                val primaryCatalogsClosed = catalogStates.values
+                    .filter { it.source.sourceName == SOURCE_QQ || it.source.sourceName == SOURCE_NETEASE }
+                    .all { it.firstRequestClosed }
+                val anchors = selections.map(LyricsCandidateSelection::candidate)
+                    .filter { it.source.isNotBlank() && it.sourceId.isNotBlank() }
+                val enrich = supplemental
+                if (!enrichmentStarted && enrich != null && primaryCatalogsClosed && anchors.isNotEmpty()) {
+                    enrichmentStarted = true
+                    enrichmentInFlight = true
+                    submitSearch(
+                        operation = SearchOperation.Enrichment,
+                        deadlineNanos = totalDeadlineNanos,
+                        cancellation = cancellation,
+                        events = events,
+                        futures = futures
+                    ) {
+                        enrich(query, anchors, totalDeadlineNanos, cancellation)
+                    }
+                }
+
                 scheduleBodyLoads(
-                    ranked = ranked,
+                    query = query,
+                    ranked = selections,
                     activeBodySources = activeBodySources,
                     startedCandidateIds = startedCandidateIds,
                     deadlineNanos = totalDeadlineNanos,
@@ -96,137 +147,72 @@ internal class LyricsResolutionSession(
                     events = events,
                     futures = futures
                 )
-
                 catalogStates.values.forEach { state ->
-                    val hasPendingCandidate = ranked.any { selection ->
-                        selection.candidate.source == state.source.sourceName &&
-                            candidateIdentity(selection.candidate) !in startedCandidateIds
-                    }
-                    if (!state.searchInFlight &&
-                        state.source.sourceName !in activeBodySources &&
-                        !hasPendingCandidate
-                    ) {
-                        startNextCatalogSearch(
-                            state = state,
-                            deadlineNanos = totalDeadlineNanos,
-                            cancellation = cancellation,
-                            events = events,
-                            futures = futures
-                        )
+                    if (!state.searchInFlight) {
+                        startNextCatalogSearch(state, totalDeadlineNanos, cancellation, events, futures)
                     }
                 }
-
-                val nowNanos = clock.nanoTime()
-                val catalogExhausted = catalogStates.values.all(CatalogSourceState::isExhausted)
-                val startFuzzyNow = nowNanos >= catalogDeadlineNanos ||
-                    (!exactInFlight && catalogExhausted && activeBodySources.isEmpty())
-                if (!fuzzyStarted && startFuzzyNow) {
-                    fuzzyStarted = true
-                    fuzzyInFlight = true
-                    submitSearch(
-                        operation = SearchOperation.LrcLibFuzzy,
-                        deadlineNanos = totalDeadlineNanos,
-                        cancellation = cancellation,
-                        events = events,
-                        futures = futures
-                    ) {
-                        exactAndFallbackSource.fallback(query, totalDeadlineNanos, cancellation)
-                    }
-                }
-
-                val exactClosed = !exactInFlight || nowNanos >= catalogDeadlineNanos
-                val fuzzyCompleted = fuzzyStarted && !fuzzyInFlight
-                if (exactClosed &&
-                    catalogExhausted &&
-                    fuzzyCompleted &&
-                    activeBodySources.isEmpty()
+                if (!exactInFlight && !fuzzyInFlight && !enrichmentInFlight &&
+                    catalogStates.values.all(CatalogSourceState::isExhausted) && activeBodySources.isEmpty()
                 ) {
-                    return unresolved(
-                        query = query,
-                        candidates = candidates,
-                        retryableFailure = retryableFailure,
-                        startedAtNanos = startedAtNanos,
-                        trace = trace
+                    return finish(
+                        query, candidates.values.toList(), ranked, retryableFailure,
+                        terminalFailure, startedAtNanos, trace
                     )
-                }
-                if (nowNanos >= totalDeadlineNanos) {
-                    logger.info(
-                        "Lyrics unresolved=deadline ${trace.summary()} " +
-                            "evidence=${LyricsCandidateSelector.selectionSummary(query, candidates)} " +
-                            "elapsedMs=${elapsedMs(startedAtNanos)}"
-                    )
-                    return LyricsResolutionOutcome.RetryableFailure(LyricsFailureReason.DEADLINE)
                 }
 
-                val nextBoundaryNanos = if (fuzzyStarted) {
-                    totalDeadlineNanos
-                } else {
-                    minOf(catalogDeadlineNanos, totalDeadlineNanos)
-                }
-                val remainingNanos = nextBoundaryNanos - nowNanos
+                val remainingNanos = totalDeadlineNanos - clock.nanoTime()
                 if (remainingNanos <= 0L) continue
                 val event = events.poll(remainingNanos, TimeUnit.NANOSECONDS) ?: continue
+                cancellation.throwIfCancelled()
+                if (clock.nanoTime() >= totalDeadlineNanos) continue
                 when (event) {
                     is ResolutionEvent.SearchCompleted -> {
-                        when (val operation = event.operation) {
-                            SearchOperation.LrcLibExact -> exactInFlight = false
-                            SearchOperation.LrcLibFuzzy -> fuzzyInFlight = false
-                            is SearchOperation.Catalog -> {
-                                catalogStates[operation.sourceName]?.searchInFlight = false
+                        closeSearch(event.operation)
+                        trace.searchCompleted(event.operation, event.candidates.size, event.elapsedMs)
+                        event.candidates.forEach { candidate ->
+                            if (event.operation == SearchOperation.Enrichment ||
+                                candidate.source == event.operation.sourceName ||
+                                ((event.operation == SearchOperation.LrcLibExact || event.operation == SearchOperation.LrcLibFuzzy) &&
+                                    candidate.source == exactAndFallbackSource.sourceName)
+                            ) {
+                                rememberCandidate(query, candidates, candidate)
                             }
                         }
-                        trace.searchCompleted(event.operation, event.candidates.size, event.elapsedMs)
-                        candidates += event.candidates
                     }
 
                     is ResolutionEvent.SearchFailed -> {
-                        when (val operation = event.operation) {
-                            SearchOperation.LrcLibExact -> exactInFlight = false
-                            SearchOperation.LrcLibFuzzy -> fuzzyInFlight = false
-                            is SearchOperation.Catalog -> {
-                                catalogStates[operation.sourceName]?.searchInFlight = false
-                            }
-                        }
+                        closeSearch(event.operation)
                         trace.searchFailed(event.operation, event.elapsedMs)
-                        if (event.retryable && retryableFailure == null) {
-                            retryableFailure = event.reason
-                        }
+                        if (event.retryable && retryableFailure == null) retryableFailure = event.reason
+                        if (!event.retryable && terminalFailure == null) terminalFailure = event.reason
                     }
 
                     is ResolutionEvent.BodyCompleted -> {
                         activeBodySources -= event.sourceName
                         trace.bodyCompleted(event.sourceName, event.result != null, event.elapsedMs)
                         val loaded = event.result
-                        if (loaded != null &&
-                            classifyLyrics(loaded.lyrics) == LyricsKind.SYNCHRONIZED &&
-                            LyricsCandidateSelector.isProofValid(
-                                query,
-                                loaded,
-                                event.selection.proof
-                            )
+                        val snapshot = event.selection.candidate.candidateSnapshot()
+                        if (loaded != null && loaded.candidateSnapshot() == snapshot &&
+                            candidates[candidateIdentity(loaded)]?.candidateSnapshot() == snapshot &&
+                            LyricsCandidateSelector.isProofValid(query, loaded, event.selection.proof)
                         ) {
-                            return found(
-                                query,
-                                candidates,
-                                event.selection,
-                                loaded,
-                                startedAtNanos,
-                                trace
-                            )
+                            rememberCandidate(query, candidates, loaded)
                         }
                     }
 
                     is ResolutionEvent.BodyFailed -> {
                         activeBodySources -= event.sourceName
                         trace.bodyFailed(event.sourceName, event.elapsedMs)
-                        if (event.retryable && retryableFailure == null) {
-                            retryableFailure = event.reason
-                        }
+                        if (event.retryable && retryableFailure == null) retryableFailure = event.reason
+                        if (!event.retryable && terminalFailure == null) terminalFailure = event.reason
                     }
 
                     ResolutionEvent.Cancelled -> return LyricsResolutionOutcome.Cancelled
                 }
             }
+        } catch (_: CancellationException) {
+            return LyricsResolutionOutcome.Cancelled
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             cancellation.cancel()
@@ -238,6 +224,7 @@ internal class LyricsResolutionSession(
     }
 
     private fun scheduleBodyLoads(
+        query: LyricsLookup,
         ranked: List<LyricsCandidateSelection>,
         activeBodySources: MutableSet<String>,
         startedCandidateIds: MutableSet<String>,
@@ -246,11 +233,11 @@ internal class LyricsResolutionSession(
         events: BlockingQueue<ResolutionEvent>,
         futures: MutableList<Future<*>>
     ) {
-        if (activeBodySources.size >= config.maximumBodyLanes) return
+        if (clock.nanoTime() >= deadlineNanos || activeBodySources.size >= config.maximumBodyLanes) return
         for (selection in ranked) {
             if (activeBodySources.size >= config.maximumBodyLanes) break
             val candidate = selection.candidate
-            if (classifyLyrics(candidate.lyrics) == LyricsKind.SYNCHRONIZED) continue
+            if (LyricsContentRanker.inspect(query, candidate).kind == LyricsKind.SYNCHRONIZED) continue
             val candidateId = candidateIdentity(candidate)
             val source = bodySources[candidate.source] ?: continue
             if (candidateId in startedCandidateIds || source.sourceName in activeBodySources) continue
@@ -259,7 +246,11 @@ internal class LyricsResolutionSession(
             futures += executor.submit {
                 val bodyStartedAtNanos = clock.nanoTime()
                 try {
+                    cancellation.throwIfCancelled()
+                    if (clock.nanoTime() >= deadlineNanos) return@submit
                     val result = source.loadLyrics(candidate, deadlineNanos, cancellation)
+                    cancellation.throwIfCancelled()
+                    if (clock.nanoTime() >= deadlineNanos) return@submit
                     events.offer(
                         ResolutionEvent.BodyCompleted(
                             sourceName = source.sourceName,
@@ -269,21 +260,25 @@ internal class LyricsResolutionSession(
                         )
                     )
                 } catch (_: CancellationException) {
-                    Unit
+                    if (!cancellation.isCancelled && clock.nanoTime() < deadlineNanos) {
+                        events.offer(ResolutionEvent.BodyCompleted(source.sourceName, selection, null, elapsedMs(bodyStartedAtNanos)))
+                    }
                 } catch (error: Throwable) {
                     val failure = sourceFailure(error)
                     logger.warning(
                         "Lyrics body source=${source.sourceName} retryable=${failure.retryable}",
                         error
                     )
-                    events.offer(
-                        ResolutionEvent.BodyFailed(
-                            sourceName = source.sourceName,
-                            reason = failure.reason,
-                            retryable = failure.retryable,
-                            elapsedMs = elapsedMs(bodyStartedAtNanos)
+                    if (!cancellation.isCancelled && clock.nanoTime() < deadlineNanos) {
+                        events.offer(
+                            ResolutionEvent.BodyFailed(
+                                sourceName = source.sourceName,
+                                reason = failure.reason,
+                                retryable = failure.retryable,
+                                elapsedMs = elapsedMs(bodyStartedAtNanos)
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -320,7 +315,10 @@ internal class LyricsResolutionSession(
             val searchStartedAtNanos = clock.nanoTime()
             try {
                 cancellation.throwIfCancelled()
+                if (clock.nanoTime() >= deadlineNanos) return@submit
                 val candidates = load()
+                cancellation.throwIfCancelled()
+                if (clock.nanoTime() >= deadlineNanos) return@submit
                 events.offer(
                     ResolutionEvent.SearchCompleted(
                         operation = operation,
@@ -329,7 +327,9 @@ internal class LyricsResolutionSession(
                     )
                 )
             } catch (_: CancellationException) {
-                Unit
+                if (!cancellation.isCancelled && clock.nanoTime() < deadlineNanos) {
+                    events.offer(ResolutionEvent.SearchCompleted(operation, emptyList(), elapsedMs(searchStartedAtNanos)))
+                }
             } catch (error: Throwable) {
                 val failure = sourceFailure(error)
                 logger.warning(
@@ -337,51 +337,100 @@ internal class LyricsResolutionSession(
                         "retryable=${failure.retryable} deadline=$deadlineNanos",
                     error
                 )
-                events.offer(
-                    ResolutionEvent.SearchFailed(
-                        operation = operation,
-                        reason = failure.reason,
-                        retryable = failure.retryable,
-                        elapsedMs = elapsedMs(searchStartedAtNanos)
+                if (!cancellation.isCancelled && clock.nanoTime() < deadlineNanos) {
+                    events.offer(
+                        ResolutionEvent.SearchFailed(
+                            operation = operation,
+                            reason = failure.reason,
+                            retryable = failure.retryable,
+                            elapsedMs = elapsedMs(searchStartedAtNanos)
+                        )
                     )
-                )
+                }
             }
         }
+    }
+
+    private fun rememberCandidate(
+        query: LyricsLookup,
+        candidates: MutableMap<String, LyricsResult>,
+        candidate: LyricsResult
+    ) {
+        val identity = candidateIdentity(candidate)
+        val previous = candidates[identity]
+        if (previous == null) {
+            candidates[identity] = candidate
+            return
+        }
+        // A repeated catalog response cannot rewrite the recording proof or erase a loaded body.
+        if (previous.candidateSnapshot() != candidate.candidateSnapshot()) return
+        if (candidate == previous || !candidate.hasBodyPayload()) return
+        val oldSelection = LyricsCandidateSelector.selectCandidatesWithProof(query, candidates.values)
+            .firstOrNull { candidateIdentity(it.candidate) == identity }
+        val newSelection = oldSelection?.copy(candidate = candidate)
+        val compared = if (oldSelection != null && newSelection != null) {
+            LyricsContentRanker.rank(query, listOf(oldSelection, newSelection))
+        } else emptyList()
+        val oldQuality = compared.firstOrNull { it.selection === oldSelection }?.quality
+            ?: LyricsContentRanker.inspect(query, previous)
+        val newQuality = compared.firstOrNull { it.selection === newSelection }?.quality
+            ?: LyricsContentRanker.inspect(query, candidate)
+        val oldKind = contentOrder(oldQuality.kind)
+        val newKind = contentOrder(newQuality.kind)
+        if (newKind > oldKind || (newKind == oldKind && newQuality.score > oldQuality.score)) {
+            candidates[identity] = candidate
+        }
+    }
+
+    private fun contentOrder(kind: LyricsKind): Int = when (kind) {
+        LyricsKind.NONE -> 0
+        LyricsKind.PLAIN -> 1
+        LyricsKind.SYNCHRONIZED -> 2
     }
 
     private fun found(
         query: LyricsLookup,
         candidates: List<LyricsResult>,
-        selection: LyricsCandidateSelection,
-        result: LyricsResult,
+        ranked: LyricsContentRanker.RankedCandidate,
         startedAtNanos: Long,
-        trace: LyricsResolutionTrace
+        trace: LyricsResolutionTrace,
+        provisional: Boolean = false
     ): LyricsResolutionOutcome.Found {
+        val result = ranked.candidate.let { candidate ->
+            if (ranked.quality.kind == LyricsKind.PLAIN) {
+                candidate.copy(lyrics = "", plainLyrics = LyricsContentRanker.plainText(candidate), lyricsKind = LyricsKind.PLAIN)
+            } else {
+                candidate.copy(lyricsKind = LyricsKind.SYNCHRONIZED)
+            }
+        }
         logger.info(
-            "Lyrics selected=${result.source} " +
+            "Lyrics ${if (provisional) "provisional" else "selected"}=${result.source} " +
+                "kind=${ranked.quality.kind} quality=${ranked.quality.score} " +
                 "${trace.summary()} " +
-                "evidence=${LyricsCandidateSelector.selectionSummary(query, candidates, result)} " +
+                "evidence=${LyricsCandidateSelector.selectionSummary(query,
+                    ranked.selection.proof.supportingCandidates.map(LyricsCandidateSnapshot::toResult), result)} " +
                 "elapsedMs=${elapsedMs(startedAtNanos)}"
         )
-        return LyricsResolutionOutcome.Found(
-            ResolvedLyrics(
-                result = result.copy(lyricsKind = LyricsKind.SYNCHRONIZED),
-                proof = selection.proof
-            )
-        )
+        return LyricsResolutionOutcome.Found(ResolvedLyrics(result, ranked.selection.proof))
     }
 
-    private fun unresolved(
+    private fun finish(
         query: LyricsLookup,
         candidates: List<LyricsResult>,
+        ranked: List<LyricsContentRanker.RankedCandidate>,
         retryableFailure: LyricsFailureReason?,
+        terminalFailure: LyricsFailureReason?,
         startedAtNanos: Long,
         trace: LyricsResolutionTrace
     ): LyricsResolutionOutcome {
+        ranked.firstOrNull()?.let { winner ->
+            return found(query, candidates, winner, startedAtNanos, trace)
+        }
         val outcome = retryableFailure?.let(LyricsResolutionOutcome::RetryableFailure)
+            ?: terminalFailure?.let(LyricsResolutionOutcome::SourceFailure)
             ?: LyricsResolutionOutcome.NoMatch
         logger.info(
-            "Lyrics unresolved=${if (retryableFailure == null) "no-match" else retryableFailure} " +
+            "Lyrics unresolved=${retryableFailure ?: terminalFailure ?: "no-match"} " +
                 "${trace.summary()} " +
                 "evidence=${LyricsCandidateSelector.selectionSummary(query, candidates)} " +
                 "elapsedMs=${elapsedMs(startedAtNanos)}"
@@ -421,7 +470,8 @@ internal class LyricsResolutionSession(
         val source: LyricsCatalogSource,
         val requests: List<LyricsCatalogSearchRequest>,
         var nextRequestIndex: Int = 0,
-        var searchInFlight: Boolean = false
+        var searchInFlight: Boolean = false,
+        var firstRequestClosed: Boolean = requests.isEmpty()
     ) {
         fun takeNextRequest(): LyricsCatalogSearchRequest? {
             if (searchInFlight) return null
@@ -445,6 +495,10 @@ internal class LyricsResolutionSession(
             override val sourceName: String = SOURCE_LRCLIB
         }
 
+        data object Enrichment : SearchOperation {
+            override val sourceName: String = "supplemental"
+        }
+
         data class Catalog(
             override val sourceName: String,
             val request: LyricsCatalogSearchRequest
@@ -453,6 +507,7 @@ internal class LyricsResolutionSession(
         fun diagnosticLabel(): String = when (this) {
             LrcLibExact -> "$sourceName/exact"
             LrcLibFuzzy -> "$sourceName/fuzzy"
+            Enrichment -> "enrichment"
             is Catalog -> "$sourceName/${request.kind}"
         }
     }

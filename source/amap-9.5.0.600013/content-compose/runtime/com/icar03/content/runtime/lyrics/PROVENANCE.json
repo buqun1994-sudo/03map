@@ -195,6 +195,42 @@
       ]
     }
   ],
+  "behaviorReference": {
+    "project": "https://github.com/Yudaotor/lyrimuse",
+    "tag": "v1.9.0",
+    "commit": "e71fc2da2df14f1e7b9f8e6d49d65080b52dd5d2",
+    "license": "GPL-3.0",
+    "implementationPolicy": "Independent Android API/protocol/format and behavior implementation using the complete pinned Swift and Go source as evidence. No upstream binaries or bulk source files are embedded; this record does not authorize public redistribution of the host APK.",
+    "referenceAreas": [
+      "lyrimuse-collector: QQ/NetEase/Kugou/Kuwo/Migu/Soda APIs, QRC/KRC/LRCX/MRC, match scoring and strict dual-axis checks",
+      "LyrimuseCore: structured lyrics, true word/line/background timing and agent metadata",
+      "LyricsWindowView: separate singing/scroll anchors, overlapping voices, gap windows and browsing follow"
+    ],
+    "androidAdaptations": [
+      "Known recording duration and existing selection proof remain mandatory; source preference is a tie-break interface, not inferred Bluetooth platform/native-source evidence",
+      "One provisional synchronized result followed by full-batch re-ranking; typed source failures, cancellation and deadlines do not erase a valid body",
+      "Persistent automatic cache quality version, six-hour valid refresh budget capped at three; manual adoption cannot be automatically overwritten or evicted",
+      "MediaSession and real AVRCP event anchors only; repeated zero Bluetooth position/speed never creates a playback clock",
+      "Native API28 Canvas/StaticLayout renderer, 36sp main/22sp translation/20sp source romanization, 48dp leading inset, lifecycle-gated word frames",
+      "Static lyrics remain untimed; real ends, background voices and TTML agents remain distinct; no evenly divided fake word timing",
+      "Verified static cover fallback, bounded bitmap decoding/retry and private recording-keyed cache; previously approved ambient algorithm unchanged"
+    ],
+    "networkSources": ["qq", "netease", "kugou", "kuwo", "migu", "soda", "lrclib"],
+    "explicitlyExcludedNetworkSources": ["musixmatch", "lyricfind", "deezer", "amll"],
+    "notPorted": [
+      "Desktop cross-package private player caches and proprietary credentials",
+      "Apple authenticated online lyrics and dynamic album-video artwork",
+      "Machine-generated translation and dictionary-based Japanese reading on API28",
+      "Desktop manual import/edit/calibration settings UI and complete upstream alias-query matrix",
+      "Desktop-specific MV/radio clocks without Android recording evidence"
+    ],
+    "localFormatSupport": ["LRC", "enhanced LRC", "YRC", "KRC", "QRC", "LRCX", "MRC", "TTML"],
+    "newLocalFiles": [
+      "ContentCoverCache.kt", "ContentLyricsCursor.kt", "LyricsContent.kt", "LyricsContentRanker.kt",
+      "ExtendedLyricsSources.kt", "PublicWordLyricsFormats.kt", "QqWordLyricsSource.kt", "QrcLyricsParser.kt",
+      "LyricsPostTransport.kt", "TtmlLyricsParser.kt"
+    ]
+  },
   "newTests": [
     "LrcParserTest.kt",
     "ContentLyricsTimelineTest.kt",

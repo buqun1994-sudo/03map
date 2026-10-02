@@ -286,6 +286,10 @@ public final class ContentStore {
                 state.lyricsLines = java.util.Collections.emptyList();
                 state.lyricsStatus = ContentPorts.LyricsSnapshot.EMPTY;
                 state.lyricsActiveIndex = -1;
+                state.lyricsTimed = true;
+                state.lyricsScrollIndex = -1;
+                state.lyricsActiveIndices = new int[0];
+                state.lyricsGapStartMs = state.lyricsGapEndMs = -1L;
                 state.lyricsTimelineReady = false;
                 fallbackArtwork = null;
             }
@@ -369,6 +373,7 @@ public final class ContentStore {
                     || !snapshot.recordingKey.equals(state.mediaRecordingKey)) return;
             state.lyricsStatus = snapshot.status;
             state.lyricsLines = snapshot.lines;
+            state.lyricsTimed = snapshot.timed;
             if (snapshot.artwork != null && !snapshot.artwork.isRecycled()) {
                 fallbackArtwork = snapshot.artwork;
                 if (latestMedia.artwork == null || latestMedia.artwork.isRecycled())
@@ -383,27 +388,52 @@ public final class ContentStore {
         commandHandler.removeCallbacks(advanceLyrics);
         int previous = state.lyricsActiveIndex;
         boolean previouslyReady = state.lyricsTimelineReady;
-        state.lyricsTimelineReady = lyricsTimeline.ready();
-        int index = -1;
-        long position = lyricsTimeline.positionMs();
-        for (int i = 0; i < state.lyricsLines.size(); i++) {
-            if (state.lyricsLines.get(i).timeMs > position) break;
-            index = i;
-        }
-        // Unknown progress may preview the first matched line while playing, but pause keeps the
-        // currently displayed line; neither case advances the timeline.
+        long previousPosition = state.lyricsPositionMs;
+        float previousSpeed = state.lyricsPlaybackSpeed;
+        state.lyricsTimelineReady = state.lyricsTimed && lyricsTimeline.ready();
+        long position = state.lyricsTimelineReady ? lyricsTimeline.positionMs() : -1L;
+        float speed = state.lyricsTimelineReady ? lyricsTimeline.speed() : 0f;
+        state.lyricsPositionMs = position;
+        state.lyricsPlaybackSpeed = speed;
+        state.lyricsPositionCapturedAtMs = state.lyricsTimelineReady ? android.os.SystemClock.elapsedRealtime() : 0L;
+        com.icar03.content.runtime.lyrics.ContentLyricsCursor.Cursor cursor =
+                com.icar03.content.runtime.lyrics.ContentLyricsCursor.resolve(
+                        state.lyricsLines, position, lyricsTimeline.durationMs());
+        int index = cursor.getActiveIndex();
+        state.lyricsScrollIndex = cursor.getScrollIndex();
+        state.lyricsActiveIndices = cursor.getActiveIndices();
+        state.lyricsGapStartMs = cursor.getGapStartMs();
+        state.lyricsGapEndMs = cursor.getGapEndMs();
+        // An unready controller may preview, but cannot advance or color timed words.
         if (!state.lyricsTimelineReady) {
-            index = state.mediaPlaying && !state.lyricsLines.isEmpty() ? 0
-                    : previous >= 0 && previous < state.lyricsLines.size() ? previous : -1;
+            index = state.lyricsTimed && state.mediaPlaying && !state.lyricsLines.isEmpty() ? 0
+                    : state.lyricsTimed && previous >= 0 && previous < state.lyricsLines.size() ? previous : -1;
+            state.lyricsScrollIndex = Math.max(0, index);
+            state.lyricsActiveIndices = index >= 0 ? new int[] { index } : new int[0];
+            state.lyricsGapStartMs = state.lyricsGapEndMs = -1L;
         }
         state.lyricsActiveIndex = index;
         if (!destroyed && lyricsConsumers > 0 && state.mediaPlaying && state.lyricsTimelineReady
-                && lyricsTimeline.speed() > 0f && index + 1 < state.lyricsLines.size()) {
-            long remaining = state.lyricsLines.get(index + 1).timeMs - position;
-            long delay = Math.max(16L, (long) Math.ceil(remaining / lyricsTimeline.speed()));
-            commandHandler.postDelayed(advanceLyrics, delay);
+                && speed > 0f && !state.lyricsLines.isEmpty()) {
+            long duration = lyricsTimeline.durationMs();
+            long remaining = duration > 0L ? duration - position : Long.MAX_VALUE;
+            int low = 0;
+            int high = state.lyricsLines.size();
+            while (low < high) {
+                int middle = low + (high - low) / 2;
+                if (state.lyricsLines.get(middle).timeMs <= position) low = middle + 1;
+                else high = middle;
+            }
+            if (low < state.lyricsLines.size()) {
+                remaining = Math.min(remaining, state.lyricsLines.get(low).timeMs - position);
+            }
+            if (remaining > 0L) {
+                long delay = Math.max(16L, Math.min(100L, (long) Math.ceil(remaining / (double) speed)));
+                commandHandler.postDelayed(advanceLyrics, delay);
+            }
         }
-        return previous != index || previouslyReady != state.lyricsTimelineReady;
+        return previous != index || previouslyReady != state.lyricsTimelineReady
+                || previousPosition != position || Float.compare(previousSpeed, speed) != 0;
     }
 
     public void cycleSeatLevel(String seatId) {

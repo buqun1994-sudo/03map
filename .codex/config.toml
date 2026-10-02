@@ -1,4 +1,4 @@
 # Project-level Codex configuration.
-# Do not commit secrets, personal tokens, or machine-local private paths.
+# Keep non-public credentials and personal data out of shared configuration; ordinary local paths are not secrets by format alone.
 
 project_doc_max_bytes = 65536

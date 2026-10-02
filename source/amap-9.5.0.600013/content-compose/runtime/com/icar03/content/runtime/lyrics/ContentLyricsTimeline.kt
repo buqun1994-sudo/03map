@@ -12,6 +12,8 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
     private val recording = MediaRecordingStateTracker()
     private val timeline = MediaSessionTimelineTracker(elapsedRealtime)
     private var durationMs = 0L
+    private var lastAvrcpEventSequence = 0L
+    private var avrcpPlaybackState: Int? = null
 
     @Synchronized fun update(snapshot: ContentPorts.MediaSnapshot) {
         val metadata = snapshot.recordingMetadataOrNull()
@@ -20,7 +22,23 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
             return
         }
         val state = recording.update(snapshot.source, metadata) ?: return
+        if (state.recordingChanged || ContentRegistry.normalizeMediaSource(snapshot.source) != "蓝牙音乐"
+            || snapshot.avrcpEventSequence == 0L || snapshot.avrcpPlaybackState < 0) {
+            avrcpPlaybackState = null
+        }
         durationMs = state.metadata.durationMs
+        val bluetooth = ContentRegistry.normalizeMediaSource(snapshot.source) == "蓝牙音乐"
+        if (bluetooth && snapshot.avrcpEventSequence > lastAvrcpEventSequence) {
+            lastAvrcpEventSequence = snapshot.avrcpEventSequence
+            val age = elapsedRealtime() - snapshot.avrcpElapsedRealtimeMs
+            if (age in 0L..1_500L) {
+                if (snapshot.avrcpPositionMs >= 0L) timeline.onAvrcpPosition(
+                    snapshot.avrcpPositionMs, snapshot.avrcpElapsedRealtimeMs,
+                    "recording:${state.recordingGeneration}"
+                )
+                if (snapshot.avrcpPlaybackState >= 0) avrcpPlaybackState = snapshot.avrcpPlaybackState
+            }
+        }
         // An initialization zero without a real public duration is not a seek or a trusted position.
         val position = if (snapshot.positionMs == 0L &&
             snapshot.durationMs < MediaRecordingStateTracker.MINIMUM_QUERY_DURATION_MS) {
@@ -28,14 +46,12 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
         } else snapshot.positionMs
         timeline.update(
             trackKey = "recording:${state.recordingGeneration}",
-            playbackState = if (snapshot.playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
+            playbackState = if (bluetooth) avrcpPlaybackState ?: snapshot.playbackState else snapshot.playbackState,
             reportedPositionMs = position,
             playbackSpeed = snapshot.playbackSpeed,
             publisherPositionTime = snapshot.positionElapsedRealtimeMs,
             durationMs = durationMs,
-            transport = if (ContentRegistry.normalizeMediaSource(snapshot.source) == "蓝牙音乐") {
-                MediaSessionTransport.BLUETOOTH_AVRCP
-            } else MediaSessionTransport.STANDARD
+            transport = if (bluetooth) MediaSessionTransport.BLUETOOTH_AVRCP else MediaSessionTransport.STANDARD
         )
     }
 
@@ -47,9 +63,12 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
 
     @Synchronized fun ready(): Boolean = timeline.current(durationMs).timelineReady
 
+    @Synchronized fun durationMs(): Long = durationMs
+
     @Synchronized fun reset() {
         recording.clear()
         timeline.reset()
+        avrcpPlaybackState = null
         durationMs = 0L
     }
 }

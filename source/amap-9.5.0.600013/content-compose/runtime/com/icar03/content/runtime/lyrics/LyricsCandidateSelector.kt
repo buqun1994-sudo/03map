@@ -73,6 +73,7 @@ internal object LyricsCandidateSelector {
         if (!canConfirm(query)) return emptyList()
         val uniqueCandidates = candidates.asSequence()
             .distinctBy(::candidateIdentity)
+            .filter { includeRejected || hasMatchingDuration(query.durationMs, it.durationMs) }
             .toList()
         val queryTitle = titleIdentity(query.track)
         val candidateMetadata = uniqueCandidates.asSequence()
@@ -82,7 +83,7 @@ internal object LyricsCandidateSelector {
             metadata.preconditions.isEmpty()
         }
         val hasMultipleSources = comparableCandidates.asSequence()
-            .map { metadata -> metadata.candidate.source }
+            .map { metadata -> metadata.candidate.identitySource.ifBlank { metadata.candidate.source } }
             .filter(String::isNotBlank)
             .distinct()
             .take(MINIMUM_SUPPORTING_SOURCES)
@@ -133,24 +134,28 @@ internal object LyricsCandidateSelector {
     fun selectCoverCandidate(
         query: LyricsLookup,
         candidates: Iterable<LyricsResult>
-    ): LyricsResult? {
-        if (!canFindCover(query)) return null
+    ): LyricsResult? = selectCoverCandidates(query, candidates).firstOrNull { it.cover.isNotBlank() }
+
+    fun selectCoverCandidates(
+        query: LyricsLookup,
+        candidates: Iterable<LyricsResult>,
+        preferredSources: List<String> = emptyList()
+    ): List<LyricsResult> {
+        if (!canFindCover(query)) return emptyList()
         val matched = candidates.asSequence()
-            .filter { it.cover.isNotBlank() }
             .filter { titlesMatch(query.track, it.candidateTrack) }
             .filter { artistEvidence(query, it).isConfirmed() }
-            // A fallback cover must not contradict public recording facts already supplied by media.
+            // Missing image URLs may be hydrated, but recording conflicts never are.
             .filter { !hasKnownDuration(query.durationMs) || hasMatchingDuration(query.durationMs, it.durationMs) }
             .filter { normalizedAlbum(query.album).isBlank() ||
                 albumMetadataEvidence(query.album, it.candidateAlbum).isConfirmed() }
             .distinctBy(::candidateIdentity)
-            .sortedWith(
-                compareBy<LyricsResult> { it.source }
-                    .thenBy { it.sourceId }
-            )
+            .sortedWith(compareBy<LyricsResult> {
+                preferredSources.indexOf(it.source).takeIf { rank -> rank >= 0 } ?: Int.MAX_VALUE
+            }.thenBy { it.source }.thenBy { it.sourceId })
             .toList()
-        val anchor = matched.firstOrNull() ?: return null
-        return anchor.takeIf { matched.all { candidate -> coversSameRelease(anchor, candidate) } }
+        val anchor = matched.firstOrNull() ?: return emptyList()
+        return matched.takeIf { it.all { candidate -> coversSameRelease(anchor, candidate) } }.orEmpty()
     }
 
     private fun coversSameRelease(
@@ -204,8 +209,9 @@ internal object LyricsCandidateSelector {
         candidate: CandidateMetadata,
         candidates: List<CandidateMetadata>
     ): Boolean = candidates.any { peer ->
-        peer.candidate.source.isNotBlank() &&
-            peer.candidate.source != candidate.candidate.source &&
+        peer.candidate.identitySource.ifBlank { peer.candidate.source }.isNotBlank() &&
+            peer.candidate.identitySource.ifBlank { peer.candidate.source } !=
+                candidate.candidate.identitySource.ifBlank { candidate.candidate.source } &&
             titleEvidence(queryTitle, peer.title).isConfirmed() &&
             titleEvidence(candidate.title, peer.title).isConfirmed() &&
             hasMatchingDuration(candidate.candidate.durationMs, peer.candidate.durationMs) &&
@@ -263,8 +269,9 @@ internal object LyricsCandidateSelector {
             .filter { peer ->
                 peer.preconditions.isEmpty() &&
                     candidateIdentity(peer.candidate) != candidateIdentity(evidence.candidate) &&
-                    peer.candidate.source.isNotBlank() &&
-                    peer.candidate.source != evidence.candidate.source &&
+                    peer.candidate.identitySource.ifBlank { peer.candidate.source }.isNotBlank() &&
+                    peer.candidate.identitySource.ifBlank { peer.candidate.source } !=
+                        evidence.candidate.identitySource.ifBlank { evidence.candidate.source } &&
                     candidatesDescribeSameRecording(evidence.candidate, peer.candidate)
             }
             .sortedWith(
@@ -273,7 +280,7 @@ internal object LyricsCandidateSelector {
             )
             .toList()
         val supportingSources = (sequenceOf(evidence) + peers.asSequence())
-            .map { peer -> peer.candidate.source }
+            .map { peer -> peer.candidate.identitySource.ifBlank { peer.candidate.source } }
             .filter(String::isNotBlank)
             .distinct()
             .count()

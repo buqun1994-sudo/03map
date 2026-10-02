@@ -191,9 +191,7 @@ internal class MediaSessionTimelineTracker(
                     }
                     timelineReady = true
                 }
-            } else if (reportedChanged ||
-                (usablePublisherChange && transport != MediaSessionTransport.BLUETOOTH_AVRCP)
-            ) {
+            } else if (reportedChanged) {
                 basePositionMs = clamp(reported, durationMs)
                 capturedAtElapsedRealtime = if (usablePublisherChange) validPublisherTime!! else now
             } else if (playbackModeChanged || speedChanged) {

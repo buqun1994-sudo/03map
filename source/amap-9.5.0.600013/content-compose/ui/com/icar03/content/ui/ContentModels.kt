@@ -29,10 +29,19 @@ data class MediaState(
     val playbackAvailable: Boolean = available, val nextAvailable: Boolean = available,
     val sourceAvailable: Boolean = available,
 ) { val pending: Boolean get() = targetPlaying != null || targetSource != null }
-data class LyricLine(val timeMs: Long, val text: String, val translation: String = "")
+data class LyricWord(val startTimeMs: Long, val endTimeMs: Long, val text: String)
+enum class LyricSide { Unspecified, Leading, Trailing, Center }
+data class LyricLine(val timeMs: Long, val text: String, val translation: String = "",
+    val romanization: String = "", val words: List<LyricWord> = emptyList(),
+    val endTimeMs: Long = -1L, val backgroundWords: List<LyricWord> = emptyList(),
+    val side: LyricSide = LyricSide.Unspecified)
 data class LyricsState(
     val recordingKey: String = "", val lines: List<LyricLine> = emptyList(),
     val activeIndex: Int = -1, val loading: Boolean = false, val timelineReady: Boolean = false,
+    val positionMs: Long = -1L, val playbackSpeed: Float = 0f, val capturedAtMs: Long = 0L,
+    val durationMs: Long = 0L, val timed: Boolean = true,
+    val scrollIndex: Int = -1, val activeIndices: List<Int> = emptyList(),
+    val gapStartMs: Long = -1L, val gapEndMs: Long = -1L,
 )
 data class ContentUiState(
     val dark: Boolean = false, val page: PanelPage = PanelPage.Shortcuts,
