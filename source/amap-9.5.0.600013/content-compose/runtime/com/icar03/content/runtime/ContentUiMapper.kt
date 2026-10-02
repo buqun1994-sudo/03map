@@ -40,7 +40,10 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 state.massageSwitchKnown && (massage in 0..3 || state.massageActive)),
         )
         val source = MediaSource.entries.firstOrNull { it.label == ContentRegistry.normalizeMediaSource(state.mediaSource) } ?: MediaSource.Local
-        val metadataReady = realMedia && state.pendingSource.isEmpty()
+        val isSong = realMedia && state.mediaSongIdentity == ContentPorts.MediaSongIdentity.SONG
+        val metadataReady = isSong && state.pendingSource.isEmpty()
+            && state.mediaRecordingKey.isNotBlank()
+            && state.mediaTitle.isNotBlank() && state.mediaTitle != "暂无媒体"
         return ContentUiState(
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
@@ -67,6 +70,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             volume = LevelState(volume.percent / 100f, available = volume.available),
             media = MediaState(title = state.mediaTitle.takeIf { metadataReady && it.isNotBlank() },
                 artist = state.mediaArtist.takeIf { metadataReady && it.isNotBlank() },
+                isSong = isSong,
                 playing = realMedia && state.mediaPlaying,
                 targetPlaying = when (state.mediaPlaybackTarget) { 0 -> false; 1 -> true; else -> null },
                 source = source, targetSource = MediaSource.entries.firstOrNull { it.label == state.pendingSource }, available = realMedia,

@@ -280,7 +280,9 @@ public final class ContentStore {
             if (destroyed || snapshot.dataAvailable && snapshot.generation < state.mediaGeneration) return;
             boolean newRecording = !snapshot.recordingKey().equals(state.mediaRecordingKey);
             latestMedia = snapshot;
-            if (newRecording || !snapshot.dataAvailable || snapshot.preview) {
+            state.mediaSongIdentity = snapshot.songIdentity;
+            if (newRecording || !snapshot.hasSongMetadata() || !snapshot.dataAvailable
+                    || snapshot.preview) {
                 state.lyricsLines = java.util.Collections.emptyList();
                 state.lyricsStatus = ContentPorts.LyricsSnapshot.EMPTY;
                 state.lyricsActiveIndex = -1;
@@ -306,8 +308,12 @@ public final class ContentStore {
                     ? "未连接" : snapshot.artist;
             state.mediaPlaybackAvailable = snapshot.playbackAvailable;
             state.mediaNextAvailable = snapshot.nextAvailable;
-            state.mediaArtwork = snapshot.artwork != null && !snapshot.artwork.isRecycled()
-                    ? snapshot.artwork : fallbackArtwork;
+            if (snapshot.hasSongMetadata()) {
+                state.mediaArtwork = snapshot.artwork != null && !snapshot.artwork.isRecycled()
+                        ? snapshot.artwork : fallbackArtwork;
+            } else {
+                state.mediaArtwork = null;
+            }
             if (!state.pendingSource.isEmpty() && snapshot.dataAvailable && !snapshot.preview
                     && state.pendingSource.equals(mediaSource)) {
                 finishSourceCommandLocked(true, "");
@@ -358,6 +364,7 @@ public final class ContentStore {
         synchronized (this) {
             if (destroyed || lyricsConsumers == 0 || snapshot == null
                     || !state.mediaDataAvailable || state.mediaPreview
+                    || !latestMedia.hasSongMetadata()
                     || snapshot.mediaGeneration != state.mediaGeneration
                     || !snapshot.recordingKey.equals(state.mediaRecordingKey)) return;
             state.lyricsStatus = snapshot.status;

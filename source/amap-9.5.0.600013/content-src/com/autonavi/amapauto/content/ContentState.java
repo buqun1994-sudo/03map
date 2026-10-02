@@ -37,6 +37,7 @@ public final class ContentState {
     public String mediaSource = "本机音乐";
     public String pendingSource = "";
     public boolean mediaPlaying;
+    public ContentPorts.MediaSongIdentity mediaSongIdentity = ContentPorts.MediaSongIdentity.UNKNOWN;
     public int mediaGeneration;
     public String mediaTitle = "暂无媒体";
     public String mediaArtist = "未连接";
@@ -93,6 +94,7 @@ public final class ContentState {
         copy.mediaSource = mediaSource;
         copy.pendingSource = pendingSource;
         copy.mediaPlaying = mediaPlaying;
+        copy.mediaSongIdentity = mediaSongIdentity;
         copy.mediaGeneration = mediaGeneration;
         copy.mediaTitle = mediaTitle;
         copy.mediaArtist = mediaArtist;

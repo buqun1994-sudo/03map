@@ -8,6 +8,7 @@ import android.content.pm.ResolveInfo
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.media.MediaMetadata
+import android.media.AudioAttributes
 import android.media.session.MediaController
 import android.media.session.MediaSession
 import android.media.session.MediaSessionManager
@@ -35,7 +36,17 @@ class ContentMediaSessionTest {
     private val app get() = RuntimeEnvironment.getApplication()
     private fun controller(packageName: String): MediaController {
         val session = MediaSession(app, "media-probe-${System.identityHashCode(Any())}")
-        return MediaController(app, session.sessionToken).also { shadowOf(it).setPackageName(packageName) }
+        return MediaController(app, session.sessionToken).also {
+            shadowOf(it).setPackageName(packageName)
+            setAudio(it, AudioAttributes.USAGE_MEDIA, AudioAttributes.CONTENT_TYPE_MUSIC)
+        }
+    }
+    private fun setAudio(controller: MediaController, usage: Int, contentType: Int): MediaController.PlaybackInfo {
+        val info = org.robolectric.util.ReflectionHelpers.newInstance(MediaController.PlaybackInfo::class.java)
+        org.robolectric.util.ReflectionHelpers.setField(info, "mAudioAttrs",
+            AudioAttributes.Builder().setUsage(usage).setContentType(contentType).build())
+        shadowOf(controller).setPlaybackInfo(info)
+        return info
     }
     private fun metadata(id: String, title: String = "歌曲$id", duration: Long = 180_000L): MediaMetadata =
         MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_MEDIA_ID, id)
@@ -204,6 +215,84 @@ class ContentMediaSessionTest {
             assertEquals("歌曲cloud", seen.last().title); assertEquals("网易云音乐", seen.last().source)
             changeSource(adapter, "USB音乐")
             assertEquals("暂无媒体", seen.last().title); assertNull(seen.last().artwork)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun pausedAndBufferingSongKeepIdentityAndMetadataGapExpiresOrRecoversInPlace() {
+        val c = controller("com.android.bluetooth")
+        val paused = PlaybackState.Builder().setState(PlaybackState.STATE_PAUSED, 100L, 0f).build()
+        shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(paused); add(c)
+        val adapter = ContentMediaAdapter(app); val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
+            assertFalse(seen.last().playing)
+            val buffering = PlaybackState.Builder().setState(PlaybackState.STATE_BUFFERING, 100L, 0f).build()
+            update(c, metadata("A"), buffering)
+            assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
+            update(c, MediaMetadata.Builder().build(), buffering)
+            assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
+            assertFalse(seen.last().hasSongMetadata())
+            assertNull(seen.last().artwork)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000))
+            update(c, metadata("B"), paused)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000))
+            assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
+            assertEquals("歌曲B", seen.last().title)
+            update(c, MediaMetadata.Builder().build(), paused)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1499))
+            assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2))
+            assertEquals(ContentPorts.MediaSongIdentity.UNKNOWN, seen.last().songIdentity)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun audioInfoChangesImmediatelyWithdrawSongDespiteUnchangedCoverAndTitle() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("same")); shadowOf(c).setPlaybackState(playback()); add(c)
+        val adapter = ContentMediaAdapter(app); val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
+            for ((usage, kind) in listOf(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE to AudioAttributes.CONTENT_TYPE_UNKNOWN,
+                AudioAttributes.USAGE_MEDIA to AudioAttributes.CONTENT_TYPE_SPEECH,
+                AudioAttributes.USAGE_MEDIA to AudioAttributes.CONTENT_TYPE_MOVIE)) {
+                val info = setAudio(c, usage, kind)
+                shadowOf(c).callbacks.toList().forEach { it.onAudioInfoChanged(info) }
+                assertEquals(ContentPorts.MediaSongIdentity.NON_SONG, seen.last().songIdentity)
+                assertFalse(seen.last().hasSongMetadata())
+            }
+        } finally { adapter.stop() }
+    }
+
+    @Test fun activeNonSongCannotResurrectAnotherPausedSong() {
+        val song = controller("com.android.bluetooth")
+        shadowOf(song).setMetadata(metadata("old-song"))
+        shadowOf(song).setPlaybackState(PlaybackState.Builder().setState(PlaybackState.STATE_PAUSED, 100L, 0f).build()); add(song)
+        val adapter = ContentMediaAdapter(app); val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
+            val movie = controller("com.android.bluetooth")
+            setAudio(movie, AudioAttributes.USAGE_MEDIA, AudioAttributes.CONTENT_TYPE_MOVIE)
+            shadowOf(movie).setMetadata(metadata("movie")); shadowOf(movie).setPlaybackState(playback()); add(movie)
+            reconcile(adapter)
+            assertEquals(ContentPorts.MediaSongIdentity.NON_SONG, seen.last().songIdentity)
+            assertEquals("movie", seen.last().mediaId)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun absentAudioAttributesUseTheSameTitleAndTransportEvidenceAsLyrics() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setPlaybackInfo(null)
+        shadowOf(c).setMetadata(metadata("fallback"))
+        shadowOf(c).setPlaybackState(playback(actions = PlaybackState.ACTION_PLAY_PAUSE)); add(c)
+        val adapter = ContentMediaAdapter(app); val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }
+            assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
+            update(c, metadata("fallback"), playback())
+            assertEquals(ContentPorts.MediaSongIdentity.UNKNOWN, seen.last().songIdentity)
         } finally { adapter.stop() }
     }
 

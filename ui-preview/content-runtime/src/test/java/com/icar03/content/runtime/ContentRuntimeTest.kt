@@ -88,7 +88,7 @@ class ContentRuntimeTest {
             temperatureC = Float.POSITIVE_INFINITY; batteryPercent = 150; rangeRaw = -1
             ventilationLevel = 2; heatingLevel = -1; massageSwitchKnown = true; massageActive = false
             pendingVehicleCommand = ContentRegistry.Shortcuts.SEAT_VENTILATION; pendingSeatLevel = 3
-            mediaDataAvailable = true; mediaTitle = "真实歌曲"; mediaArtist = "真实作者"
+            mediaDataAvailable = true; mediaSongIdentity = ContentPorts.MediaSongIdentity.SONG; mediaRecordingKey = "song"; mediaTitle = "真实歌曲"; mediaArtist = "真实作者"
             mediaPlaybackAvailable = true; mediaNextAvailable = false; mediaPlaybackTarget = 1
             nowMillis = 1_700_000_000_000L; showSeconds = true; showWeekday = false
         }
@@ -120,6 +120,8 @@ class ContentRuntimeTest {
     @Test fun mapperHidesOldMediaMetadataWhileSourceSwitchIsPending() {
         val state = ContentState().apply {
             mediaDataAvailable = true
+            mediaSongIdentity = ContentPorts.MediaSongIdentity.SONG
+            mediaRecordingKey = "song"
             mediaSource = MediaSource.Bluetooth.label
             pendingSource = MediaSource.AiMusic.label
             mediaTitle = "蓝牙旧歌曲"
@@ -369,7 +371,11 @@ class ContentRuntimeTest {
     @Test fun stoppingDropsArtworkReferencesWithoutRecyclingStoreBitmap() {
         val store = store(); val binding = binding(store); binding.start()
         val source = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888)
-        store.acceptMediaSnapshot(ContentPorts.MediaSnapshot(true, false, "蓝牙音乐", true, 1, "真实", "真实", true, true, source))
+        source.eraseColor(android.graphics.Color.RED)
+        store.acceptMediaSnapshot(ContentPorts.MediaSnapshot(true, false, "蓝牙音乐", true, 1, "真实", "真实", true, true, source,
+            "song", "album", 180_000L, 1000L, 0L, 1f, "", ContentPorts.MediaSongIdentity.SONG))
+        (ContentBinding::class.java.getDeclaredField("ambientJob").apply { isAccessible = true }.get(binding) as java.util.concurrent.Future<*>).get(2, TimeUnit.SECONDS)
+        shadowOf(Looper.getMainLooper()).idle()
         assertSame(source, binding.artwork.value)
         assertNotNull(binding.ambientArtwork.value)
         binding.dispatch(ContentEvent.OpenSources)
@@ -504,7 +510,8 @@ class ContentRuntimeTest {
         true, false, 25f, 60, 123, ContentState.CHARGE_DEFAULT, 0, 0, 0, Float.NaN, -1,
         ventilation, heating, massageLevel, 0, true, massageActive, true, true, locked)
     private fun mediaSnapshot(source: String = MediaSource.Bluetooth.label, playing: Boolean = false) =
-        ContentPorts.MediaSnapshot(true, false, source, playing, 1, "真实歌曲", "真实作者", true, true)
+        ContentPorts.MediaSnapshot(true, false, source, playing, 1, "真实歌曲", "真实作者", true, true,
+            null, "song", "album", 180_000L, -1L, 0L, 0f, "", ContentPorts.MediaSongIdentity.SONG)
 
     private class Vehicle : ContentPorts.VehiclePort {
         var accept = true

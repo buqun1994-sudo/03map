@@ -140,7 +140,8 @@ open class BoundContentPanelLightTest {
     private fun vehicleSnapshot(level: Int) = ContentPorts.VehicleSnapshot(true, false, 25f, 60, 123,
         ContentState.CHARGE_DEFAULT, 0, 0, 0, Float.NaN, -1, level, 0, 0, 0, true, false, true, true, true)
     private fun mediaSnapshot(source: String) = ContentPorts.MediaSnapshot(true, false, source, false, 1,
-        "端口替身音轨", "本机集成测试", true, true)
+        "端口替身音轨", "本机集成测试", true, true, null, "", "", 180_000L, -1L, 0L, 0f,
+        ContentPorts.MediaSongIdentity.SONG)
 
     private class TestVehiclePort : ContentPorts.VehiclePort {
         var command: String? = null; var stops = 0

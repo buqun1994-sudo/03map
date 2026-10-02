@@ -75,5 +75,6 @@ class ContentLyricsTimelineTest {
     private fun media(source: String = "本机音乐", title: String = "Song", position: Long = -1L,
         duration: Long = 200_000L, publisherTime: Long = 0L, playing: Boolean = true) =
         ContentPorts.MediaSnapshot(true, false, source, playing, 1, title, "Artist", true, true,
-            null, "", "Album", duration, position, publisherTime, if (playing) 1f else 0f)
+            null, "", "Album", duration, position, publisherTime, if (playing) 1f else 0f,
+            ContentPorts.MediaSongIdentity.SONG)
 }

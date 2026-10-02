@@ -43,13 +43,13 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier) {
     val state by binding.state.collectAsState()
     val artwork by binding.artwork.collectAsState()
     val ambient by binding.ambientArtwork.collectAsState()
-    val ambientBitmap = ambient?.takeUnless { it.isRecycled }
+    val active by binding.active.collectAsState()
     val bitmap = artwork?.takeUnless { it.isRecycled }?.asImageBitmap()
     ContentTheme(dark = state.dark) {
         ContentPanel(state, binding::dispatch, modifier,
             artwork = bitmap?.let { image -> { Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } },
-            ambientBackground = ambientBitmap?.let { image ->
-                { MediaAmbientBackground(image, state.dark) }
+            ambientBackground = {
+                MediaAmbientBackground(ambient, state.dark, active = active, animating = state.media.playing)
             })
     }
 }

@@ -1118,7 +1118,8 @@ public class GoldenRuntimeProbe {
 
     private static ContentPorts.MediaSnapshot media(boolean playing, Bitmap artwork) {
         return new ContentPorts.MediaSnapshot(true, false, "本机", playing, 1,
-                "fixture-title", "fixture-artist", true, true, artwork);
+                "fixture-title", "fixture-artist", true, true, artwork, "", "", 180_000L,
+                -1L, 0L, playing ? 1f : 0f, ContentPorts.MediaSongIdentity.SONG);
     }
 
     private static ContentPorts.VehicleSnapshot vehicle(boolean locked, int ventilation) {

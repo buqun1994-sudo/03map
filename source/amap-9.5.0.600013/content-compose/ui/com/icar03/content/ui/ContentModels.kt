@@ -23,7 +23,7 @@ data class LevelState(val actual: Float, val target: Float? = null, val availabl
 }
 data class MediaState(
     val title: String? = "沿途的风", val artist: String? = "独立预览 · 示例音轨",
-    val playing: Boolean = false, val targetPlaying: Boolean? = null,
+    val playing: Boolean = false, val isSong: Boolean = false, val targetPlaying: Boolean? = null,
     val source: MediaSource = MediaSource.Bluetooth, val targetSource: MediaSource? = null,
     val available: Boolean = true,
     val playbackAvailable: Boolean = available, val nextAvailable: Boolean = available,

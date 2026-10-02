@@ -81,15 +81,18 @@ class ExistingPortsTest {
     }
 
     @Test fun actualArtworkIsSoftenedOnAndroid9WithoutRecyclingInput() {
-        val source = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
-        source.eraseColor(Color.RED)
-        for (y in 0 until 64) for (x in 32 until 64) source.setPixel(x, y, Color.BLUE)
-        val blurred = softenArtwork(source)!!
-        assertNotSame(source, blurred)
-        assertEquals(32, blurred.width)
+        val source = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
+        source.eraseColor(Color.rgb(190, 80, 30))
+        for (y in 0 until 96) for (x in 48 until 96) source.setPixel(x, y, Color.rgb(30, 90, 180))
+        val artwork = createAmbientField(source)!!
+        assertNotSame(source, artwork.base)
+        assertEquals(128, artwork.base.width)
         assertFalse(source.isRecycled)
-        val pixel = blurred.getPixel(16, 16)
+        val pixel = artwork.base.getPixel(64, 64)
         assertTrue(Color.red(pixel) > 0)
         assertTrue(Color.blue(pixel) > 0)
+        assertTrue(Color.red(artwork.base.getPixel(10, 64)) > Color.red(artwork.base.getPixel(118, 64)))
+        assertEquals(255, Color.alpha(artwork.base.getPixel(0, 0)))
+        assertTrue(Color.alpha(artwork.glow.getPixel(0, 0)) < 255)
     }
 }

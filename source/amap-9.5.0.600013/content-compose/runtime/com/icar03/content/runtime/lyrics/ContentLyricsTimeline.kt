@@ -56,7 +56,8 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
 
 /** Presentation placeholders are never eligible media metadata. */
 internal fun ContentPorts.MediaSnapshot.recordingMetadataOrNull(): MediaRecordingMetadata? {
-    if (!dataAvailable || preview || title.isNullOrBlank() || title == "暂无媒体") return null
+    if (songIdentity != ContentPorts.MediaSongIdentity.SONG
+        || !dataAvailable || preview || title.isNullOrBlank() || title == "暂无媒体") return null
     return MediaSessionMetadataPolicy.normalize(MediaSessionMetadataFields(
         title = title,
         artist = artist?.takeUnless { it == "未连接" }.orEmpty(),

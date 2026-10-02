@@ -207,7 +207,8 @@ class ContentLyricsEngineTest {
     private fun media(title: String = "Song", generation: Int = 1, playing: Boolean = true,
         duration: Long = 200_000L, position: Long = -1L, embedded: String = "", artwork: Bitmap? = null) =
         ContentPorts.MediaSnapshot(true, false, "本机音乐", playing, generation, title, "Artist", true, true,
-            artwork, "", "Album", duration, position, 0L, if (playing) 1f else 0f, embedded)
+            artwork, "", "Album", duration, position, 0L, if (playing) 1f else 0f, embedded,
+            ContentPorts.MediaSongIdentity.SONG)
 
     private class Runtime(override val cache: MemoryCache = MemoryCache(), private val waitForCover: Boolean = false) :
         LyricsEngineResources {

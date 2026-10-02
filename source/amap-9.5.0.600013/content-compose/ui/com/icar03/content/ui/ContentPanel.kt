@@ -547,6 +547,9 @@ private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
         }
         return
     }
+    // A song change can briefly have no lines. Keep the ambient canvas uninterrupted;
+    // show the existing empty/source affordance only after lookup actually finishes.
+    if (!state.previewMode && state.media.isSong && state.lyrics.loading) return
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).testTag("lyrics-empty"),

@@ -23,6 +23,7 @@ class ContentBinding(
     private val store: ContentStore,
     private val ownership: StoreOwnership = StoreOwnership.Shared,
     private val mapper: ContentUiMapper = ContentUiMapper(),
+    private val ambientFactory: (Bitmap) -> AmbientArtwork? = ::createAmbientField,
 ) : AutoCloseable {
     private val handler = Handler(Looper.getMainLooper())
     private var generation = 0L
@@ -39,8 +40,12 @@ class ContentBinding(
     val state: StateFlow<ContentUiState> = mutableState.asStateFlow()
     private val mutableArtwork = MutableStateFlow<Bitmap?>(null)
     val artwork: StateFlow<Bitmap?> = mutableArtwork.asStateFlow()
-    private val mutableAmbient = MutableStateFlow<Bitmap?>(null)
-    val ambientArtwork: StateFlow<Bitmap?> = mutableAmbient.asStateFlow()
+    private val mutableActive = MutableStateFlow(false)
+    val active: StateFlow<Boolean> = mutableActive.asStateFlow()
+    private val mutableAmbient = MutableStateFlow<AmbientArtwork?>(null)
+    val ambientArtwork: StateFlow<AmbientArtwork?> = mutableAmbient.asStateFlow()
+    private var retainedAmbient: AmbientArtwork? = null
+    private var ambientRecording = ""
     private var ambientSource: Bitmap? = null
     private var ambientBitmapGeneration = 0
     private var ambientSequence = 0L
@@ -51,6 +56,7 @@ class ContentBinding(
         checkMain()
         if (closed || running) return
         running = true
+        mutableActive.value = true
         val epoch = ++generation
         store.startLyrics()
         readSystem()
@@ -73,6 +79,7 @@ class ContentBinding(
         checkMain()
         if (!running) return
         running = false
+        mutableActive.value = false
         store.stopLyrics()
         generation++
         ambientSequence++
@@ -84,8 +91,9 @@ class ContentBinding(
         sourcesOpen = false
         feedback = null
         mutableArtwork.value = null
-        mutableAmbient.value?.takeUnless { it.isRecycled }?.recycle()
         mutableAmbient.value = null
+        retainedAmbient = null
+        ambientRecording = ""
         ambientSource = null
         mutableState.value = inactive(mutableState.value)
     }
@@ -181,36 +189,55 @@ class ContentBinding(
             store.isVehicleControlAvailable, store.isLockControlAvailable, store.isMediaSourceAvailable))
         mutableState.value = projected.copy(sourcesOpen = sourcesOpen, message = feedback ?: projected.message)
         mutableArtwork.value = snapshot.mediaArtwork?.takeIf {
-            snapshot.mediaDataAvailable && !snapshot.mediaPreview && snapshot.pendingSource.isEmpty() && !it.isRecycled
+            projected.media.isSong && snapshot.pendingSource.isEmpty() && !it.isRecycled
         }
-        val source = mutableArtwork.value.takeIf { projected.media.playing && running }
+        if (!projected.media.isSong) {
+            cancelAmbientRequest()
+            mutableAmbient.value = null // The persistent renderer performs the same soft departure.
+            return
+        }
+        // Missing/reloading artwork and pause do not withdraw the current background.
+        mutableAmbient.value = retainedAmbient
+        val source = mutableArtwork.value
         val bitmapGeneration = source?.generationId ?: 0
-        if (source !== ambientSource || bitmapGeneration != ambientBitmapGeneration) {
+        val recording = snapshot.mediaRecordingKey
+        if (source !== ambientSource || bitmapGeneration != ambientBitmapGeneration || recording != ambientRecording) {
+            cancelAmbientRequest()
             ambientSource = source
+            ambientRecording = recording
             ambientBitmapGeneration = bitmapGeneration
-            val sequence = ++ambientSequence
-            ambientJob?.cancel(true)
-            ambientJob = null
-            // Show a cheap blurred seed immediately; the richer colour field replaces it off the UI thread.
-            val seed = source?.let(::softenArtwork)
-            mutableAmbient.value?.takeUnless { it.isRecycled }?.recycle()
-            mutableAmbient.value = seed
             if (source != null) {
                 val epoch = generation
+                val sequence = ambientSequence
                 ambientJob = artworkWorker.submit {
-                    val field = createAmbientField(source)
+                    val field = ambientFactory(source)
                     handler.post {
                         if (running && generation == epoch && ambientSequence == sequence
-                            && ambientSource === source && source.generationId == bitmapGeneration) {
+                            && ambientRecording == recording && ambientSource === source
+                            && !source.isRecycled && source.generationId == bitmapGeneration) {
+                            ambientJob = null
                             if (field != null) {
-                                mutableAmbient.value?.takeUnless { it.isRecycled }?.recycle()
+                                retainedAmbient = field
                                 mutableAmbient.value = field
                             }
+                        } else {
+                            // These textures were never published, so no Canvas can reference them.
+                            field?.base?.takeUnless { it.isRecycled }?.recycle()
+                            field?.glow?.takeUnless { it.isRecycled }?.recycle()
                         }
                     }
                 }
             }
         }
+    }
+
+    private fun cancelAmbientRequest() {
+        ambientSequence++
+        ambientJob?.cancel(true)
+        ambientJob = null
+        ambientSource = null
+        ambientRecording = ""
+        ambientBitmapGeneration = 0
     }
 
     private fun checkMain() { check(Looper.myLooper() == Looper.getMainLooper()) { "ContentBinding must be used on the main thread" } }

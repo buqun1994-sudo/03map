@@ -9,6 +9,13 @@ public final class ContentPorts {
     private ContentPorts() {
     }
 
+    /** Classification shared by media presentation, lyrics and artwork policy. */
+    public enum MediaSongIdentity {
+        UNKNOWN,
+        SONG,
+        NON_SONG
+    }
+
     public interface SystemPort {
         SystemSnapshot read(int kind);
 
@@ -191,6 +198,7 @@ public final class ContentPorts {
         public final long positionElapsedRealtimeMs;
         public final float playbackSpeed;
         public final String embeddedLyrics;
+        public final MediaSongIdentity songIdentity;
 
         public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
                 boolean playing, int generation, String title, String artist,
@@ -220,7 +228,29 @@ public final class ContentPorts {
                 boolean playing, int generation, String title, String artist,
                 boolean playbackAvailable, boolean nextAvailable, Bitmap artwork,
                 String mediaId, String album, long durationMs, long positionMs,
+                long positionElapsedRealtimeMs, float playbackSpeed,
+                MediaSongIdentity songIdentity) {
+            this(dataAvailable, preview, source, playing, generation, title, artist,
+                    playbackAvailable, nextAvailable, artwork, mediaId, album, durationMs,
+                    positionMs, positionElapsedRealtimeMs, playbackSpeed, "", songIdentity);
+        }
+        public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
+                boolean playing, int generation, String title, String artist,
+                boolean playbackAvailable, boolean nextAvailable, Bitmap artwork,
+                String mediaId, String album, long durationMs, long positionMs,
                 long positionElapsedRealtimeMs, float playbackSpeed, String embeddedLyrics) {
+            this(dataAvailable, preview, source, playing, generation, title, artist,
+                    playbackAvailable, nextAvailable, artwork, mediaId, album, durationMs,
+                    positionMs, positionElapsedRealtimeMs, playbackSpeed, embeddedLyrics,
+                    MediaSongIdentity.UNKNOWN);
+        }
+
+        public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
+                boolean playing, int generation, String title, String artist,
+                boolean playbackAvailable, boolean nextAvailable, Bitmap artwork,
+                String mediaId, String album, long durationMs, long positionMs,
+                long positionElapsedRealtimeMs, float playbackSpeed, String embeddedLyrics,
+                MediaSongIdentity songIdentity) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.source = source;
@@ -239,6 +269,14 @@ public final class ContentPorts {
             this.playbackSpeed = Float.isNaN(playbackSpeed) || Float.isInfinite(playbackSpeed)
                     ? 0f : playbackSpeed;
             this.embeddedLyrics = embeddedLyrics == null ? "" : embeddedLyrics;
+            this.songIdentity = songIdentity == null ? MediaSongIdentity.UNKNOWN : songIdentity;
+        }
+
+        /** True only for a classified song with usable current metadata. */
+        public boolean hasSongMetadata() {
+            return songIdentity == MediaSongIdentity.SONG && dataAvailable && !preview
+                    && title != null && !title.trim().isEmpty()
+                    && !"暂无媒体".equals(title.trim());
         }
 
         /** Transport correlation only; matching/cache identity belongs to the lyrics core. */

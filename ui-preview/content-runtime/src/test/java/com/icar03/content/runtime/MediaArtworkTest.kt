@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.MediaMetadata
+import android.media.AudioAttributes
 import android.media.session.MediaController
 import android.media.session.MediaSession
 import android.media.session.MediaSessionManager
@@ -71,6 +72,10 @@ class MediaArtworkTest {
         val session = MediaSession(app, "uri-artwork")
         return MediaController(app, session.sessionToken).also { controller ->
             shadowOf(controller).setPackageName("com.android.bluetooth")
+            val info = org.robolectric.util.ReflectionHelpers.newInstance(MediaController.PlaybackInfo::class.java)
+            org.robolectric.util.ReflectionHelpers.setField(info, "mAudioAttrs",
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            shadowOf(controller).setPlaybackInfo(info)
             shadowOf(controller).setMetadata(MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "public-cover-song")
                 .putString(MediaMetadata.METADATA_KEY_TITLE, "真实标题")

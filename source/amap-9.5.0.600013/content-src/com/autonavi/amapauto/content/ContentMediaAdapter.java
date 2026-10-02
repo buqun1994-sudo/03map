@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
@@ -43,9 +45,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private static final String SOURCE_DESCRIPTOR = "com.mengbo.mediaservice.IPlayControlsInterface";
     private static final String CALLBACK_DESCRIPTOR = "com.mengbo.mediaservice.IPlayInfoCallBack";
     private static final long REFRESH_DELAY_MS = 800L;
+    private static final long SONG_METADATA_GRACE_MS = 1500L;
     private static final java.util.regex.Pattern LRC_TIMESTAMPS = java.util.regex.Pattern.compile("\\[\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?\\]");
 
     private final Context context;
+    private final AudioManager audioManager;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ContentPorts.MediaSnapshotListener listener;
     private MediaSessionManager sessionManager;
@@ -81,9 +85,13 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private boolean running;
     private long lifecycle;
     private int generation;
+    private MediaSession.Token confirmedSongToken;
+    private long metadataMissingSince = -1L;
+    private Runnable metadataGraceTimeout;
 
     public ContentMediaAdapter(Context context) {
         this.context = context.getApplicationContext();
+        this.audioManager = (AudioManager) this.context.getSystemService(Context.AUDIO_SERVICE);
     }
 
     @Override public synchronized boolean isAvailable() { return controller != null; }
@@ -217,6 +225,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         initialSourceCorrelation = false;
         sourceInventoryReady = false;
         publishedRecording = "";
+        clearConfirmedSong();
         cancelArtwork();
         if (artworkExecutor != null) artworkExecutor.shutdownNow();
         artworkExecutor = null;
@@ -454,6 +463,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 }
                 @Override public void onPlaybackStateChanged(PlaybackState state) { changed(false); }
                 @Override public void onMetadataChanged(MediaMetadata metadata) { changed(true); }
+                @Override public void onAudioInfoChanged(MediaController.PlaybackInfo info) { changed(true); }
                 @Override public void onSessionDestroyed() {
                     synchronized (ContentMediaAdapter.this) {
                         if (!isCurrent(epoch) || observed.get(token) != item) return;
@@ -480,6 +490,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private void reconcileSelection(long epoch) {
         MediaController selected = selectController();
         if (!sameToken(controller, selected)) {
+            if (!sameToken(confirmedSongToken, selected)) clearConfirmedSong();
             controller = selected;
             generation++;
             cancelArtwork();
@@ -493,10 +504,18 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         for (ObservedController item : observed.values()) {
             if (item.destroyed || !matchesActualSource(item)) continue;
             MediaMetadata metadata = safeMetadata(item.controller);
-            if (mediaFields(metadata).title.isEmpty()) continue;
+            MediaFields fields = mediaFields(metadata);
             PlaybackState state = safePlayback(item.controller);
-            int score = state != null && state.getState() == PlaybackState.STATE_PLAYING ? 3
-                    : state != null && state.getState() == PlaybackState.STATE_BUFFERING ? 2 : 1;
+            boolean playing = state != null && (state.getState() == PlaybackState.STATE_PLAYING
+                    || state.getState() == PlaybackState.STATE_FAST_FORWARDING || state.getState() == PlaybackState.STATE_REWINDING);
+            boolean active = playing || state != null && (state.getState() == PlaybackState.STATE_BUFFERING
+                    || state.getState() == PlaybackState.STATE_CONNECTING);
+            boolean metadataGapForCurrent = sameToken(confirmedSongToken, item.controller)
+                    && isMetadataGap(item.controller, fields);
+            if (fields.title.isEmpty() && !active && !metadataGapForCurrent) continue;
+            int score = playing ? 3
+                    : state != null && (state.getState() == PlaybackState.STATE_BUFFERING
+                    || state.getState() == PlaybackState.STATE_CONNECTING) ? 2 : 1;
             // Keep the current paused controller on equal evidence, avoiding enumeration-order churn.
             if (score > best || (score == best && sameToken(controller, item.controller))) {
                 selected = item.controller;
@@ -512,6 +531,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         if (source != null) hasReadbackSource = true;
         sourceEpoch++;
         sourceChangedAt = SystemClock.elapsedRealtime();
+        clearConfirmedSong();
         quarantinedRecordings.clear();
         for (ObservedController item : observed.values()) {
             if (!item.identity.isEmpty()) quarantinedRecordings.add(item.identity);
@@ -584,6 +604,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         boolean correlated = item != null && !item.destroyed && matchesActualSource(item);
         String source = actualSource != null ? actualSource : correlated ? sourceForController(current) : null;
         if (source == null) {
+            clearConfirmedSong();
             cancelArtwork();
             publishedRecording = "";
             listener.onMediaSnapshot(ContentPorts.MediaSnapshot.unavailable());
@@ -593,10 +614,14 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         PlaybackState playback = correlated ? safePlayback(current) : null;
         MediaFields fields = mediaFields(metadata);
         String identity = metadata == null ? "" : recordingIdentity(metadata);
+        if (!correlated) clearConfirmedSong();
+        ContentPorts.MediaSongIdentity songIdentity = correlated
+                ? resolveSongIdentity(current, fields, songIdentityFor(current, fields), epoch)
+                : ContentPorts.MediaSongIdentity.UNKNOWN;
         publishedRecording = identity;
         long actions = playback == null ? 0L : playback.getActions();
         Bitmap artwork = bitmapArtwork(metadata);
-        if (artwork == null && metadata != null) {
+        if (songIdentity == ContentPorts.MediaSongIdentity.SONG && artwork == null && metadata != null) {
             String uri = artworkUri(metadata);
             if (!uri.isEmpty() && !identity.isEmpty()) artwork = uriArtwork(epoch, source + '\u001f' + identity, uri);
             else cancelArtwork();
@@ -612,7 +637,127 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 fields.artist.isEmpty() ? "未连接" : fields.artist,
                 (actions & (PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE)) != 0L,
                 (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L, artwork,
-                fields.mediaId, fields.album, fields.durationMs, position, updateTime, playing ? speed : 0f, fields.embeddedLyrics));
+                fields.mediaId, fields.album, fields.durationMs, position, updateTime,
+                playing ? speed : 0f, fields.embeddedLyrics, songIdentity));
+    }
+
+    private ContentPorts.MediaSongIdentity resolveSongIdentity(
+            MediaController candidate, MediaFields fields,
+            ContentPorts.MediaSongIdentity classified, long epoch) {
+        if (classified == ContentPorts.MediaSongIdentity.SONG) {
+            confirmedSongToken = candidate == null ? null : candidate.getSessionToken();
+            metadataMissingSince = -1L;
+            cancelMetadataGrace();
+            return classified;
+        }
+        if (classified == ContentPorts.MediaSongIdentity.NON_SONG || candidate == null
+                || !sameToken(confirmedSongToken, candidate) || !isMetadataGap(candidate, fields)) {
+            clearConfirmedSong();
+            return classified;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (metadataMissingSince < 0L) metadataMissingSince = now;
+        long elapsed = Math.max(0L, now - metadataMissingSince);
+        if (elapsed < SONG_METADATA_GRACE_MS) {
+            scheduleMetadataGrace(epoch, SONG_METADATA_GRACE_MS - elapsed);
+            return ContentPorts.MediaSongIdentity.SONG;
+        }
+        clearConfirmedSong();
+        return ContentPorts.MediaSongIdentity.UNKNOWN;
+    }
+
+    private ContentPorts.MediaSongIdentity songIdentityFor(
+            MediaController candidate, MediaFields fields) {
+        if (candidate == null) return ContentPorts.MediaSongIdentity.UNKNOWN;
+        if (isBluetooth(candidate) && bluetoothCommunicationActive(candidate)) {
+            return ContentPorts.MediaSongIdentity.NON_SONG;
+        }
+        AudioAttributes attributes = safeAudioAttributes(candidate);
+        int usage = attributes == null ? AudioAttributes.USAGE_UNKNOWN : attributes.getUsage();
+        int contentType = attributes == null ? AudioAttributes.CONTENT_TYPE_UNKNOWN : attributes.getContentType();
+        PlaybackState state = safePlayback(candidate);
+        long actions = state == null ? 0L : state.getActions();
+        long mediaActions = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PLAY_PAUSE
+                | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_STOP | PlaybackState.ACTION_SKIP_TO_NEXT
+                | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_SEEK_TO;
+        int playback = state == null ? PlaybackState.STATE_NONE : state.getState();
+        boolean active = playback == PlaybackState.STATE_PLAYING || playback == PlaybackState.STATE_FAST_FORWARDING
+                || playback == PlaybackState.STATE_REWINDING || playback == PlaybackState.STATE_BUFFERING
+                || playback == PlaybackState.STATE_CONNECTING;
+        return classifyAudioSemantics(usage, contentType, !fields.title.isEmpty(),
+                !isBluetooth(candidate) || !fields.artist.isEmpty() || !fields.album.isEmpty(),
+                false, (actions & mediaActions) != 0L, active);
+    }
+
+    /** Same eligibility evidence as 03lyrics, with an explicit MOVIE exclusion for the map. */
+    static ContentPorts.MediaSongIdentity classifyAudioSemantics(
+            int usage, int contentType, boolean hasTitle, boolean hasMusicMetadata,
+            boolean bluetoothCommunicationActive, boolean hasTransportActions, boolean allowMissingTitle) {
+        if (bluetoothCommunicationActive) return ContentPorts.MediaSongIdentity.NON_SONG;
+        if (usage != AudioAttributes.USAGE_UNKNOWN && usage != AudioAttributes.USAGE_MEDIA) {
+            return ContentPorts.MediaSongIdentity.NON_SONG;
+        }
+        if (contentType == AudioAttributes.CONTENT_TYPE_SPEECH
+                || contentType == AudioAttributes.CONTENT_TYPE_SONIFICATION
+                || contentType == AudioAttributes.CONTENT_TYPE_MOVIE) {
+            return ContentPorts.MediaSongIdentity.NON_SONG;
+        }
+        if (!hasMusicMetadata) return ContentPorts.MediaSongIdentity.UNKNOWN;
+        boolean explicitMusic = usage == AudioAttributes.USAGE_MEDIA || contentType == AudioAttributes.CONTENT_TYPE_MUSIC;
+        if (allowMissingTitle && explicitMusic || hasTitle && (explicitMusic || hasTransportActions)) {
+            return ContentPorts.MediaSongIdentity.SONG;
+        }
+        return ContentPorts.MediaSongIdentity.UNKNOWN;
+    }
+
+    private boolean isMetadataGap(MediaController candidate, MediaFields fields) {
+        return fields.title.isEmpty()
+                || isBluetooth(candidate) && fields.artist.isEmpty() && fields.album.isEmpty();
+    }
+
+    private void scheduleMetadataGrace(final long epoch, long delayMs) {
+        if (metadataGraceTimeout != null) return;
+        metadataGraceTimeout = new Runnable() {
+            @Override public void run() {
+                synchronized (ContentMediaAdapter.this) {
+                    metadataGraceTimeout = null;
+                    if (!isCurrent(epoch)) return;
+                    publishSnapshot(epoch);
+                }
+            }
+        };
+        handler.postDelayed(metadataGraceTimeout, Math.max(1L, delayMs));
+    }
+
+    private void cancelMetadataGrace() {
+        if (metadataGraceTimeout != null) handler.removeCallbacks(metadataGraceTimeout);
+        metadataGraceTimeout = null;
+    }
+
+    private void clearConfirmedSong() {
+        cancelMetadataGrace();
+        confirmedSongToken = null;
+        metadataMissingSince = -1L;
+    }
+
+    private static AudioAttributes safeAudioAttributes(MediaController candidate) {
+        try {
+            MediaController.PlaybackInfo info = candidate == null ? null : candidate.getPlaybackInfo();
+            return info == null ? null : info.getAudioAttributes();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private boolean bluetoothCommunicationActive(MediaController candidate) {
+        if (audioManager == null || !isBluetooth(candidate)) return false;
+        int mode;
+        try { mode = audioManager.getMode(); } catch (RuntimeException ignored) { return false; }
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION;
+    }
+
+    private static boolean isBluetooth(MediaController candidate) {
+        return candidate != null && "com.android.bluetooth".equals(candidate.getPackageName());
     }
 
     private Bitmap uriArtwork(final long epoch, String identity, final String uri) {
@@ -764,6 +909,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private static PlaybackState safePlayback(MediaController candidate) {
         try { return candidate == null ? null : candidate.getPlaybackState(); } catch (RuntimeException ignored) { return null; }
+    }
+
+    private static boolean sameToken(MediaSession.Token token, MediaController candidate) {
+        return token == null ? candidate == null
+                : candidate != null && token.equals(candidate.getSessionToken());
     }
 
     private static boolean sameToken(MediaController first, MediaController second) {
