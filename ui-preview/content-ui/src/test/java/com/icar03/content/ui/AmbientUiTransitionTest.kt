@@ -70,5 +70,11 @@ class AmbientUiTransitionTest {
         compose.runOnIdle { active.value = false }
         compose.waitForIdle(); compose.mainClock.advanceTimeBy(1000)
         assertEquals(0f, value(AmbientOpacity), .001f)
+        val stopped = value(AmbientPhase)
+        compose.mainClock.advanceTimeBy(2000)
+        assertEquals("lifecycle stop freezes the existing phase", stopped, value(AmbientPhase), .001f)
+        compose.runOnIdle { active.value = true }
+        compose.waitForIdle(); compose.mainClock.advanceTimeBy(128)
+        assertTrue("resume continues instead of restarting at zero", value(AmbientPhase) > stopped)
     }
 }

@@ -22,6 +22,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.isActive
 import kotlin.math.max
+import kotlin.math.sin
+import kotlin.math.PI
 import kotlin.math.roundToInt
 
 /** Immutable published textures. Android/GC owns their lifetime while frames reference them. */
@@ -103,6 +105,20 @@ internal class AmbientTransition(
     }
 }
 
+internal data class AmbientMotion(val x: Float, val y: Float, val angle: Float, val scale: Float)
+
+/** Stable baked pose is the seed; all motion comes from the single pausable UI phase. */
+internal fun ambientMotion(pose: AmbientGlowPose, phase: Float, base: Boolean = false): AmbientMotion {
+    val seed = pose.angle * .071f + pose.pivotX * 7.3f + pose.pivotY * 11.1f
+    val period = pose.periodSeconds.coerceAtLeast(1f) * if (base) 1.15f else .62f
+    val t = phase / period * (2f * PI.toFloat())
+    val x = (sin(t + seed) + .30f * sin(t * .73f + seed * 1.7f)) / 1.30f
+    val y = (sin(t * .81f + seed * 1.3f) + .25f * sin(t * 1.31f + seed)) / 1.25f
+    val swing = sin(t * .93f + seed * .7f)
+    return if (base) AmbientMotion(x * .016f, y * .012f, swing * 1.8f, 1.12f)
+        else AmbientMotion(x * .05f, y * .04f, swing * 10f, 1f + .035f * sin(t * .67f + seed))
+}
+
 /** API 28 Canvas composition. Per-frame work is four texture draws and small transforms. */
 internal class AmbientPainter {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -139,13 +155,22 @@ internal class AmbientPainter {
         val saved = canvas.saveLayerAlpha(0f, 0f, width, height, alpha)
         val side = max(width, height)
         cover.set((width - side) / 2, (height - side) / 2, (width + side) / 2, (height + side) / 2)
+        val baseTransform = canvas.save()
+        artwork.poses.firstOrNull()?.let { pose ->
+            val motion = ambientMotion(pose, phase, base = true)
+            canvas.translate(side * motion.x, side * motion.y)
+            canvas.rotate(motion.angle, width / 2f, height / 2f)
+            // Overscan prevents moving the colour field from revealing a theme-coloured edge.
+            canvas.scale(motion.scale, motion.scale, width / 2f, height / 2f)
+        }
         canvas.drawBitmap(artwork.base, null, cover, paint)
+        canvas.restoreToCount(baseTransform)
         for (pose in artwork.poses) {
-            val cycle = (phase / pose.periodSeconds) % 2f
-            val swing = AmbientEasing.transform(if (cycle <= 1f) cycle else 2f - cycle)
+            val motion = ambientMotion(pose, phase)
             val transform = canvas.save()
-            canvas.rotate(pose.angle - 12f + 24f * swing, width * pose.pivotX, height * pose.pivotY)
-            canvas.scale(pose.scale, pose.scale, width / 2, height / 2)
+            canvas.translate(side * motion.x, side * motion.y)
+            canvas.rotate(pose.angle + motion.angle, width * pose.pivotX, height * pose.pivotY)
+            canvas.scale(pose.scale * motion.scale, pose.scale * motion.scale, width / 2f, height / 2f)
             canvas.drawBitmap(artwork.glow, null, cover, glowPaint)
             canvas.restoreToCount(transform)
         }

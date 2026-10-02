@@ -12,10 +12,32 @@ public object ContentLyricsCursor {
         public val gapEndMs: Long = -1L
     )
 
+    /** Stable layout facts; resolve at the Store's position remains the sole activation owner. */
+    public data class WaitRow(val afterIndex: Int, val startMs: Long, val endMs: Long)
+
+    @JvmStatic
+    public fun waitRows(lines: List<ContentPorts.LyricsLine>, durationMs: Long): List<WaitRow> {
+        if (lines.isEmpty()) return emptyList()
+        return buildList {
+            val intro = resolve(lines, 0L, durationMs)
+            if (intro.gapStartMs >= 0L) add(WaitRow(-1, intro.gapStartMs, intro.gapEndMs))
+            for (index in 1 until lines.size) {
+                if (lines[index].timeMs == lines[index - 1].timeMs) continue
+                // Probe immediately before the same lead boundary used by resolve. This
+                // reuses all real-end, equal-voice and background-overlap admission rules,
+                // rather than introducing a second UI gap detector.
+                val probeMs = lines[index].timeMs - LEAD_MS - 1L
+                if (probeMs < 0L) continue
+                val cursor = resolve(lines, probeMs, durationMs)
+                if (cursor.gapStartMs >= 0L) {
+                    add(WaitRow(index - 1, cursor.gapStartMs, cursor.gapEndMs))
+                }
+            }
+        }
+    }
+
     private const val INTRO_MIN_MS = 5_000L
     private const val GAP_MIN_MS = 6_000L
-    private const val PLAIN_INTERVAL_MIN_MS = 15_000L
-    private const val PLAIN_SINGING_CAP_MS = 8_000L
     private const val TAIL_MS = 1_200L
     private const val LEAD_MS = 800L
     private const val MAIN_OVERLAP_MIN_MS = 500L
@@ -54,7 +76,6 @@ public object ContentLyricsCursor {
         var currentEnd = -1L
         var relevantEnd = -1L
         var currentEndsKnown = true
-        var currentIsPlain = true
 
         // Equal-start voices are one current group, not three-row overlap candidates.
         for (index in firstCandidate..latest) {
@@ -63,7 +84,6 @@ public object ContentLyricsCursor {
                 currentEnd = maxOf(currentEnd, row.end)
                 relevantEnd = maxOf(relevantEnd, row.end)
                 currentEndsKnown = currentEndsKnown && row.end >= 0L
-                currentIsPlain = currentIsPlain && row.plain
             } else {
                 val next = firstAfter(lines, lines[index].timeMs)
                 val overlap = next < lines.size && row.overlaps(lines[next].timeMs)
@@ -75,19 +95,11 @@ public object ContentLyricsCursor {
         val next = latest + 1
         var gapStart = -1L
         var gapEnd = -1L
-        var estimated = false
         if (next < lines.size) {
             val nextStart = lines[next].timeMs
             var gapBoundary = -1L
             if (currentEndsKnown && nextStart - relevantEnd >= GAP_MIN_MS) {
                 gapBoundary = relevantEnd
-            } else if (currentIsPlain && nextStart - currentStart >= PLAIN_INTERVAL_MIN_MS) {
-                // This estimate decorates a long LRC interval; it never becomes a model end.
-                val assumedEnd = currentStart + minOf(
-                    (nextStart - currentStart) / 3L, PLAIN_SINGING_CAP_MS
-                )
-                gapBoundary = maxOf(assumedEnd, relevantEnd)
-                estimated = true
             }
             if (gapBoundary >= 0L && nextStart - gapBoundary > TAIL_MS + LEAD_MS) {
                 gapStart = gapBoundary + TAIL_MS
@@ -102,7 +114,7 @@ public object ContentLyricsCursor {
             if (positionMs < row.start || (row.end >= 0L && positionMs >= row.end)) continue
             if (index < groupFirst) {
                 if (heldPrevious[index - firstCandidate]) active.add(index)
-            } else if (!(estimated && gapStart >= 0L && positionMs >= gapStart)) {
+            } else {
                 active.add(index)
                 activeIndex = index
             }
@@ -138,8 +150,7 @@ public object ContentLyricsCursor {
         val end: Long,
         val mainEnd: Long,
         val backgroundEnd: Long,
-        val declaredEnd: Long,
-        val plain: Boolean
+        val declaredEnd: Long
     ) {
         fun overlaps(nextStart: Long): Boolean =
             (mainEnd >= nextStart && mainEnd - nextStart >= MAIN_OVERLAP_MIN_MS) ||
@@ -161,8 +172,7 @@ public object ContentLyricsCursor {
             end = maxOf(mainEnd, backgroundEnd, declaredEnd),
             mainEnd = mainEnd,
             backgroundEnd = backgroundEnd,
-            declaredEnd = declaredEnd,
-            plain = line.words.isEmpty() && line.backgroundWords.isEmpty() && declaredEnd < 0L
+            declaredEnd = declaredEnd
         )
     }
 }

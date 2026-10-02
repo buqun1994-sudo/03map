@@ -4,6 +4,7 @@ import com.autonavi.amapauto.content.ContentPorts
 import com.autonavi.amapauto.content.ContentRegistry
 import com.autonavi.amapauto.content.ContentState
 import com.icar03.content.ui.*
+import com.icar03.content.runtime.lyrics.ContentLyricsCursor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -12,6 +13,24 @@ import java.util.Locale
 data class RuntimeCapabilities(val vehicle: Boolean = false, val lock: Boolean = false, val source: Boolean = false)
 
 class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
+    private var waitRowLines: List<ContentPorts.LyricsLine>? = null
+    private var waitRowDurationMs = -1L
+    private var waitRowTimed = false
+    private var projectedWaitRows: List<LyricWaitRow> = emptyList()
+
+    private fun waitRows(state: ContentState): List<LyricWaitRow> {
+        if (waitRowLines !== state.lyricsLines || waitRowDurationMs != state.mediaDurationMs || waitRowTimed != state.lyricsTimed) {
+            waitRowLines = state.lyricsLines
+            waitRowDurationMs = state.mediaDurationMs
+            waitRowTimed = state.lyricsTimed
+            projectedWaitRows = if (!state.lyricsTimed) emptyList() else {
+                ContentLyricsCursor.waitRows(state.lyricsLines, state.mediaDurationMs)
+                    .map { LyricWaitRow(it.afterIndex, it.startMs, it.endMs) }
+            }
+        }
+        return projectedWaitRows
+    }
+
     fun map(
         state: ContentState,
         brightness: ContentPorts.SystemSnapshot = ContentPorts.SystemSnapshot(false, 0),
@@ -91,6 +110,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 timed = state.lyricsTimed, scrollIndex = state.lyricsScrollIndex,
                 activeIndices = state.lyricsActiveIndices.toList(),
                 gapStartMs = state.lyricsGapStartMs, gapEndMs = state.lyricsGapEndMs,
+                waitRows = waitRows(state),
             ) else LyricsState(),
             message = state.commandMessage.takeIf { state.commandStatus == ContentState.COMMAND_FAILED && it.isNotBlank() },
         )

@@ -425,6 +425,30 @@ class LyricsResolutionSessionTest {
         }
     }
 
+    @Test fun explicitPreferenceGetsTheFirstBodyOpportunityBeforeEqualTierFallbackIsPublished() {
+        val release = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val first = AtomicReference<String>()
+        val shown = CountDownLatch(1)
+        val preferred = FakeCatalog(SOURCE_NETEASE, searcher = { _, signal ->
+            started.countDown()
+            awaitGate(release, signal)
+            listOf(candidate(SOURCE_NETEASE).copy(lyrics = LINES))
+        })
+        Harness(FakeExact(exactResult = { candidate(SOURCE_LRCLIB).copy(lyrics = LINES) }),
+            listOf(preferred), preferred = listOf(SOURCE_NETEASE)).use { harness ->
+            val pending = harness.start { first.set(it.resolved.result.source); shown.countDown() }
+            try {
+                assertTrue(started.await(2L, TimeUnit.SECONDS))
+                assertFalse(shown.await(100L, TimeUnit.MILLISECONDS))
+                release.countDown()
+                assertTrue(shown.await(2L, TimeUnit.SECONDS))
+                assertEquals(SOURCE_NETEASE, first.get())
+                assertEquals(SOURCE_NETEASE, found(pending).resolved.result.source)
+            } finally { release.countDown() }
+        }
+    }
+
     private fun found(pending: Future<LyricsResolutionOutcome>): LyricsResolutionOutcome.Found =
         pending.get(3L, TimeUnit.SECONDS).let { outcome ->
             assertTrue("Expected Found but got $outcome", outcome is LyricsResolutionOutcome.Found)

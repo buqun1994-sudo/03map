@@ -38,6 +38,37 @@ class AmbientTransitionTest {
         }
     }
 
+    @Test fun seededMultiPeriodMotionChangesNativeMacroColoursWithoutExposingEdges() {
+        val base = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
+        val glow = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 128) for (x in 0 until 128) {
+            base.setPixel(x, y, Color.rgb(35 + x, 45 + y / 2, 85 + (127 - x) / 2))
+            val radius = kotlin.math.hypot((x - 35).toFloat(), (y - 45).toFloat())
+            glow.setPixel(x, y, Color.argb(((1f - radius / 85f).coerceIn(0f, 1f) * 255).toInt(), 210, 155, 105))
+        }
+        val poses = listOf(55f, 75f, 95f).mapIndexed { i, period ->
+            AmbientGlowPose(i * 7f - 8f, period, .43f + i * .04f, .55f - i * .03f, 1.05f + i * .05f)
+        }
+        val scene = AmbientTransition(target = AmbientArtwork(base, glow, poses, .15f, .6f), startOpacity = 1f, endOpacity = 1f)
+        fun at(phase: Float) = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888).also {
+            painter.drawTransition(Canvas(it), size.width.toFloat(), size.height.toFloat(), scene, 1f, phase)
+        }
+        val first = at(0f); val later = at(8f)
+        var changed = 0
+        for (y in 0 until size.height) for (x in 0 until size.width) {
+            assertEquals("overscan keeps every pixel opaque", 255, Color.alpha(later.getPixel(x, y)))
+            if (first.getPixel(x, y) != later.getPixel(x, y)) changed++
+        }
+        assertTrue("moving phase must produce visible native colour changes", changed > size.width * size.height / 4)
+        assertSamePixels(later, at(8f))
+        poses.forEach { pose ->
+            val zero = ambientMotion(pose, 0f)
+            assertEquals("same baked seed and phase are deterministic", zero, ambientMotion(pose, 0f))
+            assertNotEquals(zero, ambientMotion(pose, 8f))
+            assertTrue(kotlin.math.abs(zero.x) <= .05f && kotlin.math.abs(zero.y) <= .04f)
+        }
+    }
+
     @Test fun opaqueCrossfadeDoesNotExposeTheThemeAtItsMidpoint() {
         val red = AmbientTransition(target = artwork(Color.RED), startOpacity = 1f, endOpacity = 1f)
         val frame = red.capture(painter, size, 1f, 21f)

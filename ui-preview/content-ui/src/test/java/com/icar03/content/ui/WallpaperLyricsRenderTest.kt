@@ -79,18 +79,20 @@ class WallpaperLyricsRenderTest {
             recordingKey = "synthetic-geometry", lines = lines,
             activeIndex = 0, scrollIndex = 1, activeIndices = listOf(0),
             timelineReady = true, positionMs = 500L, playbackSpeed = 0f,
+            waitRows = listOf(LyricWaitRow(2, 6_000L, 8_000L)),
         )
         mount(initial)
         val heights = value(LyricRowHeights)
         assertEquals(lines.size, heights.size)
         assertTrue("all whole-song rows have measured height", heights.all { it > 0 })
-        assertEquals(36f, value(LyricFontPixels), .01f)
+        assertEquals(40f, value(LyricFontPixels), .01f)
+        assertEquals(44f, value(LyricActiveFontPixels), .01f)
         assertEquals(48f, value(LyricTextInset), .01f)
         assertEquals(1, value(LyricScrollAnchor))
         assertEquals(0, value(ActiveLyric))
         assertTrue("translation and romanization add stable subrows", heights[1] > heights[0])
         assertTrue("long main text wraps instead of shrinking", heights[2] > heights[0] * 2)
-        assertTrue("fixture exceeds native line width", nativeTextWidth(longText, 36f) > 640f - 96f)
+        assertTrue("fixture exceeds native line width", nativeTextWidth(longText, 40f) > 640f - 96f)
         val first = captureHost()
         assertInkBounded(first, 1f)
         val focusRow = inkBounds(first, rowTop(1, heights, 1).roundToInt(), rowBottom(1, heights, 1).roundToInt())
@@ -99,7 +101,7 @@ class WallpaperLyricsRenderTest {
 
         project(initial.copy(activeIndex = 2, activeIndices = listOf(2), positionMs = 5_000L))
         assertEquals(heights, value(LyricRowHeights))
-        assertEquals(36f, value(LyricFontPixels), .01f)
+        assertEquals(40f, value(LyricFontPixels), .01f)
         assertEquals(1, value(LyricScrollAnchor))
         body().assertTextEquals(longText)
         assertInkBounded(captureHost(), 1f)
@@ -156,6 +158,37 @@ class WallpaperLyricsRenderTest {
     }
 
     @Test
+    fun sameRecordingUpgradeRebasesVisibleAnchorWithoutRestartingFromOldAbsoluteOffset() {
+        val lines = (0 until 60).map { LyricLine(it * 2_000L, "合成升级定位第 $it 行") }
+        val initial = LyricsState(recordingKey = "same-recording-upgrade", lines = lines,
+            activeIndex = 20, scrollIndex = 20, activeIndices = listOf(20),
+            timelineReady = true, positionMs = 40_000L, playbackSpeed = 0f)
+        mount(initial)
+        compose.mainClock.autoAdvance = false
+        try {
+            val beforeHeights = value(LyricRowHeights)
+            val beforeCenter = beforeHeights.take(20).sum() + beforeHeights[20] / 2f + value(LyricScrollOffset)
+            captureHost("upgrade-before")
+            val upgraded = listOf(LyricLine(0L, "新增真实前奏行")) + lines.mapIndexed { i, line ->
+                line.copy(translation = if (i < 20) "合成新增译文" else "",
+                    words = listOf(LyricWord(line.timeMs, line.timeMs + 1_000L, line.text)))
+            }
+            project(initial.copy(lines = upgraded, activeIndex = 21, scrollIndex = 21, activeIndices = listOf(21)))
+            // autoAdvance=false: drive the first replacement composition, before its animation travels.
+            compose.mainClock.advanceTimeByFrame()
+            val afterHeights = value(LyricRowHeights)
+            assertEquals("first replacement frame must expose the upgraded geometry", upgraded.size, afterHeights.size)
+            val afterCenter = afterHeights.take(21).sum() + afterHeights[21] / 2f + value(LyricScrollOffset)
+            assertEquals("same visible lyric keeps its screen position at replacement", beforeCenter, afterCenter, .2f)
+            captureHost("upgrade-first-frame")
+            repeat(16) { compose.mainClock.advanceTimeBy(32L); captureHost() }
+            assertEquals("new Store cursor remains the only follow destination", 21, value(LyricScrollAnchor))
+            assertEquals(beforeCenter, afterHeights.take(21).sum() + afterHeights[21] / 2f + value(LyricScrollOffset), .2f)
+            captureHost("upgrade-settled")
+        } finally { compose.mainClock.autoAdvance = true }
+    }
+
+    @Test
     fun physical640x1080At141DpiKeepsBothThemesAndNativeTextMetrics() {
         densityThemes(141, saveFrames = true)
     }
@@ -170,7 +203,8 @@ class WallpaperLyricsRenderTest {
         densityThemes(320, saveFrames = true)
         compose.runOnIdle { state.value = state.value.copy(widthPx = 320, heightPx = 810) }
         compose.waitForIdle()
-        assertEquals(72f, value(LyricFontPixels), .01f)
+        assertEquals(80f, value(LyricFontPixels), .01f)
+        assertEquals(88f, value(LyricActiveFontPixels), .01f)
         assertEquals(96f, value(LyricTextInset), .01f)
         val heights = value(LyricRowHeights)
         assertTrue("128px text width must wrap without font resizing", heights.last() > heights[3] * 2)
@@ -204,7 +238,7 @@ class WallpaperLyricsRenderTest {
         assertEquals(2_000L, lyricPositionAt(known.copy(positionMs = 2_000L), 90_000L))
         val halfway = captureHost("word-paused-half")
         assertTrue("paused real media seek changes native pixels", changedPixels(start, halfway) > 20)
-        val wordRight = ceil(value(LyricTextInset) + nativeTextWidth(word.text, value(LyricFontPixels))).toInt() + 2
+        val wordRight = ceil(value(LyricTextInset) + nativeTextWidth(word.text, value(LyricActiveFontPixels))).toInt() + 2
         assertChangesInside(start, halfway, 47, wordRight, 0, 1080)
         body().assertTextEquals(line.text)
 
@@ -253,7 +287,7 @@ class WallpaperLyricsRenderTest {
         assertEquals(heights, value(LyricRowHeights))
         val later = captureHost()
         assertTrue("background word continues after the next main row starts", changedPixels(first, later) > 20)
-        val backgroundTop = floor(rowTop(0, heights, 1) + 14f + 36f + 4f + 20f + 4f + 22f).toInt()
+        val backgroundTop = floor(rowTop(0, heights, 1) + 14f + 44f + 4f + 20f + 4f + 22f).toInt()
         assertChangesInside(first, later, 47, 593, backgroundTop, ceil(rowBottom(0, heights, 1)).toInt())
         project(initial.copy(positionMs = 4_000L))
         val backgroundEnd = captureHost()
@@ -292,11 +326,53 @@ class WallpaperLyricsRenderTest {
     }
 
     @Test
+    fun introAndInterludeUseStaticFlowSlotsOutsideDuetAndAllSubrows() {
+        val lines = duetLines()
+        val waits = listOf(LyricWaitRow(-1, 0L, 1_000L), LyricWaitRow(1, 5_000L, 6_000L))
+        val initial = LyricsState(recordingKey = "flow-wait-slots", lines = lines, waitRows = waits,
+            timelineReady = true, positionMs = 500L, durationMs = 10_000L, playbackSpeed = 0f,
+            gapStartMs = 0L, gapEndMs = 1_000L)
+        mount(initial)
+        val heights = value(LyricRowHeights)
+        val rowTops = value(LyricRowTops)
+        val waitTops = value(LyricWaitRowTops)
+        val slotHeight = value(LyricWaitRowHeight)
+        assertEquals(2, waitTops.size)
+        assertEquals(waitTops[0] + slotHeight, rowTops[0], .001f)
+        assertEquals(rowTops[1] + heights[1], waitTops[1], .001f)
+        assertEquals(waitTops[1] + slotHeight, rowTops[2], .001f)
+        fun assertSlot(slot: Int, frame: Bitmap) {
+            assertEquals(slot, value(LyricGapSlotIndex))
+            val top = waitTops[slot] + value(LyricScrollOffset)
+            val dots = inkBounds(frame, kotlin.math.floor(top).toInt(), ceil(top + slotHeight).toInt())
+            assertNotNull("waiting slot has its own dot ink", dots)
+            assertTrue("only compact dots, never lyric/subrow text, occupy waiting row", dots!!.height() <= 10 && dots.width() <= 36)
+            assertEquals("dots follow the slot, never a viewport overlay", top + slotHeight / 2f, dots.exactCenterY(), 2f)
+            assertEquals(1080f * .41f, dots.exactCenterY(), 2f)
+        }
+        assertSlot(0, captureHost("wait-slot-intro"))
+        project(initial.copy(activeIndex = 1, activeIndices = listOf(0, 1), scrollIndex = 1,
+            positionMs = 2_500L, gapStartMs = -1L, gapEndMs = -1L))
+        assertEquals(-1, value(LyricGapSlotIndex))
+        captureHost("wait-slot-duet")
+        project(initial.copy(scrollIndex = 1, positionMs = 5_500L, gapStartMs = 5_000L, gapEndMs = 6_000L))
+        assertSlot(1, captureHost("wait-slot-interlude"))
+        project(initial.copy(activeIndex = 2, activeIndices = listOf(2), scrollIndex = 2,
+            positionMs = 6_500L, gapStartMs = -1L, gapEndMs = -1L))
+        assertEquals(-1, value(LyricGapSlotIndex))
+        captureHost("wait-slot-next-verse")
+        assertEquals("gap entry and exit never insert or remove flow rows", rowTops, value(LyricRowTops))
+        assertEquals(waitTops, value(LyricWaitRowTops))
+        assertEquals(heights, value(LyricRowHeights))
+    }
+
+    @Test
     fun gapDotsAndFrameGatesUseOnlyTrustedMediaIntervals() {
         val gap = LyricsState(
             recordingKey = "synthetic-gap", activeIndex = -1, scrollIndex = -1,
             timelineReady = true, positionMs = 999L, playbackSpeed = 0f,
             durationMs = 5_000L, gapStartMs = 1_000L, gapEndMs = 3_000L,
+            waitRows = listOf(LyricWaitRow(-1, 1_000L, 3_000L)),
         )
         mount(gap)
         assertNull("dots are absent before the interval", inkBounds(captureHost(requireInk = false)))
@@ -318,6 +394,15 @@ class WallpaperLyricsRenderTest {
         assertEquals(0f, value(LyricGapProgress), .001f)
         assertFalse(value(LyricFrameRunning))
         assertNull("unknown timeline has no invented gap animation", inkBounds(captureHost(requireInk = false)))
+        project(gap.copy(positionMs = 2_000L, waitRows = emptyList()))
+        assertEquals(-1, value(LyricGapSlotIndex))
+        assertNull("raw gap bounds without a pre-proved flow slot never invent dots", inkBounds(captureHost(requireInk = false)))
+        project(gap.copy(positionMs = 2_000L, waitRows = listOf(LyricWaitRow(-1, 1_500L, 3_000L))))
+        assertEquals(-1, value(LyricGapSlotIndex))
+        assertNull("unmatched gap evidence cannot light a different slot", inkBounds(captureHost(requireInk = false)))
+        project(gap.copy(positionMs = 2_000L, timed = false))
+        assertEquals(emptyList<Float>(), value(LyricWaitRowTops))
+        assertNull("static text never turns long spacing into instrumental dots", inkBounds(captureHost(requireInk = false)))
 
         val playing = LyricsState(
             recordingKey = "synthetic-frame-gates",
@@ -362,7 +447,7 @@ class WallpaperLyricsRenderTest {
         for (dark in listOf(false, true)) {
             compose.runOnIdle { state.value = state.value.copy(dark = dark) }
             compose.waitForIdle()
-            assertEquals(36f * density, value(LyricFontPixels), .01f)
+            assertEquals(40f * density, value(LyricFontPixels), .01f)
             assertEquals(48f * density, value(LyricTextInset), .01f)
             assertEquals(listOf(0, 1), value(LyricActiveRows))
             assertFalse(value(LyricFrameRunning))
@@ -520,7 +605,7 @@ class WallpaperLyricsRenderTest {
 
     private fun nativeTextWidth(text: String, size: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = size
-        typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }.measureText(text)
 
     private fun rowTop(index: Int, heights: List<Int>, focus: Int): Float =

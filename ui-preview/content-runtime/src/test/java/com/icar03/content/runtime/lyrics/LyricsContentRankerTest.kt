@@ -205,6 +205,39 @@ class LyricsContentRankerTest {
         assertEquals(1.0, ranked.single().quality.wordCoverage, 0.0001)
     }
 
+    @Test fun sameTimingTierNeverReplacesVisibleLyricsForHigherDurationOrConsensusScore() {
+        val old = candidate(SOURCE_QQ).copy(lyrics = SHORT_LINES)
+        val later = candidate(SOURCE_NETEASE)
+        assertTrue(LyricsContentRanker.inspect(query, later).score > LyricsContentRanker.inspect(query, old).score)
+        assertFalse(LyricsContentRanker.isMaterialUpgrade(query, selection(old), selection(later)))
+        assertFalse(LyricsContentRanker.isMaterialUpgrade(query, selection(later), selection(old)))
+    }
+
+    @Test fun completeWordTimingIsMaterialButPartialWordsAreNot() {
+        val old = candidate(SOURCE_QQ)
+        val complete = candidate(SOURCE_NETEASE).copy(wordLyrics = WORDS)
+        val partial = complete.copy(wordLyrics = WORDS.lineSequence().first())
+        assertTrue(LyricsContentRanker.isMaterialUpgrade(query, selection(old), selection(complete)))
+        assertFalse(LyricsContentRanker.isMaterialUpgrade(query, selection(old), selection(partial)))
+        assertFalse(LyricsContentRanker.isMaterialUpgrade(query, selection(complete), selection(old)))
+    }
+
+    @Test fun preferencePrecedesFineScoresWithinTheSameCapabilityTier() {
+        val preferred = candidate(SOURCE_QQ).copy(lyrics = SHORT_LINES)
+        val longerAxis = candidate(SOURCE_NETEASE)
+        assertEquals(preferred, rank(listOf(longerAxis, preferred), listOf(SOURCE_QQ)).first().candidate)
+        assertEquals(longerAxis, rank(listOf(preferred, longerAxis)).first().candidate)
+    }
+
+    @Test fun capabilityGainCannotDiscardAnExistingTranslationOrUseForgedProof() {
+        val translated = candidate(SOURCE_QQ).copy(lyrics = JAPANESE_LINES, translatedLyrics = TRANSLATION)
+        val losesTranslation = candidate(SOURCE_NETEASE).copy(wordLyrics = WORDS)
+        assertFalse(LyricsContentRanker.isMaterialUpgrade(query, selection(translated), selection(losesTranslation)))
+        val valid = selection(losesTranslation)
+        assertFalse(LyricsContentRanker.isMaterialUpgrade(query, selection(candidate(SOURCE_QQ)),
+            valid.copy(proof = valid.proof.copy(matcherPolicyVersion = -1))))
+    }
+
     private fun rank(candidates: List<LyricsResult>, preferred: List<String> = emptyList()) =
         LyricsContentRanker.rank(query, LyricsCandidateSelector.selectCandidatesWithProof(query, candidates), preferred)
 

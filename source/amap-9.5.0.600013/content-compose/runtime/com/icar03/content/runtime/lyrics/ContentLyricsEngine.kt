@@ -51,6 +51,9 @@ class ContentLyricsEngine internal constructor(
     private val handler = Handler(Looper.getMainLooper())
     private val lifecycle = AtomicLong()
     private val cacheMutex = Mutex()
+    private val cacheWorkScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val pendingCacheWrites = mutableListOf<Job>()
+    private var resumePending = false
     private val recording = MediaRecordingStateTracker()
     @Volatile private var requestedRunning = false
     private var activeLifecycle = 0L
@@ -62,6 +65,8 @@ class ContentLyricsEngine internal constructor(
     private var requestEpoch = 0L
     private var automaticJob: Job? = null
     private var coverJob: Job? = null
+    private var nativeCoverJob: Job? = null
+    private var nativeCoverToken: Triple<String, Bitmap, Int>? = null
     private var coverCancellation: LyricsCancellationSignal? = null
     private var coverAttempted = false
     private var fallbackArtwork: Bitmap? = null
@@ -129,11 +134,18 @@ class ContentLyricsEngine internal constructor(
             if (next != null) startResolution(next)
         } else if (next == null) {
             status = EMPTY
+        } else if (resumePending) {
+            // Revalidate the first resumed media snapshot before emitting retained content.
+            // An already visible body stays READY while cache refresh runs in the background.
+            publish()
+            startResolution(next)
         }
+        resumePending = false
         if (snapshot.artwork?.isRecycled == false) {
             cancelCover()
             fallbackArtwork = null
             coverAttempted = false
+            if (next != null) persistNativeCover(next, snapshot.artwork)
         } else if (next != null && !coverAttempted) {
             startCover(next)
         }
@@ -144,7 +156,7 @@ class ContentLyricsEngine internal constructor(
         val runtime = resources
         val currentScope = scope
         if (runtime == null || currentScope == null) {
-            status = UNAVAILABLE
+            if (lines.isEmpty()) status = UNAVAILABLE
             publish()
             return
         }
@@ -154,7 +166,7 @@ class ContentLyricsEngine internal constructor(
         automaticJob = currentScope.launch {
             try {
                 if (!identity.isUsable) {
-                    if (isCurrent(life, epoch, state)) { status = UNAVAILABLE; publish() }
+                    if (isCurrent(life, epoch, state)) { if (lines.isEmpty()) status = UNAVAILABLE; publish() }
                     return@launch
                 }
                 val cached = withCache { runtime.cache.read(identity, recordUse = true) }
@@ -183,7 +195,30 @@ class ContentLyricsEngine internal constructor(
                     onMain {
                         val resolved = provisional.resolved
                         if (isCurrent(life, epoch, state) && proofValidForCurrent(resolved) && lines.isEmpty()) {
-                            applyResult(resolved.result, resolved)
+                            if (!applyResult(resolved.result, resolved) || lines.isEmpty()) return@onMain
+                            // Visible admitted content must not depend on the slow final network round.
+                            // Stop cancels resolution, not this bounded atomic persistence operation.
+                            pendingCacheWrites.removeAll { it.isCompleted }
+                            // Keep the current admission and at most one older queued recording.
+                            // Superseded automatic work is disposable; never queue unbounded bodies.
+                            while (pendingCacheWrites.size >= 2) pendingCacheWrites.removeAt(0).cancel()
+                            val write = cacheWorkScope.launch {
+                                val persisted = try {
+                                    cacheMutex.withLock {
+                                        runtime.cache.writeAutomatic(identity, resolved)
+                                        runtime.cache.read(identity, recordUse = false)
+                                    }
+                                } catch (error: CancellationException) { throw error }
+                                catch (error: Exception) {
+                                    Log.w(TAG, "Unable to persist admitted provisional lyrics", error)
+                                    null
+                                }
+                                onMain {
+                                    if (isCurrent(life, epoch, state) && persisted?.selection == LyricsCacheSelection.MANUAL)
+                                        applyResult(persisted.result, null)
+                                }
+                            }
+                            pendingCacheWrites += write
                         }
                     }
                 }
@@ -196,15 +231,25 @@ class ContentLyricsEngine internal constructor(
                         restartForCurrentMetadata()
                         return@launch
                     }
-                    val upgrade = cached == null || shouldUpgrade(identity.lookup(), selected, resolved)
+                    val upgrade = shouldUpgrade(identity.lookup(), selected, resolved)
+                    // A provisional body is already the visible baseline even on a cold cache.
+                    // Persist that baseline when the final batch only changes fine scores/source.
+                    val chosen = if (upgrade) resolved else selected ?: resolved
                     val persisted = withCache {
-                        if (upgrade) runtime.cache.writeAutomatic(identity, resolved)
+                        if (upgrade || cached == null) {
+                            val alreadyPersisted = runtime.cache.read(identity, recordUse = false)
+                            if (alreadyPersisted?.result != chosen.result)
+                                runtime.cache.writeAutomatic(identity, chosen)
+                        }
                         if (cached != null) runtime.cache.recordRefresh(identity, System.currentTimeMillis())
                         runtime.cache.read(identity, recordUse = false)
                     }
                     if (!isCurrent(life, epoch, state)) return@launch
-                    if (persisted != null) applyResult(persisted.result, persisted.resolved)
-                    else if (upgrade) applyResult(resolved.result, resolved)
+                    if (persisted != null && (persisted.selection == LyricsCacheSelection.MANUAL ||
+                            persisted.resolved?.let { shouldUpgrade(identity.lookup(), selected, it) } == true ||
+                            selected == null)) {
+                        applyResult(persisted.result, persisted.resolved)
+                    } else if (upgrade) applyResult(resolved.result, resolved)
                 } else if (lines.isEmpty() && outcome != LyricsResolutionOutcome.Cancelled) {
                     status = UNAVAILABLE
                     publish()
@@ -223,6 +268,45 @@ class ContentLyricsEngine internal constructor(
         }
     }
 
+    private fun persistNativeCover(state: MediaRecordingState, artwork: Bitmap) {
+        val query = state.identity().lookup()
+        if (!LyricsCandidateSelector.canFindCover(query)) return
+        val token = Triple(state.identity().let { LyricsCache.key(it.track, it.artist, it.album, it.durationMs) },
+            artwork, artwork.generationId)
+        if (nativeCoverToken == token) return
+        nativeCoverJob?.cancel()
+        nativeCoverToken = token
+        val life = activeLifecycle
+        val epoch = requestEpoch
+        nativeCoverJob = scope?.launch {
+            val operation = currentCoroutineContext()
+            val saved = withCache {
+                if (!isCurrent(life, epoch, state) || artwork.isRecycled) return@withCache false
+                var prepared: Bitmap? = null
+                try {
+                    val scale = minOf(1f, 512f / maxOf(artwork.width, artwork.height))
+                    val scaled = Bitmap.createScaledBitmap(artwork,
+                        (artwork.width * scale).toInt().coerceAtLeast(1),
+                        (artwork.height * scale).toInt().coerceAtLeast(1), true)
+                    // Freeze the bounded snapshot even if the source already fits: mutable media
+                    // bitmaps can change in place while a worker is encoding them.
+                    try { prepared = scaled.copy(Bitmap.Config.ARGB_8888, false) }
+                    finally { if (scaled !== artwork) scaled.recycle() }
+                    val snapshot = prepared ?: return@withCache false
+                    if (!isCurrent(life, epoch, state) || artwork.isRecycled || artwork.generationId != token.third)
+                        return@withCache false
+                    operation.ensureActive()
+                    coverCache.write(query, snapshot)
+                } catch (error: CancellationException) { throw error }
+                catch (_: RuntimeException) {
+                    // A mutable native bitmap may disappear during the bounded capture.
+                    false
+                } finally { prepared?.recycle() }
+            }
+            if (!saved && nativeCoverToken == token) nativeCoverToken = null
+        }
+    }
+
     private fun startCover(state: MediaRecordingState) {
         val runtime = resources ?: return
         val currentScope = scope ?: return
@@ -235,7 +319,7 @@ class ContentLyricsEngine internal constructor(
         coverCancellation = cancellation
         coverJob = currentScope.launch {
             try {
-                val cached = withContext(ioDispatcher) { coverCache.read(query) }
+                val cached = withCache { coverCache.read(query) }
                 if (!isCurrent(life, epoch, state) || media?.artwork?.isRecycled == false) {
                     cached?.recycle()
                     return@launch
@@ -260,7 +344,7 @@ class ContentLyricsEngine internal constructor(
                         if (bitmap != null && !bitmap.isRecycled) {
                             fallbackArtwork = bitmap
                             publish()
-                            withContext(ioDispatcher) { coverCache.write(query, bitmap) }
+                            withCache { coverCache.write(query, bitmap) }
                             return@launch
                         }
                     }
@@ -314,13 +398,9 @@ class ContentLyricsEngine internal constructor(
     private fun shouldUpgrade(query: LyricsLookup, previous: ResolvedLyrics?, next: ResolvedLyrics): Boolean {
         previous ?: return true
         if (previous.result == next.result) return false
-        val ranked = LyricsContentRanker.rank(query, listOf(
+        return LyricsContentRanker.isMaterialUpgrade(query,
             LyricsCandidateSelection(previous.result, previous.proof),
-            LyricsCandidateSelection(next.result, next.proof)))
-        val oldQuality = ranked.firstOrNull { it.candidate === previous.result }?.quality ?: return true
-        val newQuality = ranked.firstOrNull { it.candidate === next.result }?.quality ?: return false
-        return newQuality.kind == LyricsKind.SYNCHRONIZED && oldQuality.kind != LyricsKind.SYNCHRONIZED ||
-            newQuality.kind == oldQuality.kind && newQuality.score > oldQuality.score
+            LyricsCandidateSelection(next.result, next.proof))
     }
 
     private fun proofValidForCurrent(resolved: ResolvedLyrics): Boolean = binding?.identity()?.lookup()?.let {
@@ -365,6 +445,9 @@ class ContentLyricsEngine internal constructor(
 
     private fun cancelOperations() {
         requestEpoch++
+        nativeCoverJob?.cancel()
+        nativeCoverJob = null
+        nativeCoverToken = null
         automaticJob?.cancel()
         automaticJob = null
         resources?.cancelCurrent()
@@ -387,17 +470,18 @@ class ContentLyricsEngine internal constructor(
         val retired = resources
         resources = null
         retired?.cancelAll()
-        if (retired != null) {
-            // Database close waits for the last cancelled cache operation, away from the UI thread.
-            CoroutineScope(ioDispatcher).launch { cacheMutex.withLock { retired.close() } }
+        val writes = pendingCacheWrites.toList()
+        pendingCacheWrites.clear()
+        // Drain already-admitted provisional writes before retiring database handles, even
+        // if lyrics resources failed to construct but native artwork opened its shared cache.
+        cacheWorkScope.launch {
+            writes.forEach { it.join() }
+            cacheMutex.withLock { retired?.close(); coverCache.close() }
         }
+        // Playback Store remains the owner of live truth. Retain only one recording's admitted
+        // body/identity; updateCurrent validates a fresh snapshot before it may be published.
         media = null
-        binding = null
-        recording.clear()
-        selected = null
-        lines = emptyList()
-        status = EMPTY
-        fallbackArtwork = null
+        resumePending = true
         lastPublished = null
     }
 
@@ -476,12 +560,19 @@ private fun loadCoverBitmap(source: String, cancellation: LyricsCancellationSign
     val url = if (parsed.protocol == "http") URL("https", parsed.host, parsed.port, parsed.file) else parsed
     val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(3_000L)
     val bytes = HttpLyricsTransport().getBytes(url.toExternalForm(), emptyMap(), deadline, cancellation)
+    return decodeCoverBitmap(bytes, cancellation)
+}
+
+/** A bounded response can still contain a decompression-bomb header; bound both domains. */
+internal fun decodeCoverBitmap(bytes: ByteArray, cancellation: LyricsCancellationSignal): Bitmap? {
     cancellation.throwIfCancelled()
+    if (bytes.size.toLong() !in 1..ContentCacheBudget.MAX_ENTRY_BYTES) return null
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    if (bounds.outWidth !in 1..16_384 || bounds.outHeight !in 1..16_384 ||
+        bounds.outWidth.toLong() * bounds.outHeight > 64L * 1024L * 1024L) return null
     var sample = 1
-    while ((maxOf(bounds.outWidth, bounds.outHeight) + sample - 1) / sample > 512) sample *= 2
+    while ((maxOf(bounds.outWidth, bounds.outHeight).toLong() + sample - 1L) / sample > 512L) sample *= 2
     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
         inSampleSize = sample
         inPreferredConfig = Bitmap.Config.ARGB_8888

@@ -35,6 +35,7 @@ data class LyricLine(val timeMs: Long, val text: String, val translation: String
     val romanization: String = "", val words: List<LyricWord> = emptyList(),
     val endTimeMs: Long = -1L, val backgroundWords: List<LyricWord> = emptyList(),
     val side: LyricSide = LyricSide.Unspecified)
+data class LyricWaitRow(val afterIndex: Int, val startMs: Long, val endMs: Long)
 data class LyricsState(
     val recordingKey: String = "", val lines: List<LyricLine> = emptyList(),
     val activeIndex: Int = -1, val loading: Boolean = false, val timelineReady: Boolean = false,
@@ -42,6 +43,7 @@ data class LyricsState(
     val durationMs: Long = 0L, val timed: Boolean = true,
     val scrollIndex: Int = -1, val activeIndices: List<Int> = emptyList(),
     val gapStartMs: Long = -1L, val gapEndMs: Long = -1L,
+    val waitRows: List<LyricWaitRow> = emptyList(),
 )
 data class ContentUiState(
     val dark: Boolean = false, val page: PanelPage = PanelPage.Shortcuts,

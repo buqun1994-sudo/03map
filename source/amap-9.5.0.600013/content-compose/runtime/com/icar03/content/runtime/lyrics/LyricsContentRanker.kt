@@ -100,15 +100,53 @@ internal object LyricsContentRanker {
             RankedCandidate(selection, quality.copy(consensusFamilies = families.size))
         }.sortedWith(
             compareByDescending<RankedCandidate> { it.quality.kind == LyricsKind.SYNCHRONIZED }
-                .thenByDescending { it.quality.score }
+                .thenByDescending { capabilityGrade(it.quality) }
                 .thenBy { preference[it.candidate.source] ?: Int.MAX_VALUE }
+                .thenByDescending { it.quality.score }
                 .thenBy { it.candidate.source }
                 .thenBy { it.candidate.sourceId }
         )
     }
 
+    private fun capabilityGrade(quality: ContentQuality): Int =
+        (if (quality.wordCoverage >= .80) 4 else 0) +
+            (if (quality.translationCoverage >= .50) 2 else 0) +
+            (if (quality.romanizationCoverage >= .50) 1 else 0)
+
     fun inspect(query: LyricsLookup, result: LyricsResult): ContentQuality =
         inspectBody(query, result).quality
+
+    /** Initial selection may use fine scores; an already visible body changes only for
+     * a real capability gain or a proved missing tail, never consensus/axis score noise. */
+    fun isMaterialUpgrade(
+        query: LyricsLookup,
+        previous: LyricsCandidateSelection,
+        next: LyricsCandidateSelection
+    ): Boolean {
+        if (previous.candidate == next.candidate) return false
+        val ranked = rank(query, listOf(previous, next))
+        val old = ranked.firstOrNull { it.selection == previous }?.quality ?: return false
+        val fresh = ranked.firstOrNull { it.selection == next }?.quality ?: return false
+        if (fresh.kind == LyricsKind.SYNCHRONIZED && old.kind == LyricsKind.PLAIN) return true
+        if (fresh.kind != old.kind || fresh.kind != LyricsKind.SYNCHRONIZED) return false
+        fun capabilities(quality: ContentQuality) = listOf(
+            quality.wordCoverage >= .80,
+            quality.translationCoverage >= .50,
+            quality.romanizationCoverage >= .50
+        )
+        val oldFeatures = capabilities(old)
+        val newFeatures = capabilities(fresh)
+        if (oldFeatures.indices.any { oldFeatures[it] && !newFeatures[it] }) return false
+        if (fresh.durationCoverage + .10 < old.durationCoverage) return false
+        if (oldFeatures.indices.any { !oldFeatures[it] && newFeatures[it] }) return true
+        val oldText = normalizeContent(previous.candidate.timedLines().joinToString("") { it.text })
+        val newText = normalizeContent(next.candidate.timedLines().joinToString("") { it.text })
+        val oldLength = oldText.codePointCount(0, oldText.length)
+        val newLength = newText.codePointCount(0, newText.length)
+        return old.durationCoverage < MINIMUM_END_COVERAGE && fresh.durationCoverage >= MINIMUM_END_COVERAGE &&
+            oldLength >= MINIMUM_CONSENSUS_CHARACTERS && newText.startsWith(oldText) &&
+            newLength >= oldLength * 1.25
+    }
 
     fun plainText(result: LyricsResult): String = result.plainText()
         .takeIf { classifyLyrics(it) == LyricsKind.PLAIN }.orEmpty()

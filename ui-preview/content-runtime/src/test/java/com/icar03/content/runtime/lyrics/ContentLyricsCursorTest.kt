@@ -9,6 +9,29 @@ import org.junit.Test
 import java.lang.reflect.Modifier
 
 class ContentLyricsCursorTest {
+    @Test fun stableWaitRowsReuseTheSameVerifiedIntroAndInterludeIntervalsAsStoreCursor() {
+        val lines = listOf(line(10_000L, end = 13_000L), line(25_000L, end = 27_000L), line(40_000L))
+        val waits = ContentLyricsCursor.waitRows(lines, 120_000L)
+        assertEquals(listOf(
+            ContentLyricsCursor.WaitRow(-1, 0L, 9_200L),
+            ContentLyricsCursor.WaitRow(0, 14_200L, 24_200L),
+            ContentLyricsCursor.WaitRow(1, 28_200L, 39_200L)), waits)
+        for (wait in waits) {
+            for (position in listOf(wait.startMs, (wait.startMs + wait.endMs) / 2L, wait.endMs - 1L)) {
+                val cursor = ContentLyricsCursor.resolve(lines, position, 120_000L)
+                assertEquals(wait.startMs, cursor.gapStartMs)
+                assertEquals(wait.endMs, cursor.gapEndMs)
+            }
+        }
+    }
+
+    @Test fun plainLongIntervalsAndAnUnknownEqualStartVoiceNeverReserveGuessedWaitRows() {
+        assertTrue(ContentLyricsCursor.waitRows(listOf(line(0L), line(20_000L), line(60_000L)), 120_000L).isEmpty())
+        assertTrue(ContentLyricsCursor.waitRows(listOf(line(1_000L, end = 2_000L), line(1_000L), line(20_000L)), 120_000L).isEmpty())
+        assertEquals(listOf(ContentLyricsCursor.WaitRow(1, 5_200L, 19_200L)),
+            ContentLyricsCursor.waitRows(listOf(line(1_000L, end = 2_000L), line(1_000L, end = 4_000L), line(20_000L)), 120_000L))
+    }
+
     @Test fun emptyLyricsHaveNoAnchorOrActivity() {
         assertCursor(emptyList(), -1L, -1, -1)
         assertCursor(emptyList(), 0L, -1, -1)
@@ -91,22 +114,22 @@ class ContentLyricsCursorTest {
         assertTrue(lines.all { it.words.isEmpty() && it.endTimeMs == -1L })
     }
 
-    @Test fun estimatedLongLrcGapIsDecorativeAndDoesNotCreateWordsOrAnEnd() {
+    @Test fun aLongLineTimestampIntervalCannotProveAnInterludeOrStopTheCurrentLyric() {
         val lines = listOf(line(1_000L), line(16_000L))
-        assertCursor(lines, 7_199L, 0, 0)
-        assertCursor(lines, 7_200L, -1, 0, gapStart = 7_200L, gapEnd = 15_200L)
-        assertCursor(lines, 15_199L, -1, 0, gapStart = 7_200L, gapEnd = 15_200L)
-        assertCursor(lines, 15_200L, -1, 1)
-        assertCursor(lines, 15_999L, -1, 1)
+        for (position in listOf(7_199L, 7_200L, 15_199L, 15_200L, 15_999L)) {
+            assertCursor(lines, position, 0, 0)
+        }
         assertCursor(lines, 16_000L, 1, 1)
         assertTrue(lines.all { it.words.isEmpty() && it.backgroundWords.isEmpty() })
         assertTrue(lines.all { it.endTimeMs == -1L })
     }
 
-    @Test fun estimatedLrcSingingTimeIsCappedAtEightSeconds() {
+    @Test fun singingHasNoArtificialEightSecondCapEvenInAThirtySecondLrcInterval() {
         val lines = listOf(line(1_000L), line(31_000L))
-        assertCursor(lines, 10_199L, 0, 0)
-        assertCursor(lines, 10_200L, -1, 0, gapStart = 10_200L, gapEnd = 30_200L)
+        for (position in listOf(10_199L, 10_200L, 30_200L, 30_999L)) {
+            assertCursor(lines, position, 0, 0)
+        }
+        assertCursor(lines, 31_000L, 1, 1)
     }
 
     @Test fun mainOverlapRequiresFiveHundredMillisecondsAndUsesExclusiveEnd() {

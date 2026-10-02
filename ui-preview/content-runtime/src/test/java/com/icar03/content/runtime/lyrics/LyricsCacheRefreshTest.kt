@@ -89,7 +89,7 @@ class LyricsCacheRefreshTest {
             assertFalse(migrated.needsRefresh(FIRST))
             assertEquals(LINES, migrated.result.lyrics)
             withDatabase(name) { database ->
-                assertEquals(6, database.version)
+                assertEquals(7, database.version)
                 database.rawQuery("SELECT payload_json FROM lyrics_cache", null).use { cursor ->
                     assertTrue(cursor.moveToFirst())
                     assertEquals("preserved", JSONObject(cursor.getString(0)).getString("syntheticFutureField"))
@@ -138,6 +138,22 @@ class LyricsCacheRefreshTest {
         withCache(name) { cache ->
             assertEquals(WORDS, cache.read(identity, false)!!.result.wordLyrics)
             assertEquals(3, cache.read(identity, false)!!.refreshAttempts)
+        }
+    }
+
+    @Test fun finerDurationScoreDoesNotRewriteBodyTimestampOrRefreshMetadata() {
+        withCache(databaseName()) { cache ->
+            val original = result()
+            val fineTimingOnly = original.copy(sourceId = "fine-timing-only", lyrics = LINES.replace("[03:10]", "[03:16]"))
+            assertTrue(LyricsContentRanker.inspect(identity.lookup(), fineTimingOnly).score >
+                LyricsContentRanker.inspect(identity.lookup(), original).score)
+            assertTrue(put(cache, original))
+            assertTrue(cache.recordRefresh(identity, FIRST + INTERVAL))
+            val before = cache.read(identity, false)!!
+            val stats = cache.snapshot(null, null).stats
+            assertFalse(put(cache, fineTimingOnly, FIRST + INTERVAL + 1))
+            assertEquals(before, cache.read(identity, false))
+            assertEquals(stats, cache.snapshot(null, null).stats)
         }
     }
 

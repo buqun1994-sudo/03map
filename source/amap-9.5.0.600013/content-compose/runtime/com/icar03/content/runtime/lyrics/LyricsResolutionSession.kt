@@ -34,7 +34,10 @@ internal class LyricsResolutionSession(
         val candidates = linkedMapOf<String, LyricsResult>()
         val activeBodySources = mutableSetOf<String>()
         val startedCandidateIds = mutableSetOf<String>()
-        val sourcePreferences = preferredSources()
+        val sourcePreferences = preferredSources().distinct()
+        // A future explicit platform preference gets a bounded first-body opportunity,
+        // rather than arriving after an arbitrary fallback has already been locked on screen.
+        val preferenceDeadlineNanos = minOf(totalDeadlineNanos, config.deadlineAfter(startedAtNanos, 1_500L))
         val catalogStates = catalogSources.associate { source ->
             source.sourceName to CatalogSourceState(
                 source = source,
@@ -101,7 +104,15 @@ internal class LyricsResolutionSession(
                     )
                 }
 
-                if (!provisionalSent) {
+                val preferredPending = sourcePreferences.isNotEmpty() && (
+                    catalogStates.values.any { it.source.sourceName in sourcePreferences && !it.isExhausted() } ||
+                        activeBodySources.any { it in sourcePreferences } ||
+                        (exactAndFallbackSource.sourceName in sourcePreferences && (exactInFlight || fuzzyInFlight)) ||
+                        selections.any { it.candidate.source in sourcePreferences &&
+                            !it.candidate.hasBodyPayload() && candidateIdentity(it.candidate) !in startedCandidateIds })
+                val preferenceReady = !preferredPending || clock.nanoTime() >= preferenceDeadlineNanos ||
+                    ranked.any { it.candidate.source in sourcePreferences && it.quality.kind == LyricsKind.SYNCHRONIZED }
+                if (!provisionalSent && preferenceReady) {
                     ranked.firstOrNull { it.quality.kind == LyricsKind.SYNCHRONIZED }?.let { first ->
                         cancellation.throwIfCancelled()
                         provisionalSent = true
@@ -163,7 +174,11 @@ internal class LyricsResolutionSession(
 
                 val remainingNanos = totalDeadlineNanos - clock.nanoTime()
                 if (remainingNanos <= 0L) continue
-                val event = events.poll(remainingNanos, TimeUnit.NANOSECONDS) ?: continue
+                val preferenceWait = preferenceDeadlineNanos - clock.nanoTime()
+                val pollNanos = if (!provisionalSent && !preferenceReady && preferenceWait > 0L) {
+                    minOf(remainingNanos, preferenceWait)
+                } else remainingNanos
+                val event = events.poll(pollNanos, TimeUnit.NANOSECONDS) ?: continue
                 cancellation.throwIfCancelled()
                 if (clock.nanoTime() >= totalDeadlineNanos) continue
                 when (event) {

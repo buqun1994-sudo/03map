@@ -169,6 +169,34 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test
+    fun necessary_loading_copy_is_centered_in_lyrics_region() {
+        val state = previewState().copy(page = PanelPage.Lyrics, previewMode = true,
+            media = MediaState(title = "合成正在匹配歌曲", isSong = true), lyrics = LyricsState(loading = true))
+        compose.setContent {
+            ContentTheme(dark) {
+                val view = LocalView.current
+                @Suppress("DEPRECATION")
+                SideEffect {
+                    view.context.activity().window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                    view.context.activity().window.decorView.systemUiVisibility =
+                        View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                }
+                ContentPanel(state.copy(dark = dark), onEvent = { events += it }, modifier = Modifier.testTag(hostTag))
+            }
+        }
+        compose.waitForIdle()
+        val region = compose.onNodeWithTag("lyrics-empty").getUnclippedBoundsInRoot()
+        val copy = compose.onNodeWithText("正在匹配歌词…").assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertTrue("loading copy must be horizontally centered in lyrics region", kotlin.math.abs(
+            (copy.left.value + copy.right.value) / 2f - (region.left.value + region.right.value) / 2f) < 1f)
+        assertTrue("loading copy must be vertically centered in lyrics region", kotlin.math.abs(
+            (copy.top.value + copy.bottom.value) / 2f - (region.top.value + region.bottom.value) / 2f) < 1f)
+        captureHost("lyrics-loading-centered", checkShortcutShadows = false)
+    }
+
+    @Test
     fun sources_open_select_and_dismiss_in_both_themes() {
         val state = androidx.compose.runtime.mutableStateOf(previewState().copy(dark = dark))
         compose.setContent {
@@ -803,7 +831,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
-    private fun captureHost(name: String): Bitmap {
+    private fun captureHost(name: String, checkShortcutShadows: Boolean = true): Bitmap {
         val semantics = compose.onNodeWithTag(hostTag).fetchSemanticsNode()
         val root = semantics.root as? ViewRootForTest ?: error("Compose host is not an Android view")
         val bounds = semantics.boundsInRoot
@@ -821,13 +849,14 @@ open class ContentPanelLightPrototypeRenderTest {
             return android.graphics.Color.red(pixel) + android.graphics.Color.green(pixel) + android.graphics.Color.blue(pixel)
         }
         val background = brightness(300, 800)
-        for ((x, bottom) in listOf(70 to 194, 300 to 952, 300 to 1068)) {
+        val surfaces = (if (checkShortcutShadows) listOf(70 to 194) else emptyList()) + listOf(300 to 952, 300 to 1068)
+        for ((x, bottom) in surfaces) {
             val near = brightness(x, bottom + 2)
             val far = brightness(x, bottom + 8)
             assertTrue("shadow must be visible below surface at $x/$bottom", near < background)
             assertTrue("shadow must soften toward background at $x/$bottom", far > near && far <= background)
         }
-        assertTrue("shadow should project downward more than upward", brightness(70, 196) < brightness(70, 57))
+        if (checkShortcutShadows) assertTrue("shadow should project downward more than upward", brightness(70, 196) < brightness(70, 57))
         val colors = mutableSetOf<Int>()
         for (y in 0 until bitmap.height step 11) for (x in 0 until bitmap.width step 11) colors += bitmap.getPixel(x, y)
         assertTrue("capture must contain rendered color variation", colors.size > 8)

@@ -198,7 +198,7 @@ class ContentLyricsEngineTest {
         assertEquals(0, loads)
     }
 
-    @Test fun provisionalShowsImmediatelyButOnlyFinalBodyIsPersisted() {
+    @Test fun provisionalPersistsImmediatelyAndMaterialFinalUpgradeWritesAgain() {
         val runtime = Runtime()
         val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
         val engine = engine(runtime, snapshots)
@@ -208,11 +208,11 @@ class ContentLyricsEngineTest {
         runtime.provisional.getValue("Song")(found(query))
         drain()
         assertEquals(ContentPorts.LyricsSnapshot.READY, snapshots.last().status)
-        assertEquals(0, runtime.cache.writes)
+        assertEquals(1, runtime.cache.writes)
         val result = found(query).resolved.result.copy(wordLyrics = "[1000,600](1000,600,0)Song lyric")
         runtime.pendingLyrics.remove("Song")!!.resume(found(query, result))
         drain()
-        assertEquals(1, runtime.cache.writes)
+        assertEquals(2, runtime.cache.writes)
         assertEquals(1, snapshots.last().lines.single().words.size)
         assertEquals(1_600L, snapshots.last().lines.single().words.single().endTimeMs)
     }
@@ -246,6 +246,29 @@ class ContentLyricsEngineTest {
         assertEquals(publications, snapshots.size)
         assertTrue(snapshots.last().lines.isEmpty())
         assertEquals(0, runtime.cache.writes)
+    }
+
+    @Test fun coldCacheFinalLineTimingWithHigherScoreRetainsAndPersistsTheVisibleProvisionalBody() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, snapshots)
+        engine.update(media(position = 120_000L))
+        drain()
+        val query = runtime.lookups.single()
+        val provisional = found(query, found(query).resolved.result.copy(
+            lyrics = "[00:01]Opening lyric\n[00:10]Visible lyric\n[00:30]Ending lyric"))
+        runtime.provisional.getValue("Song")(provisional)
+        drain()
+        val visible = snapshots.last().lines
+        val publications = snapshots.size
+        val final = found(query, provisional.resolved.result.copy(source = SOURCE_NETEASE,
+            sourceId = "another-body", lyrics = "[00:01]Opening lyric\n[01:30]Visible lyric\n[03:10]Ending lyric"))
+        runtime.pendingLyrics.remove("Song")!!.resume(final)
+        drain()
+        assertSame(visible, snapshots.last().lines)
+        assertEquals(publications, snapshots.size)
+        assertEquals(provisional.resolved.result, runtime.cache.entries.values.single().result)
+        assertEquals(1, runtime.cache.writes)
     }
 
     @Test fun aLowerQualityRefreshCannotReplaceTheAlreadyDisplayedWords() {
@@ -352,6 +375,140 @@ class ContentLyricsEngineTest {
         assertEquals(0, offline.coverRounds)
         assertEquals(bitmap.getPixel(0, 0), restored.last().artwork!!.getPixel(0, 0))
         assertFalse(bitmap.isRecycled)
+    }
+
+    @Test fun nativeArtworkPersistsAndRestoresWithoutNetworkAfterRestart() {
+        val native = Bitmap.createBitmap(1024, 640, Bitmap.Config.ARGB_8888).apply { eraseColor(0xff367f52.toInt()) }
+        val current = media(title = "NativeCacheSynthetic", artwork = native)
+        val first = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val runtime = Runtime().apply { coverOptions = { error("native art must bypass network") } }
+        val original = engine(runtime, first)
+        original.update(current)
+        drain()
+        assertFalse("native shared bitmap is never recycled", native.isRecycled)
+        assertEquals(0, runtime.coverRounds)
+        original.stop()
+        drain()
+        val offline = Runtime().apply { coverOptions = { error("native persisted art must bypass network") } }
+        val restored = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val restarted = engine(offline, restored)
+        restarted.update(media(title = "NativeCacheSynthetic"))
+        drain()
+        val cached = restored.last().artwork!!
+        assertEquals(512, cached.width)
+        assertEquals(320, cached.height)
+        assertEquals(native.getPixel(0, 0), cached.getPixel(0, 0))
+        assertFalse(native.isRecycled)
+        assertEquals(0, offline.coverRounds)
+    }
+
+    @Test fun visibleProvisionalSurvivesStopAndSameRecordingResumeWithoutLoading() {
+        val cache = MemoryCache()
+        val runtimes = mutableListOf<Runtime>()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = ContentLyricsEngine(RuntimeEnvironment.getApplication(),
+            { Runtime(cache).also(runtimes::add) }, Dispatchers.Unconfined, { _, _ -> null }).also(engines::add)
+        engine.start(frames::add)
+        engine.update(media(title = "Warm"))
+        drain()
+        val first = runtimes.first()
+        first.provisional.getValue("Warm")(found(first.lookups.single()))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.READY, frames.last().status)
+        assertEquals("provisional writes before the final network round", 1, cache.writes)
+        val body = frames.last().lines.map { it.text }
+        engine.stop()
+        drain()
+        assertTrue(first.closed)
+        frames.clear()
+        engine.start(frames::add)
+        assertTrue("no old song is emitted before a fresh media snapshot", frames.isEmpty())
+        engine.update(media(title = "Warm", generation = 2))
+        drain()
+        assertTrue(frames.isNotEmpty())
+        assertTrue("same recording never becomes LOADING/empty", frames.all { it.status == ContentPorts.LyricsSnapshot.READY && it.lines.isNotEmpty() })
+        assertEquals(body, frames.last().lines.map { it.text })
+        assertTrue(runtimes.last().lookups.isEmpty())
+        val publicationCount = frames.size
+        first.finishLyrics("Warm")
+        drain()
+        assertEquals("retired final result cannot overwrite resumed content", publicationCount, frames.size)
+        assertEquals(1, cache.writes)
+    }
+
+    @Test fun unavailableResourcesOnResumeCannotDowngradeAnAdmittedSameRecordingBody() {
+        val runtime = Runtime()
+        var creations = 0
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = ContentLyricsEngine(RuntimeEnvironment.getApplication(), {
+            if (creations++ == 0) runtime else error("synthetic temporary resource failure")
+        }, Dispatchers.Unconfined, { _, _ -> null }).also(engines::add)
+        engine.start(frames::add)
+        engine.update(media(title = "ResourceWarm"))
+        drain()
+        runtime.finishLyrics("ResourceWarm")
+        drain()
+        val body = frames.last().lines.map { it.text }
+        engine.stop()
+        drain()
+        frames.clear()
+        engine.start(frames::add)
+        assertTrue(frames.isEmpty())
+        engine.update(media(title = "ResourceWarm", generation = 2))
+        drain()
+        assertTrue(frames.isNotEmpty())
+        assertTrue(frames.all { it.status == ContentPorts.LyricsSnapshot.READY && it.lines.map { row -> row.text } == body })
+    }
+
+    @Test fun resumedDifferentRecordingNeverEmitsTheRetainedBody() {
+        val runtimes = mutableListOf<Runtime>()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = ContentLyricsEngine(RuntimeEnvironment.getApplication(),
+            { Runtime().also(runtimes::add) }, Dispatchers.Unconfined, { _, _ -> null }).also(engines::add)
+        engine.start(frames::add)
+        engine.update(media(title = "Old body"))
+        drain()
+        runtimes.first().finishLyrics("Old body")
+        drain()
+        engine.stop()
+        drain()
+        frames.clear()
+        engine.start(frames::add)
+        engine.update(media(title = "New body", generation = 2))
+        drain()
+        assertTrue(frames.isNotEmpty())
+        assertTrue(frames.all { it.recordingKey == media(title = "New body", generation = 2).recordingKey() })
+        assertTrue(frames.all { it.lines.none { row -> row.text.contains("Old body") } })
+        assertEquals(listOf("New body"), runtimes.last().lookups.map { it.track })
+    }
+
+    @Test fun stopDrainsQueuedProvisionalWriteBeforeClosingItsRuntime() {
+        val dispatcher = QueuedDispatcher()
+        val runtime = Runtime()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = ContentLyricsEngine(RuntimeEnvironment.getApplication(), { runtime }, dispatcher,
+            { _, _ -> null }).also(engines::add)
+        engine.start(frames::add)
+        engine.update(media(title = "Queued"))
+        dispatcher.runAll(); drain(); dispatcher.runAll(); drain()
+        runtime.provisional.getValue("Queued")(found(runtime.lookups.single()))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.READY, frames.last().status)
+        assertEquals(0, runtime.cache.writes)
+        engine.stop()
+        drain()
+        dispatcher.runLast() // Force resource retirement ahead of the queued persistence worker.
+        assertFalse("close must wait for admitted write", runtime.closed)
+        dispatcher.runAll(); drain(); dispatcher.runAll(); drain()
+        assertEquals(1, runtime.cache.writes)
+        assertTrue(runtime.closed)
+    }
+
+    private class QueuedDispatcher : kotlinx.coroutines.CoroutineDispatcher() {
+        private val work = java.util.ArrayDeque<Runnable>()
+        override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { work.addLast(block) }
+        fun runLast() { if (work.isNotEmpty()) work.removeLast().run() }
+        fun runAll() { var steps = 0; while (work.isNotEmpty()) { check(steps++ < 100); work.removeFirst().run() } }
     }
 
     private fun engine(runtime: Runtime, snapshots: MutableList<ContentPorts.LyricsSnapshot>) =

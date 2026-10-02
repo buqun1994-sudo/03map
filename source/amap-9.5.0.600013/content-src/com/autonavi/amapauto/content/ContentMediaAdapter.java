@@ -29,6 +29,12 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.util.LruCache;
 import com.icar03.content.runtime.media.ContentMediaArtwork;
+import com.icar03.content.runtime.media.ContentMediaSessionArbiter;
+import com.icar03.content.runtime.media.ContentMediaSessionArbitrationAction;
+import com.icar03.content.runtime.media.ContentMediaSessionArbitrationDecision;
+import com.icar03.content.runtime.media.ContentMediaSessionBluetoothActivity;
+import com.icar03.content.runtime.media.ContentMediaSessionCandidate;
+import com.icar03.content.runtime.media.ContentMediaSessionTransport;
 import com.icar03.content.runtime.media.ContentPublicMediaBrowsers;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -46,8 +52,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private static final String MEDIA_CENTER_CLASS = "com.mengbo.service.MediaCenterPlayService";
     private static final String MEDIA_SOURCE_ACTION = "com.mengbo.multimedia.local.switch.mediasource";
     private static final String SOURCE_STATUS_ACTION = "mengbo.com.mediaservice.PlayControlCheryAction";
+    private static final String CURRENT_SOURCE_STATUS_ACTION = "mengbo.com.mediaservice.MediaCenterPlayAction";
     private static final String SOURCE_DESCRIPTOR = "com.mengbo.mediaservice.IPlayControlsInterface";
+    private static final String CURRENT_SOURCE_DESCRIPTOR = "com.mengbo.mediaservice.IMBMediaCenterInterface";
     private static final String CALLBACK_DESCRIPTOR = "com.mengbo.mediaservice.IPlayInfoCallBack";
+    private static final String CURRENT_CALLBACK_DESCRIPTOR = "com.mengbo.mediaservice.IMBMediaCenterEventListener";
     private static final long REFRESH_DELAY_MS = 800L;
     private static final long SONG_METADATA_GRACE_MS = 1500L;
     private static final long ARTWORK_FAILURE_TTL_MS = 10_000L;
@@ -71,6 +80,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private MediaController controller;
     private List<MediaController> systemControllers = new ArrayList<>();
     private final Map<MediaSession.Token, ObservedController> observed = new LinkedHashMap<>();
+    private final ContentMediaSessionArbiter sessionArbiter = new ContentMediaSessionArbiter();
     private final Set<String> quarantinedRecordings = new HashSet<>();
     private ContentPublicMediaBrowsers browsers;
     private Runnable discovery;
@@ -93,9 +103,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private ServiceConnection sourceConnection;
     private IBinder sourceService;
     private Binder sourceCallback;
+    private boolean sourceLegacyContract;
     private HandlerThread sourceThread;
     private Handler sourceHandler;
     private String actualSource;
+    private Integer lastSourceReadbackCode;
     private boolean running;
     private long lifecycle;
     private int generation;
@@ -248,6 +260,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         quarantinedRecordings.clear();
         sourceEpoch++;
         sourceChangedAt = 0L;
+        sessionArbiter.reset();
         hasReadbackSource = false;
         initialSourceCorrelation = false;
         sourceInventoryReady = false;
@@ -260,10 +273,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         failedArtwork.clear();
         final IBinder service = sourceService;
         final Binder callback = sourceCallback;
+        final boolean legacySourceContract = sourceLegacyContract;
         if (sourceHandler != null) {
             sourceHandler.removeCallbacksAndMessages(null);
             sourceHandler.post(new Runnable() {
-                @Override public void run() { registerSourceCallback(service, callback, 2); }
+                @Override public void run() { unregisterSourceCallback(service, callback, legacySourceContract); }
             });
         }
         if (sourceConnection != null) {
@@ -274,9 +288,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         sourceConnection = null;
         sourceService = null;
         sourceCallback = null;
+        sourceLegacyContract = false;
         sourceHandler = null;
         sourceThread = null;
         actualSource = null;
+        lastSourceReadbackCode = null;
         sessionManager = null;
         sessionListener = null;
         listener = null;
@@ -362,6 +378,8 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         if (duration != null && duration >= 1000L) avrcpDurationMs = duration;
         if (playbackState != null) avrcpPlaybackState = playbackState;
         avrcpElapsedRealtimeMs = SystemClock.elapsedRealtime();
+        sessionArbiter.observeBluetoothActivity(new ContentMediaSessionBluetoothActivity(
+                position, playbackState, avrcpElapsedRealtimeMs));
         avrcpEventSequence = ++nextAvrcpEventSequence;
         Log.i(TAG, "AVRCP accepted sequence=" + avrcpEventSequence
                 + " position=" + avrcpPositionMs + " state=" + avrcpPlaybackState);
@@ -421,17 +439,30 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private synchronized boolean isCurrent(long epoch) { return running && lifecycle == epoch; }
 
     private void bindSourceStatus(final long epoch) {
-        Intent intent = new Intent(SOURCE_STATUS_ACTION).setPackage(MEDIA_CENTER_PACKAGE);
+        Intent sourceIntent;
+        android.content.pm.ResolveInfo resolved;
+        boolean legacyContract = false;
         try {
-            android.content.pm.ResolveInfo resolved = context.getPackageManager().resolveService(intent, 0);
+            sourceIntent = new Intent(CURRENT_SOURCE_STATUS_ACTION).setPackage(MEDIA_CENTER_PACKAGE);
+            resolved = context.getPackageManager().resolveService(sourceIntent, 0);
+            if (resolved == null || resolved.serviceInfo == null) {
+                sourceIntent = new Intent(SOURCE_STATUS_ACTION).setPackage(MEDIA_CENTER_PACKAGE);
+                resolved = context.getPackageManager().resolveService(sourceIntent, 0);
+                legacyContract = true;
+            }
             if (resolved == null || resolved.serviceInfo == null || !resolved.serviceInfo.enabled
                     || !resolved.serviceInfo.applicationInfo.enabled) return;
             android.content.pm.ServiceInfo info = resolved.serviceInfo;
             if (!context.getPackageName().equals(info.packageName) && !info.exported) return;
             if (info.permission != null && context.checkSelfPermission(info.permission)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
-            intent.setComponent(new ComponentName(info.packageName, info.name));
-        } catch (RuntimeException error) { return; }
+            sourceIntent.setComponent(new ComponentName(info.packageName, info.name));
+        } catch (RuntimeException error) {
+            return;
+        }
+        final boolean useLegacyContract = legacyContract;
+        final String descriptor = useLegacyContract ? SOURCE_DESCRIPTOR : CURRENT_SOURCE_DESCRIPTOR;
+        final String callbackDescriptor = useLegacyContract ? CALLBACK_DESCRIPTOR : CURRENT_CALLBACK_DESCRIPTOR;
         final ServiceConnection connection = new ServiceConnection() {
             @Override public void onServiceConnected(ComponentName name, final IBinder service) {
                 Handler worker;
@@ -442,20 +473,43 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 worker.post(new Runnable() {
                     @Override public void run() {
                         try {
-                            if (!SOURCE_DESCRIPTOR.equals(service.getInterfaceDescriptor())) return;
-                        } catch (RemoteException | RuntimeException error) { return; }
+                            if (!descriptor.equals(service.getInterfaceDescriptor())) {
+                                Log.w(TAG, "media source descriptor mismatch: " + service.getInterfaceDescriptor());
+                                return;
+                            }
+                        } catch (RemoteException | RuntimeException error) {
+                            Log.w(TAG, "media source descriptor unavailable", error);
+                            return;
+                        }
                         final Binder callback = new Binder() {
                             @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
                                     throws RemoteException {
                                 if (code == INTERFACE_TRANSACTION) {
-                                    if (reply != null) reply.writeString(CALLBACK_DESCRIPTOR);
+                                    if (reply != null) reply.writeString(callbackDescriptor);
                                     return true;
                                 }
-                                if (code < 1 || code > 7) return super.onTransact(code, data, reply, flags);
-                                data.enforceInterface(CALLBACK_DESCRIPTOR);
-                                // Callback is a change signal only. Read the current source from the service.
+                                if (useLegacyContract) {
+                                    if (code < 1 || code > 7) return super.onTransact(code, data, reply, flags);
+                                    data.enforceInterface(CALLBACK_DESCRIPTOR);
+                                    if (code == 1 || code == 2 || code == 4) refreshSource(epoch);
+                                    if (reply != null) reply.writeNoException();
+                                    return true;
+                                }
+                                if (code < 1 || code > 5) return super.onTransact(code, data, reply, flags);
+                                data.enforceInterface(CURRENT_CALLBACK_DESCRIPTOR);
+                                if (code == 3) {
+                                    data.createStringArrayList();
+                                } else if (code == 4) {
+                                    data.readString();
+                                } else if (code == 5) {
+                                    data.readString();
+                                    return true;
+                                }
                                 if (code == 1 || code == 2 || code == 4) refreshSource(epoch);
-                                if (reply != null) reply.writeNoException();
+                                if (reply != null) {
+                                    reply.writeNoException();
+                                    if (code == 4) reply.writeInt(0);
+                                }
                                 return true;
                             }
                         };
@@ -464,9 +518,10 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                             if (sourceService != service) sourceInventoryReady = false;
                             sourceService = service;
                             sourceCallback = callback;
+                            sourceLegacyContract = useLegacyContract;
                         }
-                        registerSourceCallback(service, callback, 1);
-                        readSourceStatus(epoch, service);
+                        registerSourceCallback(service, callback, useLegacyContract);
+                        readSourceStatus(epoch, service, useLegacyContract);
                     }
                 });
             }
@@ -474,6 +529,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 synchronized (ContentMediaAdapter.this) {
                     if (!isCurrent(epoch) || sourceConnection != this) return;
                     sourceService = null;
+                    sourceLegacyContract = false;
                     changeActualSource(null);
                 }
                 reconcileControllers(epoch);
@@ -481,7 +537,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         };
         synchronized (this) { sourceConnection = connection; }
         try {
-            if (!context.bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
+            if (!context.bindService(sourceIntent, connection, Context.BIND_AUTO_CREATE)) {
                 synchronized (this) { if (sourceConnection == connection) sourceConnection = null; }
             }
         } catch (RuntimeException error) {
@@ -490,49 +546,87 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         }
     }
 
-    private void registerSourceCallback(IBinder service, Binder callback, int transaction) {
+    private void registerSourceCallback(IBinder service, Binder callback, boolean legacyContract) {
         if (service == null || callback == null) return;
         Parcel data = Parcel.obtain();
-        Parcel reply = Parcel.obtain();
+        Parcel reply = legacyContract ? Parcel.obtain() : null;
         try {
-            data.writeInterfaceToken(SOURCE_DESCRIPTOR);
+            data.writeInterfaceToken(legacyContract ? SOURCE_DESCRIPTOR : CURRENT_SOURCE_DESCRIPTOR);
             data.writeStrongBinder(callback);
-            if (service.transact(transaction, data, reply, 0)) reply.readException();
+            if (legacyContract) {
+                if (service.transact(1, data, reply, 0)) reply.readException();
+            } else {
+                service.transact(1, data, null, IBinder.FLAG_ONEWAY);
+            }
         } catch (RemoteException | RuntimeException error) {
             Log.w(TAG, "media source callback unavailable", error);
-        } finally { reply.recycle(); data.recycle(); }
+        } finally {
+            if (reply != null) reply.recycle();
+            data.recycle();
+        }
+    }
+
+    private void unregisterSourceCallback(IBinder service, Binder callback, boolean legacyContract) {
+        if (service == null || callback == null) return;
+        Parcel data = Parcel.obtain();
+        Parcel reply = legacyContract ? Parcel.obtain() : null;
+        try {
+            data.writeInterfaceToken(legacyContract ? SOURCE_DESCRIPTOR : CURRENT_SOURCE_DESCRIPTOR);
+            data.writeStrongBinder(callback);
+            if (legacyContract) {
+                if (service.transact(2, data, reply, 0)) reply.readException();
+            } else {
+                service.transact(2, data, null, IBinder.FLAG_ONEWAY);
+            }
+        } catch (RemoteException | RuntimeException error) {
+            Log.w(TAG, "media source callback removal unavailable", error);
+        } finally {
+            if (reply != null) reply.recycle();
+            data.recycle();
+        }
     }
 
     private void refreshSource(final long epoch) {
         synchronized (this) {
             if (!isCurrent(epoch) || sourceHandler == null) return;
             final IBinder service = sourceService;
+            final boolean legacyContract = sourceLegacyContract;
             if (service != null) sourceHandler.post(new Runnable() {
-                @Override public void run() { readSourceStatus(epoch, service); }
+                @Override public void run() {
+                    readSourceStatus(epoch, service, legacyContract);
+                }
             });
         }
     }
 
-    private void readSourceStatus(final long epoch, final IBinder service) {
+    private void readSourceStatus(final long epoch, final IBinder service, final boolean legacyContract) {
         if (!isCurrent(epoch)) return;
         String source = null;
+        Integer rawCode = null;
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
         try {
-            data.writeInterfaceToken(SOURCE_DESCRIPTOR);
-            if (service.transact(6, data, reply, 0)) {
+            data.writeInterfaceToken(legacyContract ? SOURCE_DESCRIPTOR : CURRENT_SOURCE_DESCRIPTOR);
+            int transaction = legacyContract ? 6 : 38;
+            if (service.transact(transaction, data, reply, 0)) {
                 reply.readException();
-                source = sourceForStatus(reply.readInt());
+                rawCode = reply.readInt();
+                source = sourceForStatus(rawCode);
             }
         } catch (RemoteException | RuntimeException error) {
             Log.w(TAG, "media source readback unavailable", error);
         } finally { reply.recycle(); data.recycle(); }
         final String readback = source;
+        final Integer observedCode = rawCode;
         handler.post(new Runnable() {
             @Override public void run() {
                 synchronized (ContentMediaAdapter.this) {
                     if (!isCurrent(epoch) || sourceService != service) return;
                     boolean inventoryChanged = !sourceInventoryReady || !java.util.Objects.equals(actualSource, readback);
+                    if (!sourceInventoryReady || !java.util.Objects.equals(lastSourceReadbackCode, observedCode)) {
+                        Log.i(TAG, "media source readback raw=" + observedCode + " mapped=" + readback);
+                    }
+                    lastSourceReadbackCode = observedCode;
                     sourceInventoryReady = true;
                     changeActualSource(readback);
                     if (inventoryChanged) refreshSessions(epoch); else reconcileSelection(epoch);
@@ -571,6 +665,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         for (MediaController item : systemControllers) if (item != null) packages.add(item.getPackageName());
         if (actualSource != null || sourceService != null) packages.add(MEDIA_CENTER_PACKAGE);
         String marker = "网易云音乐".equals(actualSource) ? "cloudmusic"
+                : "爱趣听".equals(actualSource) ? ".musicservice"
                 : "USB音乐".equals(actualSource) ? "usbplayer"
                 : "本机音乐".equals(actualSource) ? "hddplayer"
                 : "蓝牙音乐".equals(actualSource) ? "bluetooth" : null;
@@ -666,6 +761,10 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     }
 
     private MediaController selectController() {
+        if (actualSource == null && !sourceInventoryReady && sourceService == null) {
+            MediaController arbitrated = selectWithoutSourceReadback();
+            if (arbitrated != null) return arbitrated;
+        }
         MediaController selected = null;
         int best = -1;
         for (ObservedController item : observed.values()) {
@@ -692,12 +791,59 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return selected;
     }
 
+    private MediaController selectWithoutSourceReadback() {
+        ArrayList<ContentMediaSessionCandidate> candidates = new ArrayList<>();
+        Map<String, ObservedController> bySession = new LinkedHashMap<>();
+        int index = 0;
+        for (ObservedController item : observed.values()) {
+            if (item.destroyed || !matchesActualSource(item)) continue;
+            MediaMetadata metadata = safeMetadata(item.controller);
+            MediaFields fields = mediaFields(metadata);
+            PlaybackState state = safePlayback(item.controller);
+            AudioAttributes audio = safeAudioAttributes(item.controller);
+            String packageName = item.controller.getPackageName();
+            String sessionId = item.controller.getSessionToken().toString();
+            String sourceId = sourceForController(item.controller);
+            if (sourceId == null) sourceId = packageName;
+            Integer playbackState = state == null ? null : state.getState();
+            Integer audioUsage = audio == null ? null : audio.getUsage();
+            Integer audioContentType = audio == null ? null : audio.getContentType();
+            long position = state == null ? PlaybackState.PLAYBACK_POSITION_UNKNOWN : state.getPosition();
+            long updated = state == null ? 0L : state.getLastPositionUpdateTime();
+            ContentMediaSessionCandidate candidate = new ContentMediaSessionCandidate(
+                    index++, sessionId, sourceId, packageName, playbackState, audioUsage,
+                    audioContentType, state == null ? 0L : state.getActions(), !fields.title.isEmpty(),
+                    isSystemController(item.controller), position, updated,
+                    isBluetooth(item.controller) ? ContentMediaSessionTransport.BLUETOOTH_AVRCP
+                            : ContentMediaSessionTransport.STANDARD,
+                    bluetoothCommunicationActive(item.controller),
+                    !fields.artist.isEmpty() || !fields.album.isEmpty());
+            candidates.add(candidate);
+            bySession.put(sessionId, item);
+        }
+        ContentMediaSessionArbitrationDecision decision = sessionArbiter.evaluate(
+                candidates, SystemClock.elapsedRealtime(), context.getPackageName(),
+                browsers != null && browsers.getSessions().isEmpty());
+        if (decision.getAction() == ContentMediaSessionArbitrationAction.CLEAR) return null;
+        String selectedId = decision.getSessionId();
+        if (selectedId == null) return null;
+        ObservedController selected = bySession.get(selectedId);
+        return selected == null ? null : selected.controller;
+    }
+
+    private boolean isSystemController(MediaController candidate) {
+        if (candidate == null) return false;
+        for (MediaController item : systemControllers) if (sameToken(item, candidate)) return true;
+        return false;
+    }
+
     private void changeActualSource(String source) {
         if (java.util.Objects.equals(actualSource, source)) return;
         initialSourceCorrelation = !hasReadbackSource && source != null && publishedRecording.isEmpty();
         if (source != null) hasReadbackSource = true;
         sourceEpoch++;
         sourceChangedAt = SystemClock.elapsedRealtime();
+        sessionArbiter.reset();
         clearConfirmedSong();
         quarantinedRecordings.clear();
         for (ObservedController item : observed.values()) {
@@ -712,7 +858,10 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private boolean matchesActualSource(ObservedController item) {
         String precise = sourceForController(item.controller);
-        if (actualSource == null) return precise != null;
+        // No source service is different from an observed but unresolved readback.
+        // The latter cannot authorize a retained session (e.g. Bluetooth after switching
+        // to an unrecognised source). Never turn unknown SDK codes into a source guess.
+        if (actualSource == null) return !sourceInventoryReady && sourceService == null && precise != null;
         if (precise != null) return actualSource.equals(precise);
         if (!MEDIA_CENTER_PACKAGE.equals(item.controller.getPackageName())) return false;
         if (item.confirmedSourceEpoch == sourceEpoch) return true;
@@ -736,7 +885,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         if (state == null || state.getPosition() < 0L || state.getLastPositionUpdateTime() <= 0L
                 || state.getLastPositionUpdateTime() < after
                 || state.getLastPositionUpdateTime() > SystemClock.elapsedRealtime()) return false;
-        if (state.getState() != PlaybackState.STATE_PLAYING && state.getState() != PlaybackState.STATE_BUFFERING) return false;
+        int playbackState = state.getState();
+        if (playbackState != PlaybackState.STATE_PLAYING
+                && playbackState != PlaybackState.STATE_BUFFERING
+                && playbackState != PlaybackState.STATE_CONNECTING
+                && playbackState != PlaybackState.STATE_PAUSED) return false;
         return state.getPosition() > 0L || mediaFields(metadata).durationMs >= 1000L;
     }
 
@@ -759,8 +912,11 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         if (name.contains("usbplayer")) return "USB音乐";
         if (name.contains("hddplayer") || name.contains("localmusic")) return "本机音乐";
         if (component.getPackageName().equals("com.android.bluetooth")) return "蓝牙音乐";
-        if (MEDIA_CENTER_PACKAGE.equals(component.getPackageName()) && name.endsWith(".musicservice")) return "爱趣听";
-        // MediaPlaybackService is shared by online providers; its package/name cannot identify one.
+        if (MEDIA_CENTER_PACKAGE.equals(component.getPackageName()) &&
+                (name.endsWith(".musicservice") || name.endsWith(".mediaplaybackservice"))) return "爱趣听";
+        // The current car firmware exposes Aiquting through this shared public Browser endpoint.
+        // The Binder readback remains the authority when it is available; this identity only keeps
+        // a valid public session readable during the short no-readback window.
         return null;
     }
 
@@ -1193,6 +1349,8 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             case 6: return "蓝牙音乐";
             case 10: return "网易云音乐";
             case 11: return "本机音乐";
+            // OEM MediaConstant.LIVE_MUSIC_SOURCE (SDK domain); AQT_PROGRAM uses a different card-domain code.
+            case 13: return "爱趣听";
             default: return null;
         }
     }

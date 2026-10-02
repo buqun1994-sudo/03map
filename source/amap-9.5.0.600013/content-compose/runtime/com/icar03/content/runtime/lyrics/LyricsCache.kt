@@ -5,6 +5,10 @@ package com.icar03.content.runtime.lyrics
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.File
+import kotlin.concurrent.withLock
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
@@ -19,7 +23,8 @@ import kotlin.math.min
 
 internal class LyricsCache(
     context: Context,
-    databaseName: String = DATABASE_NAME
+    databaseName: String = ContentCacheBudget.DATABASE_NAME,
+    private val maximumBytes: Long = ContentCacheBudget.MAX_BYTES
 ) : LyricsPlaybackCache, Closeable {
     data class Entry(
         val result: LyricsResult,
@@ -41,7 +46,9 @@ internal class LyricsCache(
                         nowMs - lastRefreshAtMs >= LyricsCachePolicy.REFRESH_AFTER_MS))
     }
 
-    private val helper = CacheDatabase(context.applicationContext, databaseName)
+    private val access = ContentCacheBudget.acquire(context.getDatabasePath(databaseName).canonicalPath)
+    private val helper = CacheDatabase(context.applicationContext, databaseName, maximumBytes)
+    private val trimTargetBytes = maximumBytes * 9L / 10L
     @Volatile private var closed = false
 
     override fun read(identity: LyricsPlaybackIdentity, recordUse: Boolean): Entry? = get(
@@ -64,40 +71,35 @@ internal class LyricsCache(
         recordUse: Boolean,
         nowMs: Long = System.currentTimeMillis()
     ): Entry? {
-        if (closed || !LyricsCandidateSelector.hasKnownDuration(playbackDurationMs)) return null
-        return runCatching {
-            val database = helper.writableDatabase
-            val query = LyricsLookup(track, artist, album, playbackDurationMs)
-            findManualEntries(database, query).minWithOrNull(
-                compareBy<ManualCachedEntry> { abs(playbackDurationMs - it.identity.durationMs) }
-                    .thenByDescending { it.entry.updatedAtMs }
-            )?.let {
-                return@runCatching it.entry
-            }
-            val cached = findAutomaticEntries(database, query).minWithOrNull(
-                compareBy<CachedEntry> { abs(playbackDurationMs - it.entry.result.durationMs) }
-                    .thenByDescending { it.entry.updatedAtMs }
-            ) ?: return@runCatching null
-            if (recordUse) {
-                val nextUseCount = LyricsCachePolicy.nextUseCount(cached.useCount)
-                database.update(
-                    TABLE_CACHE,
-                    ContentValues().apply {
-                        put(COLUMN_LAST_USED_AT, nowMs)
-                        put(COLUMN_USE_COUNT, nextUseCount)
-                        put(
-                            COLUMN_EVICTION_SCORE,
-                            LyricsCachePolicy.evictionScore(nowMs, nextUseCount)
-                        )
-                    },
-                    "$COLUMN_KEY = ?",
-                    arrayOf(cached.cacheKey)
-                )
-            }
-            cached.entry
-        }.onFailure { error ->
-            Log.w(LOG_TAG, "Unable to read native lyrics cache", error)
-        }.getOrNull()
+        return access.lock.withLock {
+            if (closed || !LyricsCandidateSelector.hasKnownDuration(playbackDurationMs)) return@withLock null
+            runCatching {
+                val database = helper.writableDatabase
+                database.beginTransaction()
+                try {
+                    val query = LyricsLookup(track, artist, album, playbackDurationMs)
+                    val manual = findManualEntries(database, query).minWithOrNull(
+                        compareBy<ManualCachedEntry> { abs(playbackDurationMs - it.identity.durationMs) }
+                            .thenByDescending { it.entry.updatedAtMs }
+                    )
+                    val cached = if (manual == null) findAutomaticEntries(database, query).minWithOrNull(
+                        compareBy<CachedEntry> { abs(playbackDurationMs - it.entry.result.durationMs) }
+                            .thenByDescending { it.entry.updatedAtMs }
+                    ) else null
+                    if (recordUse && cached != null) {
+                        val count = LyricsCachePolicy.nextUseCount(cached.useCount)
+                        database.update(TABLE_CACHE, ContentValues().apply {
+                            put(COLUMN_LAST_USED_AT, nowMs); put(COLUMN_USE_COUNT, count)
+                            put(COLUMN_EVICTION_SCORE, LyricsCachePolicy.evictionScore(nowMs, count))
+                        }, "$COLUMN_KEY = ?", arrayOf(cached.cacheKey))
+                    }
+                    database.setTransactionSuccessful()
+                    manual?.entry ?: cached?.entry
+                } finally { database.endTransaction() }
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "Unable to read native lyrics cache", error)
+            }.getOrNull()
+        }
     }
 
     @Synchronized
@@ -109,122 +111,124 @@ internal class LyricsCache(
         resolved: ResolvedLyrics,
         updatedAtMs: Long = System.currentTimeMillis()
     ): Boolean {
-        val result = resolved.result
-        val query = LyricsLookup(track, artist, album, playbackDurationMs)
-        val selection = LyricsCandidateSelection(result, resolved.proof)
-        if (closed || result.contentKind() == LyricsKind.NONE ||
-            !LyricsCandidateSelector.hasMatchingDuration(playbackDurationMs, result.durationMs) ||
-            !LyricsCandidateSelector.isProofValid(query, result, resolved.proof)
-        ) return false
-        return runCatching {
-            if (LyricsContentRanker.rank(query, listOf(selection)).isEmpty()) return@runCatching false
-            val cacheKey = key(track, artist, album, result.durationMs)
-            val database = helper.writableDatabase
-            database.beginTransaction()
-            try {
-                if (findManualEntries(database, query).isNotEmpty()) return@runCatching false
-                val previous = findAutomaticEntries(database, query)
-                if (previous.any { !isStrictUpgrade(query, it.entry, selection) }) return@runCatching false
-                val nowMs = System.currentTimeMillis()
-                val savedAtMs = updatedAtMs.coerceIn(0L, nowMs)
-                val currentBudgets = previous.map(CachedEntry::entry)
-                    .filter { it.qualityVersion == LyricsCachePolicy.QUALITY_VERSION }
-                val payload = encodeResolved(
-                    resolved, query,
-                    refreshAttempts = currentBudgets.maxOfOrNull(Entry::refreshAttempts) ?: 0,
-                    lastRefreshAtMs = currentBudgets.maxOfOrNull(Entry::lastRefreshAtMs) ?: savedAtMs
-                )
-                val byteSize = cacheEntrySize(cacheKey, payload)
-                if (byteSize > LyricsCachePolicy.MAX_BYTES) return@runCatching false
-                val existing = existingMetadata(database, cacheKey)
-                    ?: previous.firstOrNull()?.let { existingMetadata(database, it.cacheKey) }
-                val useCount = existing?.useCount ?: 1
-                val lastUsedAtMs = existing?.lastUsedAtMs ?: nowMs
-                val evictionScore = existing?.evictionScore
-                    ?: LyricsCachePolicy.evictionScore(lastUsedAtMs, useCount)
-                val removedBytes = deleteKeys(database, TABLE_CACHE, previous.map(CachedEntry::cacheKey)) +
-                    deleteReplacedRows(database, TABLE_CACHE, cacheKey)
-                val inserted = database.insertWithOnConflict(
-                    TABLE_CACHE,
-                    null,
-                    ContentValues().apply {
-                        put(COLUMN_KEY, cacheKey)
-                        put(COLUMN_RECORDING_KEY, cacheKey)
-                        put(COLUMN_PAYLOAD, payload)
-                        put(COLUMN_BYTE_SIZE, byteSize)
-                        put(COLUMN_UPDATED_AT, savedAtMs)
-                        put(COLUMN_LAST_USED_AT, lastUsedAtMs)
-                        put(COLUMN_USE_COUNT, useCount)
-                        put(COLUMN_EVICTION_SCORE, evictionScore)
-                    },
-                    SQLiteDatabase.CONFLICT_REPLACE
-                )
-                check(inserted != -1L) { "Automatic lyrics insert failed" }
-                var totalBytes = totalBytes(database) - removedBytes + byteSize
-                if (totalBytes > LyricsCachePolicy.MAX_BYTES) {
-                    totalBytes = trimToTarget(database, totalBytes, protectedAutomaticKey = cacheKey)
+        return access.lock.withLock {
+            val result = resolved.result
+            val query = LyricsLookup(track, artist, album, playbackDurationMs)
+            val selection = LyricsCandidateSelection(result, resolved.proof)
+            if (closed || result.contentKind() == LyricsKind.NONE ||
+                !LyricsCandidateSelector.hasMatchingDuration(playbackDurationMs, result.durationMs) ||
+                !LyricsCandidateSelector.isProofValid(query, result, resolved.proof)
+            ) return@withLock false
+            runCatching {
+                if (LyricsContentRanker.rank(query, listOf(selection)).isEmpty()) return@runCatching false
+                val cacheKey = key(track, artist, album, result.durationMs)
+                val database = helper.writableDatabase
+                database.beginTransaction()
+                try {
+                    if (findManualEntries(database, query).isNotEmpty()) return@runCatching false
+                    val previous = findAutomaticEntries(database, query)
+                    if (previous.any { !isStrictUpgrade(query, it.entry, selection) }) return@runCatching false
+                    val nowMs = System.currentTimeMillis()
+                    val savedAtMs = updatedAtMs.coerceIn(0L, nowMs)
+                    val currentBudgets = previous.map(CachedEntry::entry)
+                        .filter { it.qualityVersion == LyricsCachePolicy.QUALITY_VERSION }
+                    val payload = encodeResolved(
+                        resolved, query,
+                        refreshAttempts = currentBudgets.maxOfOrNull(Entry::refreshAttempts) ?: 0,
+                        lastRefreshAtMs = currentBudgets.maxOfOrNull(Entry::lastRefreshAtMs) ?: savedAtMs
+                    )
+                    val byteSize = cacheEntrySize(cacheKey, payload)
+                    if (byteSize > minOf(maximumBytes, ContentCacheBudget.MAX_ENTRY_BYTES)) return@runCatching false
+                    val existing = existingMetadata(database, cacheKey)
+                        ?: previous.firstOrNull()?.let { existingMetadata(database, it.cacheKey) }
+                    val useCount = existing?.useCount ?: 1
+                    val lastUsedAtMs = existing?.lastUsedAtMs ?: nowMs
+                    val evictionScore = existing?.evictionScore
+                        ?: LyricsCachePolicy.evictionScore(lastUsedAtMs, useCount)
+                    val removedBytes = deleteKeys(database, TABLE_CACHE, previous.map(CachedEntry::cacheKey)) +
+                        deleteReplacedRows(database, TABLE_CACHE, cacheKey)
+                    var totalBytes = totalBytes(database) - removedBytes + byteSize
+                    totalBytes = ContentCacheBudget.reserve(database, totalBytes, byteSize, maximumBytes, protectedLyrics = cacheKey)
+                    if (totalBytes > maximumBytes) return@runCatching false
+                    val inserted = database.insertWithOnConflict(
+                        TABLE_CACHE,
+                        null,
+                        ContentValues().apply {
+                            put(COLUMN_KEY, cacheKey)
+                            put(COLUMN_RECORDING_KEY, cacheKey)
+                            put(COLUMN_PAYLOAD, payload)
+                            put(COLUMN_BYTE_SIZE, byteSize)
+                            put(COLUMN_UPDATED_AT, savedAtMs)
+                            put(COLUMN_LAST_USED_AT, lastUsedAtMs)
+                            put(COLUMN_USE_COUNT, useCount)
+                            put(COLUMN_EVICTION_SCORE, evictionScore)
+                        },
+                        SQLiteDatabase.CONFLICT_REPLACE
+                    )
+                    check(inserted != -1L) { "Automatic lyrics insert failed" }
+                    writeTotalBytes(database, totalBytes)
+                    database.setTransactionSuccessful()
+                } finally {
+                    database.endTransaction()
                 }
-                if (totalBytes > LyricsCachePolicy.MAX_BYTES) return@runCatching false
-                writeTotalBytes(database, totalBytes)
-                database.setTransactionSuccessful()
-            } finally {
-                database.endTransaction()
-            }
-            true
-        }.onFailure { error ->
-            Log.w(LOG_TAG, "Unable to write native lyrics cache", error)
-        }.getOrDefault(false)
+                true
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "Unable to write native lyrics cache", error)
+            }.getOrDefault(false)
+        }
     }
 
     @Synchronized
     override fun recordRefresh(identity: LyricsPlaybackIdentity, nowMs: Long): Boolean {
-        if (closed || !identity.isUsable) return false
-        return runCatching {
-            val database = helper.writableDatabase
-            database.beginTransaction()
-            try {
-                val query = identity.lookup()
-                if (findManualEntries(database, query).isNotEmpty()) return@runCatching false
-                val cached = findAutomaticEntries(database, query).minWithOrNull(
-                    compareBy<CachedEntry> { abs(identity.durationMs - it.entry.result.durationMs) }
-                        .thenByDescending { it.entry.updatedAtMs }
-                ) ?: return@runCatching false
-                val previous = cached.entry
-                val attempts = if (previous.qualityVersion == LyricsCachePolicy.QUALITY_VERSION) {
-                    previous.refreshAttempts
-                } else 0
-                if (attempts >= LyricsCachePolicy.MAX_REFRESH_ATTEMPTS) return@runCatching false
-                // The caller records only a valid Found; put may already have upgraded its body.
-                val payload = JSONObject(cached.payload)
-                    .put("qualityVersion", LyricsCachePolicy.QUALITY_VERSION)
-                    .put("refreshAttempts", attempts + 1)
-                    .put("lastRefreshAtMs", maxOf(previous.lastRefreshAtMs, nowMs.coerceAtLeast(0L)))
-                    .toString()
-                val byteSize = cacheEntrySize(cached.cacheKey, payload)
-                var totalBytes = totalBytes(database) - cached.byteSize + byteSize
-                if (totalBytes > LyricsCachePolicy.MAX_BYTES) {
-                    totalBytes = trimToTarget(database, totalBytes, protectedAutomaticKey = cached.cacheKey)
+        return access.lock.withLock {
+            if (closed || !identity.isUsable) return@withLock false
+            runCatching {
+                val database = helper.writableDatabase
+                database.beginTransaction()
+                try {
+                    val query = identity.lookup()
+                    if (findManualEntries(database, query).isNotEmpty()) return@runCatching false
+                    val cached = findAutomaticEntries(database, query).minWithOrNull(
+                        compareBy<CachedEntry> { abs(identity.durationMs - it.entry.result.durationMs) }
+                            .thenByDescending { it.entry.updatedAtMs }
+                    ) ?: return@runCatching false
+                    val previous = cached.entry
+                    val attempts = if (previous.qualityVersion == LyricsCachePolicy.QUALITY_VERSION) {
+                        previous.refreshAttempts
+                    } else 0
+                    if (attempts >= LyricsCachePolicy.MAX_REFRESH_ATTEMPTS) return@runCatching false
+                    // The caller records only a valid Found; put may already have upgraded its body.
+                    val payload = JSONObject(cached.payload)
+                        .put("qualityVersion", LyricsCachePolicy.QUALITY_VERSION)
+                        .put("refreshAttempts", attempts + 1)
+                        .put("lastRefreshAtMs", maxOf(previous.lastRefreshAtMs, nowMs.coerceAtLeast(0L)))
+                        .toString()
+                    val byteSize = cacheEntrySize(cached.cacheKey, payload)
+                    var totalBytes = totalBytes(database) - cached.byteSize + byteSize
+                    if (totalBytes > maximumBytes) {
+                        totalBytes = trimToTarget(database, totalBytes, protectedAutomaticKey = cached.cacheKey)
+                    }
+                    if (totalBytes > maximumBytes) return@runCatching false
+                    val changed = database.update(
+                        TABLE_CACHE,
+                        ContentValues().apply {
+                            put(COLUMN_PAYLOAD, payload)
+                            put(COLUMN_BYTE_SIZE, byteSize)
+                        },
+                        "$COLUMN_KEY = ?",
+                        arrayOf(cached.cacheKey)
+                    )
+                    check(changed == 1) { "Lyrics refresh metadata update failed" }
+                    writeTotalBytes(database, totalBytes)
+                    database.setTransactionSuccessful()
+                } finally {
+                    database.endTransaction()
                 }
-                if (totalBytes > LyricsCachePolicy.MAX_BYTES) return@runCatching false
-                val changed = database.update(
-                    TABLE_CACHE,
-                    ContentValues().apply {
-                        put(COLUMN_PAYLOAD, payload)
-                        put(COLUMN_BYTE_SIZE, byteSize)
-                    },
-                    "$COLUMN_KEY = ?",
-                    arrayOf(cached.cacheKey)
-                )
-                check(changed == 1) { "Lyrics refresh metadata update failed" }
-                writeTotalBytes(database, totalBytes)
-                database.setTransactionSuccessful()
-            } finally {
-                database.endTransaction()
-            }
-            true
-        }.onFailure { error ->
-            Log.w(LOG_TAG, "Unable to record lyrics cache refresh", error)
-        }.getOrDefault(false)
+                true
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "Unable to record lyrics cache refresh", error)
+            }.getOrDefault(false)
+        }
     }
 
     private fun isStrictUpgrade(
@@ -237,12 +241,7 @@ internal class LyricsCache(
             return false
         }
         val baseline = LyricsCandidateSelection(resolved.result, resolved.proof)
-        val ranked = LyricsContentRanker.rank(query, listOf(baseline, selection))
-        val old = ranked.firstOrNull { it.selection == baseline } ?: return false
-        val next = ranked.firstOrNull { it.selection == selection } ?: return false
-        return ranked.first().selection == selection &&
-            ((next.quality.kind == LyricsKind.SYNCHRONIZED && old.quality.kind == LyricsKind.PLAIN) ||
-                (next.quality.kind == old.quality.kind && next.quality.score > old.quality.score))
+        return LyricsContentRanker.isMaterialUpgrade(query, baseline, selection)
     }
 
     @Synchronized
@@ -251,114 +250,118 @@ internal class LyricsCache(
         result: LyricsResult,
         updatedAtMs: Long = System.currentTimeMillis()
     ): Boolean {
-        if (closed || !identity.isUsable ||
-            result.contentKind() == LyricsKind.NONE
-        ) {
-            return false
-        }
-        return runCatching {
-            val cacheKey = key(identity.track, identity.artist, identity.album, identity.durationMs)
-            val payload = result.toJson()
-                .put("playbackIdentity", identity.toJson())
-                .toString()
-            val byteSize = cacheEntrySize(cacheKey, payload)
-            if (byteSize > LyricsCachePolicy.TRIM_TARGET_BYTES) return@runCatching false
-
-            val database = helper.writableDatabase
-            database.beginTransaction()
-            try {
-                val previousBytes = deleteReplacedRows(database, TABLE_MANUAL, cacheKey)
-                val nowMs = System.currentTimeMillis()
-                val inserted = database.insertWithOnConflict(
-                    TABLE_MANUAL,
-                    null,
-                    ContentValues().apply {
-                        put(COLUMN_KEY, cacheKey)
-                        put(COLUMN_RECORDING_KEY, cacheKey)
-                        put(COLUMN_PAYLOAD, payload)
-                        put(COLUMN_BYTE_SIZE, byteSize)
-                        put(COLUMN_UPDATED_AT, updatedAtMs.coerceIn(0L, nowMs))
-                    },
-                    SQLiteDatabase.CONFLICT_REPLACE
-                )
-                check(inserted != -1L) { "Manual lyrics insert failed" }
-                if (tableCount(database, TABLE_MANUAL) > MANUAL_ENTRY_LIMIT) return@runCatching false
-                var totalBytes = totalBytes(database) - previousBytes + byteSize
-                if (totalBytes > LyricsCachePolicy.MAX_BYTES) {
-                    totalBytes = trimToTarget(database, totalBytes)
-                }
-                if (totalBytes > LyricsCachePolicy.MAX_BYTES) return@runCatching false
-                writeTotalBytes(database, totalBytes)
-                database.setTransactionSuccessful()
-            } finally {
-                database.endTransaction()
+        return access.lock.withLock {
+            if (closed || !identity.isUsable ||
+                result.contentKind() == LyricsKind.NONE
+            ) {
+                return false
             }
-            true
-        }.onFailure { error ->
-            Log.w(LOG_TAG, "Unable to write manual lyrics override", error)
-        }.getOrDefault(false)
+            runCatching {
+                val cacheKey = key(identity.track, identity.artist, identity.album, identity.durationMs)
+                val payload = result.toJson()
+                    .put("playbackIdentity", identity.toJson())
+                    .toString()
+                val byteSize = cacheEntrySize(cacheKey, payload)
+                if (byteSize > minOf(trimTargetBytes, ContentCacheBudget.MAX_ENTRY_BYTES)) return@runCatching false
+
+                val database = helper.writableDatabase
+                database.beginTransaction()
+                try {
+                    val previousBytes = deleteReplacedRows(database, TABLE_MANUAL, cacheKey)
+                    val nowMs = System.currentTimeMillis()
+                    var totalBytes = totalBytes(database) - previousBytes + byteSize
+                    totalBytes = ContentCacheBudget.reserve(database, totalBytes, byteSize, maximumBytes)
+                    if (totalBytes > maximumBytes) return@runCatching false
+                    val inserted = database.insertWithOnConflict(
+                        TABLE_MANUAL,
+                        null,
+                        ContentValues().apply {
+                            put(COLUMN_KEY, cacheKey)
+                            put(COLUMN_RECORDING_KEY, cacheKey)
+                            put(COLUMN_PAYLOAD, payload)
+                            put(COLUMN_BYTE_SIZE, byteSize)
+                            put(COLUMN_UPDATED_AT, updatedAtMs.coerceIn(0L, nowMs))
+                        },
+                        SQLiteDatabase.CONFLICT_REPLACE
+                    )
+                    check(inserted != -1L) { "Manual lyrics insert failed" }
+                    if (tableCount(database, TABLE_MANUAL) > MANUAL_ENTRY_LIMIT) return@runCatching false
+                    writeTotalBytes(database, totalBytes)
+                    database.setTransactionSuccessful()
+                } finally {
+                    database.endTransaction()
+                }
+                true
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "Unable to write manual lyrics override", error)
+            }.getOrDefault(false)
+        }
     }
 
     @Synchronized
     override fun clearManual(identity: LyricsPlaybackIdentity): Boolean {
-        if (closed || !identity.isUsable) return false
-        return runCatching {
-            val database = helper.writableDatabase
-            database.beginTransaction()
-            try {
-                val removedBytes = deleteKeys(
-                    database,
-                    TABLE_MANUAL,
-                    findManualEntries(database, identity.lookup()).map { it.cacheKey }
-                )
-                if (removedBytes > 0L) {
-                    writeTotalBytes(database, totalBytes(database) - removedBytes)
+        return access.lock.withLock {
+            if (closed || !identity.isUsable) return@withLock false
+            runCatching {
+                val database = helper.writableDatabase
+                database.beginTransaction()
+                try {
+                    val removedBytes = deleteKeys(
+                        database,
+                        TABLE_MANUAL,
+                        findManualEntries(database, identity.lookup()).map { it.cacheKey }
+                    )
+                    if (removedBytes > 0L) {
+                        writeTotalBytes(database, totalBytes(database) - removedBytes)
+                    }
+                    database.setTransactionSuccessful()
+                    removedBytes > 0L
+                } finally {
+                    database.endTransaction()
                 }
-                database.setTransactionSuccessful()
-                removedBytes > 0L
-            } finally {
-                database.endTransaction()
-            }
-        }.onFailure { error ->
-            Log.w(LOG_TAG, "Unable to clear manual lyrics override", error)
-        }.getOrDefault(false)
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "Unable to clear manual lyrics override", error)
+            }.getOrDefault(false)
+        }
     }
 
     @Synchronized
     override fun clearCurrent(identity: LyricsPlaybackIdentity): Boolean {
-        if (closed || !identity.isUsable) return false
-        return runCatching {
-            val database = helper.writableDatabase
-            database.beginTransaction()
-            try {
-                val query = identity.lookup()
-                val removedBytes = deleteKeys(
-                    database, TABLE_MANUAL, findManualEntries(database, query).map { it.cacheKey }
-                ) + deleteKeys(
-                    database, TABLE_CACHE, findAutomaticEntries(database, query).map { it.cacheKey }
-                )
-                if (removedBytes > 0L) {
-                    writeTotalBytes(database, totalBytes(database) - removedBytes)
+        return access.lock.withLock {
+            if (closed || !identity.isUsable) return@withLock false
+            runCatching {
+                val database = helper.writableDatabase
+                database.beginTransaction()
+                try {
+                    val query = identity.lookup()
+                    val removedBytes = deleteKeys(
+                        database, TABLE_MANUAL, findManualEntries(database, query).map { it.cacheKey }
+                    ) + deleteKeys(
+                        database, TABLE_CACHE, findAutomaticEntries(database, query).map { it.cacheKey }
+                    )
+                    if (removedBytes > 0L) {
+                        writeTotalBytes(database, totalBytes(database) - removedBytes)
+                    }
+                    database.setTransactionSuccessful()
+                    removedBytes > 0L
+                } finally {
+                    database.endTransaction()
                 }
-                database.setTransactionSuccessful()
-                removedBytes > 0L
-            } finally {
-                database.endTransaction()
-            }
-        }.onFailure { error ->
-            Log.w(LOG_TAG, "Unable to clear current lyrics cache", error)
-        }.getOrDefault(false)
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "Unable to clear current lyrics cache", error)
+            }.getOrDefault(false)
+        }
     }
 
     @Synchronized
     fun snapshot(identity: LyricsPlaybackIdentity?): LyricsCacheSnapshot =
-        snapshotInternal(identity, null, useLookup = true)
+        access.lock.withLock { snapshotInternal(identity, null, useLookup = true) }
 
     @Synchronized
     override fun snapshot(
         identity: LyricsPlaybackIdentity?,
         currentEntry: Entry?
-    ): LyricsCacheSnapshot = snapshotInternal(identity, currentEntry, useLookup = false)
+    ): LyricsCacheSnapshot = access.lock.withLock { snapshotInternal(identity, currentEntry, useLookup = false) }
 
     private fun snapshotInternal(
         identity: LyricsPlaybackIdentity?,
@@ -372,7 +375,7 @@ internal class LyricsCache(
                 automaticEntries = tableCount(database, TABLE_CACHE),
                 manualEntries = tableCount(database, TABLE_MANUAL),
                 totalBytes = totalBytes(database),
-                maximumAutomaticBytes = LyricsCachePolicy.MAX_BYTES
+                maximumAutomaticBytes = maximumBytes
             )
             val current = currentEntry?.let { entry ->
                 LyricsCachedTrackInfo(entry.selection, entry.result, entry.updatedAtMs)
@@ -393,47 +396,85 @@ internal class LyricsCache(
         }.getOrElse { LyricsCacheSnapshot(emptyStats(), null) }
     }
 
+    /** Artwork shares the same transaction, quota and usage score as automatic text. */
     @Synchronized
-    override fun close() {
-        if (closed) return
-        closed = true
-        helper.close()
+    fun readCover(query: LyricsLookup, legacyKey: String? = null): Bitmap? {
+        return access.lock.withLock {
+            if (closed || !LyricsCandidateSelector.canFindCover(query)) return@withLock null
+            runCatching {
+                val db = helper.writableDatabase
+                val key = legacyKey ?: key(query.track, query.artist, query.album, query.durationMs)
+                db.beginTransaction()
+                try {
+                    var size = 0L
+                    var uses = 0
+                    val bytes = db.rawQuery("SELECT length(payload), byte_size, use_count, payload FROM " +
+                        "${ContentCacheBudget.COVER_TABLE} WHERE cache_key = ?", arrayOf(key)).use { cursor ->
+                        if (!cursor.moveToFirst()) null else {
+                            size = cursor.getLong(1); uses = cursor.getInt(2)
+                            if (cursor.getLong(0) !in 1..ContentCacheBudget.MAX_ENTRY_BYTES ||
+                                size != cursor.getLong(0) + key.toByteArray(StandardCharsets.UTF_8).size + ESTIMATED_ROW_OVERHEAD_BYTES) null
+                            else cursor.getBlob(3)
+                        }
+                    }
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    if (bytes != null) BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    val bitmap = if (bytes != null && bounds.outWidth in 1..512 && bounds.outHeight in 1..512)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size) else null
+                    if (bitmap == null) {
+                        if (db.delete(ContentCacheBudget.COVER_TABLE, "cache_key = ?", arrayOf(key)) > 0)
+                            writeTotalBytes(db, ContentCacheBudget.actualBytes(db))
+                    } else {
+                        val now = System.currentTimeMillis()
+                        val count = LyricsCachePolicy.nextUseCount(uses)
+                        db.update(ContentCacheBudget.COVER_TABLE, ContentValues().apply {
+                            put(COLUMN_LAST_USED_AT, now); put(COLUMN_USE_COUNT, count)
+                            put(COLUMN_EVICTION_SCORE, LyricsCachePolicy.evictionScore(now, count))
+                        }, "cache_key = ?", arrayOf(key))
+                    }
+                    db.setTransactionSuccessful()
+                    bitmap
+                } finally { db.endTransaction() }
+            }.onFailure { Log.w(LOG_TAG, "Unable to read recording artwork cache", it) }.getOrNull()
+        }
     }
 
-    private fun trimToTarget(
-        database: SQLiteDatabase,
-        startingBytes: Long,
-        protectedAutomaticKey: String? = null
-    ): Long {
-        var totalBytes = startingBytes
-        while (totalBytes > LyricsCachePolicy.TRIM_TARGET_BYTES) {
-            val victims = mutableListOf<Pair<String, Long>>()
-            database.query(
-                TABLE_CACHE,
-                arrayOf(COLUMN_KEY, COLUMN_BYTE_SIZE),
-                protectedAutomaticKey?.let { "$COLUMN_KEY != ?" },
-                protectedAutomaticKey?.let { arrayOf(it) },
-                null,
-                null,
-                "$COLUMN_EVICTION_SCORE ASC, $COLUMN_LAST_USED_AT ASC",
-                EVICTION_BATCH_SIZE.toString()
-            ).use { cursor ->
-                while (cursor.moveToNext() && totalBytes > LyricsCachePolicy.TRIM_TARGET_BYTES) {
-                    val victim = cursor.getString(0) to cursor.getLong(1)
-                    victims += victim
-                    totalBytes -= victim.second
-                }
-            }
-            if (victims.isEmpty()) break
-            val placeholders = List(victims.size) { "?" }.joinToString(",")
-            database.delete(
-                TABLE_CACHE,
-                "$COLUMN_KEY IN ($placeholders)",
-                victims.map { it.first }.toTypedArray()
-            )
+    @Synchronized
+    fun writeCover(query: LyricsLookup, bitmap: Bitmap): Boolean {
+        return access.lock.withLock {
+            if (!LyricsCandidateSelector.canFindCover(query)) return@withLock false
+            writeCoverKey(key(query.track, query.artist, query.album, query.durationMs), bitmap)
         }
-        return totalBytes.coerceAtLeast(0L)
     }
+
+    @Synchronized
+    internal fun writeCoverKey(key: String, bitmap: Bitmap): Boolean {
+        return access.lock.withLock {
+            if (closed) return@withLock false
+            runCatching { ContentCacheBudget.writeArtwork(helper.writableDatabase, key, bitmap, maximumBytes) }
+                .onFailure { Log.w(LOG_TAG, "Unable to write recording artwork cache", it) }.getOrDefault(false)
+        }
+    }
+
+    @Synchronized
+    internal fun physicalSnapshot(): Pair<Long, Boolean> = access.lock.withLock {
+        check(!closed)
+        helper.writableDatabase.let { it.maximumSize to it.isWriteAheadLoggingEnabled }
+    }
+
+    @Synchronized
+    override fun close() {
+        access.lock.withLock {
+            if (closed) return@withLock
+            closed = true
+            try { helper.close() } finally { ContentCacheBudget.release(access) }
+        }
+    }
+
+    private fun trimToTarget(database: SQLiteDatabase, startingBytes: Long,
+        protectedAutomaticKey: String? = null, protectedCoverKey: String? = null): Long =
+        ContentCacheBudget.trim(database, startingBytes, trimTargetBytes,
+            protectedAutomaticKey, protectedCoverKey)
 
     private fun findAutomaticEntries(
         database: SQLiteDatabase,
@@ -441,9 +482,10 @@ internal class LyricsCache(
     ): List<CachedEntry> {
         val keys = lookupKeys(query.track, query.artist, query.album, query.durationMs)
         val placeholders = List(keys.size) { "?" }.joinToString(",")
-        return database.query(
+        val broken = mutableListOf<String>()
+        val entries = database.query(
             TABLE_CACHE,
-            arrayOf(COLUMN_KEY, COLUMN_PAYLOAD, COLUMN_UPDATED_AT, COLUMN_USE_COUNT, COLUMN_BYTE_SIZE),
+            arrayOf(COLUMN_KEY, "CASE WHEN length(CAST($COLUMN_PAYLOAD AS BLOB)) <= ${ContentCacheBudget.MAX_ENTRY_BYTES} THEN $COLUMN_PAYLOAD ELSE '' END", COLUMN_UPDATED_AT, COLUMN_USE_COUNT, COLUMN_BYTE_SIZE),
             "$COLUMN_RECORDING_KEY IN ($placeholders)",
             keys.toTypedArray(),
             null,
@@ -454,7 +496,8 @@ internal class LyricsCache(
                 while (cursor.moveToNext()) {
                     val entry = runCatching {
                         decodeAutomaticEntry(cursor.getString(1), cursor.getLong(2))
-                    }.getOrNull() ?: continue
+                    }.getOrNull()
+                    if (entry == null) { broken += cursor.getString(0); continue }
                     if (entry.proof?.let {
                         LyricsCandidateSelector.isProofValid(query, entry.result, it)
                     } != true) continue
@@ -462,6 +505,11 @@ internal class LyricsCache(
                 }
             }
         }
+        if (broken.isNotEmpty()) {
+            for (key in broken) database.delete(TABLE_CACHE, "$COLUMN_KEY = ?", arrayOf(key))
+            writeTotalBytes(database, ContentCacheBudget.actualBytes(database))
+        }
+        return entries
     }
 
     private fun findManualEntries(
@@ -629,7 +677,7 @@ internal class LyricsCache(
         )
     }
 
-    private fun emptyStats() = LyricsCacheStats(0, 0, 0L, LyricsCachePolicy.MAX_BYTES)
+    private fun emptyStats() = LyricsCacheStats(0, 0, 0L, maximumBytes)
 
     private fun cacheEntrySize(cacheKey: String, payload: String): Long =
         cacheKey.toByteArray(StandardCharsets.UTF_8).size.toLong() +
@@ -656,9 +704,22 @@ internal class LyricsCache(
         val entry: Entry
     )
 
-    private class CacheDatabase(context: Context, databaseName: String) :
+    private class CacheDatabase(context: Context, databaseName: String, private val maximumBytes: Long) :
         SQLiteOpenHelper(context, databaseName, null, DATABASE_VERSION) {
+        private val legacyDirectory = File(context.filesDir, "content-covers-v1")
+
+        override fun onConfigure(database: SQLiteDatabase) {
+            // Rollback journal, not WAL: no independently growing -wal/-shm cache.
+            database.disableWriteAheadLogging()
+            database.rawQuery("PRAGMA journal_mode=DELETE", null).use { it.moveToFirst() }
+            database.rawQuery("PRAGMA journal_size_limit=0", null).use { it.moveToFirst() }
+            if (maximumBytes >= 1024L * 1024L)
+                database.setMaximumSize((maximumBytes - ContentCacheBudget.legacyBytes(legacyDirectory)).coerceAtLeast(4096L))
+        }
+
         override fun onCreate(database: SQLiteDatabase) {
+            database.execSQL("PRAGMA auto_vacuum=INCREMENTAL")
+            ContentCacheBudget.createCoverTable(database)
             database.execSQL(
                 """
                 CREATE TABLE $TABLE_CACHE (
@@ -692,7 +753,59 @@ internal class LyricsCache(
             createRecordingIndexes(database)
         }
 
+        override fun onOpen(database: SQLiteDatabase) {
+            super.onOpen(database)
+            // No full-cache scan on foreground resume. Freed pages are reused immediately;
+            // at most one MiB is physically reclaimed per open when incremental vacuum is enabled.
+            database.execSQL("PRAGMA incremental_vacuum(256)")
+            ContentCacheBudget.migrateLegacyCovers(database, legacyDirectory, maximumBytes)
+            // Even failed legacy deletion reserves disk bytes; it cannot create a second budget.
+            if (maximumBytes >= 1024L * 1024L)
+                database.setMaximumSize((maximumBytes - ContentCacheBudget.legacyBytes(legacyDirectory)).coerceAtLeast(4096L))
+        }
+
+        private fun repairUpgradedEntries(database: SQLiteDatabase) {
+                for (table in listOf(TABLE_CACHE, TABLE_MANUAL, ContentCacheBudget.COVER_TABLE)) {
+                    val payload = if (table == ContentCacheBudget.COVER_TABLE) "payload" else COLUMN_PAYLOAD
+                    database.execSQL("UPDATE $table SET byte_size = length(CAST($payload AS BLOB)) + " +
+                        "length(CAST(cache_key AS BLOB)) + $ESTIMATED_ROW_OVERHEAD_BYTES")
+                }
+                // Automatic malformed/oversized artifacts are disposable. Manual rows survive upgrades.
+                database.delete(TABLE_CACHE, "length(CAST(payload_json AS BLOB)) > ?", arrayOf(ContentCacheBudget.MAX_ENTRY_BYTES.toString()))
+                database.delete(ContentCacheBudget.COVER_TABLE, "length(payload) > ? OR length(payload) = 0",
+                    arrayOf(ContentCacheBudget.MAX_ENTRY_BYTES.toString()))
+                var afterKey = ""
+                while (true) {
+                    val batch = database.query(TABLE_CACHE, arrayOf(COLUMN_KEY, COLUMN_PAYLOAD),
+                        "cache_key > ?", arrayOf(afterKey), null, null, "cache_key", "256").use { cursor -> buildList {
+                        while (cursor.moveToNext()) {
+                            val key = cursor.getString(0)
+                            val valid = runCatching {
+                                val value = JSONObject(cursor.getString(1))
+                                decodeResult(value) != null &&
+                                    LyricsSelectionProof.fromJson(value.optJSONObject("selectionProof")) != null
+                            }.getOrDefault(false)
+                            add(key to valid)
+                        }
+                    } }
+                    if (batch.isEmpty()) break
+                    for ((key, valid) in batch) if (!valid) database.delete(TABLE_CACHE, "cache_key = ?", arrayOf(key))
+                    afterKey = batch.last().first
+                }
+                database.execSQL("UPDATE cache_meta SET total_bytes = " +
+                    "(SELECT COALESCE(SUM(byte_size),0) FROM lyrics_cache) + " +
+                    "(SELECT COALESCE(SUM(byte_size),0) FROM lyrics_manual_override) + " +
+                    "(SELECT COALESCE(SUM(byte_size),0) FROM ${ContentCacheBudget.COVER_TABLE}) WHERE meta_id=1")
+                val actual = database.rawQuery("SELECT total_bytes FROM cache_meta WHERE meta_id=1", null)
+                    .use { it.moveToFirst(); it.getLong(0) }
+                if (actual > maximumBytes) {
+                    val remaining = ContentCacheBudget.trim(database, actual, maximumBytes * 9L / 10L)
+                    database.execSQL("UPDATE cache_meta SET total_bytes=? WHERE meta_id=1", arrayOf(remaining))
+                }
+        }
+
         override fun onUpgrade(database: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            ContentCacheBudget.createCoverTable(database)
             if (oldVersion < AUTOMATIC_CACHE_IDENTITY_VERSION) {
                 database.delete(TABLE_CACHE, null, null)
                 database.delete(TABLE_META, null, null)
@@ -711,6 +824,7 @@ internal class LyricsCache(
                 createRecordingIndexes(database)
                 recalculateTotalBytes(database)
             }
+            repairUpgradedEntries(database)
         }
 
         private fun migrateRecordingKeys(
@@ -753,7 +867,7 @@ internal class LyricsCache(
         }
 
         private fun recalculateTotalBytes(database: SQLiteDatabase) {
-            val total = listOf(TABLE_CACHE, TABLE_MANUAL).sumOf { table ->
+            val total = listOf(TABLE_CACHE, TABLE_MANUAL, ContentCacheBudget.COVER_TABLE).sumOf { table ->
                 database.query(
                     table,
                     arrayOf("COALESCE(SUM($COLUMN_BYTE_SIZE), 0)"),
@@ -848,8 +962,7 @@ internal class LyricsCache(
         }
 
         private const val LOG_TAG = "ContentLyrics"
-        private const val DATABASE_NAME = "content-lyrics-cache.db"
-        private const val DATABASE_VERSION = 6
+        private const val DATABASE_VERSION = 7
         private const val AUTOMATIC_CACHE_IDENTITY_VERSION = 3
         private const val MANUAL_OVERRIDE_VERSION = 4
         private const val RECORDING_KEY_VERSION = 6
@@ -913,7 +1026,7 @@ internal class LyricsCache(
 }
 
 internal object LyricsCachePolicy {
-    const val MAX_BYTES = 128L * 1024L * 1024L
+    const val MAX_BYTES = ContentCacheBudget.MAX_BYTES
     const val TRIM_TARGET_BYTES = MAX_BYTES * 9L / 10L
     const val QUALITY_VERSION = 1
     const val REFRESH_AFTER_MS = 6L * 60L * 60L * 1000L
