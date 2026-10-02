@@ -49,6 +49,7 @@ internal val LyricFontPixels = SemanticsPropertyKey<Float>("LyricFontPixels")
 internal val LyricRowHeights = SemanticsPropertyKey<List<Int>>("LyricRowHeights")
 internal val LyricWordProgress = SemanticsPropertyKey<Float>("LyricWordProgress")
 internal val LyricScrollAnchor = SemanticsPropertyKey<Int>("LyricScrollAnchor")
+internal val LyricScrollOffset = SemanticsPropertyKey<Float>("LyricScrollOffset")
 internal val LyricActiveRows = SemanticsPropertyKey<List<Int>>("LyricActiveRows")
 internal val LyricGapProgress = SemanticsPropertyKey<Float>("LyricGapProgress")
 internal val LyricFrameRunning = SemanticsPropertyKey<Boolean>("LyricFrameRunning")
@@ -77,18 +78,26 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }
         val followTarget = if (measured.isEmpty()) 0f else if (!lyrics.timed) metrics.padding
             else height * .41f - tops[focus] - measured[focus].height / 2f
+        // Unknown time is not a seek to zero. Retain only presentation geometry while
+        // Store withdraws the timing anchor; a later trusted position resumes from here.
+        var retainedFollowTarget by remember(lyrics.recordingKey) { mutableFloatStateOf(followTarget) }
+        // A trusted intro gap legitimately has scrollIndex=-1 and follows the first row.
+        val hasFollowAnchor = !lyrics.timed || lyrics.timelineReady
+        SideEffect { if (hasFollowAnchor) retainedFollowTarget = followTarget }
         var browsingOffset by remember(lyrics.recordingKey) { mutableStateOf<Float?>(null) }
         val scope = rememberCoroutineScope()
         var returnToSong by remember { mutableStateOf<Job?>(null) }
-        val target = browsingOffset ?: followTarget
+        val target = browsingOffset ?: if (hasFollowAnchor) followTarget else retainedFollowTarget
         val offset by animateFloatAsState(target,
             tween(if (browsingOffset == null) 450 else 0, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)),
             label = "wallpaper-lyrics-position")
-        val rendered = remember(lyrics.lines, singing, focus, width, dark, metrics, browsingOffset, height) {
-            val visible = if (browsingOffset != null || !lyrics.timed) measured.indices.filter {
-                tops[it] + target + measured[it].height >= -height && tops[it] + target <= height * 2f
-            } else (max(0, focus - 7)..minOf(measured.lastIndex, focus + 7)).toList()
-            visible.associateWith { index ->
+        // A seek changes the destination, not the currently visible geometry. Keep drawing
+        // rows along the animated path; cache rasterization until its bounded window changes.
+        val visibleRows = measured.indices.filter {
+            tops[it] + offset + measured[it].height >= -height && tops[it] + offset <= height * 2f
+        }
+        val rendered = remember(lyrics.lines, singing, focus, width, dark, metrics, visibleRows) {
+            visibleRows.associateWith { index ->
                 prepareRow(lyrics.lines[index], width, metrics, index in singing, dark,
                     kotlin.math.abs(index - focus), index < focus - 2).let { it to it.rasterize() }
             }
@@ -157,6 +166,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             this[LyricRowHeights] = measured.map { it.height }
             this[LyricWordProgress] = words.firstOrNull()?.let { lyricWordFraction(it, position) } ?: 0f
             this[LyricScrollAnchor] = lyrics.scrollIndex
+            this[LyricScrollOffset] = offset
             this[LyricActiveRows] = singing.sorted()
             this[LyricGapProgress] = lyricGapFraction(lyrics, position)
             this[LyricFrameRunning] = moving

@@ -26,7 +26,7 @@ class ContentLyricsStoreTest {
             override fun write(kind: Int, percent: Int) = false
         })
 
-    @Test fun unknownBluetoothPreviewsButActualEventAdvancesWithoutFurtherMediaCallbacks() {
+    @Test fun unknownBluetoothHasNoCursorButActualEventAdvancesWithoutFurtherMediaCallbacks() {
         val store = store()
         try {
             store.startLyrics()
@@ -34,10 +34,13 @@ class ContentLyricsStoreTest {
             store.acceptMediaSnapshot(initial)
             store.acceptLyricsSnapshot(lyrics(initial, listOf(0L, 1_000L, 2_000L)))
             assertFalse(store.snapshot().lyricsTimelineReady)
-            assertEquals(0, store.snapshot().lyricsActiveIndex)
+            assertEquals(-1, store.snapshot().lyricsActiveIndex)
+            assertEquals(-1, store.snapshot().lyricsScrollIndex)
+            assertTrue(store.snapshot().lyricsActiveIndices.isEmpty())
             assertEquals(-1L, store.snapshot().lyricsPositionMs)
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
-            assertEquals(0, store.snapshot().lyricsActiveIndex)
+            assertEquals(-1, store.snapshot().lyricsActiveIndex)
+            assertEquals(-1, store.snapshot().lyricsScrollIndex)
             val event = media(sequence = 1L, position = 0L)
             store.acceptMediaSnapshot(event)
             assertTrue(store.snapshot().lyricsTimelineReady)
@@ -129,7 +132,8 @@ class ContentLyricsStoreTest {
             assertFalse(store.snapshot().lyricsTimelineReady)
             assertEquals(-1L, store.snapshot().lyricsPositionMs)
             store.acceptLyricsSnapshot(lyrics(second, listOf(0L, 1_000L)))
-            assertEquals(0, store.snapshot().lyricsActiveIndex)
+            assertEquals(-1, store.snapshot().lyricsActiveIndex)
+            assertEquals(-1, store.snapshot().lyricsScrollIndex)
             store.acceptMediaSnapshot(media(title = "Second", generation = 2, sequence = 2L, position = 0L))
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
             assertTrue(store.snapshot().lyricsTimelineReady)
@@ -181,6 +185,60 @@ class ContentLyricsStoreTest {
             assertEquals(before, publications)
         } finally { store.destroy() }
     }
+
+    @Test fun seekAndLyricsReplacementPublishOnlyTheCurrentPositionCursorNeverATopDetour() {
+        val store = store()
+        try {
+            store.startLyrics()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(10))
+            val firstTime = SystemClock.elapsedRealtime()
+            val initial = standardMedia(30_000L, firstTime)
+            val rows = lyrics(initial, (0..10).map { it * 10_000L })
+            store.acceptMediaSnapshot(initial)
+            store.acceptLyricsSnapshot(rows)
+            assertEquals(3, store.snapshot().lyricsScrollIndex)
+            val publishedAnchors = mutableListOf<Int>()
+            store.addListener { publishedAnchors += it.lyricsScrollIndex }
+            publishedAnchors.clear()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+            val seekTime = SystemClock.elapsedRealtime()
+            store.acceptMediaSnapshot(standardMedia(80_000L, seekTime))
+            assertEquals(8, store.snapshot().lyricsScrollIndex)
+            publishedAnchors.clear()
+            store.acceptMediaSnapshot(standardMedia(0L, firstTime))
+            store.acceptMediaSnapshot(standardMedia(30_000L, firstTime))
+            store.acceptLyricsSnapshot(rows)
+            store.stopLyrics()
+            store.startLyrics()
+            assertTrue(publishedAnchors.isNotEmpty())
+            assertTrue(publishedAnchors.all { it == 8 })
+            assertEquals(80_000L, store.snapshot().lyricsPositionMs)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+            store.acceptMediaSnapshot(standardMedia(0L, SystemClock.elapsedRealtime()))
+            assertEquals(0L, store.snapshot().lyricsPositionMs)
+            assertEquals(0, store.snapshot().lyricsScrollIndex)
+            assertEquals(0, store.snapshot().lyricsActiveIndex)
+        } finally { store.destroy() }
+    }
+
+    @Test fun unknownPositionDoesNotPublishAFirstRowBeforeTheFirstMidSongPosition() {
+        val store = store()
+        try {
+            store.startLyrics()
+            val initial = standardMedia(-1L, 0L)
+            store.acceptMediaSnapshot(initial)
+            store.acceptLyricsSnapshot(lyrics(initial, (0..10).map { it * 10_000L }))
+            assertEquals(-1, store.snapshot().lyricsScrollIndex)
+            assertEquals(-1, store.snapshot().lyricsActiveIndex)
+            store.acceptMediaSnapshot(standardMedia(55_000L, SystemClock.elapsedRealtime()))
+            assertEquals(5, store.snapshot().lyricsScrollIndex)
+            assertEquals(5, store.snapshot().lyricsActiveIndex)
+        } finally { store.destroy() }
+    }
+
+    private fun standardMedia(position: Long, publisherTime: Long) = ContentPorts.MediaSnapshot(
+        true, false, "本机音乐", true, 1, "Song", "Artist", true, true,
+        null, "", "Album", 200_000L, position, publisherTime, 1f, ContentPorts.MediaSongIdentity.SONG)
 
     private fun lyrics(media: ContentPorts.MediaSnapshot, times: List<Long>) = ContentPorts.LyricsSnapshot(
         media.recordingKey(), media.generation, ContentPorts.LyricsSnapshot.READY,

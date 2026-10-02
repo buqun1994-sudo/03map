@@ -460,7 +460,8 @@ class ContentMediaSessionTest {
                 initial.mediaGeneration, ContentPorts.LyricsSnapshot.READY,
                 listOf(ContentPorts.LyricsLine(0L, "First", ""), ContentPorts.LyricsLine(1_000L, "Second", "")), null))
             assertFalse(store.snapshot().lyricsTimelineReady)
-            assertEquals(0, store.snapshot().lyricsActiveIndex)
+            assertEquals(-1, store.snapshot().lyricsActiveIndex)
+            assertEquals(-1, store.snapshot().lyricsScrollIndex)
             sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 0L).putExtra(SONG_LEN, 180_000L)
                 .putExtra(RAW_STATUS, 1.toByte()))
             assertTrue(store.snapshot().lyricsTimelineReady)

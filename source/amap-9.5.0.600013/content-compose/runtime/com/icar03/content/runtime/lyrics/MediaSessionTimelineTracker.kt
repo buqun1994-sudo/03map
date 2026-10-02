@@ -85,6 +85,9 @@ internal class MediaSessionTimelineTracker(
     private var lastReportedPositionMs = Long.MIN_VALUE
     private var firstUntrustedPositionMs = Long.MIN_VALUE
     private var lastObservedPublisherPositionTime = Long.MIN_VALUE
+    // A valid monotonic publisher timestamp is ordering evidence, not another clock.
+    // Keep its high-water mark even if a later envelope omits the timestamp.
+    private var newestPublisherPositionTime = Long.MIN_VALUE
     private var lastSpeed = 0.0
     private var wasPlaying = false
     private var timelineReady = false
@@ -138,6 +141,7 @@ internal class MediaSessionTimelineTracker(
             lastReportedPositionMs = if (hasReportedPosition) reported else Long.MIN_VALUE
             firstUntrustedPositionMs = if (hasReportedPosition) reported else Long.MIN_VALUE
             lastObservedPublisherPositionTime = publisherPositionTime
+            newestPublisherPositionTime = validPublisherTime ?: Long.MIN_VALUE
             lastSpeed = speed
             wasPlaying = playing
             timelineReady = trustedInitialPosition || avrcpPosition != null
@@ -154,7 +158,11 @@ internal class MediaSessionTimelineTracker(
             if (!deferPositionFrame && hasReportedPosition && reported != supersededReportedPositionMs) {
                 supersededReportedPositionMs = null
             }
-            val ignoreReportedPosition = deferPositionFrame || ignoreReportedUntilAvrcp ||
+            // Only verifiable out-of-order positions are rejected: zero/no publisher time
+            // remains compatible, and a fresh backward seek (including zero) is accepted.
+            val stalePublisherPosition = validPublisherTime != null &&
+                validPublisherTime < newestPublisherPositionTime
+            val ignoreReportedPosition = stalePublisherPosition || deferPositionFrame || ignoreReportedUntilAvrcp ||
                 reported == supersededReportedPositionMs ||
                 (transport == MediaSessionTransport.BLUETOOTH_AVRCP && lastAvrcpCapturedAt != null &&
                     (validPublisherTime == null || validPublisherTime <= lastAvrcpCapturedAt!!))
@@ -199,10 +207,15 @@ internal class MediaSessionTimelineTracker(
                 capturedAtElapsedRealtime = now
             }
 
-            if (hasReportedPosition) {
+            if (hasReportedPosition && !stalePublisherPosition) {
                 lastReportedPositionMs = reported
             }
-            lastObservedPublisherPositionTime = publisherPositionTime
+            if (!stalePublisherPosition) {
+                lastObservedPublisherPositionTime = publisherPositionTime
+                if (hasReportedPosition && validPublisherTime != null) {
+                    newestPublisherPositionTime = max(newestPublisherPositionTime, validPublisherTime)
+                }
+            }
             lastSpeed = speed
             wasPlaying = playing
         }
@@ -213,6 +226,11 @@ internal class MediaSessionTimelineTracker(
             speed = speed,
             timelineReady = this.timelineReady
         )
+    }
+
+    /** Publisher replacement invalidates ordering evidence, not the established position. */
+    fun clearPublisherOrdering() {
+        newestPublisherPositionTime = Long.MIN_VALUE
     }
 
     /**
@@ -260,6 +278,7 @@ internal class MediaSessionTimelineTracker(
         lastReportedPositionMs = Long.MIN_VALUE
         firstUntrustedPositionMs = Long.MIN_VALUE
         lastObservedPublisherPositionTime = Long.MIN_VALUE
+        newestPublisherPositionTime = Long.MIN_VALUE
         lastSpeed = 0.0
         wasPlaying = false
         timelineReady = false

@@ -29,7 +29,7 @@ public object ContentLyricsCursor {
         durationMs: Long
     ): Cursor {
         if (lines.isEmpty()) return Cursor(-1, -1, intArrayOf())
-        if (positionMs < 0L) return Cursor(-1, 0, intArrayOf())
+        if (positionMs < 0L) return Cursor(-1, -1, intArrayOf())
         if (durationMs > 0L && positionMs >= durationMs) {
             return Cursor(-1, lines.lastIndex, intArrayOf())
         }

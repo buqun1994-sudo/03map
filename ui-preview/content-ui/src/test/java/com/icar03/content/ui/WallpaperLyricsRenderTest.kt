@@ -116,6 +116,46 @@ class WallpaperLyricsRenderTest {
     }
 
     @Test
+    fun distantSeekAndInterruptionDrawFromCurrentOffsetWithoutBlankFrames() {
+        val lines = (0 until 64).map { LyricLine(it * 2_000L, "合成定位歌词第 $it 行") }
+        fun at(index: Int) = LyricsState(recordingKey = "seek-path", lines = lines,
+            activeIndex = index, scrollIndex = index, activeIndices = listOf(index),
+            timelineReady = true, positionMs = index * 2_000L, playbackSpeed = 0f)
+        mount(at(20))
+        compose.mainClock.autoAdvance = false
+        try {
+            val start = value(LyricScrollOffset)
+            project(at(50))
+            compose.mainClock.advanceTimeByFrame()
+            val first = value(LyricScrollOffset)
+            assertEquals("seek starts at current geometry", start, first, .1f)
+            repeat(8) {
+                compose.mainClock.advanceTimeBy(32L)
+                captureHost() // Native ink must remain present all along a large seek.
+            }
+            val interrupted = value(LyricScrollOffset)
+            project(at(10))
+            assertEquals("new seek takes over current frame before the next animation tick", interrupted, value(LyricScrollOffset), .1f)
+            compose.mainClock.advanceTimeByFrame()
+            repeat(16) { compose.mainClock.advanceTimeBy(32L); captureHost() }
+            val settled = value(LyricScrollOffset)
+            project(at(10).copy(timelineReady = false, activeIndex = -1, scrollIndex = -1,
+                activeIndices = emptyList(), positionMs = -1L))
+            compose.mainClock.advanceTimeBy(600L)
+            assertEquals("unknown time must not scroll to the first row", settled, value(LyricScrollOffset), .1f)
+            captureHost()
+            project(at(0).copy(activeIndex = -1, scrollIndex = -1, activeIndices = emptyList(),
+                gapStartMs = 0L, gapEndMs = 1_000L))
+            repeat(16) { compose.mainClock.advanceTimeBy(32L); captureHost() }
+            assertEquals("a trusted intro gap legitimately has no preceding row", -1, value(LyricScrollAnchor))
+            assertTrue("real seek into the intro returns to the first row", value(LyricScrollOffset) > settled)
+            project(at(0))
+            repeat(16) { compose.mainClock.advanceTimeBy(32L); captureHost() }
+            assertEquals("real seek to zero is retained", 0, value(LyricScrollAnchor))
+        } finally { compose.mainClock.autoAdvance = true }
+    }
+
+    @Test
     fun physical640x1080At141DpiKeepsBothThemesAndNativeTextMetrics() {
         densityThemes(141, saveFrames = true)
     }

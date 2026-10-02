@@ -57,6 +57,21 @@ class AmbientArtworkTest {
         }
     }
 
+    @Test fun subduedToneKeepsDarkCoversNeutralWithoutCrushingThem() {
+        val source = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.rgb(48, 48, 48))
+        }
+        val scene = createAmbientField(source)!!
+        assertEquals("six percent scene dimming follows the existing contrast veil", .201f, scene.darkVeil, .001f)
+        val base = scene.base.getPixel(64, 64)
+        assertEquals(Color.red(base), Color.green(base))
+        assertEquals(Color.green(base), Color.blue(base))
+        assertTrue("dark macro colours remain visible", Color.red(base) in 35..48)
+        val originalMinimum = (48.0 / 255 * Math.pow(2.0, -.15)).toFloat()
+        val originalLightVeil = (.72f - originalMinimum) / (1f - originalMinimum)
+        assertEquals("light theme retains its existing contrast rule", originalLightVeil, scene.lightVeil, .001f)
+    }
+
     @Test fun fieldRetainsMultipleSpatialRegionsAndSharedGlowIsDeterministic() {
         val source = ambientFixtureCover()
         val a = createAmbientField(source)!!; val b = createAmbientField(source)!!

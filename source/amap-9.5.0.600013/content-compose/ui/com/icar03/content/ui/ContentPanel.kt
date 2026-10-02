@@ -554,7 +554,7 @@ private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
     val pressed by interactions.collectIsPressedAsState()
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).testTag("lyrics-empty"),
         verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.Start) {
-        Text(if (state.lyrics.loading) "正在匹配歌词…" else "暂无歌词", style = MaterialTheme.typography.headlineMedium,
+        Text(if (state.media.isSong && state.lyrics.loading) "正在匹配歌词…" else "暂无歌词", style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground)
         if (!state.previewMode && state.media.sourceAvailable) TextButton(
             onClick = { onEvent(ContentEvent.OpenSources) },

@@ -109,7 +109,7 @@ private fun bakeAmbient(source: Bitmap): AmbientArtwork? {
             for (ch in 0..2) rgb[ch] = softened[i * 3 + ch]
             rgbToHsv(rgb, pixelHsv)
             // Adaptive colour-distance gain leaves grey covers neutral.
-            val gain = saturationGain * (1f + .4f * coherence * (1f - pixelHsv[1]))
+            val gain = saturationGain * (1f + .4f * coherence * (1f - pixelHsv[1])) * AMBIENT_CHROMA
             val grey = luminance(rgb)
             for (ch in 0..2) rgb[ch] = (grey + (rgb[ch] - grey) * gain).coerceIn(0f, 1f)
             minimum = min(minimum, luminance(rgb) * exposure)
@@ -130,7 +130,7 @@ private fun bakeAmbient(source: Bitmap): AmbientArtwork? {
         Bitmap.createBitmap(basePixels, FIELD_SIZE, FIELD_SIZE, Bitmap.Config.ARGB_8888),
         Bitmap.createBitmap(glowPixels, FIELD_SIZE, FIELD_SIZE, Bitmap.Config.ARGB_8888), poses,
         // Preserve the single Amap theme/text owner; adapt only cover contrast.
-        darkVeil = readableDarkVeil(brightestChannels),
+        darkVeil = 1f - (1f - readableDarkVeil(brightestChannels)) * AMBIENT_DARK_GAIN,
         lightVeil = max(.42f, (.72f - minimum) / max(.01f, 1f - minimum)).coerceAtMost(.72f),
     )
 }
@@ -182,6 +182,9 @@ private fun hsvToRgb(hsv: FloatArray, output: FloatArray) {
 private fun pack(rgb: FloatArray, gain: Float, alpha: Float) = Color.argb(
     (alpha * 255).roundToInt(), (rgb[0] * gain * 255).roundToInt().coerceIn(0, 255),
     (rgb[1] * gain * 255).roundToInt().coerceIn(0, 255), (rgb[2] * gain * 255).roundToInt().coerceIn(0, 255))
+/** Small presentation calibration, not another theme or media state. Grey stays neutral. */
+private const val AMBIENT_CHROMA = .90f
+private const val AMBIENT_DARK_GAIN = .94f
 private const val GRID = 6
 private const val SAMPLE_SIZE = 96
 private const val FIELD_SIZE = 128

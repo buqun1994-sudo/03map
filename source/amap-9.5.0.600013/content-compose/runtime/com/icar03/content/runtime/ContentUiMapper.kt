@@ -82,7 +82,9 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                     line.romanization, line.words.map { LyricWord(it.startTimeMs, it.endTimeMs, it.text) },
                     line.endTimeMs, line.backgroundWords.map { LyricWord(it.startTimeMs, it.endTimeMs, it.text) },
                     LyricSide.entries.getOrElse(line.speakerSide) { LyricSide.Unspecified }) },
-                activeIndex = state.lyricsActiveIndex, loading = state.lyricsStatus == ContentPorts.LyricsSnapshot.LOADING,
+                activeIndex = state.lyricsActiveIndex,
+                // Loading is a song-only state; a stale lyrics callback must not leak into no-media UI.
+                loading = isSong && state.lyricsStatus == ContentPorts.LyricsSnapshot.LOADING,
                 timelineReady = state.lyricsTimelineReady,
                 positionMs = state.lyricsPositionMs, playbackSpeed = state.lyricsPlaybackSpeed,
                 capturedAtMs = state.lyricsPositionCapturedAtMs, durationMs = state.mediaDurationMs,

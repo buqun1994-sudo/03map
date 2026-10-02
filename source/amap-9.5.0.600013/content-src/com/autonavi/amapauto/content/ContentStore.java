@@ -404,14 +404,8 @@ public final class ContentStore {
         state.lyricsActiveIndices = cursor.getActiveIndices();
         state.lyricsGapStartMs = cursor.getGapStartMs();
         state.lyricsGapEndMs = cursor.getGapEndMs();
-        // An unready controller may preview, but cannot advance or color timed words.
-        if (!state.lyricsTimelineReady) {
-            index = state.lyricsTimed && state.mediaPlaying && !state.lyricsLines.isEmpty() ? 0
-                    : state.lyricsTimed && previous >= 0 && previous < state.lyricsLines.size() ? previous : -1;
-            state.lyricsScrollIndex = Math.max(0, index);
-            state.lyricsActiveIndices = index >= 0 ? new int[] { index } : new int[0];
-            state.lyricsGapStartMs = state.lyricsGapEndMs = -1L;
-        }
+        // Unknown position has no timed cursor. Previewing text is a presentation choice,
+        // never evidence that playback (or the scroll destination) is at the first row.
         state.lyricsActiveIndex = index;
         if (!destroyed && lyricsConsumers > 0 && state.mediaPlaying && state.lyricsTimelineReady
                 && speed > 0f && !state.lyricsLines.isEmpty()) {

@@ -177,6 +177,39 @@ class ContentLyricsTimelineTest {
         assertEquals(0f, timeline.speed())
     }
 
+    @Test fun seekRejectsOnlyVerifiablyOlderPublisherPositionsAndAllowsRealZero() {
+        var now = 10_000L
+        val timeline = ContentLyricsTimeline { now }
+        timeline.update(media(position = 30_000L, publisherTime = now))
+        now += 1_000L
+        timeline.update(media(position = 80_000L, publisherTime = now))
+        now += 100L
+        timeline.update(media(position = 0L, publisherTime = 10_500L))
+        assertEquals(80_100L, timeline.positionMs())
+        timeline.update(media(position = 30_000L, publisherTime = 10_000L))
+        assertEquals(80_100L, timeline.positionMs())
+        // A timestamp-less duplicate must not erase the ordering high-water mark.
+        timeline.update(media(position = 80_000L))
+        timeline.update(media(position = 0L, publisherTime = 10_900L))
+        assertEquals(80_100L, timeline.positionMs())
+        now += 100L
+        timeline.update(media(position = 0L, publisherTime = now))
+        assertEquals(0L, timeline.positionMs())
+        now += 100L
+        assertEquals(100L, timeline.positionMs())
+        timeline.update(media(position = 20_000L))
+        assertEquals(20_000L, timeline.positionMs())
+    }
+
+    @Test fun publisherReplacementDoesNotInheritThePreviousPublishersOrderingFence() {
+        var now = 10_000L
+        val timeline = ContentLyricsTimeline { now }
+        timeline.update(media(position = 30_000L, publisherTime = now))
+        now += 1_000L
+        timeline.update(media(position = 20_000L, publisherTime = 9_000L, generation = 2))
+        assertEquals(22_000L, timeline.positionMs())
+    }
+
     private fun avrcp(position: Long = -1L, sequence: Long, capturedAt: Long,
         eventState: Int = -1, playing: Boolean = true, title: String = "Song", publisherTime: Long = 0L) =
         ContentPorts.MediaSnapshot(true, false, "蓝牙音乐", playing, 1, title, "Artist", true, true,
@@ -184,8 +217,8 @@ class ContentLyricsTimelineTest {
             android.media.session.PlaybackState.STATE_PLAYING, sequence, position, eventState, capturedAt)
 
     private fun media(source: String = "本机音乐", title: String = "Song", position: Long = -1L,
-        duration: Long = 200_000L, publisherTime: Long = 0L, playing: Boolean = true) =
-        ContentPorts.MediaSnapshot(true, false, source, playing, 1, title, "Artist", true, true,
+        duration: Long = 200_000L, publisherTime: Long = 0L, playing: Boolean = true, generation: Int = 1) =
+        ContentPorts.MediaSnapshot(true, false, source, playing, generation, title, "Artist", true, true,
             null, "", "Album", duration, position, publisherTime, if (playing) 1f else 0f,
             ContentPorts.MediaSongIdentity.SONG)
 }

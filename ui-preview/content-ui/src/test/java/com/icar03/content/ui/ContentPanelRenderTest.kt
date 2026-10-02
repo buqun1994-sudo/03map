@@ -150,6 +150,25 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test
+    fun lyrics_empty_without_song_never_shows_loading_copy() {
+        val state = previewState(PreviewScenario.NoData).copy(
+            page = PanelPage.Lyrics,
+            previewMode = false,
+            media = MediaState(title = null, artist = null, isSong = false, available = false),
+            lyrics = LyricsState(loading = true),
+        )
+        compose.setContent {
+            ContentTheme(dark) {
+                ContentPanel(state.copy(dark = dark), onEvent = { events += it }, modifier = Modifier.testTag(hostTag))
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("lyrics-empty").assertIsDisplayed()
+        compose.onNodeWithText("暂无歌词").assertIsDisplayed()
+        compose.onNodeWithText("正在匹配歌词…").assertDoesNotExist()
+    }
+
+    @Test
     fun sources_open_select_and_dismiss_in_both_themes() {
         val state = androidx.compose.runtime.mutableStateOf(previewState().copy(dark = dark))
         compose.setContent {

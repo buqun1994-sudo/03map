@@ -17,9 +17,9 @@ class ContentLyricsCursorTest {
 
     @Test fun plainCallerWithUnknownPositionCannotManufactureActivityOrGap() {
         val lines = listOf(line(0L), line(0L), line(0L))
-        assertCursor(lines, -1L, -1, 0)
-        assertCursor(lines, Long.MIN_VALUE, -1, 0)
-        assertCursor(listOf(line(10_000L)), -1L, -1, 0)
+        assertCursor(lines, -1L, -1, -1)
+        assertCursor(lines, Long.MIN_VALUE, -1, -1)
+        assertCursor(listOf(line(10_000L)), -1L, -1, -1)
     }
 
     @Test fun introThresholdAndEightHundredMillisecondLeadAreExact() {

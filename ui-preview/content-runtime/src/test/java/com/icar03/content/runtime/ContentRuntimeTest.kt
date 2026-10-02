@@ -44,6 +44,20 @@ class ContentRuntimeTest {
         assertTrue(ui.controls.values.all { !it.available && !it.known && it.actual == -1 })
     }
 
+    @Test fun mapperDoesNotExposeLyricsLoadingWithoutSongIdentity() {
+        val state = ContentState().apply {
+            mediaDataAvailable = true
+            // Keep metadata complete to exercise the Mapper's explicit song gate.
+            mediaRecordingKey = "stale-recording"
+            mediaTitle = "残留标题"
+            mediaArtist = "残留作者"
+            lyricsStatus = ContentPorts.LyricsSnapshot.LOADING
+        }
+        val ui = ContentUiMapper().map(state)
+        assertFalse(ui.media.isSong)
+        assertFalse(ui.lyrics.loading)
+    }
+
     @Test fun completedChargingSnapshotSurvivesStoreWhileUnknownEnumDoesNot() {
         val store = store()
         fun chargeSnapshot(state: Int) = ContentPorts.VehicleSnapshot(
