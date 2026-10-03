@@ -77,6 +77,7 @@ internal class LrcLibLyricsSource(
         cancellation.throwIfCancelled()
         val kind = classifyLyrics(candidate.lyrics)
         return when {
+            candidate.isInstrumentalContent() -> candidate.copy(lyricsKind = LyricsKind.NONE)
             kind == LyricsKind.SYNCHRONIZED -> candidate
             kind == LyricsKind.PLAIN -> candidate.copy(
                 lyrics = "", plainLyrics = candidate.lyrics, lyricsKind = LyricsKind.PLAIN
@@ -92,7 +93,8 @@ internal class LrcLibLyricsSource(
         val plainLyrics = cleanLyrics(item.contentString("plainLyrics")).ifBlank {
             synced.takeIf { classifyLyrics(it) == LyricsKind.PLAIN }.orEmpty()
         }
-        if (lyrics.isEmpty() && plainLyrics.isEmpty()) return null
+        val instrumental = item.opt("instrumental") == true
+        if (lyrics.isEmpty() && plainLyrics.isEmpty() && !instrumental) return null
         return LyricsResult(
             lyrics = lyrics,
             plainLyrics = plainLyrics,
@@ -102,7 +104,12 @@ internal class LrcLibLyricsSource(
             candidateTrack = item.contentString("trackName"),
             candidateArtist = item.contentString("artistName"),
             candidateAlbum = item.contentString("albumName"),
-            lyricsKind = if (lyrics.isNotEmpty()) LyricsKind.SYNCHRONIZED else LyricsKind.PLAIN
+            instrumental = instrumental,
+            lyricsKind = when {
+                instrumental -> LyricsKind.NONE
+                lyrics.isNotEmpty() -> LyricsKind.SYNCHRONIZED
+                else -> LyricsKind.PLAIN
+            }
         )
     }
 }
@@ -172,6 +179,8 @@ internal class QqLyricsSource(
         val lyrics = decodeQqLyric(lyricRoot.contentString("lyric"))
         val translatedLyrics = decodeQqLyric(lyricRoot.contentString("trans"))
         val kind = classifyLyrics(lyrics)
+        val markerResult = candidate.copy(lyrics = lyrics, plainLyrics = "", translatedLyrics = translatedLyrics)
+        if (markerResult.isInstrumentalContent()) return markerResult.copy(lyricsKind = LyricsKind.NONE)
         val songId = synchronized(songIds) { songIds[candidate.sourceId] }
         var bundle: QqWordLyricsBundle? = null
         if (songId != null && wordSource != null) {
@@ -269,10 +278,16 @@ internal class NetEaseLyricsSource(
         requireSuccessfulResponse(lyricRoot, sourceName, setOf(200), "code")
         val lyrics = cleanLyrics(lyricRoot.optJSONObject("lrc").contentString("lyric"))
         val kind = classifyLyrics(lyrics)
-        if (kind == LyricsKind.NONE && lyricRoot.optBoolean("pureMusic", false)) return null
+        val instrumental = lyricRoot.opt("pureMusic") == true
+        if (instrumental) return candidate.copy(
+            lyrics = lyrics, plainLyrics = "", instrumental = true, lyricsKind = LyricsKind.NONE)
         val translatedLyrics = cleanLyrics(lyricRoot.optJSONObject("tlyric").contentString("lyric"))
         val romanizedLyrics = cleanLyrics(lyricRoot.optJSONObject("romalrc").contentString("lyric"))
-        var wordLyrics = usableWordLyrics(lyricRoot.optJSONObject("yrc").contentString("lyric"))
+        val rawWords = cleanLyrics(lyricRoot.optJSONObject("yrc").contentString("lyric"))
+        val markerResult = candidate.copy(lyrics = lyrics, plainLyrics = "", translatedLyrics = translatedLyrics,
+            romanizedLyrics = romanizedLyrics, wordLyrics = rawWords)
+        if (markerResult.isInstrumentalContent()) return markerResult.copy(lyricsKind = LyricsKind.NONE)
+        var wordLyrics = usableWordLyrics(rawWords)
         if (wordLyrics.isEmpty()) {
             // This optional enrichment must not discard an already valid line-level bundle.
             try {

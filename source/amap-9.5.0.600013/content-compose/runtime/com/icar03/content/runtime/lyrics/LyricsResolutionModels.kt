@@ -43,7 +43,9 @@ internal data class LyricsResult(
     val plainLyrics: String = "",
     val backgroundLyrics: String = "",
     val ttmlLyrics: String = "",
-    val identitySource: String = ""
+    val identitySource: String = "",
+    /** True only for an explicit provider instrumental/pureMusic flag, not an empty body. */
+    val instrumental: Boolean = false
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("lyrics", lyrics)
@@ -54,6 +56,7 @@ internal data class LyricsResult(
         .put("backgroundLyrics", backgroundLyrics)
         .put("ttmlLyrics", ttmlLyrics)
         .put("identitySource", identitySource)
+        .put("instrumental", instrumental)
         .put("duration", durationMs)
         .put("cover", cover)
         .put("source", source)
@@ -71,6 +74,31 @@ internal data class LyricsResult(
         album = candidateAlbum,
         identitySource = identitySource
     )
+
+    companion object {
+        /** Decode the same fields as the existing cache; content kind remains derived. */
+        fun fromJson(value: JSONObject): LyricsResult {
+            val result = LyricsResult(
+                lyrics = cleanLyrics(value.optString("lyrics")),
+                translatedLyrics = synchronizedLyricsOrEmpty(value.optString("translatedLyrics")),
+                wordLyrics = cleanLyrics(value.optString("wordLyrics")),
+                romanizedLyrics = synchronizedLyricsOrEmpty(value.optString("romanizedLyrics")),
+                plainLyrics = cleanLyrics(value.optString("plainLyrics")),
+                backgroundLyrics = cleanLyrics(value.optString("backgroundLyrics")),
+                ttmlLyrics = cleanLyrics(value.optString("ttmlLyrics")),
+                identitySource = value.optString("identitySource"),
+                instrumental = value.opt("instrumental") == true,
+                durationMs = value.optLong("duration", 0L),
+                cover = value.optString("cover"),
+                source = value.optString("source"),
+                sourceId = value.optString("sourceId"),
+                candidateTrack = value.optString("candidateTrack"),
+                candidateArtist = value.optString("candidateArtist"),
+                candidateAlbum = value.optString("candidateAlbum")
+            )
+            return result.copy(lyricsKind = result.contentKind())
+        }
+    }
 }
 
 internal data class LyricsCandidateSnapshot(

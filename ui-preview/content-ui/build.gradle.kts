@@ -22,7 +22,7 @@ val exportFormalOemResources by tasks.registering(Sync::class) {
     into(layout.buildDirectory.dir("formal-oem-res"))
 }
 val exportFormalOemAssets by tasks.registering(Sync::class) {
-    from("../../source/amap-9.5.0.600013/assets") { include("content-oem/*.json") }
+    from("../../source/amap-9.5.0.600013/assets") { include("content-oem/*.json", "content-fonts/*") }
     into(layout.buildDirectory.dir("formal-oem-assets"))
 }
 tasks.named("preBuild") { dependsOn(exportFormalOemResources, exportFormalOemAssets) }

@@ -91,6 +91,29 @@ class LyricsAdmissionCacheTest {
         } finally { cache.close() }
     }
 
+    @Test fun instrumentalFlagsAndSoleMarkersNeverEnterTheBodyQualityCacheOrReplaceManualLyrics() {
+        val cache = LyricsCache(RuntimeEnvironment.getApplication(), "instrumental-cache-${System.nanoTime()}.db")
+        val identity = LyricsPlaybackIdentity("Song", "Artist", "Album", 200_000L)
+        val body = candidate(identity.lookup())
+        val proof = LyricsCandidateSelector.selectCandidatesWithProof(identity.lookup(), listOf(body)).single().proof
+        try {
+            for (instrumental in listOf(body.copy(lyrics = "", instrumental = true, lyricsKind = LyricsKind.NONE),
+                body.copy(lyrics = "[99:00.00]纯音乐，请欣赏", lyricsKind = LyricsKind.NONE))) {
+                assertEquals(LyricsKind.NONE, instrumental.contentKind())
+                assertTrue(LyricsCandidateSelector.isProofValid(identity.lookup(), instrumental, proof))
+                assertFalse(cache.writeAutomatic(identity, ResolvedLyrics(instrumental, proof)))
+                assertFalse(cache.writeManual(identity, instrumental))
+                assertNull(cache.read(identity, false))
+            }
+            assertTrue(cache.writeAutomatic(identity, ResolvedLyrics(body, proof)))
+            val manual = body.copy(lyrics = "[00:01.0]保留人工正文", sourceId = "manual")
+            assertTrue(cache.writeManual(identity, manual))
+            assertFalse(cache.writeAutomatic(identity, ResolvedLyrics(body.copy(lyrics = "", instrumental = true), proof)))
+            assertEquals(LyricsCacheSelection.MANUAL, cache.read(identity, false)!!.selection)
+            assertEquals(manual.lyrics, cache.read(identity, false)!!.result.lyrics)
+        } finally { cache.close() }
+    }
+
     private fun candidate(query: LyricsLookup) = LyricsResult(
         lyrics = "[00:01.0]歌词", durationMs = query.durationMs, source = SOURCE_QQ, sourceId = "item",
         candidateTrack = query.track, candidateArtist = query.artist, candidateAlbum = query.album,

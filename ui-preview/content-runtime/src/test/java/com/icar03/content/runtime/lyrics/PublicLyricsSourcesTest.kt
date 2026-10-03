@@ -358,6 +358,84 @@ class PublicLyricsSourcesTest {
         assertTrue(transport.requests.isEmpty())
     }
 
+    @Test fun neteasePureMusicFlagAndOnlyExplicitMarkerPreserveCatalogIdentityWithoutEnrichment() {
+        for (root in listOf(
+            JSONObject().put("code", 200).put("pureMusic", true),
+            JSONObject().put("code", 200).put("pureMusic", false)
+                .put("lrc", JSONObject().put("lyric", "[99:00.00]纯音乐，请欣赏"))
+        )) {
+            val transport = FakeTransport(root.toString())
+            val original = candidate()
+            val result = NetEaseLyricsSource(transport).loadLyrics(original, DEADLINE, signal())!!
+            assertTrue(result.isInstrumentalContent())
+            assertEquals(original.candidateSnapshot(), result.candidateSnapshot())
+            assertEquals(LyricsKind.NONE, result.contentKind())
+            assertTrue(result.timedLines().isEmpty())
+            assertEquals("", result.plainText())
+            assertEquals(1, transport.requests.size)
+        }
+    }
+
+    @Test fun markerMixedWithAnotherActualTrackIsNotReclassifiedByDroppingThatTrack() {
+        val neteaseRoot = JSONObject().put("code", 200)
+            .put("lrc", JSONObject().put("lyric", "[99:00.00]纯音乐，请欣赏"))
+            .put("yrc", JSONObject().put("lyric", YRC))
+        val netease = NetEaseLyricsSource(FakeTransport(neteaseRoot.toString()))
+            .loadLyrics(candidate(), DEADLINE, signal())!!
+        assertFalse(netease.isInstrumentalContent())
+        assertEquals(YRC, netease.wordLyrics)
+        val qqRoot = JSONObject().put("code", 0).put("lyric", "[00:00.0]纯音乐，请欣赏")
+            .put("trans", "[00:01.0]A real auxiliary lyric")
+        val qq = QqLyricsSource(FakeTransport(qqRoot.toString()), wordSource = null)
+            .loadLyrics(candidate(SOURCE_QQ), DEADLINE, signal())!!
+        assertFalse(qq.isInstrumentalContent())
+        assertEquals("[00:01.0]A real auxiliary lyric", qq.translatedLyrics)
+    }
+
+    @Test fun falseMissingOrNonBooleanPureMusicFlagsWithEmptyLyricsAreNotInstrumental() {
+        for (flag in listOf<Any?>(null, false, "true", 1)) {
+            val root = JSONObject().put("code", 200).apply { if (flag != null) put("pureMusic", flag) }
+            val transport = FakeTransport(root.toString(), "{\"code\":200}")
+            assertNull(NetEaseLyricsSource(transport).loadLyrics(candidate(), DEADLINE, signal()))
+            assertEquals("empty lyrics still follow the existing optional enrichment path", 2, transport.requests.size)
+        }
+    }
+
+    @Test fun lrclibOnlyAnActualInstrumentalFlagRetainsAnEmptyRecording() {
+        val query = LyricsLookup("Song", "Artist", "Album", 200_000L)
+        for (flag in listOf<Any?>(null, false, "true", 1, true)) {
+            val item = JSONObject().put("id", 4242).put("trackName", "Song").put("artistName", "Artist")
+                .put("albumName", "Album").put("duration", 200)
+                .put("syncedLyrics", JSONObject.NULL).put("plainLyrics", JSONObject.NULL)
+                .apply { if (flag != null) put("instrumental", flag) }
+            val source = LrcLibLyricsSource(FakeTransport(item.toString()))
+            val result = source.exact(query, DEADLINE, signal())
+            if (flag == true) {
+                assertNotNull(result)
+                assertTrue(result!!.instrumental)
+                assertEquals(200_000L, result.durationMs)
+                assertEquals("4242", result.sourceId)
+                assertEquals(LyricsKind.NONE, result.contentKind())
+                assertTrue(result.timedLines().isEmpty())
+                assertEquals(result, source.loadLyrics(result, DEADLINE, signal()))
+                val selected = LyricsCandidateSelector.selectCandidatesWithProof(query, listOf(result)).single()
+                assertTrue(LyricsCandidateSelector.isProofValid(query, result, selected.proof))
+            } else assertNull(result)
+        }
+    }
+
+    @Test fun qqOnlyExplicitInstrumentalLyricMarkerIsNotAStaticOrTimedBody() {
+        val transport = FakeTransport(JSONObject().put("code", 0)
+            .put("lyric", "[99:00.00]纯音乐，请欣赏").toString())
+        val original = candidate(SOURCE_QQ)
+        val result = QqLyricsSource(transport, wordSource = null).loadLyrics(original, DEADLINE, signal())!!
+        assertTrue(result.isInstrumentalContent())
+        assertEquals(original.candidateSnapshot(), result.candidateSnapshot())
+        assertEquals(LyricsKind.NONE, result.contentKind())
+        assertTrue(result.timedLines().isEmpty())
+        assertEquals(1, transport.requests.size)
+    }
+
     private fun candidate(source: String = SOURCE_NETEASE) = LyricsResult(
         source = source, sourceId = if (source == SOURCE_QQ) "synthetic-mid" else "4242",
         candidateTrack = "Song", candidateArtist = "Artist", candidateAlbum = "Album", durationMs = 200_000L

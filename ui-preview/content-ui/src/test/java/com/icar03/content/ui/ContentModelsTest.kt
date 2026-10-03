@@ -30,6 +30,17 @@ class ContentModelsTest {
         assertNull(ShortcutId.Settings.control)
     }
 
+    @Test fun lyricsEmptyReasonsDefaultToNoLyricsAndDoNotPretendToHaveATimeline() {
+        assertEquals(LyricsEmptyState.NoLyrics, LyricsState().emptyState)
+        assertEquals(listOf("NoLyrics", "NetworkError", "Instrumental"), LyricsEmptyState.entries.map { it.name })
+        val instrumental = LyricsState(timed = false, emptyState = LyricsEmptyState.Instrumental)
+        assertTrue(instrumental.lines.isEmpty())
+        assertEquals(-1, instrumental.activeIndex)
+        assertEquals(-1L, instrumental.positionMs)
+        assertFalse(instrumental.timelineReady)
+        assertFalse(instrumental.loading)
+    }
+
     @Test fun fourControlsAndFiveStableSourcesAreUnique() {
         assertEquals(4, ControlId.entries.size)
         assertEquals(5, MediaSource.entries.size)

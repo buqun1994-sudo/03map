@@ -236,6 +236,44 @@ class ContentLyricsStoreTest {
         } finally { store.destroy() }
     }
 
+    @Test fun terminalProtocolStatesPassThroughWithNoSyntheticInstrumentalTimelineAndRejectOldBindings() {
+        val store = store()
+        try {
+            assertEquals(listOf(0, 1, 2, 3), listOf(ContentPorts.LyricsSnapshot.EMPTY,
+                ContentPorts.LyricsSnapshot.LOADING, ContentPorts.LyricsSnapshot.READY, ContentPorts.LyricsSnapshot.UNAVAILABLE))
+            store.startLyrics()
+            val first = media(sequence = 1L, position = 30_000L)
+            store.acceptMediaSnapshot(first)
+            for (status in listOf(ContentPorts.LyricsSnapshot.NO_MATCH, ContentPorts.LyricsSnapshot.NETWORK_ERROR,
+                ContentPorts.LyricsSnapshot.INSTRUMENTAL)) {
+                store.acceptLyricsSnapshot(ContentPorts.LyricsSnapshot(first.recordingKey(), first.generation,
+                    status, emptyList(), null, status != ContentPorts.LyricsSnapshot.INSTRUMENTAL))
+                assertEquals(status, store.snapshot().lyricsStatus)
+                assertTrue(store.snapshot().lyricsLines.isEmpty())
+                assertEquals(-1, store.snapshot().lyricsActiveIndex)
+                assertEquals(-1, store.snapshot().lyricsScrollIndex)
+                if (status == ContentPorts.LyricsSnapshot.INSTRUMENTAL) {
+                    assertFalse(store.snapshot().lyricsTimed)
+                    assertFalse(store.snapshot().lyricsTimelineReady)
+                    assertEquals(-1L, store.snapshot().lyricsPositionMs)
+                    assertTrue(store.snapshot().lyricsActiveIndices.isEmpty())
+                    var publications = 0
+                    store.addListener { publications++ }
+                    val before = publications
+                    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
+                    assertEquals("pure music schedules no lyric ticker", before, publications)
+                }
+            }
+            val second = media(title = "Second", generation = 2)
+            store.acceptMediaSnapshot(second)
+            store.acceptLyricsSnapshot(ContentPorts.LyricsSnapshot(first.recordingKey(), first.generation,
+                ContentPorts.LyricsSnapshot.INSTRUMENTAL, emptyList(), null, false))
+            assertEquals(ContentPorts.LyricsSnapshot.EMPTY, store.snapshot().lyricsStatus)
+            assertTrue(store.snapshot().lyricsLines.isEmpty())
+            assertFalse(store.snapshot().lyricsTimelineReady)
+        } finally { store.destroy() }
+    }
+
     private fun standardMedia(position: Long, publisherTime: Long) = ContentPorts.MediaSnapshot(
         true, false, "本机音乐", true, 1, "Song", "Artist", true, true,
         null, "", "Album", 200_000L, position, publisherTime, 1f, ContentPorts.MediaSongIdentity.SONG)

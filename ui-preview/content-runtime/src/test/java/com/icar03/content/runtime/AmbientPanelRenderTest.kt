@@ -9,6 +9,8 @@ import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -21,6 +23,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.icar03.content.ui.*
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import java.lang.reflect.Modifier as ReflectModifier
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -29,6 +34,23 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+
+/** The formal UI keeps this hook internal; runtime tests reach it without adding a production debug API. */
+@Suppress("UNCHECKED_CAST")
+private fun ambientPreparationLocalForTest(): ProvidableCompositionLocal<CoroutineDispatcher> {
+    val facade = Class.forName("com.icar03.content.ui.MediaAmbientBackgroundKt")
+    val getter = facade.declaredMethods.firstOrNull {
+        ReflectModifier.isStatic(it.modifiers) && it.parameterCount == 0 &&
+            (it.name == "getLocalAmbientPreparationDispatcher" ||
+                it.name.startsWith("getLocalAmbientPreparationDispatcher\$"))
+    } ?: error("LocalAmbientPreparationDispatcher getter not found")
+    getter.isAccessible = true
+    return getter.invoke(null) as ProvidableCompositionLocal<CoroutineDispatcher>
+}
+
+private fun ambientHasContentMatcher(): SemanticsMatcher = SemanticsMatcher("AmbientHasContent=true") { node ->
+    node.config.any { it.key.name == "AmbientHasContent" && it.value == true }
+}
 
 /** Actual formal UI + Android baked scene; all song data and the cover are synthetic. */
 @RunWith(RobolectricTestRunner::class)
@@ -54,16 +76,26 @@ open class AmbientPanelLightRenderTest {
                     View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
-            ContentTheme(dark) {
-                ContentPanel(state.value, onEvent = { event ->
-                    if (event == ContentEvent.OpenSources) state.value = state.value.copy(sourcesOpen = true)
-                    if (event == ContentEvent.DismissSheet) state.value = state.value.copy(sourcesOpen = false)
-                }, modifier = Modifier.testTag("ambient-panel"),
-                    artwork = { Image(cover.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) },
-                    ambientBackground = { MediaAmbientBackground(scene, dark, animating = false) })
+            CompositionLocalProvider(ambientPreparationLocalForTest() provides Dispatchers.Unconfined) {
+                ContentTheme(dark) {
+                    ContentPanel(state.value, onEvent = { event ->
+                        if (event == ContentEvent.OpenSources) state.value = state.value.copy(sourcesOpen = true)
+                        if (event == ContentEvent.DismissSheet) state.value = state.value.copy(sourcesOpen = false)
+                    }, modifier = Modifier.testTag("ambient-panel"),
+                        artwork = { Image(cover.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) },
+                        ambientBackground = { MediaAmbientBackground(scene, dark, animating = false) })
+                }
             }
         }
-        compose.waitForIdle(); compose.mainClock.advanceTimeBy(640)
+        // First deliver layout so onSizeChanged supplies the viewport; then the test-only
+        // Unconfined worker completes preparation synchronously. This is the production
+        // protocol made deterministic, not a wall-clock wait or a fake readiness signal.
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        compose.onNodeWithTag("media-ambient").assert(ambientHasContentMatcher())
+        // Keep the original 500ms arrival animation and drive it to its endpoint.
+        compose.mainClock.advanceTimeBy(640)
+        compose.waitForIdle()
         val closed = capture("closed")
         assertTrue((120..780 step 19).map { closed.getPixel(6, it) }.toSet().size > 10)
         compose.onNodeWithTag("source-button").performClick()

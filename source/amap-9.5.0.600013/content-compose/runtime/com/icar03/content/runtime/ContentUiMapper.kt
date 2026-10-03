@@ -17,6 +17,20 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private var waitRowDurationMs = -1L
     private var waitRowTimed = false
     private var projectedWaitRows: List<LyricWaitRow> = emptyList()
+    private var projectedLineSource: List<ContentPorts.LyricsLine>? = null
+    private var projectedLines: List<LyricLine> = emptyList()
+
+    /** Snapshot copies share immutable rows; playback/clock changes never rebuild the song. */
+    private fun lines(state: ContentState): List<LyricLine> {
+        if (projectedLineSource !== state.lyricsLines) {
+            projectedLineSource = state.lyricsLines
+            projectedLines = state.lyricsLines.map { line -> LyricLine(line.timeMs, line.text, line.translation,
+                line.romanization, line.words.map { LyricWord(it.startTimeMs, it.endTimeMs, it.text) },
+                line.endTimeMs, line.backgroundWords.map { LyricWord(it.startTimeMs, it.endTimeMs, it.text) },
+                LyricSide.entries.getOrElse(line.speakerSide) { LyricSide.Unspecified }) }
+        }
+        return projectedLines
+    }
 
     private fun waitRows(state: ContentState): List<LyricWaitRow> {
         if (waitRowLines !== state.lyricsLines || waitRowDurationMs != state.mediaDurationMs || waitRowTimed != state.lyricsTimed) {
@@ -97,10 +111,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 nextAvailable = realMedia && state.mediaNextAvailable, sourceAvailable = capabilities.source),
             lyrics = if (metadataReady) LyricsState(
                 recordingKey = state.mediaRecordingKey,
-                lines = state.lyricsLines.map { line -> LyricLine(line.timeMs, line.text, line.translation,
-                    line.romanization, line.words.map { LyricWord(it.startTimeMs, it.endTimeMs, it.text) },
-                    line.endTimeMs, line.backgroundWords.map { LyricWord(it.startTimeMs, it.endTimeMs, it.text) },
-                    LyricSide.entries.getOrElse(line.speakerSide) { LyricSide.Unspecified }) },
+                lines = lines(state),
                 activeIndex = state.lyricsActiveIndex,
                 // Loading is a song-only state; a stale lyrics callback must not leak into no-media UI.
                 loading = isSong && state.lyricsStatus == ContentPorts.LyricsSnapshot.LOADING,
@@ -111,6 +122,11 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 activeIndices = state.lyricsActiveIndices.toList(),
                 gapStartMs = state.lyricsGapStartMs, gapEndMs = state.lyricsGapEndMs,
                 waitRows = waitRows(state),
+                emptyState = when (state.lyricsStatus) {
+                    ContentPorts.LyricsSnapshot.NETWORK_ERROR -> LyricsEmptyState.NetworkError
+                    ContentPorts.LyricsSnapshot.INSTRUMENTAL -> LyricsEmptyState.Instrumental
+                    else -> LyricsEmptyState.NoLyrics
+                },
             ) else LyricsState(),
             message = state.commandMessage.takeIf { state.commandStatus == ContentState.COMMAND_FAILED && it.isNotBlank() },
         )

@@ -44,6 +44,7 @@ data class LyricsState(
     val scrollIndex: Int = -1, val activeIndices: List<Int> = emptyList(),
     val gapStartMs: Long = -1L, val gapEndMs: Long = -1L,
     val waitRows: List<LyricWaitRow> = emptyList(),
+    val emptyState: LyricsEmptyState = LyricsEmptyState.NoLyrics,
 )
 data class ContentUiState(
     val dark: Boolean = false, val page: PanelPage = PanelPage.Shortcuts,
@@ -85,3 +86,6 @@ fun previewState(scenario: PreviewScenario = PreviewScenario.Ready): ContentUiSt
         PreviewScenario.Ready -> base
     }
 }
+
+/** Terminal empty-body projection; loading and available lyrics keep their existing fields. */
+enum class LyricsEmptyState { NoLyrics, NetworkError, Instrumental }

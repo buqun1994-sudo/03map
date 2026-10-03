@@ -384,6 +384,11 @@ public final class ContentPorts {
         public static final int LOADING = 1;
         public static final int READY = 2;
         public static final int UNAVAILABLE = 3;
+        /** A completed lookup with no admitted lyrics; not a transport failure. */
+        public static final int NO_MATCH = 4;
+        public static final int NETWORK_ERROR = 5;
+        /** Explicit provider/lyric evidence for this recording; never a synthetic timeline. */
+        public static final int INSTRUMENTAL = 6;
         public final String recordingKey;
         public final int mediaGeneration;
         public final int status;

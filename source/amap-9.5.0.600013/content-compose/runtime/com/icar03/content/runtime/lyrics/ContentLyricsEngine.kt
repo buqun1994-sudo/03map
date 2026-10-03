@@ -156,7 +156,7 @@ class ContentLyricsEngine internal constructor(
         val runtime = resources
         val currentScope = scope
         if (runtime == null || currentScope == null) {
-            if (lines.isEmpty()) status = UNAVAILABLE
+            if (!hasAdmittedContent()) status = UNAVAILABLE
             publish()
             return
         }
@@ -166,7 +166,7 @@ class ContentLyricsEngine internal constructor(
         automaticJob = currentScope.launch {
             try {
                 if (!identity.isUsable) {
-                    if (isCurrent(life, epoch, state)) { if (lines.isEmpty()) status = UNAVAILABLE; publish() }
+                    if (isCurrent(life, epoch, state)) { if (!hasAdmittedContent()) status = UNAVAILABLE; publish() }
                     return@launch
                 }
                 val cached = withCache { runtime.cache.read(identity, recordUse = true) }
@@ -176,6 +176,10 @@ class ContentLyricsEngine internal constructor(
                     return@launch
                 }
                 val embedded = embeddedResolved(state, identity)
+                if (embedded?.result?.isInstrumentalContent() == true) {
+                    applyResult(embedded.result, embedded)
+                    return@launch
+                }
                 if (embedded != null && LrcParser.parse(embedded.result.lyrics).isNotEmpty()) {
                     val persisted = withCache {
                         runtime.cache.writeAutomatic(identity, embedded)
@@ -188,13 +192,14 @@ class ContentLyricsEngine internal constructor(
                 if (cached != null && !applyResult(cached.result, cached.resolved)) return@launch
                 if (!LyricsCandidateSelector.canConfirm(identity.lookup()) ||
                     cached?.needsRefresh(System.currentTimeMillis()) == false) {
-                    if (lines.isEmpty()) { status = UNAVAILABLE; publish() }
+                    if (!hasAdmittedContent()) { status = UNAVAILABLE; publish() }
                     return@launch
                 }
                 val outcome = runtime.resolveLyricsProgressive(identity.lookup()) { provisional ->
                     onMain {
                         val resolved = provisional.resolved
-                        if (isCurrent(life, epoch, state) && proofValidForCurrent(resolved) && lines.isEmpty()) {
+                        if (isCurrent(life, epoch, state) && proofValidForCurrent(resolved) &&
+                            !resolved.result.isInstrumentalContent() && lines.isEmpty()) {
                             if (!applyResult(resolved.result, resolved) || lines.isEmpty()) return@onMain
                             // Visible admitted content must not depend on the slow final network round.
                             // Stop cancels resolution, not this bounded atomic persistence operation.
@@ -224,7 +229,19 @@ class ContentLyricsEngine internal constructor(
                 }
                 if (!isCurrent(life, epoch, state)) return@launch
                 val resolved = (outcome as? LyricsResolutionOutcome.Found)?.resolved
-                if (resolved != null &&
+                if (resolved != null && resolved.result.isInstrumentalContent() &&
+                    LyricsCandidateSelector.isProofValid(identity.lookup(), resolved.result, resolved.proof)) {
+                    if (!proofValidForCurrent(resolved)) {
+                        restartForCurrentMetadata()
+                        return@launch
+                    }
+                    // Instrumental facts have no lyric body and do not enter the body-quality cache.
+                    // A manual adoption racing this round, or an already admitted body, still wins.
+                    val persisted = withCache { runtime.cache.read(identity, recordUse = false) }
+                    if (!isCurrent(life, epoch, state)) return@launch
+                    if (persisted?.selection == LyricsCacheSelection.MANUAL) applyResult(persisted.result, null)
+                    else if (lines.isEmpty()) applyResult(resolved.result, resolved)
+                } else if (resolved != null &&
                     LyricsCandidateSelector.isProofValid(identity.lookup(), resolved.result, resolved.proof) &&
                     resolved.result.contentKind() != LyricsKind.NONE) {
                     if (!proofValidForCurrent(resolved)) {
@@ -250,16 +267,20 @@ class ContentLyricsEngine internal constructor(
                             selected == null)) {
                         applyResult(persisted.result, persisted.resolved)
                     } else if (upgrade) applyResult(resolved.result, resolved)
-                } else if (lines.isEmpty() && outcome != LyricsResolutionOutcome.Cancelled) {
-                    status = UNAVAILABLE
+                } else if (!hasAdmittedContent() && outcome != LyricsResolutionOutcome.Cancelled) {
+                    status = when (outcome) {
+                        is LyricsResolutionOutcome.RetryableFailure,
+                        is LyricsResolutionOutcome.SourceFailure -> NETWORK_ERROR
+                        else -> NO_MATCH
+                    }
                     publish()
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (isCurrent(life, epoch, state) && lines.isEmpty()) {
+                if (isCurrent(life, epoch, state) && !hasAdmittedContent()) {
                     Log.w(TAG, "Lyrics resolution unavailable", error)
-                    status = UNAVAILABLE
+                    status = if (error is LyricsSourceException) NETWORK_ERROR else UNAVAILABLE
                     publish()
                 }
             } finally {
@@ -368,6 +389,15 @@ class ContentLyricsEngine internal constructor(
             restartForCurrentMetadata()
             return false
         }
+        if (result.isInstrumentalContent()) {
+            if (proof == null) return false // No unproved/manual empty result can establish this fact.
+            selected = proof
+            lines = emptyList()
+            timed = false
+            status = INSTRUMENTAL
+            publish()
+            return true
+        }
         selected = proof
         val parsed = result.timedLines()
         timed = parsed.isNotEmpty()
@@ -395,8 +425,12 @@ class ContentLyricsEngine internal constructor(
         return true
     }
 
+    private fun hasAdmittedContent(): Boolean = lines.isNotEmpty() ||
+        (status == INSTRUMENTAL && selected != null)
+
     private fun shouldUpgrade(query: LyricsLookup, previous: ResolvedLyrics?, next: ResolvedLyrics): Boolean {
         previous ?: return true
+        if (previous.result.isInstrumentalContent()) return !next.result.isInstrumentalContent()
         if (previous.result == next.result) return false
         return LyricsContentRanker.isMaterialUpgrade(query,
             LyricsCandidateSelection(previous.result, previous.proof),
@@ -420,8 +454,13 @@ class ContentLyricsEngine internal constructor(
     }
 
     private fun embeddedResolved(state: MediaRecordingState, identity: LyricsPlaybackIdentity): ResolvedLyrics? {
-        val body = state.metadata.embeddedLyrics
-        if (!isEmbeddedSynchronizedLyrics(body)) return null
+        // MetadataPolicy deliberately admits ordinary embedded lyrics only after two timestamps.
+        // A sole explicit instrumental marker is a terminal fact, so recover only that exact raw
+        // media field here; ordinary one-line text still cannot bypass the embedded lyric gate.
+        val body = state.metadata.embeddedLyrics.ifBlank {
+            media?.embeddedLyrics?.takeIf(::isExplicitInstrumentalMarker).orEmpty()
+        }
+        if (!isEmbeddedSynchronizedLyrics(body) && !isExplicitInstrumentalMarker(body)) return null
         val candidate = LyricsResult(
             lyrics = body,
             durationMs = identity.durationMs,
@@ -430,7 +469,7 @@ class ContentLyricsEngine internal constructor(
             candidateTrack = identity.track,
             candidateArtist = identity.artist,
             candidateAlbum = identity.album,
-            lyricsKind = LyricsKind.SYNCHRONIZED
+            lyricsKind = if (isExplicitInstrumentalMarker(body)) LyricsKind.NONE else LyricsKind.SYNCHRONIZED
         )
         return LyricsCandidateSelector.selectCandidatesWithProof(identity.lookup(), listOf(candidate))
             .firstOrNull()?.let { ResolvedLyrics(it.candidate, it.proof) }
@@ -517,10 +556,13 @@ class ContentLyricsEngine internal constructor(
 
     companion object {
         private const val TAG = "ContentLyrics"
-        private const val EMPTY = 0
-        private const val LOADING = 1
-        private const val READY = 2
-        private const val UNAVAILABLE = 3
+        private const val EMPTY = ContentPorts.LyricsSnapshot.EMPTY
+        private const val LOADING = ContentPorts.LyricsSnapshot.LOADING
+        private const val READY = ContentPorts.LyricsSnapshot.READY
+        private const val UNAVAILABLE = ContentPorts.LyricsSnapshot.UNAVAILABLE
+        private const val NO_MATCH = ContentPorts.LyricsSnapshot.NO_MATCH
+        private const val NETWORK_ERROR = ContentPorts.LyricsSnapshot.NETWORK_ERROR
+        private const val INSTRUMENTAL = ContentPorts.LyricsSnapshot.INSTRUMENTAL
 
         @JvmStatic fun create(context: Context): ContentPorts.LyricsPort = ContentLyricsEngine(context)
     }

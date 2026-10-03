@@ -252,7 +252,8 @@ internal class LyricsResolutionSession(
         for (selection in ranked) {
             if (activeBodySources.size >= config.maximumBodyLanes) break
             val candidate = selection.candidate
-            if (LyricsContentRanker.inspect(query, candidate).kind == LyricsKind.SYNCHRONIZED) continue
+            if (candidate.isInstrumentalContent() ||
+                LyricsContentRanker.inspect(query, candidate).kind == LyricsKind.SYNCHRONIZED) continue
             val candidateId = candidateIdentity(candidate)
             val source = bodySources[candidate.source] ?: continue
             if (candidateId in startedCandidateIds || source.sourceName in activeBodySources) continue
@@ -379,7 +380,12 @@ internal class LyricsResolutionSession(
         }
         // A repeated catalog response cannot rewrite the recording proof or erase a loaded body.
         if (previous.candidateSnapshot() != candidate.candidateSnapshot()) return
-        if (candidate == previous || !candidate.hasBodyPayload()) return
+        if (candidate == previous) return
+        if (candidate.isInstrumentalContent() && !previous.hasBodyPayload()) {
+            candidates[identity] = candidate
+            return
+        }
+        if (!candidate.hasBodyPayload()) return
         val oldSelection = LyricsCandidateSelector.selectCandidatesWithProof(query, candidates.values)
             .firstOrNull { candidateIdentity(it.candidate) == identity }
         val newSelection = oldSelection?.copy(candidate = candidate)
@@ -441,6 +447,19 @@ internal class LyricsResolutionSession(
         ranked.firstOrNull()?.let { winner ->
             return found(query, candidates, winner, startedAtNanos, trace)
         }
+        // A pure-music fact is neither a ranked body nor a failure. It still needs the same
+        // strict recording proof, and only wins once no admitted real body is available.
+        val preferences = preferredSources().withIndex().associate { it.value to it.index }
+        LyricsCandidateSelector.selectCandidatesWithProof(query, candidates)
+            .filter { it.candidate.isInstrumentalContent() }
+            .filter { LyricsCandidateSelector.isProofValid(query, it.candidate, it.proof) }
+            .minByOrNull { preferences[it.candidate.source] ?: Int.MAX_VALUE }?.let { selection ->
+                logger.info("Lyrics instrumental=${selection.candidate.source} ${trace.summary()} " +
+                    "evidence=${LyricsCandidateSelector.selectionSummary(query, candidates, selection.candidate)} " +
+                    "elapsedMs=${elapsedMs(startedAtNanos)}")
+                return LyricsResolutionOutcome.Found(ResolvedLyrics(
+                    selection.candidate.copy(lyricsKind = LyricsKind.NONE), selection.proof))
+            }
         val outcome = retryableFailure?.let(LyricsResolutionOutcome::RetryableFailure)
             ?: terminalFailure?.let(LyricsResolutionOutcome::SourceFailure)
             ?: LyricsResolutionOutcome.NoMatch

@@ -165,7 +165,7 @@ class ContentLyricsEngineTest {
         runtime.pendingLyrics.remove("Invalid")!!.resume(outcome.copy(resolved = outcome.resolved.copy(
             proof = outcome.resolved.proof.copy(matcherPolicyVersion = -1))))
         drain()
-        assertEquals(ContentPorts.LyricsSnapshot.UNAVAILABLE, snapshots.last().status)
+        assertEquals(ContentPorts.LyricsSnapshot.NO_MATCH, snapshots.last().status)
         assertEquals(0, runtime.cache.writes)
         engine.update(media(title = "Credits", generation = 2))
         drain()
@@ -173,7 +173,7 @@ class ContentLyricsEngineTest {
         runtime.pendingLyrics.remove("Credits")!!.resume(credits.copy(resolved = credits.resolved.copy(
             result = credits.resolved.result.copy(lyrics = "[00:01.0]作词：作者"))))
         drain()
-        assertEquals(ContentPorts.LyricsSnapshot.UNAVAILABLE, snapshots.last().status)
+        assertEquals(ContentPorts.LyricsSnapshot.NO_MATCH, snapshots.last().status)
         assertEquals(0, runtime.cache.writes)
     }
 
@@ -502,6 +502,228 @@ class ContentLyricsEngineTest {
         dispatcher.runAll(); drain(); dispatcher.runAll(); drain()
         assertEquals(1, runtime.cache.writes)
         assertTrue(runtime.closed)
+    }
+
+    @Test fun completedNoMatchAndInvalidMetadataAreNotNetworkErrors() {
+        for (outcome in listOf(LyricsResolutionOutcome.NoMatch, LyricsResolutionOutcome.InvalidMetadata)) {
+            val runtime = Runtime()
+            val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+            val engine = engine(runtime, frames)
+            engine.update(media())
+            drain()
+            runtime.pendingLyrics.remove("Song")!!.resume(outcome)
+            drain()
+            assertEquals(ContentPorts.LyricsSnapshot.NO_MATCH, frames.last().status)
+            assertTrue(frames.last().lines.isEmpty())
+            assertEquals(0, runtime.cache.writes)
+            assertEquals(0, runtime.cache.refreshes)
+        }
+    }
+
+    @Test fun typedRetryableAndSourceFailuresBecomeNetworkErrorOnlyWithoutAnAdmittedBody() {
+        for (outcome in networkFailures()) {
+            val runtime = Runtime()
+            val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+            val engine = engine(runtime, frames)
+            engine.update(media())
+            drain()
+            runtime.pendingLyrics.remove("Song")!!.resume(outcome)
+            drain()
+            assertEquals(ContentPorts.LyricsSnapshot.NETWORK_ERROR, frames.last().status)
+            assertTrue(frames.last().lines.isEmpty())
+            assertEquals(0, runtime.cache.writes)
+            assertEquals(0, runtime.cache.refreshes)
+        }
+    }
+
+    @Test fun cachedAndProvisionalBodiesRemainReadyAfterNetworkFailureWithoutSpendingRefreshBudget() {
+        for (cached in listOf(false, true)) for (outcome in networkFailures()) {
+            val runtime = Runtime()
+            val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+            val query = LyricsLookup("Song", "Artist", "Album", 200_000L)
+            if (cached) {
+                val resolved = found(query).resolved
+                runtime.cache.entries[LyricsPlaybackIdentity(query.track, query.artist, query.album, query.durationMs)] =
+                    LyricsCache.Entry(resolved.result, resolved.proof, 0L)
+            }
+            val engine = engine(runtime, frames)
+            engine.update(media())
+            drain()
+            if (!cached) {
+                runtime.provisional.getValue("Song")(found(query))
+                drain()
+            }
+            val visible = frames.last().lines
+            val publications = frames.size
+            runtime.pendingLyrics.remove("Song")!!.resume(outcome)
+            drain()
+            assertEquals(ContentPorts.LyricsSnapshot.READY, frames.last().status)
+            assertSame(visible, frames.last().lines)
+            assertEquals(publications, frames.size)
+            assertEquals(if (cached) 0 else 1, runtime.cache.writes)
+            assertEquals(0, runtime.cache.refreshes)
+        }
+    }
+
+    @Test fun explicitProviderFlagAndSoleMarkerPublishInstrumentalWithoutRowsTimelineOrCacheWrites() {
+        for (marker in listOf("", "[99:00.00]纯音乐，请欣赏", "纯音乐，请您欣赏")) {
+            val runtime = Runtime()
+            val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+            val engine = engine(runtime, frames)
+            engine.update(media())
+            drain()
+            val query = runtime.lookups.single()
+            val result = found(query).resolved.result.copy(lyrics = marker,
+                instrumental = marker.isEmpty(), lyricsKind = LyricsKind.NONE)
+            val pureMusic = found(query, result)
+            runtime.provisional.getValue("Song")(pureMusic)
+            drain()
+            assertEquals("pure music is never a provisional lyric body", ContentPorts.LyricsSnapshot.LOADING, frames.last().status)
+            runtime.pendingLyrics.remove("Song")!!.resume(pureMusic)
+            drain()
+            assertEquals(ContentPorts.LyricsSnapshot.INSTRUMENTAL, frames.last().status)
+            assertTrue(frames.last().lines.isEmpty())
+            assertFalse(frames.last().timed)
+            assertEquals(0, runtime.cache.writes)
+            assertEquals(0, runtime.cache.refreshes)
+            assertTrue(runtime.cache.entries.isEmpty())
+        }
+    }
+
+    @Test fun embeddedSoleInstrumentalMarkerUsesRecordingProofWithoutNetworkOrFakeTimeline() {
+        val runtime = Runtime()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, frames)
+        engine.update(media(embedded = "[99:00.00]纯音乐，请欣赏"))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.INSTRUMENTAL, frames.last().status)
+        assertFalse(frames.last().timed)
+        assertTrue(frames.last().lines.isEmpty())
+        assertTrue(runtime.lookups.isEmpty())
+        assertEquals(0, runtime.cache.writes)
+        engine.update(media(title = "Unknown", generation = 2, duration = 0L,
+            embedded = "[99:00.00]纯音乐，请欣赏"))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.UNAVAILABLE, frames.last().status)
+        assertTrue(runtime.lookups.isEmpty())
+    }
+
+    @Test fun emptyLyricsAndInstrumentalTitleDoNotEstablishPureMusic() {
+        val runtime = Runtime()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, frames)
+        engine.update(media(title = "Instrumental"))
+        drain()
+        val query = runtime.lookups.single()
+        runtime.pendingLyrics.remove("Instrumental")!!.resume(found(query, found(query).resolved.result.copy(lyrics = "")))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.NO_MATCH, frames.last().status)
+        assertEquals(0, runtime.cache.writes)
+    }
+
+    @Test fun invalidInstrumentalProofIsRejectedAndLatePureMusicCannotOverwriteANewSong() {
+        val runtime = Runtime()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, frames)
+        engine.update(media(title = "Invalid"))
+        drain()
+        val query = runtime.lookups.single()
+        val pure = found(query, found(query).resolved.result.copy(lyrics = "", instrumental = true))
+        runtime.pendingLyrics.remove("Invalid")!!.resume(pure.copy(resolved = pure.resolved.copy(
+            proof = pure.resolved.proof.copy(matcherPolicyVersion = -1))))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.NO_MATCH, frames.last().status)
+        engine.update(media(title = "Old", generation = 2))
+        drain()
+        val old = runtime.lookups.last()
+        engine.update(media(title = "New", generation = 3))
+        drain()
+        runtime.finishLyrics("New")
+        drain()
+        val count = frames.size
+        runtime.pendingLyrics.remove("Old")!!.resume(found(old, found(old).resolved.result.copy(lyrics = "", instrumental = true)))
+        drain()
+        assertEquals(count, frames.size)
+        assertEquals(ContentPorts.LyricsSnapshot.READY, frames.last().status)
+        assertEquals("New lyric", frames.last().lines.single().text)
+        assertEquals(1, runtime.cache.writes)
+    }
+
+    @Test fun lateInstrumentalProofIsReplayedAgainstTheNewestDurationAndNoSongRejectsOldResults() {
+        val runtime = Runtime()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, frames)
+        engine.update(media())
+        drain()
+        val oldQuery = runtime.lookups.single()
+        val result = found(oldQuery).resolved.result.copy(lyrics = "", durationMs = 202_000L, instrumental = true)
+        val pure = found(oldQuery, result)
+        engine.update(media(duration = 198_500L, generation = 2))
+        drain()
+        runtime.pendingLyrics.remove("Song")!!.resume(pure)
+        drain()
+        assertEquals(2, runtime.lookups.size)
+        assertTrue(frames.none { it.status == ContentPorts.LyricsSnapshot.INSTRUMENTAL })
+        assertEquals(0, runtime.cache.writes)
+        val currentQuery = runtime.lookups.last()
+        engine.update(ContentPorts.MediaSnapshot.unavailable())
+        drain()
+        val publications = frames.size
+        runtime.pendingLyrics.remove("Song")!!.resume(found(currentQuery,
+            found(currentQuery).resolved.result.copy(lyrics = "", instrumental = true)))
+        drain()
+        assertEquals(publications, frames.size)
+        assertEquals(ContentPorts.LyricsSnapshot.EMPTY, frames.last().status)
+        assertEquals(0, runtime.cache.writes)
+    }
+
+    @Test fun anInstrumentalResultCannotDowngradeAnAlreadyAdmittedBody() {
+        val runtime = Runtime()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, frames)
+        engine.update(media())
+        drain()
+        val query = runtime.lookups.single()
+        runtime.provisional.getValue("Song")(found(query))
+        drain()
+        val body = frames.last().lines
+        runtime.pendingLyrics.remove("Song")!!.resume(found(query, found(query).resolved.result.copy(lyrics = "", instrumental = true)))
+        drain()
+        assertEquals(ContentPorts.LyricsSnapshot.READY, frames.last().status)
+        assertSame(body, frames.last().lines)
+        assertEquals(1, runtime.cache.writes)
+        assertEquals(0, runtime.cache.refreshes)
+    }
+
+    @Test fun retainedInstrumentalSurvivesSameRecordingResumeFailureButHasNoDiskCacheClaim() {
+        val cache = MemoryCache()
+        val runtimes = mutableListOf<Runtime>()
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = ContentLyricsEngine(RuntimeEnvironment.getApplication(),
+            { Runtime(cache).also(runtimes::add) }, Dispatchers.Unconfined, { _, _ -> null }).also(engines::add)
+        engine.start(frames::add)
+        engine.update(media())
+        drain()
+        val first = runtimes.first()
+        val query = first.lookups.single()
+        first.pendingLyrics.remove("Song")!!.resume(found(query, found(query).resolved.result.copy(lyrics = "", instrumental = true)))
+        drain()
+        engine.stop()
+        drain()
+        frames.clear()
+        engine.start(frames::add)
+        engine.update(media(generation = 2))
+        drain()
+        runtimes.last().pendingLyrics.remove("Song")!!.resume(LyricsResolutionOutcome.RetryableFailure(LyricsFailureReason.NETWORK))
+        drain()
+        assertTrue(frames.isNotEmpty())
+        assertTrue(frames.all { it.status == ContentPorts.LyricsSnapshot.INSTRUMENTAL && !it.timed && it.lines.isEmpty() })
+        assertEquals(0, cache.writes)
+        assertTrue(cache.entries.isEmpty())
+    }
+
+    private fun networkFailures(): List<LyricsResolutionOutcome> = LyricsFailureReason.entries.flatMap { reason ->
+        listOf(LyricsResolutionOutcome.RetryableFailure(reason), LyricsResolutionOutcome.SourceFailure(reason))
     }
 
     private class QueuedDispatcher : kotlinx.coroutines.CoroutineDispatcher() {

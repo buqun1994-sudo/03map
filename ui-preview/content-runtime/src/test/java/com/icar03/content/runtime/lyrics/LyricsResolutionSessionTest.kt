@@ -449,6 +449,77 @@ class LyricsResolutionSessionTest {
         }
     }
 
+    @Test fun loadedInstrumentalFlagAndOnlyMarkerUseTheExistingProofWithoutProvisionalOrTimeline() {
+        for (marker in listOf("", "[99:00.00]纯音乐，请欣赏")) {
+            val catalog = candidate(SOURCE_NETEASE).copy(durationMs = 199_100L)
+            val source = FakeCatalog(SOURCE_NETEASE, searcher = { _, _ -> listOf(catalog) }, loader = { item, _ ->
+                item.copy(lyrics = marker, instrumental = marker.isEmpty())
+            })
+            val callbacks = AtomicInteger(0)
+            Harness(catalogs = listOf(source)).use { harness ->
+                val final = found(harness.start { callbacks.incrementAndGet() })
+                assertTrue(final.resolved.result.isInstrumentalContent())
+                assertEquals(catalog.candidateSnapshot(), final.resolved.result.candidateSnapshot())
+                assertTrue(LyricsCandidateSelector.isProofValid(QUERY, final.resolved.result, final.resolved.proof))
+                assertEquals(LyricsKind.NONE, final.resolved.result.lyricsKind)
+                assertTrue(final.resolved.result.timedLines().isEmpty())
+                assertEquals("", final.resolved.result.plainText())
+                assertEquals(0, callbacks.get())
+                assertEquals(1, source.loadCalls.get())
+            }
+        }
+    }
+
+    @Test fun exactInstrumentalRequiresTheSameStrictVersionDurationAndArtistAdmissionAsABody() {
+        val instrumental = candidate(SOURCE_LRCLIB).copy(instrumental = true)
+        for (result in listOf(instrumental, instrumental.copy(candidateTrack = "Song (Remix)"),
+            instrumental.copy(durationMs = 0L), instrumental.copy(durationMs = 202_001L),
+            instrumental.copy(candidateArtist = "Another Performer"))) {
+            Harness(FakeExact(exactResult = { result })).use { harness ->
+                val outcome = harness.start().get(2L, TimeUnit.SECONDS)
+                if (result == instrumental) {
+                    assertTrue(outcome is LyricsResolutionOutcome.Found)
+                    val resolved = (outcome as LyricsResolutionOutcome.Found).resolved
+                    assertTrue(LyricsCandidateSelector.isProofValid(QUERY, resolved.result, resolved.proof))
+                } else assertEquals(LyricsResolutionOutcome.NoMatch, outcome)
+            }
+        }
+    }
+
+    @Test fun instrumentalBodyCannotRewriteTheCatalogSnapshotOrOutrankAnAdmittedRealBody() {
+        val catalog = candidate(SOURCE_NETEASE)
+        val changed = FakeCatalog(SOURCE_NETEASE, searcher = { _, _ -> listOf(catalog) }, loader = { item, _ ->
+            item.copy(sourceId = "different-id", instrumental = true)
+        })
+        Harness(catalogs = listOf(changed)).use { harness ->
+            assertEquals(LyricsResolutionOutcome.NoMatch, harness.start().get(2L, TimeUnit.SECONDS))
+        }
+        val instrumental = FakeCatalog(SOURCE_NETEASE, searcher = { _, _ -> listOf(catalog) }, loader = { item, _ ->
+            item.copy(instrumental = true)
+        })
+        val real = candidate(SOURCE_LRCLIB).copy(lyrics = LINES)
+        Harness(FakeExact(exactResult = { real }), listOf(instrumental), preferred = listOf(SOURCE_NETEASE)).use { harness ->
+            val result = found(harness.start()).resolved.result
+            assertFalse(result.isInstrumentalContent())
+            assertEquals(real.source, result.source)
+            assertEquals(LINES, result.lyrics)
+        }
+    }
+
+    @Test fun emptyLyricsRemainNoMatchButProvedInstrumentalSurvivesUnrelatedProviderFailure() {
+        val catalog = candidate(SOURCE_NETEASE)
+        val empty = FakeCatalog(SOURCE_NETEASE, searcher = { _, _ -> listOf(catalog) }, loader = { item, _ -> item })
+        Harness(catalogs = listOf(empty)).use { harness ->
+            assertEquals(LyricsResolutionOutcome.NoMatch, harness.start().get(2L, TimeUnit.SECONDS))
+        }
+        val failed = FakeCatalog(SOURCE_QQ, searcher = { _, _ ->
+            throw LyricsSourceException(LyricsFailureReason.NETWORK, true, "Synthetic offline provider")
+        })
+        Harness(FakeExact(exactResult = { candidate(SOURCE_LRCLIB).copy(instrumental = true) }), listOf(failed)).use { harness ->
+            assertTrue(found(harness.start()).resolved.result.isInstrumentalContent())
+        }
+    }
+
     private fun found(pending: Future<LyricsResolutionOutcome>): LyricsResolutionOutcome.Found =
         pending.get(3L, TimeUnit.SECONDS).let { outcome ->
             assertTrue("Expected Found but got $outcome", outcome is LyricsResolutionOutcome.Found)

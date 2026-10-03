@@ -939,26 +939,8 @@ internal class LyricsCache(
         }.getOrNull()
 
         private fun decodeResult(value: JSONObject): LyricsResult? {
-            val lyrics = cleanLyrics(value.optString("lyrics"))
-            val result = LyricsResult(
-                lyrics = lyrics,
-                translatedLyrics = synchronizedLyricsOrEmpty(value.optString("translatedLyrics")),
-                wordLyrics = cleanLyrics(value.optString("wordLyrics")),
-                romanizedLyrics = synchronizedLyricsOrEmpty(value.optString("romanizedLyrics")),
-                plainLyrics = cleanLyrics(value.optString("plainLyrics")),
-                backgroundLyrics = cleanLyrics(value.optString("backgroundLyrics")),
-                ttmlLyrics = cleanLyrics(value.optString("ttmlLyrics")),
-                identitySource = value.optString("identitySource"),
-                durationMs = value.optLong("duration", 0L),
-                cover = value.optString("cover"),
-                source = value.optString("source"),
-                sourceId = value.optString("sourceId"),
-                candidateTrack = value.optString("candidateTrack"),
-                candidateArtist = value.optString("candidateArtist"),
-                candidateAlbum = value.optString("candidateAlbum")
-            )
-            val kind = result.contentKind()
-            return result.copy(lyricsKind = kind).takeIf { kind != LyricsKind.NONE }
+            // Instrumental evidence round-trips, but this cache admits real lyric bodies only.
+            return LyricsResult.fromJson(value).takeIf { it.contentKind() != LyricsKind.NONE }
         }
 
         private const val LOG_TAG = "ContentLyrics"

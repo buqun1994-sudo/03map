@@ -551,23 +551,45 @@ private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
     // show the existing empty/source affordance only after lookup actually finishes.
     val showLoading = state.media.isSong && state.lyrics.loading
     if (!state.previewMode && showLoading) return
+    val emptyState = if (state.media.isSong) state.lyrics.emptyState else LyricsEmptyState.NoLyrics
+    val emptyText = when {
+        showLoading -> "正在匹配歌词…"
+        emptyState == LyricsEmptyState.NetworkError -> "网络错误"
+        emptyState == LyricsEmptyState.Instrumental -> "纯音乐，请您欣赏"
+        else -> "暂无歌词"
+    }
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).testTag("lyrics-empty"),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = if (showLoading) Alignment.CenterHorizontally else Alignment.Start) {
-        Text(if (showLoading) "正在匹配歌词…" else "暂无歌词", style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground)
-        if (!state.previewMode && state.media.sourceAvailable) TextButton(
-            onClick = { onEvent(ContentEvent.OpenSources) },
-            modifier = Modifier.padding(top = 12.dp).heightIn(min = 48.dp).testTag("lyrics-source-action"),
-            interactionSource = interactions,
-        ) {
-            CompositionLocalProvider(LocalIconPressed provides pressed) {
-                OemIcon(sourceIcon(state.media.targetSource ?: state.media.source), Modifier.size(24.dp), tint = sourceTint(), animateOnPress = true, animateOnAction = false)
+    androidx.compose.ui.layout.Layout(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp).testTag("lyrics-empty"),
+        content = {
+            Text(emptyText, Modifier.testTag("lyrics-empty-copy"), style = MaterialTheme.typography.headlineMedium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                color = MaterialTheme.colorScheme.onBackground)
+            if (!state.previewMode && state.media.sourceAvailable && emptyState != LyricsEmptyState.Instrumental) TextButton(
+                onClick = { onEvent(ContentEvent.OpenSources) },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("lyrics-source-action"),
+                interactionSource = interactions,
+            ) {
+                CompositionLocalProvider(LocalIconPressed provides pressed) {
+                    OemIcon(sourceIcon(state.media.targetSource ?: state.media.source), Modifier.size(24.dp), tint = sourceTint(), animateOnPress = true, animateOnAction = false)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("选择媒体来源")
             }
-            Spacer(Modifier.width(8.dp))
-            Text("选择媒体来源")
+        },
+    ) { measurables, constraints ->
+        // Measure each child once. The optional action never shifts the copy's viewport anchor.
+        val childConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+        val copy = measurables[0].measure(childConstraints)
+        val action = measurables.getOrNull(1)?.measure(childConstraints)
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val copyTop = (height - copy.height) / 2
+        val actionGap = 12.dp.roundToPx()
+        layout(width, height) {
+            copy.place((width - copy.width) / 2, copyTop)
+            if (action != null) action.place((width - action.width) / 2, copyTop + copy.height + actionGap)
         }
     }
 }

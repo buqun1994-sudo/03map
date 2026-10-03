@@ -68,6 +68,38 @@ class WallpaperLyricsRenderTest {
     private val longText = "合成的长句需要自然换行并完整保留末尾词语，不通过缩小字号挤进视窗。".repeat(4)
 
     @Test
+    fun currentRowIsLargeBeforeItsFirstWordAndCharacterPulseReturnsWithoutReflow() {
+        val text = "每个字符轻轻浮起"
+        val lines = listOf(LyricLine(0L, "上一句已缓缓退远"),
+            LyricLine(1_000L, text, "Each character rises gently", words = listOf(LyricWord(2_000L, 6_000L, text))),
+            LyricLine(7_000L, "下一句安静等待"), LyricLine(9_000L, "远处的句子更加柔和"))
+        val initial = LyricsState(recordingKey = "character-wave", lines = lines, timelineReady = true,
+            positionMs = 1_200L, scrollIndex = 1, activeIndex = -1, durationMs = 10_000L)
+        mount(initial)
+        compose.runOnIdle { state.value = state.value.copy(dark = true) }
+        compose.waitForIdle()
+        assertEquals(setOf(1), value(LyricEmphasizedRows).toSet())
+        assertEquals(0f, value(LyricWordProgress), .001f)
+        val heights = value(LyricRowHeights)
+        val before = captureHost("current-before-first-word")
+        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 2_000L))
+        val first = captureHost("character-wave-0")
+        assertArrayEquals("becoming a singing row does not suddenly change font size", pixels(before), pixels(first))
+        var peak: Bitmap? = null
+        listOf(2_125L, 2_250L, 2_375L, 2_500L).forEachIndexed { index, time ->
+            project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = time))
+            val frame = captureHost("character-wave-${index + 1}")
+            if (time == 2_250L) peak = frame
+            assertEquals("character motion never changes row geometry", heights, value(LyricRowHeights))
+        }
+        assertTrue("character lift/scale/fill actually affect native pixels", changedPixels(first, peak!!) > 20)
+        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 6_000L))
+        val complete = captureHost("character-wave-complete")
+        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 6_500L))
+        assertArrayEquals("completed characters return to a stable non-glowing baseline", pixels(complete), pixels(captureHost()))
+    }
+
+    @Test
     fun wholeSongMetricsStayStableAcrossActiveRowsAndGapAnchor() {
         val lines = listOf(
             LyricLine(0L, "合成短句"),
@@ -86,7 +118,7 @@ class WallpaperLyricsRenderTest {
         assertEquals(lines.size, heights.size)
         assertTrue("all whole-song rows have measured height", heights.all { it > 0 })
         assertEquals(40f, value(LyricFontPixels), .01f)
-        assertEquals(44f, value(LyricActiveFontPixels), .01f)
+        assertEquals(48f, value(LyricActiveFontPixels), .01f)
         assertEquals(48f, value(LyricTextInset), .01f)
         assertEquals(1, value(LyricScrollAnchor))
         assertEquals(0, value(ActiveLyric))
@@ -204,7 +236,7 @@ class WallpaperLyricsRenderTest {
         compose.runOnIdle { state.value = state.value.copy(widthPx = 320, heightPx = 810) }
         compose.waitForIdle()
         assertEquals(80f, value(LyricFontPixels), .01f)
-        assertEquals(88f, value(LyricActiveFontPixels), .01f)
+        assertEquals(96f, value(LyricActiveFontPixels), .01f)
         assertEquals(96f, value(LyricTextInset), .01f)
         val heights = value(LyricRowHeights)
         assertTrue("128px text width must wrap without font resizing", heights.last() > heights[3] * 2)
@@ -287,7 +319,7 @@ class WallpaperLyricsRenderTest {
         assertEquals(heights, value(LyricRowHeights))
         val later = captureHost()
         assertTrue("background word continues after the next main row starts", changedPixels(first, later) > 20)
-        val backgroundTop = floor(rowTop(0, heights, 1) + 14f + 44f + 4f + 20f + 4f + 22f).toInt()
+        val backgroundTop = floor(rowTop(0, heights, 1) + 14f + 48f + 4f + 20f + 4f + 22f).toInt()
         assertChangesInside(first, later, 47, 593, backgroundTop, ceil(rowBottom(0, heights, 1)).toInt())
         project(initial.copy(positionMs = 4_000L))
         val backgroundEnd = captureHost()
@@ -295,6 +327,18 @@ class WallpaperLyricsRenderTest {
         project(initial.copy(positionMs = 4_500L))
         assertArrayEquals("background mask retains its completed frame", pixels(backgroundEnd), pixels(captureHost()))
         assertEquals(heights, value(LyricRowHeights))
+    }
+
+    @Test
+    fun veryLongStaticParagraphKeepsItsFirstVisibleLinesOnscreen() {
+        val initial = LyricsState(recordingKey = "long-static-paragraph",
+            lines = listOf(LyricLine(-1L, "合成完整长段落不能因整段缩放而空屏".repeat(220))),
+            timed = false, timelineReady = false)
+        mount(initial)
+        assertTrue(value(LyricRowHeights).single() > 1080 * 3)
+        val frame = captureHost("long-static-first-screen")
+        assertNotNull("line-local scaling retains actual ink in the first viewport", inkBounds(frame, 0, 1080))
+        assertFalse(value(LyricFrameRunning))
     }
 
     @Test
@@ -495,6 +539,7 @@ class WallpaperLyricsRenderTest {
             }
             CompositionLocalProvider(
                 LocalDensity provides Density(current.density, fontScale = 1f),
+                LocalLyricPreparationDispatcher provides kotlinx.coroutines.Dispatchers.Unconfined,
                 LocalIconVisible provides current.visible,
             ) {
                 ContentTheme(current.dark) {
