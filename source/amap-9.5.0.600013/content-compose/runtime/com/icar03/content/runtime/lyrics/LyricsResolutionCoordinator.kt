@@ -78,7 +78,19 @@ internal class LyricsResolutionCoordinator internal constructor(
 
     suspend fun resolveCover(query: LyricsLookup): String = resolveCovers(query).firstOrNull().orEmpty()
 
-    suspend fun resolveCovers(query: LyricsLookup): List<String> {
+    suspend fun resolveCovers(query: LyricsLookup): List<String> =
+        resolveCoversProgressive(query) { }
+
+    /**
+     * Runs one cover search/detail round on the same bounded blocking lane as the legacy
+     * resolveCovers call, while forwarding verified URLs as soon as the resolver proves them.
+     * The callback is deliberately guarded by this request's cancellation signal: a winner,
+     * newer recording, stop, or resource close cannot leak a late URL into a new pipeline.
+     */
+    suspend fun resolveCoversProgressive(
+        query: LyricsLookup,
+        onCandidate: (String) -> Unit
+    ): List<String> {
         if (closed.get()) return emptyList()
         val cancellation = LyricsCancellationSignal()
         val accepted = synchronized(stateLock) {
@@ -87,7 +99,11 @@ internal class LyricsResolutionCoordinator internal constructor(
         if (!accepted) return emptyList()
         return try {
             executeBlocking(cancellation) {
-                coverResolver.resolveCovers(query, cancellation)
+                coverResolver.resolveCoversProgressive(query, cancellation) { candidate ->
+                    if (!cancellation.isCancelled && !closed.get() && candidate.isNotBlank()) {
+                        onCandidate(candidate)
+                    }
+                }
             }
         } finally {
             synchronized(stateLock) {
@@ -101,6 +117,13 @@ internal class LyricsResolutionCoordinator internal constructor(
             latestRequestGeneration += 1L
             activeLyricsCancellation?.cancel()
             activeLyricsCancellation = null
+        }
+    }
+
+    fun cancelCovers() {
+        synchronized(stateLock) {
+            activeCoverCancellations.forEach(LyricsCancellationSignal::cancel)
+            activeCoverCancellations.clear()
         }
     }
 

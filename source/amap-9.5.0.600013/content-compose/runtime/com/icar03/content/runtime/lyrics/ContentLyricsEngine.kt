@@ -14,18 +14,29 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.Closeable
 import java.net.URL
 import java.util.Collections
+import java.util.LinkedHashSet
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+
+private const val DEFAULT_COVER_TOTAL_DEADLINE_MS = 9_000L
 
 /**
  * A lifecycle-owned effect behind ContentStore's LyricsPort, not a second content Store.
@@ -37,8 +48,13 @@ class ContentLyricsEngine internal constructor(
     private val resourcesFactory: (Context) -> LyricsEngineResources,
     private val ioDispatcher: CoroutineDispatcher,
     private val coverLoader: (String, LyricsCancellationSignal) -> Bitmap?,
-    private val coverRetryWait: suspend (Long) -> Unit = { delay(it) }
+    private val coverRetryWait: suspend (Long) -> Unit = { delay(it) },
+    private val coverDeadlineMs: Long = DEFAULT_COVER_TOTAL_DEADLINE_MS
 ) : ContentPorts.LyricsPort {
+    init {
+        require(coverDeadlineMs > 0L)
+    }
+
     constructor(context: Context) : this(
         context,
         ::DirectLyricsEngineResources,
@@ -71,6 +87,7 @@ class ContentLyricsEngine internal constructor(
     private var coverAttempted = false
     private var fallbackArtwork: Bitmap? = null
     private var selected: ResolvedLyrics? = null
+    private var observedSelectionPolicyRevision = Long.MIN_VALUE
     private var lines: List<ContentPorts.LyricsLine> = emptyList()
     private var timed = true
     private var status = EMPTY
@@ -91,6 +108,19 @@ class ContentLyricsEngine internal constructor(
             } catch (error: Exception) {
                 Log.w(TAG, "Lyrics runtime unavailable", error)
                 null
+            }
+            observedSelectionPolicyRevision = resources?.selectionPolicyRevision ?: 0L
+            val runtime = resources
+            if (runtime != null) {
+                scope?.launch {
+                    runtime.selectionPolicyChanges.collect { revision ->
+                        if (!isRunning(epoch) || resources !== runtime ||
+                            revision == observedSelectionPolicyRevision
+                        ) return@collect
+                        observedSelectionPolicyRevision = revision
+                        binding?.takeIf { it.identity().isUsable }?.let(::restartResolutionKeepingContent)
+                    }
+                }
             }
         }
     }
@@ -122,6 +152,10 @@ class ContentLyricsEngine internal constructor(
             currentQuery != null && LyricsCandidateSelector.isProofValid(
                 currentQuery, selection.result, selection.proof)
         } ?: true
+        val policyRevision = resources?.selectionPolicyRevision ?: 0L
+        val policyChanged = sameBinding && next != null &&
+            policyRevision != observedSelectionPolicyRevision
+        observedSelectionPolicyRevision = policyRevision
         if (!sameBinding || !proofStillValid) {
             cancelOperations()
             selected = null
@@ -132,6 +166,10 @@ class ContentLyricsEngine internal constructor(
             status = if (next == null) EMPTY else if (next.identity().isUsable) LOADING else UNAVAILABLE
             publish()
             if (next != null) startResolution(next)
+        } else if (policyChanged) {
+            // A source preference/auth change must not flash LOADING or erase admitted content.
+            // It still gets a fresh resolution round, even when the automatic cache is fresh.
+            restartResolutionKeepingContent(next)
         } else if (next == null) {
             status = EMPTY
         } else if (resumePending) {
@@ -152,7 +190,7 @@ class ContentLyricsEngine internal constructor(
         publish()
     }
 
-    private fun startResolution(state: MediaRecordingState) {
+    private fun startResolution(state: MediaRecordingState, forceRefresh: Boolean = false) {
         val runtime = resources
         val currentScope = scope
         if (runtime == null || currentScope == null) {
@@ -181,50 +219,48 @@ class ContentLyricsEngine internal constructor(
                     return@launch
                 }
                 if (embedded != null && LrcParser.parse(embedded.result.lyrics).isNotEmpty()) {
-                    val persisted = withCache {
-                        runtime.cache.writeAutomatic(identity, embedded)
-                        runtime.cache.read(identity, recordUse = false)
-                    }
-                    if (!isCurrent(life, epoch, state)) return@launch
-                    applyResult(persisted?.result ?: embedded.result, persisted?.resolved ?: embedded)
+                    if (!applyResult(embedded.result, embedded)) return@launch
+                    persistEmbeddedResult(runtime, identity, embedded, life, epoch, state)
                     return@launch
                 }
                 if (cached != null && !applyResult(cached.result, cached.resolved)) return@launch
                 if (!LyricsCandidateSelector.canConfirm(identity.lookup()) ||
-                    cached?.needsRefresh(System.currentTimeMillis()) == false) {
+                    (!forceRefresh && cached?.needsRefresh(System.currentTimeMillis()) == false)) {
                     if (!hasAdmittedContent()) { status = UNAVAILABLE; publish() }
                     return@launch
                 }
                 val outcome = runtime.resolveLyricsProgressive(identity.lookup()) { provisional ->
                     onMain {
                         val resolved = provisional.resolved
-                        if (isCurrent(life, epoch, state) && proofValidForCurrent(resolved) &&
-                            !resolved.result.isInstrumentalContent() && lines.isEmpty()) {
-                            if (!applyResult(resolved.result, resolved) || lines.isEmpty()) return@onMain
-                            // Visible admitted content must not depend on the slow final network round.
-                            // Stop cancels resolution, not this bounded atomic persistence operation.
-                            pendingCacheWrites.removeAll { it.isCompleted }
-                            // Keep the current admission and at most one older queued recording.
-                            // Superseded automatic work is disposable; never queue unbounded bodies.
-                            while (pendingCacheWrites.size >= 2) pendingCacheWrites.removeAt(0).cancel()
-                            val write = cacheWorkScope.launch {
-                                val persisted = try {
-                                    cacheMutex.withLock {
-                                        runtime.cache.writeAutomatic(identity, resolved)
-                                        runtime.cache.read(identity, recordUse = false)
-                                    }
-                                } catch (error: CancellationException) { throw error }
-                                catch (error: Exception) {
-                                    Log.w(TAG, "Unable to persist admitted provisional lyrics", error)
-                                    null
+                        if (!isCurrent(life, epoch, state) || !proofValidForCurrent(resolved) ||
+                            resolved.result.isInstrumentalContent() ||
+                            resolved.result.contentKind() == LyricsKind.NONE ||
+                            !shouldUpgrade(identity.lookup(), selected, resolved)
+                        ) return@onMain
+                        if (!applyResult(resolved.result, resolved) || lines.isEmpty()) return@onMain
+                        // Visible admitted content must not depend on the slow final network round.
+                        // Stop cancels resolution, not this bounded atomic persistence operation.
+                        pendingCacheWrites.removeAll { it.isCompleted }
+                        // Keep the current admission and at most one older queued recording.
+                        // Superseded automatic work is disposable; never queue unbounded bodies.
+                        while (pendingCacheWrites.size >= 2) pendingCacheWrites.removeAt(0).cancel()
+                        val write = cacheWorkScope.launch {
+                            val persisted = try {
+                                cacheMutex.withLock {
+                                    runtime.cache.writeAutomatic(identity, resolved)
+                                    runtime.cache.read(identity, recordUse = false)
                                 }
-                                onMain {
-                                    if (isCurrent(life, epoch, state) && persisted?.selection == LyricsCacheSelection.MANUAL)
-                                        applyResult(persisted.result, null)
-                                }
+                            } catch (error: CancellationException) { throw error }
+                            catch (error: Exception) {
+                                Log.w(TAG, "Unable to persist admitted provisional lyrics", error)
+                                null
                             }
-                            pendingCacheWrites += write
+                            onMain {
+                                if (isCurrent(life, epoch, state) && persisted?.selection == LyricsCacheSelection.MANUAL)
+                                    applyResult(persisted.result, null)
+                            }
                         }
+                        pendingCacheWrites += write
                     }
                 }
                 if (!isCurrent(life, epoch, state)) return@launch
@@ -289,6 +325,47 @@ class ContentLyricsEngine internal constructor(
         }
     }
 
+    private fun persistEmbeddedResult(
+        runtime: LyricsEngineResources,
+        identity: LyricsPlaybackIdentity,
+        embedded: ResolvedLyrics,
+        life: Long,
+        epoch: Long,
+        state: MediaRecordingState
+    ) {
+        pendingCacheWrites.removeAll(Job::isCompleted)
+        while (pendingCacheWrites.size >= 2) pendingCacheWrites.removeAt(0).cancel()
+        val write = cacheWorkScope.launch {
+            val persisted = try {
+                cacheMutex.withLock {
+                    currentCoroutineContext().ensureActive()
+                    if (!isCurrent(life, epoch, state)) return@withLock null
+                    val current = runtime.cache.read(identity, recordUse = false)
+                    if (current?.selection != LyricsCacheSelection.MANUAL &&
+                        current?.result != embedded.result
+                    ) {
+                        runtime.cache.writeAutomatic(identity, embedded)
+                    }
+                    // Re-read after the write: a manual adoption racing this operation wins.
+                    runtime.cache.read(identity, recordUse = false)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "Unable to persist embedded lyrics", error)
+                null
+            }
+            onMain {
+                if (persisted?.selection == LyricsCacheSelection.MANUAL &&
+                    isCurrent(life, epoch, state)
+                ) {
+                    applyResult(persisted.result, null)
+                }
+            }
+        }
+        pendingCacheWrites += write
+    }
+
     private fun persistNativeCover(state: MediaRecordingState, artwork: Bitmap) {
         val query = state.identity().lookup()
         if (!LyricsCandidateSelector.canFindCover(query)) return
@@ -328,7 +405,7 @@ class ContentLyricsEngine internal constructor(
         }
     }
 
-    private fun startCover(state: MediaRecordingState) {
+    private fun startCover(state: MediaRecordingState, forceRefresh: Boolean = false) {
         val runtime = resources ?: return
         val currentScope = scope ?: return
         val query = state.identity().lookup()
@@ -339,41 +416,58 @@ class ContentLyricsEngine internal constructor(
         val cancellation = LyricsCancellationSignal()
         coverCancellation = cancellation
         coverJob = currentScope.launch {
+            val startedAtNanos = System.nanoTime()
+            val deadlineNanos = startedAtNanos +
+                TimeUnit.MILLISECONDS.toNanos(coverDeadlineMs)
+            val seenUrls = Collections.synchronizedSet(LinkedHashSet<String>())
+            var attempt = 0
             try {
                 val cached = withCache { coverCache.read(query) }
-                if (!isCurrent(life, epoch, state) || media?.artwork?.isRecycled == false) {
-                    cached?.recycle()
+                if (!isCoverOwner(life, epoch, state, cancellation)) {
+                    discardCoverBitmap(cached)
                     return@launch
                 }
-                if (cached != null) { fallbackArtwork = cached; publish(); return@launch }
-                for (waitMs in longArrayOf(0L, 300L, 600L, 1_200L)) {
-                    if (waitMs > 0L) coverRetryWait(waitMs)
-                    currentCoroutineContext().ensureActive()
-                    if (!isCurrent(life, epoch, state) || media?.artwork?.isRecycled == false) return@launch
-                    val sources = try { runtime.resolveCovers(query) }
-                    catch (error: CancellationException) { throw error }
-                    catch (_: Exception) { emptyList() }
-                    for (source in sources.distinct().take(4)) {
-                        val bitmap = try {
-                            withContext(ioDispatcher) { coverLoader(source, cancellation) }
-                        } catch (error: CancellationException) { throw error }
-                        catch (_: Exception) { null }
-                        if (!isCurrent(life, epoch, state) || media?.artwork?.isRecycled == false) {
-                            bitmap?.recycle()
-                            return@launch
+                if (cached != null) {
+                    fallbackArtwork = cached
+                    publish()
+                    if (!forceRefresh) return@launch
+                }
+                while (attempt <= COVER_RETRY_WAITS.lastIndex &&
+                    isCoverOwner(life, epoch, state, cancellation) &&
+                    System.nanoTime() < deadlineNanos
+                ) {
+                    val waitMs = COVER_RETRY_WAITS[attempt]
+                    if (waitMs > 0L) {
+                        val remaining = remainingCoverMillis(deadlineNanos)
+                        if (remaining <= 0L) break
+                        val waited = withTimeoutOrNull(remaining) {
+                            coverRetryWait(minOf(waitMs, remaining))
                         }
-                        if (bitmap != null && !bitmap.isRecycled) {
-                            fallbackArtwork = bitmap
-                            publish()
-                            withCache { coverCache.write(query, bitmap) }
-                            return@launch
-                        }
+                        if (waited == null || !isCoverOwner(life, epoch, state, cancellation)) break
                     }
+                    val result = runCoverAttempt(
+                        runtime = runtime,
+                        state = state,
+                        query = query,
+                        life = life,
+                        epoch = epoch,
+                        cancellation = cancellation,
+                        deadlineNanos = deadlineNanos,
+                        seenUrls = seenUrls,
+                        startedAtNanos = startedAtNanos
+                    )
+                    if (!isCoverOwner(life, epoch, state, cancellation) || result.won) break
+                    // A verified URL is evidence that the current search made progress. Image
+                    // or detail failure must consume the retained URL set, never rescan sources.
+                    if (result.newCandidates > 0 || !result.retryable || result.timedOut) break
+                    attempt += 1
                 }
             } catch (error: CancellationException) {
-                throw error
+                if (isCoverOwner(life, epoch, state, cancellation)) throw error
             } catch (error: Exception) {
-                if (isCurrent(life, epoch, state)) Log.w(TAG, "Cover fallback unavailable", error)
+                if (isCoverOwner(life, epoch, state, cancellation)) {
+                    Log.w(TAG, "Cover fallback unavailable", error)
+                }
             } finally {
                 cancellation.cancel()
                 if (coverCancellation === cancellation) {
@@ -383,6 +477,164 @@ class ContentLyricsEngine internal constructor(
             }
         }
     }
+
+    private suspend fun runCoverAttempt(
+        runtime: LyricsEngineResources,
+        state: MediaRecordingState,
+        query: LyricsLookup,
+        life: Long,
+        epoch: Long,
+        cancellation: LyricsCancellationSignal,
+        deadlineNanos: Long,
+        seenUrls: MutableSet<String>,
+        startedAtNanos: Long
+    ): CoverAttemptResult = kotlinx.coroutines.coroutineScope {
+        val candidates = Channel<String>(Channel.UNLIMITED)
+        val winner = AtomicBoolean(false)
+        val beforeCount = synchronized(seenUrls) { seenUrls.size }
+
+        fun acceptCandidate(raw: String) {
+            val url = raw.trim()
+            if (url.isBlank() || winner.get() ||
+                !isCoverOwner(life, epoch, state, cancellation)
+            ) return
+            val added = synchronized(seenUrls) {
+                if (seenUrls.size >= MAX_COVER_CANDIDATES || !seenUrls.add(url)) false else true
+            }
+            if (added) candidates.trySend(url)
+        }
+
+        val workers = List(MAX_COVER_DOWNLOAD_LANES) {
+            launch {
+                for (url in candidates) {
+                    if (winner.get() || !isCoverOwner(life, epoch, state, cancellation)) continue
+                    var bitmap: Bitmap? = null
+                    try {
+                        withContext(ioDispatcher) { bitmap = coverLoader(url, cancellation) }
+                    } catch (error: CancellationException) {
+                        // The assignment above is intentionally retained: a non-cooperative fake
+                        // or transport may return a bitmap after the coroutine was cancelled.
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Cover image download failed", error)
+                    }
+                    val loaded = bitmap ?: continue
+                    if (winner.get() || cancellation.isCancelled ||
+                        !isCoverOwner(life, epoch, state, cancellation)
+                    ) {
+                        discardCoverBitmap(loaded)
+                        continue
+                    }
+                    if (!winner.compareAndSet(false, true)) {
+                        discardCoverBitmap(loaded)
+                        continue
+                    }
+                    if (!isCoverOwner(life, epoch, state, cancellation)) {
+                        discardCoverBitmap(loaded)
+                        continue
+                    }
+                    fallbackArtwork = loaded
+                    Log.i(TAG, "Cover first image published elapsedMs=" +
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos))
+                    publish()
+                    // Stop catalog/detail work and other image lanes before touching disk. The
+                    // owner check below still permits this winner's bounded cache write.
+                    runtime.cancelCoverResolution()
+                    cancellation.cancel()
+                    candidates.close()
+                    if (isCoverOwner(life, epoch, state, cancellation)) {
+                        try {
+                            withCache {
+                                if (isCoverOwner(life, epoch, state, cancellation)) {
+                                    coverCache.write(query, loaded)
+                                }
+                            }
+                        } catch (error: CancellationException) {
+                            // Lifecycle/song cancellation owns disposal; the published bitmap is
+                            // intentionally left for the listener and is never recycled here.
+                        } catch (error: Exception) {
+                            Log.w(TAG, "Unable to persist cover", error)
+                        }
+                    }
+                }
+            }
+        }
+
+        var retryable = true
+        var timedOut = false
+        try {
+            if (remainingCoverMillis(deadlineNanos) > 0L) {
+                val returned = try {
+                    withTimeoutOrNull(remainingCoverMillis(deadlineNanos)) {
+                        runtime.resolveCoversProgressive(query, ::acceptCandidate)
+                    }
+                } catch (error: CancellationException) {
+                    if (winner.get() || !isCoverOwner(life, epoch, state, cancellation)) {
+                        null
+                    } else {
+                        throw error
+                    }
+                } catch (error: Exception) {
+                    retryable = error !is LyricsSourceException || error.retryable
+                    Log.w(TAG, "Cover candidate resolution failed", error)
+                    null
+                }
+                timedOut = returned == null && System.nanoTime() >= deadlineNanos
+                returned?.forEach(::acceptCandidate)
+            } else {
+                timedOut = true
+            }
+        } finally {
+            candidates.close()
+        }
+
+        var workerWaitTimedOut = false
+        workers.forEach { worker ->
+            val remaining = remainingCoverMillis(deadlineNanos)
+            if (remaining > 0L) {
+                if (withTimeoutOrNull(remaining) { worker.join() } == null) {
+                    workerWaitTimedOut = true
+                }
+            } else {
+                workerWaitTimedOut = true
+            }
+        }
+        if (timedOut || workerWaitTimedOut || remainingCoverMillis(deadlineNanos) <= 0L) {
+            runtime.cancelCoverResolution()
+            cancellation.cancel()
+            workers.forEach { worker -> if (worker.isActive) worker.cancel() }
+        }
+        CoverAttemptResult(
+            newCandidates = synchronized(seenUrls) { seenUrls.size - beforeCount },
+            retryable = retryable,
+            timedOut = timedOut,
+            won = winner.get()
+        )
+    }
+
+    private fun isCoverOwner(
+        life: Long,
+        epoch: Long,
+        state: MediaRecordingState,
+        cancellation: LyricsCancellationSignal
+    ): Boolean = isCurrent(life, epoch, state) && coverCancellation === cancellation &&
+        media?.artwork?.isRecycled != false
+
+    private fun discardCoverBitmap(bitmap: Bitmap?) {
+        if (bitmap == null || bitmap.isRecycled || bitmap === fallbackArtwork ||
+            bitmap === media?.artwork
+        ) return
+        bitmap.recycle()
+    }
+
+    private fun remainingCoverMillis(deadlineNanos: Long): Long =
+        TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime()).coerceAtLeast(0L)
+
+    private data class CoverAttemptResult(
+        val newCandidates: Int,
+        val retryable: Boolean,
+        val timedOut: Boolean,
+        val won: Boolean
+    )
 
     private fun applyResult(result: LyricsResult, proof: ResolvedLyrics?): Boolean {
         if (proof != null && !proofValidForCurrent(proof)) {
@@ -441,6 +693,19 @@ class ContentLyricsEngine internal constructor(
         LyricsCandidateSelector.isProofValid(it, resolved.result, resolved.proof)
     } == true
 
+    private fun restartResolutionKeepingContent(state: MediaRecordingState) {
+        requestEpoch++
+        automaticJob?.cancel()
+        automaticJob = null
+        resources?.cancelCurrent()
+        startResolution(state, forceRefresh = true)
+        if (media?.artwork?.isRecycled != false) {
+            cancelCover()
+            coverAttempted = false
+            startCover(state, forceRefresh = true)
+        }
+    }
+
     private fun restartForCurrentMetadata() {
         val state = binding ?: return
         cancelOperations()
@@ -495,6 +760,7 @@ class ContentLyricsEngine internal constructor(
     }
 
     private fun cancelCover() {
+        resources?.cancelCoverResolution()
         coverCancellation?.cancel()
         coverCancellation = null
         coverJob?.cancel()
@@ -563,6 +829,9 @@ class ContentLyricsEngine internal constructor(
         private const val NO_MATCH = ContentPorts.LyricsSnapshot.NO_MATCH
         private const val NETWORK_ERROR = ContentPorts.LyricsSnapshot.NETWORK_ERROR
         private const val INSTRUMENTAL = ContentPorts.LyricsSnapshot.INSTRUMENTAL
+        private const val MAX_COVER_CANDIDATES = 4
+        private const val MAX_COVER_DOWNLOAD_LANES = 2
+        private val COVER_RETRY_WAITS = longArrayOf(0L, 300L, 600L, 1_200L)
 
         @JvmStatic fun create(context: Context): ContentPorts.LyricsPort = ContentLyricsEngine(context)
     }
@@ -570,26 +839,52 @@ class ContentLyricsEngine internal constructor(
 
 internal interface LyricsEngineResources : Closeable {
     val cache: LyricsPlaybackCache
+    val selectionPolicyRevision: Long get() = 0L
+    val selectionPolicyChanges: Flow<Long> get() = emptyFlow()
     suspend fun resolveLyrics(query: LyricsLookup): LyricsResolutionOutcome
     suspend fun resolveLyricsProgressive(query: LyricsLookup,
         onProvisional: (LyricsResolutionOutcome.Found) -> Unit): LyricsResolutionOutcome = resolveLyrics(query)
     suspend fun resolveCover(query: LyricsLookup): String
     suspend fun resolveCovers(query: LyricsLookup): List<String> =
         listOfNotNull(resolveCover(query).takeIf(String::isNotBlank))
+    suspend fun resolveCoversProgressive(query: LyricsLookup,
+        onCandidate: (String) -> Unit): List<String> =
+        resolveCovers(query).also { urls -> urls.forEach(onCandidate) }
     fun cancelCurrent()
+    fun cancelCoverResolution() {}
     fun cancelAll()
 }
 
 private class DirectLyricsEngineResources(context: Context) : LyricsEngineResources {
+    private val preferences = ContentLyricsPreferences(context)
+    private val appleAuthBroker = AppleMusicAuthBroker.get(context)
+    private val appleConnection = checkNotNull(appleAuthBroker.connection)
+    override val selectionPolicyRevision: Long
+        get() = 31L * preferences.revision + appleAuthBroker.revision
+    override val selectionPolicyChanges: Flow<Long> = combine(
+        preferences.revisionChanges,
+        appleConnection.state
+    ) { _, _ -> selectionPolicyRevision }.distinctUntilChanged()
     override val cache = LyricsCache(context)
-    private val repository = DirectLyricsRepository()
+    private val repository = DirectLyricsRepository(
+        catalogSources = LyricsProviderRegistry.catalogSources(
+            AppleMusicLyricsSource(
+                connection = appleAuthBroker.connection,
+                authBroker = appleAuthBroker
+            )
+        ),
+        preferredSources = preferences::preferredSources
+    )
     private val coordinator = LyricsResolutionCoordinator(repository, repository)
     override suspend fun resolveLyrics(query: LyricsLookup) = coordinator.resolveLatest(query)
     override suspend fun resolveLyricsProgressive(query: LyricsLookup,
         onProvisional: (LyricsResolutionOutcome.Found) -> Unit) = coordinator.resolveLatest(query, onProvisional)
     override suspend fun resolveCover(query: LyricsLookup) = coordinator.resolveCover(query)
     override suspend fun resolveCovers(query: LyricsLookup) = coordinator.resolveCovers(query)
+    override suspend fun resolveCoversProgressive(query: LyricsLookup,
+        onCandidate: (String) -> Unit) = coordinator.resolveCoversProgressive(query, onCandidate)
     override fun cancelCurrent() = coordinator.cancelCurrent()
+    override fun cancelCoverResolution() = coordinator.cancelCovers()
     override fun cancelAll() { coordinator.close(); repository.close() }
     override fun close() { cancelAll(); cache.close() }
 }

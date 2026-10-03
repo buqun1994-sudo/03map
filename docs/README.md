@@ -12,7 +12,9 @@
 
 ## 2. 新对话最小读取
 
-**当前歌词／背景低开销重构（2026-10-03，后续逐字节奏修正）：** 当前正式源码由[WallpaperLyrics](<../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/WallpaperLyrics.kt>)＋[LyricInkRenderer](<../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/LyricInkRenderer.kt>)继续分离稳定geometry、Default worker纹理与热frame；current48sp／非current40sp、合法跟随句成为current即强调、Unicode安全视觉单元按源word startFraction触发固定约1000ms ease-out上浮，从基线下方约2.5dp回到基线，不放大、不做逐字辉光，滚动／离屏自然结束可见动效。背景worker最长边192、10Hz预合成，screen稳态1／500ms转场最多2bitmap；12MiB仅sharp／soft LRU条目预算，cold vector仍有绘制成本且暂缺blur／精确rise。content-ui完整测试与Lint、三项仓库自检及正式源码签名构建均通过；[本轮签名APK](<../apk-work/9.5.0.600013/source-build.FN31ZV/signed.apk>) SHA-256 为 `07da4d1d48c43acbda5cb9d7cabf40b1928f7599c4b2fb871c72505541114f0b`，v1／v2／v3、原生库／DEX／资源闭包通过。设备发现exit1，383ms扫描253个地址未找到S56_HQX／SDK28，因此未安装／smoke／车机性能或现场视觉验收。
+**当前歌词／封面统一Provider（2026-10-03）：** 八来源注册、共享目录、基础正文先显／逐字立即升级、两路封面下载与平台偏好已完成；Apple鉴权与资源主链已接入，无登录UI时保持不可用。隔离本次改动的正式源码快照720项测试、四Lint和签名构建通过，车机发现失败，未安装／实测耗时；并行颜色／车控UI不包含在此候选。源码owner和设置接线见[统一解析](<architecture/歌词封面统一解析.md>)，当前候选、验证范围和后续最小验收见[本轮记录](<testing/歌词封面统一Provider验证记录-20261003.md>)。本轮实现、测试和文档按用户要求随本次Git提交保存，不推送。
+
+**上一轮歌词／背景低开销重构（2026-10-03，后续逐字节奏修正）：** 当前正式源码由[WallpaperLyrics](<../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/WallpaperLyrics.kt>)＋[LyricInkRenderer](<../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/LyricInkRenderer.kt>)继续分离稳定geometry、Default worker纹理与热frame；current48sp／非current40sp、合法跟随句成为current即强调、Unicode安全视觉单元按源word startFraction触发固定约1000ms ease-out上浮，从基线下方约2.5dp回到基线，不放大、不做逐字辉光，滚动／离屏自然结束可见动效。背景worker最长边192、10Hz预合成，screen稳态1／500ms转场最多2bitmap；12MiB仅sharp／soft LRU条目预算，cold vector仍有绘制成本且暂缺blur／精确rise。content-ui完整测试与Lint、三项仓库自检及正式源码签名构建均通过；[本轮签名APK](<../apk-work/9.5.0.600013/source-build.FN31ZV/signed.apk>) SHA-256 为 `07da4d1d48c43acbda5cb9d7cabf40b1928f7599c4b2fb871c72505541114f0b`，v1／v2／v3、原生库／DEX／资源闭包通过。设备发现exit1，383ms扫描253个地址未找到S56_HQX／SDK28，因此未安装／smoke／车机性能或现场视觉验收。
 
 **上一轮媒体／歌词连续性与自动缓存：** 首曲冷缓存渐进替换／正文几何、当前车机实际`MediaCenterPlayAction`／`IMBMediaCenterInterface`事务38来源回读、共享`.player.MediaPlaybackService`公开Browser、03歌词式会话仲裁、当时40/44sp稳定字号、背景多周期微动、共享1GiB始终自动缓存与同歌前后台READY续接已施工；真实前奏／间奏三点以独立静态等待行融入歌词流，必要加载居中。历史四模块584项测试、四Lint、同身份签名构建和宿主闭包通过；第一候选爱趣听实机仍回蓝牙，最终候选已保留数据覆盖安装且设备端哈希一致，地图／来源／前后台／首曲seek交互仍待当次车机状态下确认。证据及边界见[历史记录](<testing/媒体来源歌词连续性与自动缓存验证记录-20261002.md>)。媒体／歌词任务先只读对照03歌词当前源码与测试，参考仓库与旧包实测不得替代本轮候选验收。
 
@@ -48,6 +50,7 @@
 | [项目长期总纲](<architecture/项目长期总纲.md>) | 当前产品／系统范围、输入基线、长期不变量 | 不写具体控件、命令流水账 |
 | [产品需求基线](<product/产品需求基线.md>) | 用户可见行为、页面结构和产品验收语义 | 不写源码路径和车机原始字段 |
 | [内容区主链](<architecture/内容区主链.md>) | 内容区架构、状态主链、owner、生命周期边界 | 不重复产品验收步骤 |
+| [歌词与封面统一解析](<architecture/歌词封面统一解析.md>) | 八Provider、共享检索、渐进升级、封面竞速及未来设置接口 | 不承载颜色/设置UI或声称未登录Apple在线可用 |
 | [设置项清单](<product/设置项清单.md>) | 用户偏好、默认值和持久化字段 | 不定义业务数据源 |
 | [主链索引](<code-map/主链索引.md>) | 需求到源码文件／方法／证据的映射 | 不写产品方案和完整源码目录 |
 | [基线清单](<code-map/基线清单.md>) | APK、快照和版本身份 | 不记录施工包流水账 |

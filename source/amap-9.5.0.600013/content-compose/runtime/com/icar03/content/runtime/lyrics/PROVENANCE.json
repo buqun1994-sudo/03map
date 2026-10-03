@@ -204,37 +204,85 @@
     "referenceAreas": [
       "lyrimuse-collector: QQ/NetEase/Kugou/Kuwo/Migu/Soda APIs, QRC/KRC/LRCX/MRC, match scoring and strict dual-axis checks",
       "LyrimuseCore: structured lyrics, true word/line/background timing and agent metadata",
-      "LyricsWindowView: separate singing/scroll anchors, overlapping voices, gap windows and browsing follow"
+      "LyricsWindowView: separate singing/scroll anchors, overlapping voices, gap windows and browsing follow",
+      "AppleMusicConnection.swift, AppleMusicTokenFile.swift and collector applemusic.go: official login cookies, public web developer bearer, account storefront, TTML line/word/localizations and static artwork"
     ],
     "androidAdaptations": [
       "Known recording duration and existing selection proof remain mandatory; source preference is a tie-break interface, not inferred Bluetooth platform/native-source evidence",
-      "One provisional synchronized result followed by full-batch re-ranking; typed source failures, cancellation and deadlines do not erase a valid body",
+      "Initial verified synchronized body and subsequent material upgrades publish immediately; shared asynchronous provider catalog has independent subscriber deadlines/cancellation, prioritized base/artwork work and resumed query recall after empty bodies",
       "Persistent automatic cache quality version, six-hour valid refresh budget capped at three; manual adoption cannot be automatically overwritten or evicted",
       "MediaSession and real AVRCP event anchors only; repeated zero Bluetooth position/speed never creates a playback clock",
       "Native API28 Canvas/StaticLayout renderer, 36sp main/22sp translation/20sp source romanization, 48dp leading inset, lifecycle-gated word frames",
       "Static lyrics remain untimed; real ends, background voices and TTML agents remain distinct; no evenly divided fake word timing",
-      "Verified static cover fallback, bounded bitmap decoding/retry and private recording-keyed cache; previously approved ambient algorithm unchanged"
+      "Verified static cover fallback, bounded bitmap decoding/retry and private recording-keyed cache; previously approved ambient algorithm unchanged",
+      "Persisted host platform preference applies to both lyrics and cover scheduling; missing Apple login is excluded before network work. No settings or color UI was added.",
+      "Apple user credentials use AndroidKeyStore AES-GCM in private no-backup storage; official domains only, no guessed storefront or user-provided developer key. Full backend is registered but no login UI exists yet.",
+      "Progressive verified cover URLs and two image lanes, four unique URL cap and a nine-second shared visible-result deadline; native/song/lifecycle ownership rejects late publication."
     ],
-    "networkSources": ["qq", "netease", "kugou", "kuwo", "migu", "soda", "lrclib"],
-    "explicitlyExcludedNetworkSources": ["musixmatch", "lyricfind", "deezer", "amll"],
+    "networkSources": [
+      "qq",
+      "netease",
+      "kugou",
+      "kuwo",
+      "migu",
+      "soda",
+      "lrclib",
+      "applemusic"
+    ],
+    "explicitlyExcludedNetworkSources": [
+      "musixmatch",
+      "lyricfind",
+      "deezer",
+      "amll"
+    ],
     "notPorted": [
       "Desktop cross-package private player caches and proprietary credentials",
-      "Apple authenticated online lyrics and dynamic album-video artwork",
+      "Apple login/settings UI and dynamic album-video artwork; authenticated lyrics/static artwork backend is implemented but unconnected by default",
       "Machine-generated translation and dictionary-based Japanese reading on API28",
       "Desktop manual import/edit/calibration settings UI and complete upstream alias-query matrix",
       "Desktop-specific MV/radio clocks without Android recording evidence"
     ],
-    "localFormatSupport": ["LRC", "enhanced LRC", "YRC", "KRC", "QRC", "LRCX", "MRC", "TTML"],
+    "localFormatSupport": [
+      "LRC",
+      "enhanced LRC",
+      "YRC",
+      "KRC",
+      "QRC",
+      "LRCX",
+      "MRC",
+      "TTML"
+    ],
     "newLocalFiles": [
-      "ContentCoverCache.kt", "ContentLyricsCursor.kt", "LyricsContent.kt", "LyricsContentRanker.kt",
-      "ExtendedLyricsSources.kt", "PublicWordLyricsFormats.kt", "QqWordLyricsSource.kt", "QrcLyricsParser.kt",
-      "LyricsPostTransport.kt", "TtmlLyricsParser.kt"
+      "ContentCoverCache.kt",
+      "ContentLyricsCursor.kt",
+      "LyricsContent.kt",
+      "LyricsContentRanker.kt",
+      "ExtendedLyricsSources.kt",
+      "PublicWordLyricsFormats.kt",
+      "QqWordLyricsSource.kt",
+      "QrcLyricsParser.kt",
+      "LyricsPostTransport.kt",
+      "TtmlLyricsParser.kt",
+      "LyricsProviderRegistry.kt",
+      "LyricsProviderExecutor.kt",
+      "SharedProviderCatalog.kt",
+      "ContentLyricsPreferences.kt",
+      "AppleMusicConnection.kt",
+      "AppleMusicCredentialStore.kt",
+      "AppleMusicAuthBroker.kt",
+      "AppleMusicLyricsSource.kt",
+      "AppleMusicTtmlTracks.kt"
     ]
   },
   "newTests": [
     "LrcParserTest.kt",
     "ContentLyricsTimelineTest.kt",
     "LyricsAdmissionCacheTest.kt",
-    "ContentLyricsEngineTest.kt"
+    "ContentLyricsEngineTest.kt",
+    "SharedProviderCatalogTest.kt",
+    "AppleMusicConnectionTest.kt",
+    "AppleMusicLyricsSourceTest.kt",
+    "CoverPipelineTest.kt",
+    "ContentLyricsPreferencesTest.kt"
   ]
 }

@@ -197,6 +197,8 @@ internal sealed interface LyricsResolutionOutcome {
 }
 
 internal enum class LyricsFailureReason {
+    AUTH_REQUIRED,
+    AUTH_REJECTED,
     NETWORK,
     RATE_LIMIT,
     SERVER,

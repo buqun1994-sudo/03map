@@ -119,6 +119,7 @@ internal class QqLyricsSource(
     private val wordSource: QqWordLyricsSource? = QqWordLyricsSource(transport)
 ) : LyricsCatalogSource {
     override val sourceName: String = SOURCE_QQ
+    private val pendingTracks = PendingPublicLyricsTracks()
     private val songIds = object : LinkedHashMap<String, Long>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean =
             size > 128
@@ -167,8 +168,18 @@ internal class QqLyricsSource(
         deadlineNanos: Long,
         cancellation: LyricsCancellationSignal
     ): LyricsResult? {
+        val base = loadBaseLyrics(candidate, deadlineNanos, cancellation)
+        return loadEnrichment(base ?: candidate, deadlineNanos, cancellation) ?: base
+    }
+
+    override fun loadBaseLyrics(
+        candidate: LyricsResult,
+        deadlineNanos: Long,
+        cancellation: LyricsCancellationSignal
+    ): LyricsResult? {
         cancellation.throwIfCancelled()
         if (candidate.sourceId.isBlank()) return null
+        pendingTracks.clear(candidate)
         val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg" +
             "?songmid=${encode(candidate.sourceId)}&format=json&nobase64=1&g_tk=5381"
         val lyricRoot = parseJsonFlexible(
@@ -176,33 +187,47 @@ internal class QqLyricsSource(
         )
         // QQ's -1901 is an answered no-lyrics result, not a transient source failure.
         requireSuccessfulResponse(lyricRoot, sourceName, setOf(0, -1901), "code", "retcode")
+        cancellation.throwIfCancelled()
         val lyrics = decodeQqLyric(lyricRoot.contentString("lyric"))
         val translatedLyrics = decodeQqLyric(lyricRoot.contentString("trans"))
         val kind = classifyLyrics(lyrics)
         val markerResult = candidate.copy(lyrics = lyrics, plainLyrics = "", translatedLyrics = translatedLyrics)
         if (markerResult.isInstrumentalContent()) return markerResult.copy(lyricsKind = LyricsKind.NONE)
-        val songId = synchronized(songIds) { songIds[candidate.sourceId] }
-        var bundle: QqWordLyricsBundle? = null
-        if (songId != null && wordSource != null) {
-            try {
-                bundle = wordSource.load(songId, deadlineNanos, cancellation)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: LyricsSourceException) {
-                cancellation.throwIfCancelled()
-                if (kind == LyricsKind.NONE) throw error
-            }
+        if (kind == LyricsKind.NONE) {
+            pendingTracks.remember(markerResult.copy(lyrics = "", plainLyrics = "", wordLyrics = "", lyricsKind = LyricsKind.NONE))
+            return null
         }
-        val wordLyrics = usableWordLyrics(bundle?.wordLyrics.orEmpty())
-        if (kind == LyricsKind.NONE && wordLyrics.isEmpty()) return null
+        cancellation.throwIfCancelled()
         return candidate.copy(
             lyrics = lyrics.takeIf { kind == LyricsKind.SYNCHRONIZED }.orEmpty(),
             plainLyrics = lyrics.takeIf { kind == LyricsKind.PLAIN } ?: candidate.plainLyrics,
-            translatedLyrics = cleanLyrics(bundle?.translatedLyrics).ifBlank { translatedLyrics },
-            romanizedLyrics = cleanLyrics(bundle?.romanizedLyrics).ifBlank { candidate.romanizedLyrics },
-            wordLyrics = wordLyrics,
-            lyricsKind = if (wordLyrics.isNotEmpty()) LyricsKind.SYNCHRONIZED else kind
+            translatedLyrics = translatedLyrics,
+            lyricsKind = kind
         )
+    }
+
+    override fun loadEnrichment(
+        base: LyricsResult,
+        deadlineNanos: Long,
+        cancellation: LyricsCancellationSignal
+    ): LyricsResult? {
+        cancellation.throwIfCancelled()
+        val body = pendingTracks.restore(base)
+        if (body.isInstrumentalContent() || usableWordLyrics(body.wordLyrics).isNotEmpty()) return null
+        val songId = synchronized(songIds) { songIds[body.sourceId] } ?: return null
+        val source = wordSource ?: return null
+        val bundle = optionalPublicEnrichment(body, deadlineNanos, cancellation) {
+            source.load(songId, deadlineNanos, cancellation)
+        } ?: return null
+        val words = usableWordLyrics(bundle.wordLyrics)
+        val kind = body.contentKind()
+        if (kind == LyricsKind.NONE && words.isEmpty()) return null
+        return body.copy(
+            translatedLyrics = cleanLyrics(bundle.translatedLyrics).ifBlank { body.translatedLyrics },
+            romanizedLyrics = cleanLyrics(bundle.romanizedLyrics).ifBlank { body.romanizedLyrics },
+            wordLyrics = words,
+            lyricsKind = if (words.isNotEmpty()) LyricsKind.SYNCHRONIZED else kind
+        ).takeUnless { it == base }
     }
 
     private fun cover(song: JSONObject): String {
@@ -228,6 +253,7 @@ internal class NetEaseLyricsSource(
     private val transport: LyricsTransport = HttpLyricsTransport()
 ) : LyricsCatalogSource {
     override val sourceName: String = SOURCE_NETEASE
+    private val pendingTracks = PendingPublicLyricsTracks()
 
     override fun search(
         request: LyricsCatalogSearchRequest,
@@ -268,14 +294,25 @@ internal class NetEaseLyricsSource(
         deadlineNanos: Long,
         cancellation: LyricsCancellationSignal
     ): LyricsResult? {
+        val base = loadBaseLyrics(candidate, deadlineNanos, cancellation)
+        return loadEnrichment(base ?: candidate, deadlineNanos, cancellation) ?: base
+    }
+
+    override fun loadBaseLyrics(
+        candidate: LyricsResult,
+        deadlineNanos: Long,
+        cancellation: LyricsCancellationSignal
+    ): LyricsResult? {
         cancellation.throwIfCancelled()
         val songId = candidate.sourceId.toLongOrNull()?.takeIf { it > 0L } ?: return null
+        pendingTracks.clear(candidate)
         val lyricUrl = "https://music.163.com/api/song/lyric?os=pc&id=$songId" +
             "&lv=-1&kv=-1&tv=-1&rv=-1"
         val lyricRoot = parseJsonFlexible(
             transport.getBytes(lyricUrl, headers(), deadlineNanos, cancellation)
         )
         requireSuccessfulResponse(lyricRoot, sourceName, setOf(200), "code")
+        cancellation.throwIfCancelled()
         val lyrics = cleanLyrics(lyricRoot.optJSONObject("lrc").contentString("lyric"))
         val kind = classifyLyrics(lyrics)
         val instrumental = lyricRoot.opt("pureMusic") == true
@@ -287,24 +324,13 @@ internal class NetEaseLyricsSource(
         val markerResult = candidate.copy(lyrics = lyrics, plainLyrics = "", translatedLyrics = translatedLyrics,
             romanizedLyrics = romanizedLyrics, wordLyrics = rawWords)
         if (markerResult.isInstrumentalContent()) return markerResult.copy(lyricsKind = LyricsKind.NONE)
-        var wordLyrics = usableWordLyrics(rawWords)
-        if (wordLyrics.isEmpty()) {
-            // This optional enrichment must not discard an already valid line-level bundle.
-            try {
-                val wordUrl = "https://music.163.com/api/song/lyric/v1?id=$songId&yv=-1"
-                val wordRoot = parseJsonFlexible(
-                    transport.getBytes(wordUrl, headers(), deadlineNanos, cancellation)
-                )
-                requireSuccessfulResponse(wordRoot, sourceName, setOf(200), "code")
-                wordLyrics = usableWordLyrics(wordRoot.optJSONObject("yrc").contentString("lyric"))
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: LyricsSourceException) {
-                cancellation.throwIfCancelled()
-                if (kind == LyricsKind.NONE) throw error
-            }
+        // Tracks returned with the line body cost no additional network wait.
+        val wordLyrics = usableWordLyrics(rawWords)
+        if (kind == LyricsKind.NONE && wordLyrics.isEmpty()) {
+            pendingTracks.remember(markerResult.copy(lyrics = "", plainLyrics = "", wordLyrics = "", lyricsKind = LyricsKind.NONE))
+            return null
         }
-        if (kind == LyricsKind.NONE && wordLyrics.isEmpty()) return null
+        cancellation.throwIfCancelled()
         return candidate.copy(
             lyrics = lyrics.takeIf { kind == LyricsKind.SYNCHRONIZED }.orEmpty(),
             plainLyrics = lyrics.takeIf { kind == LyricsKind.PLAIN } ?: candidate.plainLyrics,
@@ -313,6 +339,27 @@ internal class NetEaseLyricsSource(
             wordLyrics = wordLyrics,
             lyricsKind = if (wordLyrics.isNotEmpty()) LyricsKind.SYNCHRONIZED else kind
         )
+    }
+
+    override fun loadEnrichment(
+        base: LyricsResult,
+        deadlineNanos: Long,
+        cancellation: LyricsCancellationSignal
+    ): LyricsResult? {
+        cancellation.throwIfCancelled()
+        val body = pendingTracks.restore(base)
+        if (body.isInstrumentalContent() || usableWordLyrics(body.wordLyrics).isNotEmpty()) return null
+        val songId = body.sourceId.toLongOrNull()?.takeIf { it > 0L } ?: return null
+        val words = optionalPublicEnrichment(body, deadlineNanos, cancellation) {
+            val wordUrl = "https://music.163.com/api/song/lyric/v1?id=$songId&yv=-1"
+            val wordRoot = parseJsonFlexible(
+                transport.getBytes(wordUrl, headers(), deadlineNanos, cancellation)
+            )
+            requireSuccessfulResponse(wordRoot, sourceName, setOf(200), "code")
+            usableWordLyrics(wordRoot.optJSONObject("yrc").contentString("lyric"))
+        }.orEmpty()
+        if (words.isEmpty()) return null
+        return body.copy(wordLyrics = words, lyricsKind = LyricsKind.SYNCHRONIZED)
     }
 
     override fun loadCover(
@@ -364,7 +411,8 @@ internal interface LyricsTransport {
 internal class HttpLyricsTransport(
     private val connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
     private val readTimeoutMs: Int = READ_TIMEOUT_MS,
-    private val maximumResponseBytes: Int = MAX_RESPONSE_BYTES
+    private val maximumResponseBytes: Int = MAX_RESPONSE_BYTES,
+    private val followRedirects: Boolean = true
 ) : LyricsTransport {
     override fun getText(
         url: String,
@@ -387,7 +435,7 @@ internal class HttpLyricsTransport(
             connection.requestMethod = "GET"
             connection.connectTimeout = minOf(connectTimeoutMs, remainingMs)
             connection.readTimeout = minOf(readTimeoutMs, remainingMs)
-            connection.instanceFollowRedirects = true
+            connection.instanceFollowRedirects = followRedirects
             connection.useCaches = true
             headers.forEach(connection::setRequestProperty)
             connection.connect()
@@ -531,6 +579,46 @@ private fun requireSuccessfulResponse(
             reason, code == 408 || code == 429 || code == -462 || (code != null && code >= 500),
             "$source rejected lyrics request ($key=$code)"
         )
+    }
+}
+
+// A blank main track can still have auxiliary tracks needed by the word-only compatibility path.
+private class PendingPublicLyricsTracks {
+    private val values = object : LinkedHashMap<LyricsCandidateSnapshot, LyricsResult>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<LyricsCandidateSnapshot, LyricsResult>?): Boolean =
+            size > 128
+    }
+
+    @Synchronized fun clear(candidate: LyricsResult) { values.remove(candidate.candidateSnapshot()) }
+
+    @Synchronized fun remember(body: LyricsResult) {
+        if (body.translatedLyrics.isNotBlank() || body.romanizedLyrics.isNotBlank()) {
+            values[body.candidateSnapshot()] = body
+        }
+    }
+
+    @Synchronized fun restore(base: LyricsResult): LyricsResult =
+        if (base.hasBodyPayload() || base.isInstrumentalContent()) base
+        else values[base.candidateSnapshot()] ?: base
+}
+
+private inline fun <T> optionalPublicEnrichment(
+    base: LyricsResult,
+    deadlineNanos: Long,
+    cancellation: LyricsCancellationSignal,
+    block: () -> T
+): T? {
+    cancellation.throwIfCancelled()
+    val hasBody = base.contentKind() != LyricsKind.NONE
+    if (hasBody && System.nanoTime() >= deadlineNanos) return null
+    return try {
+        block().also { cancellation.throwIfCancelled() }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: LyricsSourceException) {
+        cancellation.throwIfCancelled()
+        if (!hasBody) throw error
+        null
     }
 }
 

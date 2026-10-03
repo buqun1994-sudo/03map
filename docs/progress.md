@@ -2,7 +2,13 @@
 
 > **职责：** 只记录当前状态、已完成闭环、阻断和下一步。历史细节分别留在代码地图、研究文档、验证矩阵和归档文档，不在这里复制流水账。
 
-## 当前状态：逐字歌词固定上浮节奏修正（2026-10-03，本机测试／Lint与正式APK通过；车机未安装／验收）
+## 当前歌词任务：统一Provider、渐进正文/封面与Apple后端（2026-10-03，本机/签名候选完成）
+
+八Provider共用目录检索和偏好、逐行先显与真实逐字升级、不等慢来源闭合、最多4唯一URL/2图片lane/9秒共同预算。偏好及Apple状态Flow主动唤醒暂停中的同歌，暖图缓存保留显示但不阻止新偏好重搜；录音proof、人工歌词/原生图优先、Store唯一时间线与1GiB预算保持。Apple已接官方登录Cookie、web bearer、storefront、目录/TTML/512封面主链，当前无登录UI时DISCONNECTED/零网络，后续只需设置页接接口再做真实账号验证。
+
+本次29项正式源码/测试在打包时与隔离快照逐SHA一致（提交前仅去掉注册表末尾多余空行，差异见验证记录）；720项测试、四Lint、正式签名构建与包闭包通过。[本轮候选](<../apk-work/9.5.0.600013/lyrics-provider-20261003/signed.apk>) SHA-256 `d383f956754c4a23f19d5225f06320aaef9cb75806ac3913e2de5941a83bf28b`，不含并行UI/车控新改动；不替其验收。最后设备发现393ms扫描253地址exit1、ADB列表为空，未安装/启动/实测网络或车机耗时。本轮实现、测试和文档按用户要求随本次Git提交保存，不推送；未改03lyrics或颜色/设置UI。后续只在重新核验在线目标后执行同包冷歌分段耗时与迟到隔离，真实Apple待设置登录页；证据与最小步骤见[统一Provider记录](<testing/歌词封面统一Provider验证记录-20261003.md>)，接口owner见[架构](<architecture/歌词封面统一解析.md>)。
+
+## 上一状态：逐字歌词固定上浮节奏修正（2026-10-03，本机测试／Lint与正式APK通过；车机未安装／验收）
 
 当前正式源码沿唯一媒体／Store／Mapper／Compose主链移除歌词screen viewport离屏层与帧内selection／重段绘制，把bitmap／blur准备移到Default worker并复用有界visualLine纹理；Mapper按不可变原正文identity缓存整曲UI rows／words。current主文48sp、非当前40sp并增强blur，合法跟随句成为current即强调、不等first-word；Unicode安全视觉单元由源word startFraction确定起点，从基线下方约2.5dp以固定1000ms ease-out cubic上浮回到基线，不按源词长短变速、不放大、不做逐字辉光，真实liga／joining／Bidi与彩色RGBA保持，不造字符时间轴。背景保留128源field与三LIGHTEN原理，但worker最长边192、10Hz预合成，screen稳态1bitmap、500ms转场至多2bitmap；resize不重淡化、暂停／失焦冻结，generation拒迟到。
 

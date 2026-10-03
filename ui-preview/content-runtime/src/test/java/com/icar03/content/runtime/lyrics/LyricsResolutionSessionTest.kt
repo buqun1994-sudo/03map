@@ -15,6 +15,67 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class LyricsResolutionSessionTest {
+    @Test fun metadataMatchWithoutAnyBodyResumesTheSourcesRemainingQueries() {
+        val emptyId = candidate(SOURCE_QQ).copy(sourceId = "empty-id")
+        val validId = emptyId.copy(sourceId = "valid-id")
+        val source = FakeCatalog(SOURCE_QQ, searcher = { index, _ -> listOf(if (index == 1) emptyId else validId) },
+            loader = { item, _ -> if (item.sourceId == "valid-id") item.copy(lyrics = LINES) else null })
+        Harness(catalogs = listOf(source)).use { harness ->
+            assertEquals("valid-id", found(harness.start()).resolved.result.sourceId)
+            assertEquals(2, source.searchCalls.get())
+        }
+    }
+
+    @Test fun repeatedOrEmptySecondCatalogDoesNotPauseAnAlreadyExhaustedBody() {
+        for (repeatEmptyId in listOf(true, false)) {
+            val emptyId = candidate(SOURCE_QQ).copy(sourceId = "empty-id")
+            val validId = emptyId.copy(sourceId = "valid-id")
+            val source = FakeCatalog(SOURCE_QQ, searcher = { index, _ -> when (index) {
+                1 -> listOf(emptyId)
+                2 -> if (repeatEmptyId) listOf(emptyId) else emptyList()
+                else -> listOf(validId)
+            } }, loader = { item, _ -> if (item.sourceId == "valid-id") item.copy(lyrics = LINES) else null })
+            Harness(catalogs = listOf(source)).use { harness ->
+                assertEquals("valid-id", found(harness.start()).resolved.result.sourceId)
+                assertEquals(3, source.searchCalls.get())
+            }
+        }
+    }
+
+    @Test fun sameProviderPublishesLinesAndThenWordsBeforeSlowCatalogRoundCompletes() {
+        val releaseWords = CountDownLatch(1)
+        val releaseCatalog = CountDownLatch(1)
+        val linesReady = CountDownLatch(1)
+        val wordsReady = CountDownLatch(1)
+        val metadata = candidate(SOURCE_QQ)
+        val source = object : LyricsCatalogSource {
+            override val sourceName = SOURCE_QQ
+            override fun search(request: LyricsCatalogSearchRequest, deadlineNanos: Long, cancellation: LyricsCancellationSignal) = listOf(metadata)
+            override fun loadLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? = error("Must use staged body contract")
+            override fun loadBaseLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal) = candidate.copy(lyrics = LINES)
+            override fun loadEnrichment(base: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult {
+                awaitGate(releaseWords, cancellation)
+                return base.copy(wordLyrics = WORDS)
+            }
+        }
+        val slowCatalog = FakeCatalog(SOURCE_NETEASE, searcher = { _, signal -> awaitGate(releaseCatalog, signal); emptyList() })
+        Harness(catalogs = listOf(source, slowCatalog)).use { harness ->
+            val pending = harness.start { found ->
+                assertTrue(LyricsCandidateSelector.isProofValid(QUERY, found.resolved.result, found.resolved.proof))
+                if (found.resolved.result.wordLyrics.isBlank()) linesReady.countDown() else wordsReady.countDown()
+            }
+            try {
+                assertTrue(linesReady.await(1, TimeUnit.SECONDS))
+                assertFalse(pending.isDone)
+                releaseWords.countDown()
+                assertTrue(wordsReady.await(1, TimeUnit.SECONDS))
+                assertFalse("Word upgrade must not wait for all catalogs", pending.isDone)
+                releaseCatalog.countDown()
+                assertEquals(WORDS, found(pending).resolved.result.wordLyrics)
+            } finally { releaseWords.countDown(); releaseCatalog.countDown() }
+        }
+    }
+
     @Test
     fun delayedBetterWordBodyWinsAfterOneFastProvisional() {
         val releaseBody = CountDownLatch(1)
@@ -30,8 +91,8 @@ class LyricsResolutionSessionTest {
         })
         Harness(FakeExact(exactResult = { fast }), listOf(slow)).use { harness ->
             val pending = harness.start { provisional ->
-                assertEquals(SOURCE_LRCLIB, provisional.resolved.result.source)
-                callbacks.incrementAndGet()
+                if (callbacks.getAndIncrement() == 0) assertEquals(SOURCE_LRCLIB, provisional.resolved.result.source)
+                else assertEquals(SOURCE_NETEASE, provisional.resolved.result.source)
                 firstShown.countDown()
             }
             try {
@@ -46,9 +107,9 @@ class LyricsResolutionSessionTest {
                 assertEquals(199_100L, final.resolved.result.durationMs)
                 assertEquals(catalog.candidateSnapshot(), final.resolved.result.candidateSnapshot())
                 assertTrue(LyricsCandidateSelector.isProofValid(QUERY, final.resolved.result, final.resolved.proof))
-                assertEquals(1, callbacks.get())
+                assertEquals(2, callbacks.get())
                 assertEquals(1, slow.loadCalls.get())
-                assertEquals(LyricsSearchPlanner.catalogRequests(QUERY).size, slow.searchCalls.get())
+                assertEquals(1, slow.searchCalls.get())
             } finally {
                 releaseBody.countDown()
             }
@@ -83,7 +144,7 @@ class LyricsResolutionSessionTest {
     }
 
     @Test
-    fun exactFallbackAndAllCatalogSourcesStartConcurrentlyOnOneFullRoundDeadline() {
+    fun catalogAndFallbackUseBoundedRequestDeadlinesWithHedging() {
         val allStarted = CountDownLatch(4)
         val release = CountDownLatch(1)
         val deadlines = ConcurrentLinkedQueue<Long>()
@@ -111,7 +172,7 @@ class LyricsResolutionSessionTest {
                 assertTrue(allStarted.await(2L, TimeUnit.SECONDS))
                 release.countDown()
                 assertEquals(LyricsResolutionOutcome.NoMatch, pending.get(2L, TimeUnit.SECONDS))
-                assertEquals(1, deadlines.distinct().size)
+                assertTrue(deadlines.distinct().size > 1)
             } finally {
                 release.countDown()
             }
@@ -533,8 +594,8 @@ class LyricsResolutionSessionTest {
 
     private class Harness(
         exact: FakeExact = FakeExact(),
-        catalogs: List<FakeCatalog> = emptyList(),
-        config: LyricsResolutionConfig = LyricsResolutionConfig(catalogDeadlineMs = 100L, totalDeadlineMs = 5_000L),
+        catalogs: List<LyricsCatalogSource> = emptyList(),
+        config: LyricsResolutionConfig = LyricsResolutionConfig(catalogDeadlineMs = 2_000L, totalDeadlineMs = 5_000L),
         preferred: List<String> = emptyList(),
         supplemental: ((LyricsLookup, List<LyricsResult>, Long, LyricsCancellationSignal) -> List<LyricsResult>)? = null
     ) : Closeable {

@@ -90,6 +90,59 @@ class LyricsResolutionCoordinatorTest {
         }
     }
 
+    @Test
+    fun `progressive cover callback crosses the blocking lane before final list`() = runBlocking {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val callbacks = mutableListOf<String>()
+        val resolver = object : LyricsCoverResolver {
+            override fun resolveCover(
+                query: LyricsLookup,
+                cancellation: LyricsCancellationSignal
+            ): String = "fallback"
+
+            override fun resolveCoversProgressive(
+                query: LyricsLookup,
+                cancellation: LyricsCancellationSignal,
+                onCandidate: (String) -> Unit
+            ): List<String> {
+                onCandidate("https://example.invalid/fast.jpg")
+                entered.countDown()
+                assertTrue(release.await(1L, TimeUnit.SECONDS))
+                cancellation.throwIfCancelled()
+                return listOf(
+                    "https://example.invalid/fast.jpg",
+                    "https://example.invalid/slow.jpg"
+                )
+            }
+        }
+        val coordinator = LyricsResolutionCoordinator(
+            lyricsResolver = LyricsResolver { _, _ -> LyricsResolutionOutcome.NoMatch },
+            coverResolver = resolver,
+            retryDelayMs = 0L,
+            retryWait = {}
+        )
+
+        try {
+            val result = async(start = CoroutineStart.UNDISPATCHED) {
+                coordinator.resolveCoversProgressive(query("cover")) { callbacks += it }
+            }
+            assertTrue(entered.await(1L, TimeUnit.SECONDS))
+            assertEquals(listOf("https://example.invalid/fast.jpg"), callbacks)
+            release.countDown()
+            assertEquals(
+                listOf(
+                    "https://example.invalid/fast.jpg",
+                    "https://example.invalid/slow.jpg"
+                ),
+                result.await()
+            )
+        } finally {
+            release.countDown()
+            coordinator.close()
+        }
+    }
+
     private fun coordinator(resolver: LyricsResolver): LyricsResolutionCoordinator =
         LyricsResolutionCoordinator(
             lyricsResolver = resolver,

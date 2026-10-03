@@ -17,9 +17,25 @@ internal interface LyricsBodySource {
         deadlineNanos: Long,
         cancellation: LyricsCancellationSignal
     ): LyricsResult?
+
+    fun loadBaseLyrics(
+        candidate: LyricsResult,
+        deadlineNanos: Long,
+        cancellation: LyricsCancellationSignal
+    ): LyricsResult? = loadLyrics(candidate, deadlineNanos, cancellation)
+
+    fun loadEnrichment(
+        base: LyricsResult,
+        deadlineNanos: Long,
+        cancellation: LyricsCancellationSignal
+    ): LyricsResult? = null
 }
 
 internal interface LyricsCatalogSource : LyricsBodySource {
+    val isAvailable: Boolean get() = true
+    /** Invalidate shared public catalog results after this provider changes account/region. */
+    val catalogRevision: Long get() = 0L
+
     fun search(
         request: LyricsCatalogSearchRequest,
         deadlineNanos: Long,
@@ -75,6 +91,12 @@ internal fun interface LyricsCoverResolver {
     ): List<String> = listOfNotNull(
         resolveCover(query, cancellation).takeIf(String::isNotBlank)
     )
+
+    fun resolveCoversProgressive(
+        query: LyricsLookup,
+        cancellation: LyricsCancellationSignal,
+        onCandidate: (String) -> Unit
+    ): List<String> = resolveCovers(query, cancellation).also { it.forEach(onCandidate) }
 }
 
 internal class LyricsCancellationSignal {

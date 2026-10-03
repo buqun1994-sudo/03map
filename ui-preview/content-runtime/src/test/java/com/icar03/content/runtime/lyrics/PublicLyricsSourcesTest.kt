@@ -24,7 +24,24 @@ class PublicLyricsSourcesTest {
         val source = QqLyricsSource(transport, wordSource = null)
         assertEquals(cover, source.loadCover(candidate(SOURCE_QQ).copy(cover = cover), DEADLINE, signal()))
         assertTrue(transport.requests.isEmpty())
+        assertTrue(source.isAvailable)
+        var legacyCalls = 0
+        val legacy = object : LyricsBodySource {
+            override val sourceName = "Legacy"
+            override fun loadLyrics(candidate: LyricsResult, deadlineNanos: Long,
+                cancellation: LyricsCancellationSignal): LyricsResult {
+                legacyCalls++
+                return candidate.copy(lyrics = "[00:01.00]legacy")
+            }
+        }
+        assertEquals("[00:01.00]legacy", legacy.loadBaseLyrics(candidate(), DEADLINE, signal())!!.lyrics)
+        assertNull(legacy.loadEnrichment(candidate(), DEADLINE, signal()))
+        assertEquals(1, legacyCalls)
         val query = LyricsLookup("Song", "Artist")
+        val covers = mutableListOf<String>()
+        assertEquals(listOf(cover), LyricsCoverResolver { _, _ -> cover }
+            .resolveCoversProgressive(query, signal(), covers::add))
+        assertEquals(listOf(cover), covers)
         assertEquals(listOf(cover), LyricsCoverResolver { _, _ -> cover }.resolveCovers(query, signal()))
         assertTrue(LyricsCoverResolver { _, _ -> "" }.resolveCovers(query, signal()).isEmpty())
     }
@@ -179,6 +196,154 @@ class PublicLyricsSourcesTest {
         }
     }
 
+    @Test fun qqBaseReturnsBeforeQrcAndEnrichmentKeepsTheSameIdentityAndMainTracks() {
+        val translated = "[00:01.00]base translation"
+        val transport = FakeTransport(qqCatalog("synthetic-mid", "4242"), JSONObject().put("code", 0)
+            .put("lyric", "[00:01.00]ab").put("trans", translated).toString())
+        val cancellation = signal()
+        val operations = mutableListOf<String>()
+        val post = LyricsPostTransport { _, body, _, deadline, requestCancellation ->
+            assertEquals(DEADLINE, deadline)
+            assertSame(cancellation, requestCancellation)
+            val operation = body.getJSONObject("request")
+            val method = operation.getString("method")
+            operations += method
+            val data = if (method == "GetSession") JSONObject().put("session", JSONObject()
+                .put("sid", "synthetic-base-enrichment").put("uid", "0")) else {
+                assertEquals("GetPlayLyricInfo", method)
+                assertEquals(4242L, operation.getJSONObject("param").getLong("songID"))
+                JSONObject().put("qrc_t", 1).put("lyric", encrypted(qrcXml("[1000,1000]a(1000,500)b(1500,500)")))
+            }
+            JSONObject().put("code", 0).put("request", JSONObject().put("code", 0).put("data", data)).toString()
+        }
+        val source = QqLyricsSource(transport, QqWordLyricsSource(transport, post))
+        val selected = source.search(request(), DEADLINE, cancellation).single()
+        val base = source.loadBaseLyrics(selected, DEADLINE, cancellation)!!
+        assertEquals("[00:01.00]ab", base.lyrics)
+        assertEquals(translated, base.translatedLyrics)
+        assertEquals("", base.wordLyrics)
+        assertTrue("QRC is deferred until enrichment", operations.isEmpty())
+        assertEquals(2, transport.requests.size)
+        val enriched = source.loadEnrichment(base, DEADLINE, cancellation)!!
+        assertEquals(listOf("GetSession", "GetPlayLyricInfo"), operations)
+        assertEquals(YRC, enriched.wordLyrics)
+        assertEquals(base.lyrics, enriched.lyrics)
+        assertEquals(translated, enriched.translatedLyrics)
+        assertEquals(selected.candidateSnapshot(), enriched.candidateSnapshot())
+        assertEquals(2, transport.requests.size)
+    }
+
+    @Test fun qqEmptyBaseKeepsFirstResponseTranslationWhenOnlyQrcProvidesTheBody() {
+        val translated = "[00:01.00]base translation"
+        val transport = FakeTransport(qqCatalog("synthetic-mid", "4242"), JSONObject().put("code", 0)
+            .put("lyric", "").put("trans", translated).toString())
+        var calls = 0
+        val post = LyricsPostTransport { _, body, _, _, _ ->
+            calls++
+            val data = if (body.getJSONObject("request").getString("method") == "GetSession")
+                JSONObject().put("session", JSONObject().put("sid", "synthetic-word-only").put("uid", "0"))
+            else JSONObject().put("qrc_t", 1).put("lyric", encrypted(qrcXml("[1000,1000]a(1000,500)b(1500,500)")))
+            JSONObject().put("code", 0).put("request", JSONObject().put("code", 0).put("data", data)).toString()
+        }
+        val source = QqLyricsSource(transport, QqWordLyricsSource(transport, post))
+        val selected = source.search(request(), DEADLINE, signal()).single()
+        assertNull(source.loadBaseLyrics(selected, DEADLINE, signal()))
+        assertEquals(0, calls)
+        val enriched = source.loadEnrichment(selected, DEADLINE, signal())!!
+        assertEquals("", enriched.lyrics)
+        assertEquals(YRC, enriched.wordLyrics)
+        assertEquals(translated, enriched.translatedLyrics)
+        assertEquals(selected.candidateSnapshot(), enriched.candidateSnapshot())
+        assertEquals(2, calls)
+    }
+
+    @Test fun neteaseBaseReturnsBeforeTheSeparateYrcRequestAndEnrichmentPreservesProof() {
+        val transport = FakeTransport(neteaseBundle(), yrcBundle())
+        val cancellation = signal()
+        val source = NetEaseLyricsSource(transport)
+        val original = candidate()
+        val query = LyricsLookup("Song", "Artist", "Album", 200_000L)
+        val proof = LyricsCandidateSelector.selectCandidatesWithProof(query, listOf(original)).single().proof
+        val base = source.loadBaseLyrics(original, DEADLINE, cancellation)!!
+        assertEquals("[00:01.00]ab", base.lyrics)
+        assertEquals("[00:01.00]translated", base.translatedLyrics)
+        assertEquals("[00:01.00]roma", base.romanizedLyrics)
+        assertTrue(base.wordLyrics.isEmpty())
+        assertEquals(1, transport.requests.size)
+        assertEquals("/api/song/lyric", URI(transport.requests.single().url).path)
+        assertTrue(LyricsCandidateSelector.isProofValid(query, base, proof))
+        val enriched = source.loadEnrichment(base, DEADLINE, cancellation)!!
+        assertEquals(YRC, enriched.wordLyrics)
+        assertEquals(base.copy(wordLyrics = YRC), enriched)
+        assertEquals(original.candidateSnapshot(), enriched.candidateSnapshot())
+        assertTrue(LyricsCandidateSelector.isProofValid(query, enriched, proof))
+        assertEquals(2, transport.requests.size)
+        assertEquals("/api/song/lyric/v1", URI(transport.requests.last().url).path)
+        transport.requests.forEach {
+            assertEquals(DEADLINE, it.deadlineNanos)
+            assertSame(cancellation, it.cancellation)
+        }
+    }
+
+    @Test fun neteaseBaseKeepsYrcFromTheSameResponseWithoutAnExtraRequest() {
+        val root = JSONObject(neteaseBundle()).put("yrc", JSONObject().put("lyric", YRC))
+        val transport = FakeTransport(root.toString())
+        val source = NetEaseLyricsSource(transport)
+        val base = source.loadBaseLyrics(candidate(), DEADLINE, signal())!!
+        assertEquals(YRC, base.wordLyrics)
+        assertNull(source.loadEnrichment(base, DEADLINE, signal()))
+        assertEquals(1, transport.requests.size)
+    }
+
+    @Test fun deferredPublicEnrichmentFailuresReturnNoUpgradeAndKeepTheBaseUntouched() {
+        val transport = FakeTransport(neteaseBundle()).apply {
+            onRequest = { if (requests.size == 2) throw LyricsSourceException(
+                LyricsFailureReason.DEADLINE, true, "Synthetic optional timeout") }
+        }
+        val source = NetEaseLyricsSource(transport)
+        val base = source.loadBaseLyrics(candidate(), DEADLINE, signal())!!
+        assertNull(source.loadEnrichment(base, DEADLINE, signal()))
+        assertEquals("[00:01.00]ab", base.lyrics)
+        assertEquals("[00:01.00]translated", base.translatedLyrics)
+        assertEquals("", base.wordLyrics)
+        val expiredCalls = transport.requests.size
+        assertNull(source.loadEnrichment(base, System.nanoTime() - 1L, signal()))
+        assertEquals(expiredCalls, transport.requests.size)
+
+        var qrcCalls = 0
+        val qqTransport = FakeTransport(qqCatalog("synthetic-mid", "4242"),
+            "{\"code\":0,\"lyric\":\"[00:01.00]ab\"}")
+        val post = LyricsPostTransport { _, _, _, _, _ ->
+            qrcCalls++
+            throw LyricsSourceException(LyricsFailureReason.SERVER, false, "Synthetic QRC rejection")
+        }
+        val qq = QqLyricsSource(qqTransport, QqWordLyricsSource(qqTransport, post))
+        val selected = qq.search(request(), DEADLINE, signal()).single()
+        val qqBase = qq.loadBaseLyrics(selected, DEADLINE, signal())!!
+        assertEquals(0, qrcCalls)
+        assertNull(qq.loadEnrichment(qqBase, DEADLINE, signal()))
+        assertEquals(1, qrcCalls)
+        assertEquals("[00:01.00]ab", qqBase.lyrics)
+        assertEquals(selected.candidateSnapshot(), qqBase.candidateSnapshot())
+    }
+
+    @Test fun deferredPublicEnrichmentPropagatesCancellationBeforeAndDuringItsRequest() {
+        val transport = FakeTransport(neteaseBundle())
+        val source = NetEaseLyricsSource(transport)
+        val base = source.loadBaseLyrics(candidate(), DEADLINE, signal())!!
+        assertThrows(CancellationException::class.java) {
+            source.loadEnrichment(base, DEADLINE, signal().apply { cancel() })
+        }
+        assertEquals(1, transport.requests.size)
+        val during = signal()
+        transport.onRequest = {
+            during.cancel()
+            throw LyricsSourceException(LyricsFailureReason.NETWORK, true, "Synthetic cancelled connection")
+        }
+        assertThrows(CancellationException::class.java) { source.loadEnrichment(base, DEADLINE, during) }
+        assertEquals("[00:01.00]ab", base.lyrics)
+    }
+
     @Test fun neteaseTranslationRomanizationAndPublicYrcEnrichmentRemainInOneIdentity() {
         val transport = FakeTransport(neteaseBundle(), yrcBundle())
         val cancellation = signal()
@@ -222,13 +387,26 @@ class PublicLyricsSourcesTest {
         }
     }
 
-    @Test fun neteaseWordOnlyDataKeepsRealTimingButUnansweredEmptySourcesStillFail() {
-        val empty = JSONObject().put("code", 200).put("lrc", JSONObject().put("lyric", "")).toString()
+    @Test fun neteaseWordOnlyDataKeepsRealTimingAndFirstResponseAuxiliaryTracks() {
+        val empty = JSONObject().put("code", 200).put("lrc", JSONObject().put("lyric", ""))
+            .put("tlyric", JSONObject().put("lyric", "[00:01.00]translated"))
+            .put("romalrc", JSONObject().put("lyric", "[00:01.00]roma")).toString()
         val result = NetEaseLyricsSource(FakeTransport(empty, yrcBundle()))
             .loadLyrics(candidate(), DEADLINE, signal())!!
         assertEquals("", result.lyrics)
         assertEquals(YRC, result.wordLyrics)
+        assertEquals("[00:01.00]translated", result.translatedLyrics)
+        assertEquals("[00:01.00]roma", result.romanizedLyrics)
         assertEquals(LyricsKind.SYNCHRONIZED, result.lyricsKind)
+        val stagedTransport = FakeTransport(empty, yrcBundle())
+        val staged = NetEaseLyricsSource(stagedTransport)
+        val original = candidate()
+        assertNull(staged.loadBaseLyrics(original, DEADLINE, signal()))
+        assertEquals(1, stagedTransport.requests.size)
+        val enriched = staged.loadEnrichment(original, DEADLINE, signal())!!
+        assertEquals(result, enriched)
+        assertEquals(original.candidateSnapshot(), enriched.candidateSnapshot())
+        assertEquals(2, stagedTransport.requests.size)
         val failed = NetEaseLyricsSource(FakeTransport(empty, "{\"code\":500}"))
         assertThrows(LyricsSourceException::class.java) { failed.loadLyrics(candidate(), DEADLINE, signal()) }
     }
@@ -459,6 +637,7 @@ class PublicLyricsSourcesTest {
         .put("romalrc", JSONObject().put("lyric", "[00:01.00]roma")).toString()
     private fun yrcBundle(raw: String = YRC) = JSONObject().put("code", 200)
         .put("yrc", JSONObject().put("lyric", raw)).toString()
+    private fun qrcXml(content: String) = "<QrcInfos><LyricInfo LyricCount=\"1\"><Lyric_1 LyricType=\"1\" LyricContent=\"$content\"/></LyricInfo></QrcInfos>"
     private fun base64(text: String) = Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
     private fun parameters(url: String): Map<String, String> = URI(url).rawQuery.split('&').associate {
         URLDecoder.decode(it.substringBefore('='), "UTF-8") to

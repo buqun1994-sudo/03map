@@ -201,7 +201,7 @@ class ExtendedLyricsSourcesTest {
         }
     }
 
-    @Test fun kugouRejectsContradictoryKrcMetadataEvenForTheSameLyricId() {
+    @Test fun kugouRejectsContradictoryKrcMetadataWithoutDiscardingValidatedLines() {
         val transport = FakeTransport { url -> when {
             url.contains("song_search_v2") -> kugouCatalog().bytes()
             url.contains("/search?") -> JSONObject().put("status", 200).put("candidates", JSONArray().put(
@@ -211,7 +211,10 @@ class ExtendedLyricsSourcesTest {
         } }
         val source = KugouLyricsSource(transport)
         val candidate = source.search(request, deadline, LyricsCancellationSignal()).single()
-        assertNull(source.loadLyrics(candidate, deadline, LyricsCancellationSignal()))
+        val result = source.loadLyrics(candidate, deadline, LyricsCancellationSignal())!!
+        assertEquals("[00:01.250]Hello road", result.lyrics)
+        assertEquals("", result.wordLyrics)
+        assertEquals(candidate.candidateSnapshot(), result.candidateSnapshot())
     }
 
     @Test fun miguRejectsContradictoryTimedMetadataBeforeLoadingOtherTracks() {
@@ -237,6 +240,153 @@ class ExtendedLyricsSourcesTest {
             assertEquals(LyricsFailureReason.RATE_LIMIT, failure.reason)
             assertTrue(failure.retryable)
             assertEquals(2, transport.calls.size)
+        }
+    }
+
+    @Test fun baseLyricsReturnBeforeAnyOptionalTrackAndEnrichmentKeepsTheCompleteIdentity() {
+        for (index in 0..2) {
+            var enrichmentAllowed = false
+            var optionalCalls = 0
+            val transport = enrichmentTransport(index) { url ->
+                assertTrue("Optional tracks must wait for the explicit enrichment phase", enrichmentAllowed)
+                optionalCalls++
+                when (index) {
+                    0 -> JSONObject().put("status", 200).put("content", SyntheticWordLyricsFixtures.krc(
+                        "[1250,800]<0,300,0>Hello<300,500,0> road")).bytes()
+                    1 -> SyntheticWordLyricsFixtures.lrcx("[kuwo:071]\n[00:01.250]<2100,-2100>Hello<5000,-2000> road")
+                    else -> if (url.endsWith("/fixture-translation")) "[00:01.250]你好道路".toByteArray()
+                        else SyntheticWordLyricsFixtures.mrc("[1250,800]Hello(1250,300) road(1550,500)").toByteArray()
+                }
+            }
+            val source = sourceFactories()[index](transport)
+            val cancellation = LyricsCancellationSignal()
+            val candidate = source.search(request, deadline, cancellation).single()
+            val base = source.loadBaseLyrics(candidate, deadline, cancellation)!!
+            assertEquals("[00:01.250]Hello road", base.lyrics)
+            assertEquals("", base.wordLyrics)
+            assertEquals("", base.translatedLyrics)
+            assertEquals(candidate.candidateSnapshot(), base.candidateSnapshot())
+            assertEquals(if (index == 0) 3 else 2, transport.calls.size)
+            assertEquals(0, optionalCalls)
+            enrichmentAllowed = true
+            val enriched = source.loadEnrichment(base, deadline, cancellation)!!
+            assertEquals("[1250,800](1250,300,0)Hello(1550,500,0) road", enriched.wordLyrics)
+            assertEquals(base.lyrics, enriched.lyrics)
+            assertEquals(candidate.candidateSnapshot(), enriched.candidateSnapshot())
+            assertEquals(if (index == 2) "[00:01.250]你好道路" else "", enriched.translatedLyrics)
+            assertEquals(if (index == 2) 2 else 1, optionalCalls)
+            assertEquals(if (index == 1) 3 else 4, transport.calls.size)
+            transport.calls.forEach {
+                assertEquals(deadline, it.deadline)
+                assertSame(cancellation, it.cancellation)
+            }
+            if (index == 0) {
+                val downloads = transport.calls.filter { it.url.contains("/download?") }
+                assertEquals(listOf("lrc", "krc"), downloads.map { it.url.queryValues()["fmt"] })
+                assertEquals(1, downloads.map { it.url.queryValues()["id"] }.distinct().size)
+                assertEquals(1, downloads.map { it.url.queryValues()["accesskey"] }.distinct().size)
+                assertFalse(enriched.toJson().toString().contains("accesskey"))
+            }
+        }
+    }
+
+    @Test fun deferredOptionalFailuresAndExhaustedBudgetsKeepTheAlreadyReturnedBase() {
+        for (index in 0..2) {
+            val transport = enrichmentTransport(index) {
+                throw LyricsSourceException(LyricsFailureReason.NETWORK, true, "Synthetic optional failure")
+            }
+            val source = sourceFactories()[index](transport)
+            val candidate = source.search(request, deadline, LyricsCancellationSignal()).single()
+            val base = source.loadBaseLyrics(candidate, deadline, LyricsCancellationSignal())!!
+            assertNull(source.loadEnrichment(base, deadline, LyricsCancellationSignal()))
+            assertEquals("[00:01.250]Hello road", base.lyrics)
+            assertEquals("", base.wordLyrics)
+            assertEquals(candidate.candidateSnapshot(), base.candidateSnapshot())
+            val beforeExpiredEnrichment = transport.calls.size
+            assertNull(source.loadEnrichment(base, System.nanoTime() - 1L, LyricsCancellationSignal()))
+            assertEquals(beforeExpiredEnrichment, transport.calls.size)
+        }
+    }
+
+    @Test fun deferredEnrichmentRejectsAlteredRecordingIdentityBeforeAnyRequest() {
+        for (index in 0..2) {
+            val transport = enrichmentTransport(index) { error("Altered identity must not request optional tracks") }
+            val source = sourceFactories()[index](transport)
+            val candidate = source.search(request, deadline, LyricsCancellationSignal()).single()
+            val base = source.loadBaseLyrics(candidate, deadline, LyricsCancellationSignal())!!
+            val calls = transport.calls.size
+            assertNull(source.loadEnrichment(base.copy(candidateTrack = "Another Recording"), deadline, LyricsCancellationSignal()))
+            assertNull(source.loadEnrichment(base.copy(durationMs = base.durationMs + 10_000L), deadline, LyricsCancellationSignal()))
+            assertEquals(calls, transport.calls.size)
+        }
+    }
+
+    @Test fun deferredEnrichmentPropagatesCancellationBeforeAndDuringOptionalRequests() {
+        for (index in 0..2) {
+            val during = LyricsCancellationSignal()
+            val transport = enrichmentTransport(index) {
+                during.cancel()
+                throw LyricsSourceException(LyricsFailureReason.NETWORK, true, "Synthetic cancelled connection")
+            }
+            val source = sourceFactories()[index](transport)
+            val candidate = source.search(request, deadline, LyricsCancellationSignal()).single()
+            val base = source.loadBaseLyrics(candidate, deadline, LyricsCancellationSignal())!!
+            val calls = transport.calls.size
+            expectCancellation { source.loadEnrichment(base, deadline, LyricsCancellationSignal().apply { cancel() }) }
+            assertEquals(calls, transport.calls.size)
+            expectCancellation { source.loadEnrichment(base, deadline, during) }
+            assertEquals("[00:01.250]Hello road", base.lyrics)
+        }
+    }
+
+    @Test fun wordOnlyKugouAndMiguResourcesStillLoadAfterAnEmptyBaseWithoutInventedTiming() {
+        for (index in listOf(0, 2)) {
+            var optionalCalls = 0
+            val transport = enrichmentTransport(index) { url ->
+                optionalCalls++
+                if (index == 0) JSONObject().put("status", 200).put("content", SyntheticWordLyricsFixtures.krc(
+                    "[1250,800]<0,300,0>Hello<300,500,0> road")).bytes()
+                else if (url.endsWith("/fixture-translation")) byteArrayOf()
+                else SyntheticWordLyricsFixtures.mrc("[1250,800]Hello(1250,300) road(1550,500)").toByteArray()
+            }
+            val originalResponse = transport.response
+            transport.response = { url -> when {
+                url.queryValues()["fmt"] == "lrc" -> JSONObject().put("status", 200).put("content", "").bytes()
+                url.endsWith("/fixture-line") -> byteArrayOf()
+                else -> originalResponse(url)
+            } }
+            val source = sourceFactories()[index](transport)
+            val candidate = source.search(request, deadline, LyricsCancellationSignal()).single()
+            assertNull(source.loadBaseLyrics(candidate, deadline, LyricsCancellationSignal()))
+            assertEquals(0, optionalCalls)
+            if (index == 2) assertEquals(candidate, source.search(request, deadline, LyricsCancellationSignal()).single())
+            val enriched = source.loadEnrichment(candidate, deadline, LyricsCancellationSignal())!!
+            assertEquals("[1250,800](1250,300,0)Hello(1550,500,0) road", enriched.wordLyrics)
+            assertEquals(candidate.candidateSnapshot(), enriched.candidateSnapshot())
+            val words = enriched.timedLines().single().words
+            assertEquals(listOf(1250L, 1550L), words.map { it.startTimeMs })
+            assertEquals(listOf(1550L, 2050L), words.map { it.endTimeMs })
+        }
+    }
+
+    @Test fun miguKeepsEitherSuccessfulOptionalTrackWhenTheOtherOneFails() {
+        for (failedTranslation in listOf(true, false)) {
+            val transport = enrichmentTransport(2) { url ->
+                val translation = url.endsWith("/fixture-translation")
+                if (translation == failedTranslation) throw LyricsSourceException(
+                    LyricsFailureReason.SERVER, false, "Synthetic optional rejection")
+                if (translation) "[00:01.250]你好道路".toByteArray()
+                else SyntheticWordLyricsFixtures.mrc("[1250,800]Hello(1250,300) road(1550,500)").toByteArray()
+            }
+            val source = MiguLyricsSource(transport)
+            val candidate = source.search(request, deadline, LyricsCancellationSignal()).single()
+            val base = source.loadBaseLyrics(candidate, deadline, LyricsCancellationSignal())!!
+            val enriched = source.loadEnrichment(base, deadline, LyricsCancellationSignal())!!
+            assertEquals(base.lyrics, enriched.lyrics)
+            assertEquals(base.candidateSnapshot(), enriched.candidateSnapshot())
+            assertEquals(if (failedTranslation) "" else "[00:01.250]你好道路", enriched.translatedLyrics)
+            assertEquals(!failedTranslation, enriched.wordLyrics.isEmpty())
+            assertEquals(4, transport.calls.size)
         }
     }
 
@@ -318,25 +468,25 @@ class ExtendedLyricsSourcesTest {
         assertEquals("Fixture Artist", candidate.candidateArtist)
         assertEquals("Fixture Album", candidate.candidateAlbum)
     }
-    private fun enrichmentTransport(index: Int, optional: () -> ByteArray): FakeTransport = FakeTransport { url ->
+    private fun enrichmentTransport(index: Int, optional: (String) -> ByteArray): FakeTransport = FakeTransport { url ->
         when (index) {
             0 -> when {
                 url.contains("song_search_v2") -> kugouCatalog().bytes()
                 url.contains("/search?") -> JSONObject().put("status", 200).put("candidates", JSONArray().put(
                     JSONObject().put("id", "10").put("accesskey", "01".reversed()))).bytes()
                 url.queryValues()["fmt"] == "lrc" -> JSONObject().put("status", 200).put("content", SyntheticWordLyricsFixtures.base64("[00:01.250]Hello road")).bytes()
-                else -> optional()
+                else -> optional(url)
             }
             1 -> when {
                 url.contains("/r.s?") -> kuwoCatalog().bytes()
                 url.contains("getlyric") -> JSONObject().put("code", 200).put("data", JSONObject().put("lrclist", JSONArray().put(
                     JSONObject().put("time", "1.250").put("lineLyric", "Hello road")))).bytes()
-                else -> optional()
+                else -> optional(url)
             }
             else -> when {
                 url.contains("search_all.do") -> miguCatalog().bytes()
                 url.endsWith("/fixture-line") -> "[00:01.250]Hello road".toByteArray()
-                else -> optional()
+                else -> optional(url)
             }
         }
     }

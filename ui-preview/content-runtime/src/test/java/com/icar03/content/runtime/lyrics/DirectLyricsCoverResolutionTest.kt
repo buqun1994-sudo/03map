@@ -16,6 +16,29 @@ import java.util.concurrent.atomic.AtomicLong
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class DirectLyricsCoverResolutionTest {
+    @Test fun verifiedFastCoverDoesNotWaitForAnotherSourcesCatalogOrDetails() {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val shown = java.util.concurrent.CountDownLatch(1)
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val fast = FakeCatalog(SOURCE_QQ, listOf(candidate(SOURCE_QQ, "fast").copy(cover = FIRST_COVER))) { _, _, _ -> error("URL already supplied") }
+        val slow = FakeCatalog(SOURCE_NETEASE, listOf(candidate(SOURCE_NETEASE, "slow")), onSearch = { _, signal ->
+            val registration = signal.register { gate.countDown() }
+            try { assertTrue(gate.await(2, TimeUnit.SECONDS)); signal.throwIfCancelled() } finally { registration.close() }
+        }) { _, _, _ -> SECOND_COVER }
+        val repository = DirectLyricsRepository(catalogSources = listOf(fast, slow))
+        try {
+            val future = caller.submit<List<String>> {
+                repository.resolveCoversProgressive(QUERY, LyricsCancellationSignal()) { url ->
+                    if (url == FIRST_COVER) shown.countDown()
+                }
+            }
+            assertTrue("Verified URL must stream before slow catalog completes", shown.await(1, TimeUnit.SECONDS))
+            assertTrue(!future.isDone)
+            gate.countDown()
+            assertEquals(setOf(FIRST_COVER, SECOND_COVER), future.get(2, TimeUnit.SECONDS).toSet())
+        } finally { gate.countDown(); repository.close(); caller.shutdownNow() }
+    }
+
     @Test
     fun selectedKnownRecordingHydratesOnlyItsOriginalCatalogId() {
         val accepted = candidate(SOURCE_NETEASE, "selected-id").copy(durationMs = 198_500L)

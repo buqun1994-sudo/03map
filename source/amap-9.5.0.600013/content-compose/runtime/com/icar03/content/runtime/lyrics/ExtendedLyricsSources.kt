@@ -26,6 +26,13 @@ internal class KugouLyricsSource(
 ) : LyricsCatalogSource {
     override val sourceName: String = SOURCE_KUGOU
     private val entries = CatalogResourceEntries()
+    private val lyricResources = object : LinkedHashMap<LyricsCandidateSnapshot, LyricResource>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<LyricsCandidateSnapshot, LyricResource>?): Boolean =
+            size > MAX_CATALOG_CONTEXTS
+    }
+
+    // Only source-local memory holds the access key; no generated toString exposes it.
+    private class LyricResource(val id: String, val accessKey: String)
 
     override fun search(request: LyricsCatalogSearchRequest, deadlineNanos: Long, cancellation: LyricsCancellationSignal): List<LyricsResult> {
         cancellation.throwIfCancelled()
@@ -53,8 +60,15 @@ internal class KugouLyricsSource(
     }
 
     override fun loadLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
+        val base = loadBaseLyrics(candidate, deadlineNanos, cancellation)
+        return loadEnrichment(base ?: candidate, deadlineNanos, cancellation) ?: base
+    }
+
+    override fun loadBaseLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
         cancellation.throwIfCancelled()
         if (entries.match(candidate) == null || !HASH.matches(candidate.sourceId)) return null
+        val snapshot = candidate.candidateSnapshot()
+        synchronized(lyricResources) { lyricResources.remove(snapshot) }
         val searchUrl = "https://krcs.kugou.com/search?ver=1&man=yes&client=mobi" +
             "&keyword=${queryEncode(candidate.candidateArtist + " - " + candidate.candidateTrack)}" +
             "&duration=${candidate.durationMs}&hash=${queryEncode(candidate.sourceId)}"
@@ -66,28 +80,40 @@ internal class KugouLyricsSource(
             row.contentString("id").isNotBlank() && row.contentString("accesskey").isNotBlank() &&
                 kugouResourceMatches(candidate, row)
         } ?: return null
-        // Access keys exist only within this call; they never enter sourceId, cache or diagnostics.
-        val id = lyric.contentString("id")
-        val accessKey = lyric.contentString("accesskey")
-        fun download(format: String): String {
-            cancellation.throwIfCancelled()
-            val url = "https://lyrics.kugou.com/download?ver=1&client=pc&id=${queryEncode(id)}" +
-                "&accesskey=${queryEncode(accessKey)}&fmt=$format&charset=utf8"
-            val payload = getJson(url, publicHeaders(), deadlineNanos, cancellation)
-            requireCode(payload, sourceName, "status", setOf("200"), required = true)
-            requireCode(payload, sourceName, "errcode", setOf("0", "200"))
-            requireCode(payload, sourceName, "error_code", setOf("0"))
-            return payload.contentString("content")
-        }
-        val encodedLrc = download("lrc")
+        val resource = LyricResource(lyric.contentString("id"), lyric.contentString("accesskey"))
+        val encodedLrc = download(resource, "lrc", deadlineNanos, cancellation)
         val lrc = if (encodedLrc.isBlank()) "" else PublicWordLyricsFormats.decodeBase64Text(encodedLrc)
         if (!bodyMetadataMatches(candidate, lrc)) return null
-        val tracks = optionalEnrichment(classifyLyrics(lrc) != LyricsKind.NONE, deadlineNanos, cancellation, PublicWordLyricsFormats.Tracks()) {
-            val encodedKrc = download("krc")
+        cancellation.throwIfCancelled()
+        synchronized(lyricResources) { lyricResources[snapshot] = resource }
+        return bundle(candidate, lrc)
+    }
+
+    override fun loadEnrichment(base: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
+        cancellation.throwIfCancelled()
+        if (entries.match(base) == null || base.isInstrumentalContent() || base.wordLyrics.isNotBlank()) return null
+        val resource = synchronized(lyricResources) { lyricResources[base.candidateSnapshot()] } ?: return null
+        val tracks = optionalEnrichment(base.contentKind() != LyricsKind.NONE, deadlineNanos, cancellation, PublicWordLyricsFormats.Tracks()) {
+            val encodedKrc = download(resource, "krc", deadlineNanos, cancellation)
             if (encodedKrc.isBlank()) PublicWordLyricsFormats.Tracks() else PublicWordLyricsFormats.decodeKrc(encodedKrc, cancellation)
         }
-        if (!metadataMatches(candidate, tracks.title, tracks.artist, tracks.album)) return null
-        return bundle(candidate, lrc.ifBlank { tracks.lineLyrics }, tracks.wordLyrics, tracks.translatedLyrics, tracks.romanizedLyrics)
+        if (!metadataMatches(base, tracks.title, tracks.artist, tracks.album)) return null
+        if (tracks.lineLyrics.isBlank() && tracks.wordLyrics.isBlank() &&
+            tracks.translatedLyrics.isBlank() && tracks.romanizedLyrics.isBlank()) return null
+        return bundle(base, base.lyrics.ifBlank { base.plainLyrics }.ifBlank { tracks.lineLyrics },
+            tracks.wordLyrics.ifBlank { base.wordLyrics }, tracks.translatedLyrics.ifBlank { base.translatedLyrics },
+            tracks.romanizedLyrics.ifBlank { base.romanizedLyrics })?.takeUnless { it == base }
+    }
+
+    private fun download(resource: LyricResource, format: String, deadlineNanos: Long, cancellation: LyricsCancellationSignal): String {
+        cancellation.throwIfCancelled()
+        val url = "https://lyrics.kugou.com/download?ver=1&client=pc&id=${queryEncode(resource.id)}" +
+            "&accesskey=${queryEncode(resource.accessKey)}&fmt=$format&charset=utf8"
+        val payload = getJson(url, publicHeaders(), deadlineNanos, cancellation)
+        requireCode(payload, sourceName, "status", setOf("200"), required = true)
+        requireCode(payload, sourceName, "errcode", setOf("0", "200"))
+        requireCode(payload, sourceName, "error_code", setOf("0"))
+        return payload.contentString("content")
     }
 
     override fun loadCover(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): String {
@@ -144,6 +170,11 @@ internal class KuwoLyricsSource(
     }
 
     override fun loadLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
+        val base = loadBaseLyrics(candidate, deadlineNanos, cancellation)
+        return loadEnrichment(base ?: candidate, deadlineNanos, cancellation) ?: base
+    }
+
+    override fun loadBaseLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
         cancellation.throwIfCancelled()
         if (entries.match(candidate) == null || !DIGITS.matches(candidate.sourceId)) return null
         val url = "https://kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=${queryEncode(candidate.sourceId)}"
@@ -159,11 +190,19 @@ internal class KuwoLyricsSource(
             if (text.isBlank()) null else PublicWordLyricsFormats.lrcTimestamp(time) + text
         }.joinToString("\n")
         if (lrc.isBlank()) return null
-        val wordUrl = "https://mlyric.kuwo.cn/mobi.s?f=web&type=lyric&lrcx=1&encode=utf8&rid=${queryEncode(candidate.sourceId)}"
+        return bundle(candidate, lrc)
+    }
+
+    override fun loadEnrichment(base: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
+        cancellation.throwIfCancelled()
+        if (entries.match(base) == null || !DIGITS.matches(base.sourceId) ||
+            base.isInstrumentalContent() || base.wordLyrics.isNotBlank() || base.contentKind() == LyricsKind.NONE) return null
+        val wordUrl = "https://mlyric.kuwo.cn/mobi.s?f=web&type=lyric&lrcx=1&encode=utf8&rid=${queryEncode(base.sourceId)}"
         val words = optionalEnrichment(true, deadlineNanos, cancellation, "") {
             PublicWordLyricsFormats.decodeLrcx(transport.getBytes(wordUrl, publicHeaders(), deadlineNanos, cancellation), cancellation)
         }
-        return bundle(candidate, lrc, words)
+        if (words.isBlank()) return null
+        return base.copy(wordLyrics = words, lyricsKind = LyricsKind.SYNCHRONIZED)
     }
 }
 
@@ -202,25 +241,47 @@ internal class MiguLyricsSource(
     }
 
     override fun loadLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
+        val base = loadBaseLyrics(candidate, deadlineNanos, cancellation)
+        return loadEnrichment(base ?: candidate, deadlineNanos, cancellation) ?: base
+    }
+
+    override fun loadBaseLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
         cancellation.throwIfCancelled()
         val entry = entries.match(candidate) ?: return null
+        entries.setBodyVerified(candidate, false)
         if (entry.lineUrl.isBlank()) return null
-        fun resourceText(url: String): String = validateResourceText(
-            publicText(transport.getBytes(url, publicHeaders(), deadlineNanos, cancellation), sourceName, cancellation), sourceName, cancellation
-        )
-        val rawLrc = resourceText(entry.lineUrl)
+        val rawLrc = resourceText(entry.lineUrl, deadlineNanos, cancellation)
         if (!miguBodyMetadataMatches(candidate, rawLrc) || !bodyMetadataMatches(candidate, rawLrc)) return null
         val lrc = PublicWordLyricsFormats.stripMiguMetadata(rawLrc)
-        val hasBody = classifyLyrics(lrc) != LyricsKind.NONE
+        cancellation.throwIfCancelled()
+        entries.setBodyVerified(candidate, true)
+        return bundle(candidate, lrc)
+    }
+
+    override fun loadEnrichment(base: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
+        cancellation.throwIfCancelled()
+        val entry = entries.match(base) ?: return null
+        if (!entry.bodyVerified || base.isInstrumentalContent()) return null
+        val hasBody = base.contentKind() != LyricsKind.NONE
         val translation = if (entry.translationUrl.isBlank()) "" else optionalEnrichment(hasBody, deadlineNanos, cancellation, "") {
-            PublicWordLyricsFormats.stripMiguMetadata(resourceText(entry.translationUrl))
+            val raw = resourceText(entry.translationUrl, deadlineNanos, cancellation)
+            if (!miguBodyMetadataMatches(base, raw) || !bodyMetadataMatches(base, raw)) ""
+            else synchronizedLyricsOrEmpty(PublicWordLyricsFormats.stripMiguMetadata(raw))
         }
-        val wordLyrics = if (entry.wordUrl.isBlank()) "" else optionalEnrichment(hasBody, deadlineNanos, cancellation, "") {
-            PublicWordLyricsFormats.decodeMrc(resourceText(entry.wordUrl), cancellation)
+        val words = if (entry.wordUrl.isBlank() || base.wordLyrics.isNotBlank()) "" else optionalEnrichment(hasBody, deadlineNanos, cancellation, "") {
+            PublicWordLyricsFormats.decodeMrc(resourceText(entry.wordUrl, deadlineNanos, cancellation), cancellation)
         }
         cancellation.throwIfCancelled()
-        return bundle(candidate, lrc, wordLyrics, synchronizedLyricsOrEmpty(translation))
+        if (translation.isBlank() && words.isBlank()) return null
+        val enriched = base.copy(translatedLyrics = translation.ifBlank { base.translatedLyrics },
+            wordLyrics = words.ifBlank { base.wordLyrics },
+            lyricsKind = if (words.isNotBlank()) LyricsKind.SYNCHRONIZED else base.contentKind())
+        return enriched.takeIf { it.contentKind() != LyricsKind.NONE && it != base }
     }
+
+    private fun resourceText(url: String, deadlineNanos: Long, cancellation: LyricsCancellationSignal): String = validateResourceText(
+        publicText(transport.getBytes(url, publicHeaders(), deadlineNanos, cancellation), sourceName, cancellation), sourceName, cancellation
+    )
 }
 
 internal class SodaLyricsSource(
@@ -318,17 +379,25 @@ private data class CatalogResourceEntry(
     val lineUrl: String = "",
     val translationUrl: String = "",
     val wordUrl: String = "",
-    val verifiedCover: String = ""
+    val verifiedCover: String = "",
+    val bodyVerified: Boolean = false
 )
 
 private class CatalogResourceEntries {
     private val values = LinkedHashMap<LyricsCandidateSnapshot, CatalogResourceEntry>(MAX_CATALOG_CONTEXTS, 0.75f, true)
     @Synchronized fun put(candidate: LyricsResult, albumId: String = "", lineUrl: String = "", translationUrl: String = "", wordUrl: String = "") {
         val key = candidate.candidateSnapshot()
-        values[key] = CatalogResourceEntry(key, albumId, lineUrl, translationUrl, wordUrl)
+        val previous = values[key]
+        val bodyVerified = previous?.bodyVerified == true && previous.lineUrl == lineUrl &&
+            previous.translationUrl == translationUrl && previous.wordUrl == wordUrl
+        values[key] = CatalogResourceEntry(key, albumId, lineUrl, translationUrl, wordUrl, bodyVerified = bodyVerified)
         while (values.size > MAX_CATALOG_CONTEXTS) values.remove(values.keys.first())
     }
     @Synchronized fun match(candidate: LyricsResult): CatalogResourceEntry? = values[candidate.candidateSnapshot()]
+    @Synchronized fun setBodyVerified(candidate: LyricsResult, verified: Boolean) {
+        val entry = match(candidate) ?: return
+        values[candidate.candidateSnapshot()] = entry.copy(bodyVerified = verified)
+    }
     @Synchronized fun setCover(candidate: LyricsResult, cover: String) {
         val entry = match(candidate) ?: return
         if (cover.isNotBlank()) values[candidate.candidateSnapshot()] = entry.copy(verifiedCover = cover)
