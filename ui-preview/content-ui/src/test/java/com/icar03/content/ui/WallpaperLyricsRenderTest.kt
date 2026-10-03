@@ -68,7 +68,7 @@ class WallpaperLyricsRenderTest {
     private val longText = "合成的长句需要自然换行并完整保留末尾词语，不通过缩小字号挤进视窗。".repeat(4)
 
     @Test
-    fun currentRowIsLargeBeforeItsFirstWordAndCharacterPulseReturnsWithoutReflow() {
+    fun currentRowIsLargeBeforeItsFirstWordAndCharacterRiseUsesFixedEaseOutWindow() {
         val text = "每个字符轻轻浮起"
         val lines = listOf(LyricLine(0L, "上一句已缓缓退远"),
             LyricLine(1_000L, text, "Each character rises gently", words = listOf(LyricWord(2_000L, 6_000L, text))),
@@ -82,9 +82,12 @@ class WallpaperLyricsRenderTest {
         assertEquals(0f, value(LyricWordProgress), .001f)
         val heights = value(LyricRowHeights)
         val before = captureHost("current-before-first-word")
-        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 2_000L))
-        val first = captureHost("character-wave-0")
+        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 1_900L))
+        val first = captureHost("character-wave-before-rise")
         assertArrayEquals("becoming a singing row does not suddenly change font size", pixels(before), pixels(first))
+        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 2_000L))
+        val riseStart = captureHost("character-wave-rise-start")
+        assertTrue("a character starts from the lower baseline", changedPixels(first, riseStart) > 20)
         var peak: Bitmap? = null
         listOf(2_125L, 2_250L, 2_375L, 2_500L).forEachIndexed { index, time ->
             project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = time))
@@ -92,11 +95,11 @@ class WallpaperLyricsRenderTest {
             if (time == 2_250L) peak = frame
             assertEquals("character motion never changes row geometry", heights, value(LyricRowHeights))
         }
-        assertTrue("character lift/scale/fill actually affect native pixels", changedPixels(first, peak!!) > 20)
-        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 6_000L))
+        assertTrue("fixed ease-out character rise affects native pixels", changedPixels(riseStart, peak!!) > 20)
+        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 8_000L))
         val complete = captureHost("character-wave-complete")
-        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 6_500L))
-        assertArrayEquals("completed characters return to a stable non-glowing baseline", pixels(complete), pixels(captureHost()))
+        project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 8_500L))
+        assertArrayEquals("completed characters return to a stable baseline after the fixed window", pixels(complete), pixels(captureHost()))
     }
 
     @Test
@@ -261,7 +264,7 @@ class WallpaperLyricsRenderTest {
         assertEquals(0f, lyricWordFraction(word, -1L), .001f)
         assertEquals(0f, lyricWordFraction(word.copy(endTimeMs = word.startTimeMs), 2_000L), .001f)
 
-        val known = initial.copy(timelineReady = true, positionMs = 1_000L)
+        val known = initial.copy(timelineReady = true, positionMs = 999L)
         project(known)
         val start = captureHost("word-paused-start")
         assertArrayEquals("unknown time never invents a word highlight", pixels(unknown), pixels(start))
@@ -283,7 +286,7 @@ class WallpaperLyricsRenderTest {
         assertArrayEquals("completed word stays clamped at its endpoint", pixels(end), pixels(captureHost()))
         assertFalse(value(LyricFrameRunning))
         assertEquals(4_000L, lyricPositionAt(known.copy(playbackSpeed = 2f), 90_000L))
-        assertEquals(1_000L, lyricPositionAt(known.copy(playbackSpeed = 1f, capturedAtMs = 90_000L), 1_000L))
+        assertEquals(999L, lyricPositionAt(known.copy(playbackSpeed = 1f, capturedAtMs = 90_000L), 1_000L))
 
         val lrc = known.copy(lines = listOf(line.copy(words = emptyList())), positionMs = 1_000L)
         project(lrc)
@@ -317,13 +320,13 @@ class WallpaperLyricsRenderTest {
         project(initial.copy(positionMs = 3_500L))
         assertEquals(listOf(0, 1), value(LyricActiveRows))
         assertEquals(heights, value(LyricRowHeights))
-        val later = captureHost()
-        assertTrue("background word continues after the next main row starts", changedPixels(first, later) > 20)
+        val backgroundStart = captureHost()
         val backgroundTop = floor(rowTop(0, heights, 1) + 14f + 48f + 4f + 20f + 4f + 22f).toInt()
-        assertChangesInside(first, later, 47, 593, backgroundTop, ceil(rowBottom(0, heights, 1)).toInt())
+        assertTrue("background word remains visible after the next row's rise settles", changedPixels(first, backgroundStart) > 20)
         project(initial.copy(positionMs = 4_000L))
         val backgroundEnd = captureHost()
-        assertTrue("background word reaches its own endpoint", changedPixels(later, backgroundEnd) > 20)
+        assertTrue("background word reaches its own endpoint", changedPixels(backgroundStart, backgroundEnd) > 20)
+        assertChangesInside(backgroundStart, backgroundEnd, 47, 593, backgroundTop, ceil(rowBottom(0, heights, 1)).toInt())
         project(initial.copy(positionMs = 4_500L))
         assertArrayEquals("background mask retains its completed frame", pixels(backgroundEnd), pixels(captureHost()))
         assertEquals(heights, value(LyricRowHeights))

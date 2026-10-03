@@ -21,7 +21,7 @@ import kotlin.math.roundToInt
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [28, 34])
 class LyricInkArchitectureTest {
-    private val metrics = LyricMetrics(40f, 48f, 22f, 20f, 14f, 4f, 3f, 2.5f, 2f)
+    private val metrics = LyricMetrics(40f, 48f, 22f, 20f, 14f, 4f, 3f, 2.5f)
     private val face = Typeface.create("sans-serif", Typeface.BOLD)
 
     @Test fun oneVisualCharacterDoesNotMeanOneUtf16CodeUnit() {
@@ -31,25 +31,28 @@ class LyricInkArchitectureTest {
         assertArrayEquals(intArrayOf(0, 1, 2), lyricGraphemeBoundaries("优雅"))
     }
 
-    @Test fun riseScaleAndGlowShareOneZeroAtBothEndsEnvelopeWithoutRetiming() {
+    @Test fun everyVisualUnitUsesFixedEaseOutRiseWindow() {
         val word = LyricWord(1_000L, 3_000L, "优雅")
-        assertEquals(0f, lyricCharacterPulse(word, 0f, .5f, -1L), 0f)
-        assertEquals(0f, lyricCharacterPulse(word, 0f, .5f, 1_000L), 0f)
-        assertEquals(1f, lyricCharacterPulse(word, 0f, .5f, 1_500L), .0001f)
-        assertEquals(0f, lyricCharacterPulse(word, 0f, .5f, 2_000L), 0f)
-        assertEquals(0f, lyricCharacterPulse(word, .5f, 1f, 1_500L), 0f)
-        assertEquals(1f, lyricCharacterPulse(word, .5f, 1f, 2_500L), .0001f)
-        assertEquals(0f, lyricCharacterPulse(word, .5f, 1f, 3_000L), 0f)
-        assertEquals(0f, lyricCharacterPulse(word.copy(endTimeMs = 1_000L), 0f, 1f, 1_000L), 0f)
-        assertEquals(0f, lyricCharacterPulse(LyricWord(1_000L, 1_001L, "短词"), .5f, 1f, 1_001L), 0f)
-        assertEquals(0f, lyricCharacterPulse(word, .5f, .5f, 2_000L), 0f)
+        assertEquals(-1f, lyricCharacterRiseProgress(word, 0f, .5f, -1L), 0f)
+        assertEquals(0f, lyricCharacterRiseProgress(word, 0f, .5f, 1_000L), 0f)
+        assertEquals(.578125f, lyricCharacterRiseProgress(word, 0f, .5f, 1_250L), .0001f)
+        assertEquals(.875f, lyricCharacterRiseProgress(word, 0f, .5f, 1_500L), .0001f)
+        assertEquals(.984375f, lyricCharacterRiseProgress(word, 0f, .5f, 1_750L), .0001f)
+        assertEquals(-1f, lyricCharacterRiseProgress(word, 0f, .5f, 2_000L), 0f)
+        assertEquals(-1f, lyricCharacterRiseProgress(word, .5f, 1f, 1_500L), 0f)
+        assertEquals(0f, lyricCharacterRiseProgress(word, .5f, 1f, 2_000L), 0f)
+        assertEquals(.875f, lyricCharacterRiseProgress(word, .5f, 1f, 2_500L), .0001f)
+        assertEquals(-1f, lyricCharacterRiseProgress(word, .5f, 1f, 3_000L), 0f)
+        assertEquals(-1f, lyricCharacterRiseProgress(word.copy(endTimeMs = 1_001L), 0f, 1f, 2_000L), 0f)
+        val shortWord = LyricWord(1_000L, 1_001L, "短词")
+        assertEquals(.875f, lyricCharacterRiseProgress(shortWord, 0f, 1f, 1_500L), .0001f)
+        assertEquals(-1f, lyricCharacterRiseProgress(shortWord, .5f, 1f, 1_000L), 0f)
+        assertEquals(-1f, lyricCharacterRiseProgress(word, .5f, .5f, 2_000L), 0f)
+        assertTrue("ease-out starts faster and settles more slowly",
+            .578125f > .875f - .578125f && .875f - .578125f > .984375f - .875f)
         assertEquals(1_000L, word.startTimeMs); assertEquals(3_000L, word.endTimeMs)
-        val peak = lyricCharacterPulse(word, .5f, 1f, 2_500L)
-        assertEquals(-2.5f, -metrics.lift * peak, .0001f)
-        assertEquals(1.045f, 1f + LyricVisuals.SCALE_GAIN * peak, .0001f)
-        assertEquals(.28f, LyricVisuals.GLOW_ALPHA * peak * peak, .0001f)
-        // Seeking backwards reproduces a pure sample, not accumulated per-character Animator state.
-        assertEquals(peak, lyricCharacterPulse(word, .5f, 1f, 2_500L), 0f)
+        // Seeking backwards reproduces a pure sample, not accumulated per-character state.
+        assertEquals(.875f, lyricCharacterRiseProgress(word, .5f, 1f, 2_500L), .0001f)
     }
 
     @Test fun currentPresentationStartsBeforeTheFirstRealSingingWord() {
@@ -221,7 +224,7 @@ class LyricInkArchitectureTest {
         assertArrayEquals(booleanArrayOf(true, true, false), ink.hasInk)
         assertArrayEquals(booleanArrayOf(false, true, false), ink.colouredGlyphs)
         val soft = LyricInk(image, bounds, edge, visual, dynamic = false)
-        assertArrayEquals("soft/glow masks do not scan the source raster", BooleanArray(3), soft.hasInk)
+        assertArrayEquals("soft masks do not scan the source raster", BooleanArray(3), soft.hasInk)
         assertArrayEquals(BooleanArray(3), soft.colouredGlyphs)
         assertArrayEquals(BooleanArray(3), soft.clearMotionBoundary)
 
@@ -243,7 +246,6 @@ class LyricInkArchitectureTest {
         }
         assertEquals("blank cell ink presence follows its real contextual raster alpha", actualHasInk, sharp.hasInk[blank])
         assertFalse("a textual blank never moves even when it owns contextual ink", glyph.movable)
-        assertNull("a nonmoving blank cell never prepares a halo", sharp.glyphGlows[blank])
         assertTrue(slice.visual.reveals.all { it.word === word })
     }
 
@@ -259,7 +261,7 @@ class LyricInkArchitectureTest {
         }
         val joined = LyricInk(connected, bounds, edge, visual)
         assertArrayEquals(booleanArrayOf(true, true), joined.hasInk)
-        assertArrayEquals("shared ink cannot pulse or generate isolated halos", BooleanArray(2), joined.clearMotionBoundary)
+        assertArrayEquals("shared ink cannot move independently", BooleanArray(2), joined.clearMotionBoundary)
         val gutter = connected.copy(Bitmap.Config.ARGB_8888, true).apply {
             setPixel(3, 1, Color.TRANSPARENT); setPixel(4, 1, Color.TRANSPARENT)
             setPixel(2, 1, Color.WHITE); setPixel(5, 1, Color.WHITE)
@@ -300,7 +302,5 @@ class LyricInkArchitectureTest {
         assertEquals("playback draw never creates layout/bitmap/blur textures", prepared, cache.rasterizations)
         cache.prepare(window, setOf(1), 1)
         assertEquals("next current line was already warmed; no active-dependent re-rasterization", prepared, cache.rasterizations)
-        assertTrue(slices.flatMap { it.glow?.glyphGlows.orEmpty() }.filterNotNull()
-            .all { it.bitmap.width < 120 && it.bitmap.height < 120 })
     }
 }

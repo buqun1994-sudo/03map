@@ -75,7 +75,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val metrics = with(density) {
             LyricMetrics(LyricVisuals.MAIN_SP.sp.toPx(), LyricVisuals.CURRENT_SP.sp.toPx(), 22.sp.toPx(), 20.sp.toPx(),
                 14.dp.toPx(), 4.dp.toPx(), LyricVisuals.INACTIVE_BLUR_DP.dp.toPx(),
-                LyricVisuals.LIFT_DP.dp.toPx(), LyricVisuals.GLOW_RADIUS_DP.dp.toPx())
+                LyricVisuals.LIFT_DP.dp.toPx())
         }
         val active = lyrics.activeIndex.coerceIn(-1, lyrics.lines.lastIndex)
         val singing = remember(lyrics.activeIndices, active, lyrics.lines.size) {

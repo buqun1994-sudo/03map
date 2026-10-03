@@ -2,11 +2,11 @@
 
 > **职责：** 只记录当前状态、已完成闭环、阻断和下一步。历史细节分别留在代码地图、研究文档、验证矩阵和归档文档，不在这里复制流水账。
 
-## 当前状态：歌词与背景性能重构（2026-10-03，本机／包级通过，正式候选已核验；车机未安装／验收）
+## 当前状态：逐字歌词固定上浮节奏修正（2026-10-03，本机测试／Lint与正式APK通过；车机未安装／验收）
 
-当前正式源码沿唯一媒体／Store／Mapper／Compose主链移除歌词screen viewport离屏层与帧内selection／重段绘制，把bitmap／blur／halo准备移到Default worker并复用有界visualLine纹理；Mapper按不可变原正文identity缓存整曲UI rows／words。current主文48sp、非当前40sp并增强blur，合法跟随句成为current即强调、不等first-word；Unicode安全视觉单元按源词原区间轻微起落／缩放／同峰辉光并羽化，真实liga／joining／Bidi与彩色RGBA保持，不造字符时间轴。背景保留128源field与三LIGHTEN原理，但worker最长边192、10Hz预合成，screen稳态1bitmap、500ms转场至多2bitmap；resize不重淡化、暂停／失焦冻结，generation拒迟到。
+当前正式源码沿唯一媒体／Store／Mapper／Compose主链移除歌词screen viewport离屏层与帧内selection／重段绘制，把bitmap／blur准备移到Default worker并复用有界visualLine纹理；Mapper按不可变原正文identity缓存整曲UI rows／words。current主文48sp、非当前40sp并增强blur，合法跟随句成为current即强调、不等first-word；Unicode安全视觉单元由源word startFraction确定起点，从基线下方约2.5dp以固定1000ms ease-out cubic上浮回到基线，不按源词长短变速、不放大、不做逐字辉光，真实liga／joining／Bidi与彩色RGBA保持，不造字符时间轴。背景保留128源field与三LIGHTEN原理，但worker最长边192、10Hz预合成，screen稳态1bitmap、500ms转场至多2bitmap；resize不重淡化、暂停／失焦冻结，generation拒迟到。
 
-三终态精确“暂无歌词／网络错误／纯音乐，请您欣赏”的文本自身双轴居中，optional来源按钮只下置不移文案，纯乐须严格同录音proof、不写假歌词或body持久cache，已有READY刷新失败保留。**12MiB只是LRU条目预算，不是总进程峰内存上限；cold首屏／大seek纹理未到时同布局vector临时绘制仍有成本且暂缺blur／精确pulse，API28 Shader localMatrix不称零nativealloc。** 本轮研究／参数／许可证见[逐字符歌词研究](research/逐字符歌词低开销渲染与Apple风格适配-20261003.md)，第五轮fresh tests共661（UI142／runtime485／map-host23／app11），各模块及合计failure／error／skip均0；Arch API28／34各11变体已包含于UI142，四模块Lint exit0。根脚本正式签名构建及所有同包检查exit0；[当前正式签名APK](<../apk-work/9.5.0.600013/source-build.9AU0oX/signed.apk>)为165037584 bytes，SHA-256 `4677263d3e973f3af1f3f4e598e93169d3801b7613252f21276e7415d25b63eb`，v1／v2／v3通过、v3.1／v4=false，5408原IDs／63原native SHA保持，新增1锁定JNI、64个so均Deflate，两DEX／metadata／宿主闭包及字体／OFL入包核验通过。实际命令、失败收敛、帧查看与身份见[本轮记录](testing/歌词渲染与背景性能重构验证记录-20261003.md)。本机SDK34 native并排／完成帧与代表全层背景图已查看，七帧GIF只是离散源位置演示，不是实时FPS。包检测后主任务唯一合法发现exit1，515ms扫描253个TCP5555地址未找到S56_HQX／SDK28；旧offline地址未重试。本轮安装、启动smoke、车机性能／视觉验收均未执行，下一步仅在重新获得已核验在线目标后以同一候选保留数据覆盖并观察current／pulse／blur／终态及暂停／seek／resize，不继承旧车机结果、不编造8155 FPS或改善倍数。文档子任务不构建／连接设备；并行座椅／方向盘／摄像头改动保留、不代验收，无commit／push。
+三终态精确“暂无歌词／网络错误／纯音乐，请您欣赏”的文本自身双轴居中，optional来源按钮只下置不移文案，纯乐须严格同录音proof、不写假歌词或body持久cache，已有READY刷新失败保留。**12MiB只是sharp／soft LRU条目预算，不是总进程峰内存上限；cold首屏／大seek纹理未到时同布局vector临时绘制仍有成本且暂缺blur／精确rise，API28 Shader localMatrix不称零nativealloc。** 本轮content-ui完整单测、`content-ui:lintDebug`、三项文档／Skill／代码地图自检与diff检查通过；正式源码签名构建及包级检查通过，产物[本轮signed.apk](<../apk-work/9.5.0.600013/source-build.FN31ZV/signed.apk>)为 `07da4d1d48c43acbda5cb9d7cabf40b1928f7599c4b2fb871c72505541114f0b`，v1／v2／v3、5408原public IDs、原63库哈希、1锁定arm64新增库、64个so Deflate及DEX闭包通过。设备发现本轮exit1：383ms扫描253个TCP5555地址未找到S56_HQX／SDK28，因此未安装／启动smoke／现场视觉或8155性能验收。下一步仅在重新获得已核验在线目标后保留数据覆盖安装并观察短词／长词、暂停／seek／滚动和实际视距；不把旧车机结果或静态测试换算成FPS。并行座椅／方向盘／摄像头改动保留、不代验收，无commit／push。
 
 ## 上一状态：媒体来源、歌词连续性与自动缓存（2026-10-03，历史候选本机／包级通过，已保留数据覆盖安装，交互验证待进行）
 
