@@ -85,6 +85,26 @@ internal fun oemLayerColors(original: ImageVector, colors: Map<Int, Color>): Ima
     return builder.build()
 }
 
+/** Theme only the neutral black fills. OEM orange, gray levels, fill alpha,
+ * paths and transforms remain byte-for-byte in their registered source assets. */
+internal fun oemNeutralLayerColors(original: ImageVector, base: Color): Map<Int, Color> {
+    val colors = mutableMapOf<Int, Color>()
+    var index = 0
+    fun visit(group: VectorGroup) {
+        group.forEach { node ->
+            when (node) {
+                is VectorGroup -> visit(node)
+                is VectorPath -> {
+                    if ((node.fill as? SolidColor)?.value?.toArgb() == Color.Black.toArgb()) colors[index] = base
+                    index++
+                }
+            }
+        }
+    }
+    visit(original.root)
+    return colors
+}
+
 private fun animationFor(resource: Int): String? = when (resource) {
     R.drawable.content_oem_ico_lock_close -> "ico_lock_close_f.json"
     R.drawable.content_oem_ico_lock_open -> "ico_lock_open_f.json"

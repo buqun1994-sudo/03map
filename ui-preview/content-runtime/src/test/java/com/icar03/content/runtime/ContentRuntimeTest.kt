@@ -131,6 +131,29 @@ class ContentRuntimeTest {
         assertNull(preview.media.title)
     }
 
+    @Test fun mapperProjectsHeatingAutoAndSteeringAutoAsDistinctKnownStates() {
+        val state = ContentState().apply {
+            vehicleDataAvailable = true
+            seatControlsKnown = true
+            heatingLevel = 4
+            heatingAutoKnown = true
+            heatingAutoActive = true
+            steeringHeatLevel = 3
+            lockKnown = true
+        }
+        val mapper = ContentUiMapper()
+        val ui = mapper.map(state, capabilities = RuntimeCapabilities(vehicle = true, lock = true))
+        assertEquals(4, ui.controls.getValue(ControlId.Heating).actual)
+        assertEquals(3, ui.controls.getValue(ControlId.SteeringHeat).actual)
+        assertTrue(ui.controls.getValue(ControlId.Heating).known)
+        assertTrue(ui.controls.getValue(ControlId.SteeringHeat).known)
+        assertFalse(ui.controls.getValue(ControlId.Heating).available)
+        assertFalse(ui.controls.getValue(ControlId.SteeringHeat).available)
+        val substitute = mapper.map(state, capabilities = RuntimeCapabilities(vehicle = true, lock = true,
+            writableSeatControls = setOf(ContentRegistry.Shortcuts.SEAT_HEATING, ContentRegistry.Shortcuts.STEERING_HEATING)))
+        assertTrue(substitute.controls.getValue(ControlId.Heating).available)
+        assertTrue(substitute.controls.getValue(ControlId.SteeringHeat).available)
+    }
     @Test fun mapperHidesOldMediaMetadataWhileSourceSwitchIsPending() {
         val state = ContentState().apply {
             mediaDataAvailable = true
@@ -376,7 +399,8 @@ class ContentRuntimeTest {
             vehicleDataAvailable = true; seatControlsKnown = true; massageSwitchKnown = true
             massageActive = true; massageLevel = -1
         }
-        val control = ContentUiMapper().map(state, capabilities = RuntimeCapabilities(true)).controls.getValue(ControlId.Massage)
+        val control = ContentUiMapper().map(state, capabilities = RuntimeCapabilities(vehicle = true,
+            writableSeatControls = setOf(ContentRegistry.Shortcuts.SEAT_MASSAGE))).controls.getValue(ControlId.Massage)
         assertTrue(control.available)
         assertFalse(control.known)
         assertEquals(-1, control.actual)

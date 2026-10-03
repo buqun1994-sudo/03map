@@ -30,8 +30,14 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false) }
             is ContentEvent.ControlTapped -> {
                 val control = state.value.controls.getValue(event.id)
-                if (!control.available || control.pending || !active) return
-                val next = (control.actual + 1) % if (event.id == ControlId.Lock) 2 else 4
+                val max = when (event.id) { ControlId.Lock -> 1; ControlId.Heating -> 4; else -> 3 }
+                if (!control.available || !control.known || control.actual !in 0..max || control.pending || !active) return
+                val next = when (event.id) {
+                    ControlId.Lock -> (control.actual + 1) % 2
+                    ControlId.SteeringHeat -> when (control.actual) { 0 -> 2; 2 -> 1; 1 -> 3; else -> 0 }
+                    ControlId.Heating -> when (control.actual) { 0 -> 3; 3 -> 2; 2 -> 1; 1 -> 4; else -> 0 }
+                    ControlId.Ventilation, ControlId.Massage -> if (control.actual == 0) 3 else control.actual - 1
+                }
                 update { it.copy(controls = it.controls + (event.id to control.copy(target = next)), message = null) }
                 simulate("control-${event.id}") { success ->
                     update { s -> s.copy(controls = s.controls + (event.id to control.copy(actual = if (success) next else control.actual))) }

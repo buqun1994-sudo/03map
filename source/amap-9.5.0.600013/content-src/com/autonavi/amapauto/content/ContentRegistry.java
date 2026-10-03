@@ -26,6 +26,7 @@ public final class ContentRegistry {
         public static final String LOCK = "lock";
         public static final String SEAT_VENTILATION = "seat_ventilation";
         public static final String SEAT_HEATING = "seat_heating";
+        public static final String STEERING_HEATING = "steering_heating";
         public static final String SEAT_MASSAGE = "seat_massage";
         public static final String SETTINGS = "settings";
 
@@ -92,6 +93,11 @@ public final class ContentRegistry {
         return "source_local";
     }
 
+    /**
+     * Historical preference contract: five replaceable RIGHT slots, excluding the fixed lock.
+     * Keep the saved shortcuts ID and slot indices intact. The current Compose six-entry Dock
+     * is a fixed presentation catalog, not a migration to six persisted/customizable slots.
+     */
     public static String[] defaultDockItems() {
         return new String[]{
                 Pages.SHORTCUTS,
@@ -103,13 +109,7 @@ public final class ContentRegistry {
     }
 
     public static String[] dockChoices() {
-        return new String[]{
-                Pages.SHORTCUTS,
-                Shortcuts.SEAT_VENTILATION,
-                Shortcuts.SEAT_HEATING,
-                Shortcuts.SEAT_MASSAGE,
-                Shortcuts.SETTINGS
-        };
+        return defaultDockItems();
     }
 
     public static boolean isDockItem(String itemId) {

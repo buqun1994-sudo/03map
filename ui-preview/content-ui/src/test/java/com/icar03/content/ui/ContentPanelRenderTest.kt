@@ -78,10 +78,10 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithContentDescription("选择来源").assertIsDisplayed().assertIsEnabled()
         ShortcutId.entries.forEach { id ->
             val node = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed()
-            if (id == ShortcutId.SteeringHeat) node.assertIsNotEnabled() else node.assertHasClickAction()
+            node.assertHasClickAction()
         }
         compose.onNodeWithContentDescription("快捷").assertDoesNotExist()
-        compose.onNodeWithTag("shortcut-SteeringHeat").assertIsNotEnabled()
+
         compose.onNodeWithTag("shortcut-Settings").assertIsDisplayed().assertHasClickAction()
         val playBounds = compose.onNodeWithContentDescription("播放").getUnclippedBoundsInRoot()
         val nextBounds = compose.onNodeWithContentDescription("下一首").getUnclippedBoundsInRoot()
@@ -285,7 +285,7 @@ open class ContentPanelLightPrototypeRenderTest {
         ControlId.entries.forEach { id ->
             compose.onNodeWithTag("control-${id.name}").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "状态未知"))
         }
-        compose.onNodeWithTag("shortcut-SteeringHeat").assertIsNotEnabled()
+
         compose.onNodeWithTag("shortcut-Settings").performClick()
         assertTrue(events.last() == ContentEvent.SettingsTapped)
         compose.onNodeWithText("座椅通风").assertDoesNotExist()
@@ -312,7 +312,7 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithText("此处仅预览歌词空态。").assertDoesNotExist()
     }
 
-    private fun mountInteractionState(state: androidx.compose.runtime.State<ContentUiState>) {
+    private fun mountInteractionState(state: androidx.compose.runtime.State<ContentUiState>, lifecycleOwner: androidx.lifecycle.LifecycleOwner? = null, onEvent: (ContentEvent) -> Unit = {}) {
         compose.setContent {
             val view = LocalView.current
             @Suppress("DEPRECATION")
@@ -323,7 +323,10 @@ open class ContentPanelLightPrototypeRenderTest {
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
-            ContentTheme(dark) { ContentPanel(state.value.copy(dark = dark), { events += it }, Modifier.testTag(hostTag)) }
+            val parentOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            androidx.compose.runtime.CompositionLocalProvider(androidx.lifecycle.compose.LocalLifecycleOwner provides (lifecycleOwner ?: parentOwner)) {
+                ContentTheme(dark) { ContentPanel(state.value.copy(dark = dark), { events += it; onEvent(it) }, Modifier.testTag(hostTag)) }
+            }
         }
         compose.waitForIdle()
     }
@@ -335,8 +338,8 @@ open class ContentPanelLightPrototypeRenderTest {
         val selected = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
         val baseline = captureHost("press-baseline")
         val selectedPixel = baseline.getPixel(selected.left.toInt() + 3, selected.center.y.toInt())
-        val expectedSelected = if (dark) android.graphics.Color.rgb(72, 72, 72) else android.graphics.Color.rgb(228,228,228)
-        assertTrue("selected fill must cover the full slot beyond its inner press area", selectedPixel == expectedSelected)
+        val expectedSelected = if (dark) android.graphics.Color.rgb(35, 35, 35) else android.graphics.Color.WHITE
+        assertTrue("lock state must keep the Dock base fill beyond its inner press area", selectedPixel == expectedSelected)
         compose.mainClock.autoAdvance = false
         listOf("dock-Lock", "dock-Ventilation", "media-play", "media-next", "source-button").forEach { tag ->
             val node = compose.onNodeWithTag(tag)
@@ -354,9 +357,10 @@ open class ContentPanelLightPrototypeRenderTest {
             assertTrue("inner rectangular press area remains inside unchanged touch slot", inner.left >= outer.left && inner.right <= outer.right && inner.top >= outer.top && inner.bottom <= outer.bottom)
             val held = captureHost("$tag-held")
             // A circle would leave this point clear; rounded rectangles include it.
-            val x = inner.left.toInt() + 9
-            val y = inner.top.toInt() + 9
-            if (!tag.startsWith("dock-")) assertTrue("rounded rectangle not circle or whole-slot ripple: $tag", held.getPixel(x, y) != baseline.getPixel(x, y))
+            val x = inner.left.toInt() + if (tag.startsWith("dock-")) 1 else 9
+            val y = inner.top.toInt() + if (tag.startsWith("dock-")) 1 else 9
+            if (tag.startsWith("dock-")) assertTrue("Dock Ripple stays inside its rounded press rectangle: $tag", held.getPixel(x, y) == baseline.getPixel(x, y))
+             else assertTrue("rounded rectangle not circle or whole-slot ripple: $tag", held.getPixel(x, y) != baseline.getPixel(x, y))
             node.performTouchInput { up() }
             compose.mainClock.advanceTimeBy(320)
             node.assert(SemanticsMatcher.expectValue(PressActive, false))
@@ -365,10 +369,10 @@ open class ContentPanelLightPrototypeRenderTest {
         val count = events.size
         compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { down(center) }
         compose.mainClock.advanceTimeBy(320)
-        compose.onNodeWithTag("dock-SteeringHeat").assert(SemanticsMatcher.expectValue(PressActive, false))
+        compose.onNodeWithTag("dock-SteeringHeat").assert(SemanticsMatcher.expectValue(PressActive, true))
         compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { up() }
         compose.mainClock.advanceTimeBy(320)
-        assertTrue("unresearched steering placeholder must never write", count == events.size)
+        assertTrue("steering control is wired through the shared event path", count + 1 == events.size && events.last() == ContentEvent.ControlTapped(ControlId.SteeringHeat))
         compose.mainClock.autoAdvance = true
         compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(available = false, playbackAvailable = false, nextAvailable = false)) }
         compose.waitForIdle()
@@ -379,7 +383,7 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithTag("media-play").assert(SemanticsMatcher.expectValue(PressActive, false))
         compose.onNodeWithTag("media-play").performTouchInput { cancel() }
         compose.mainClock.advanceTimeBy(320)
-        assertTrue("disabled media must not send commands", count == events.size)
+        assertTrue("disabled media must not send commands", count + 1 == events.size)
         captureHost("press-disabled")
         compose.mainClock.autoAdvance = true
     }
@@ -433,11 +437,65 @@ open class ContentPanelLightPrototypeRenderTest {
                 if (level > 0) assertTrue("blue/orange/purple level accents must survive without theme tint: $id/$level", accent > 5)
             }
         }
-        resources.values.forEach { assertTrue("each level must select a distinct OEM asset", it.size == 4) }
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Heating to state.value.controls.getValue(ControlId.Heating).copy(actual = 4))) }
+         val heatingGrid = compose.onNodeWithTag("shortcut-icon-Heating", useUnmergedTree = true)
+         val heatingDock = compose.onNodeWithTag("dock-icon-Heating", useUnmergedTree = true)
+         heatingGrid.assert(SemanticsMatcher.expectValue(OemTint, androidx.compose.ui.graphics.Color.Unspecified.value.toLong()))
+         assertTrue("heating auto uses one shared OEM asset", heatingGrid.fetchSemanticsNode().config[OemResource] == heatingDock.fetchSemanticsNode().config[OemResource])
+         compose.onNodeWithTag("control-Heating").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "自动"))
+         resources.getValue(ControlId.Heating) += heatingGrid.fetchSemanticsNode().config[OemResource]
+         assertTrue("ventilation and massage keep four OEM assets", resources.getValue(ControlId.Ventilation).size == 4 && resources.getValue(ControlId.Massage).size == 4)
+         assertTrue("heating adds a distinct automatic OEM asset", resources.getValue(ControlId.Heating).size == 5)
+        heatingGrid.assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ic_carset_seat_l_hot_auto_00_r_o))
+        assertWarmOemBody("shortcut-icon-Heating", "heating-auto-grid")
+        assertWarmOemBody("dock-icon-Heating", "heating-auto-dock")
+
+    }
+
+    private fun assertWarmOemBody(tag: String, name: String, orange: Boolean = true) {
+        val frame = captureHost(name)
+        val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        var accent = 0; var neutral = 0
+        for (y in bounds.top.toInt() until bounds.bottom.toInt()) for (x in bounds.left.toInt() until bounds.right.toInt()) {
+            val pixel = frame.getPixel(x, y)
+            val r = android.graphics.Color.red(pixel); val g = android.graphics.Color.green(pixel); val b = android.graphics.Color.blue(pixel)
+            if (r > 180 && g in 80..180 && b < 100 && r > g + 50) accent++
+            if (kotlin.math.abs(r-g) < 5 && kotlin.math.abs(g-b) < 5 && (if (dark) r > 160 else r < 145)) neutral++
+        }
+        assertTrue("OEM neutral body must remain visible on the themed surface: $tag", neutral > 5)
+        assertTrue("OEM orange is present only for a known active state: $tag", if (orange) accent > 5 else accent == 0)
+    }
+
+    @Test fun steeringHeatUsesDistinctOEMColorAssetsForItsFourStates() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        mountInteractionState(state)
+        val resources = mutableSetOf<Int>()
+        val expected = mapOf(0 to R.drawable.content_oem_ic_carset_wheel_hot_auto_00_r_o,
+            1 to R.drawable.content_oem_ic_carset_wheel_hot_auto_01_r_o,
+            2 to R.drawable.content_oem_ic_carset_wheel_hot_auto_02_r_o,
+            3 to R.drawable.content_oem_ic_carset_wheel_hot_01_r_o)
+        for (level in listOf(0, 2, 1, 3)) {
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.SteeringHeat to state.value.controls.getValue(ControlId.SteeringHeat).copy(actual = level))) }
+            val grid = compose.onNodeWithTag("shortcut-icon-SteeringHeat", useUnmergedTree = true)
+            val dock = compose.onNodeWithTag("dock-icon-SteeringHeat", useUnmergedTree = true)
+            grid.assert(SemanticsMatcher.expectValue(OemTint, androidx.compose.ui.graphics.Color.Unspecified.value.toLong()))
+            assertTrue("grid and Dock share the same steering OEM resource", grid.fetchSemanticsNode().config[OemResource] == dock.fetchSemanticsNode().config[OemResource])
+            grid.assert(SemanticsMatcher.expectValue(OemResource, expected.getValue(level)))
+            resources += grid.fetchSemanticsNode().config[OemResource]
+            assertWarmOemBody("shortcut-icon-SteeringHeat", "steering-$level", orange = level > 0)
+            assertWarmOemBody("dock-icon-SteeringHeat", "steering-dock-$level", orange = level > 0)
+            compose.onNodeWithTag("control-SteeringHeat").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,
+                when (level) { 0 -> "关闭"; 3 -> "自动"; else -> "${level}档" }))
+        }
+        assertTrue("steering wheel has four state assets", resources.size == 4)
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Heating to ControlState(actual = 4))) }
+        compose.onNodeWithTag("control-Heating").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "自动"))
+        compose.onNodeWithTag("control-SteeringHeat").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "自动"))
+        captureHost("both-automatic-final")
     }
 
     @Test fun batteryLayersLockColorAndMediaOpacityFollowTruth() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, batteryPercent = 80))
+         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, batteryPercent = 80))
         mountInteractionState(state)
         fun assertBattery(charging: Boolean) {
             compose.runOnIdle { state.value = state.value.copy(charging = charging) }
@@ -503,21 +561,27 @@ open class ContentPanelLightPrototypeRenderTest {
             val fill = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertTrue("slider fill uses selected light layer in dark and original white in light", frame.getPixel(fill.left.toInt()+5, fill.top.toInt()+5) == expectedFill)
         }
-        fun sample(tag: String): Int {
+        fun sample(tag: String, image: Bitmap = frame): Int {
             val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
-            return frame.getPixel(bounds.left.toInt() + 3, bounds.top.toInt() + bounds.height.toInt() / 2)
+            return image.getPixel(bounds.left.toInt() + 3, bounds.top.toInt() + bounds.height.toInt() / 2)
         }
         val selected = if (dark) android.graphics.Color.rgb(72,72,72) else android.graphics.Color.rgb(228,228,228)
         val normal = if (dark) android.graphics.Color.rgb(26,26,26) else android.graphics.Color.rgb(233,233,233)
-        assertTrue("unlock selected fills whole dock slot", sample("dock-Lock") == selected)
-        assertTrue("selected ventilation does not fill entire dock slot", sample("dock-Ventilation") == (if (dark) normal else android.graphics.Color.WHITE))
+         val dockBase = if (dark) android.graphics.Color.rgb(35,35,35) else android.graphics.Color.WHITE
+        assertTrue("lock state keeps Dock base color", sample("dock-Lock") == dockBase)
+        assertTrue("lock shortcut has no permanent selected background", sample("control-Lock") == normal)
+        val media = compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot
+        assertTrue("Dock base equals the actual media card fill", frame.getPixel(media.center.x.toInt(), media.top.toInt()+4) == dockBase)
+        assertTrue("selected ventilation does not fill entire dock slot", sample("dock-Ventilation") == dockBase)
         assertTrue("selected shortcut follows theme selection", sample("control-Ventilation") == selected)
         assertTrue("nonselected shortcut is darker", sample("control-Heating") == normal)
         val inner = compose.onNodeWithTag("dock-Ventilation-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("seat selected rectangle matches media button geometry", frame.getPixel(inner.left.toInt()+5, inner.center.y.toInt()) == selected)
+        assertTrue("seat selected rectangle uses Dock selected token", frame.getPixel(inner.left.toInt()+5, inner.center.y.toInt()) == (if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(233,233,233)))
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Lock to ControlState(actual = 1))) }
         compose.onNodeWithTag("control-Lock").assertIsNotSelected()
         compose.onNodeWithTag("dock-Lock").assertIsNotSelected()
+        val locked = captureHost("locked-background-unchanged")
+        assertTrue("locking changes neither constant background", sample("control-Lock", locked) == normal && sample("dock-Lock", locked) == dockBase)
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Lock to ControlState(actual = 1, target = 0))) }
         compose.onNodeWithTag("dock-Lock").assertIsSelected().assertIsNotEnabled()
         compose.runOnIdle { state.value = state.value.copy(sourcesOpen = true) }
@@ -550,13 +614,272 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithTag("dock-Ventilation").performClick()
         assertTrue("one accepted button produces exactly one native click", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 1)
         compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { click() }
-        assertTrue("disabled has no sound", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 1)
+        assertTrue("enabled steering has one sound", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 2)
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Ventilation to ControlState(actual = 2))) }
-        assertTrue("readback has no click sound", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 1)
+        assertTrue("readback has no click sound", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 2)
+    }
+
+    @Test fun completeGearCyclesLatchBoundaryRippleAcrossPendingRecomposition() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        mountInteractionState(state)
+        compose.mainClock.autoAdvance = false
+        val cycles = mapOf(ControlId.Ventilation to listOf(0, 3, 2, 1, 0),
+            ControlId.Massage to listOf(0, 3, 2, 1, 0), ControlId.Heating to listOf(0, 3, 2, 1, 4, 0),
+            ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0))
+        for ((id, levels) in cycles) for (prefix in listOf("control", "dock")) {
+            for ((actual, target) in levels.zipWithNext()) {
+                compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (id to ControlState(actual = actual))) }
+                compose.mainClock.advanceTimeByFrame()
+                val tag = "$prefix-${id.name}"
+                val area = compose.onNodeWithTag(if (prefix == "dock") "$tag-press-area" else tag, useUnmergedTree = true)
+                val boundary = (actual == 0) != (target == 0)
+                compose.onNodeWithTag(tag).performTouchInput { down(center) }
+                compose.mainClock.advanceTimeBy(320)
+                area.assert(SemanticsMatcher.expectValue(RippleRunning, boundary))
+                compose.onNodeWithTag(tag).performTouchInput { up() }
+                // Emulate Binding's immediate target projection; this is not a
+                // fabricated vehicle success. Confirmed actual remains old.
+                compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
+                    (id to ControlState(actual = actual, target = target, available = false))) }
+                compose.mainClock.advanceTimeByFrame()
+                compose.onNodeWithTag(tag).assertIsNotEnabled().assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
+                assertTrue("target never changes actual", state.value.controls.getValue(id).actual == actual)
+                area.assert(SemanticsMatcher.expectValue(RippleRunning, boundary))
+                assertTrue("one shared event per accepted tap", events.last() == ContentEvent.ControlTapped(id))
+                compose.mainClock.advanceTimeBy(320)
+                area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+                compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (id to ControlState(actual = target))) }
+            }
+        }
+        captureHost("complete-gear-cycles")
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun dockRippleTranslatesOuterTouchAndFadesUniformlyWithinFourRoundedCorners() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        mountInteractionState(state)
+        compose.mainClock.autoAdvance = false
+        val node = compose.onNodeWithTag("dock-Lock")
+        val area = compose.onNodeWithTag("dock-Lock-press-area", useUnmergedTree = true)
+        val outer = node.fetchSemanticsNode().boundsInRoot
+        val inner = area.fetchSemanticsNode().boundsInRoot
+        val baseline = captureHost("ripple-corner-baseline")
+        val offset = androidx.compose.ui.geometry.Offset(inner.left - outer.left + 12f, inner.top - outer.top + 14f)
+        node.performTouchInput { down(offset) }
+        compose.mainClock.advanceTimeBy(320)
+        val origin = area.fetchSemanticsNode().config[RippleOrigin]
+        assertTrue("actual touch is rebased to the inner rectangle: $origin", kotlin.math.abs(origin.x - 12f) < 1 && kotlin.math.abs(origin.y - 14f) < 1)
+        node.performTouchInput { cancel() }
+        compose.mainClock.advanceTimeBy(600)
+        // This point lies outside the visible press rectangle, but remains part
+        // of the original touch slot. The pulse origin clamps to its near edge.
+        node.performTouchInput { down(androidx.compose.ui.geometry.Offset(3f, inner.center.y - outer.top)) }
+        // Foundation intentionally delays Press in a scrollable parent. Hold
+        // through that acceptance delay plus the 225ms expansion before sampling.
+        compose.mainClock.advanceTimeBy(480)
+        area.assert(SemanticsMatcher.expectValue(RippleProgress, 1f))
+        val clamped = area.fetchSemanticsNode().config[RippleOrigin]
+        assertTrue("outer touch reaches the same control without moving its hit area", clamped.x == 0f)
+        val held = captureHost("ripple-held-rounded")
+        for ((x, y) in listOf(inner.left.toInt()+1 to inner.top.toInt()+1,
+            inner.right.toInt()-2 to inner.top.toInt()+1, inner.left.toInt()+1 to inner.bottom.toInt()-2,
+            inner.right.toInt()-2 to inner.bottom.toInt()-2)) {
+            assertTrue("no Ripple ink outside a rounded corner: $x/$y", held.getPixel(x, y) == baseline.getPixel(x, y))
+        }
+        val left = inner.left.toInt()+4; val right = inner.right.toInt()-5; val y = inner.center.y.toInt()
+        val wash = if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(233,233,233)
+        assertTrue("expanded Ripple is one uniform selected-color wash", held.getPixel(left,y) == wash && held.getPixel(right,y) == wash)
+        node.performTouchInput { cancel() }
+        compose.mainClock.advanceTimeBy(96)
+        val fading = captureHost("ripple-uniform-fade")
+        assertTrue("fade has one uniform opacity, not a second radial/rectangle layer", fading.getPixel(left,y) == fading.getPixel(right,y) && fading.getPixel(left,y) != wash)
+        compose.mainClock.advanceTimeBy(320)
+        val ended = captureHost("ripple-ended")
+        assertTrue("lock returns to the exact previous base", ended.getPixel(left,y) == baseline.getPixel(left,y))
+        assertTrue("cancel has no command", events.isEmpty())
+        assertTrue("hit slot geometry never shrinks", node.fetchSemanticsNode().boundsInRoot == outer)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun rippleEligibilityIsCapturedAtPhysicalDownBeforeStateRecomposition() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false,
+            controls = previewState().controls + (ControlId.SteeringHeat to ControlState(actual = 3))))
+        mountInteractionState(state)
+        compose.mainClock.autoAdvance = false
+        val node = compose.onNodeWithTag("control-SteeringHeat")
+        val area = compose.onNodeWithTag("control-SteeringHeat", useUnmergedTree = true)
+
+        node.performTouchInput { down(center) }
+        compose.runOnIdle {
+            state.value = state.value.copy(controls = state.value.controls +
+                (ControlId.SteeringHeat to ControlState(actual = 1)))
+        }
+        compose.mainClock.advanceTimeBy(32)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, true))
+        node.performTouchInput { cancel() }
+        compose.mainClock.advanceTimeBy(600)
+
+        compose.runOnIdle {
+            state.value = state.value.copy(controls = state.value.controls +
+                (ControlId.SteeringHeat to ControlState(actual = 1)))
+        }
+        node.performTouchInput { down(center) }
+        compose.runOnIdle {
+            state.value = state.value.copy(controls = state.value.controls +
+                (ControlId.SteeringHeat to ControlState(actual = 3)))
+        }
+        compose.mainClock.advanceTimeBy(32)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+        node.performTouchInput { cancel() }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun overlappingBoundaryPulsesKeepTheEarliestWashBase() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false,
+            controls = previewState().controls + (ControlId.SteeringHeat to ControlState(actual = 3))))
+        mountInteractionState(state)
+        compose.mainClock.autoAdvance = false
+        val node = compose.onNodeWithTag("control-SteeringHeat")
+        val bounds = node.fetchSemanticsNode().boundsInRoot
+        val x = bounds.left.toInt() + 4
+        val y = bounds.center.y.toInt()
+
+        node.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(80)
+        node.performTouchInput { up() }
+        compose.runOnIdle {
+            state.value = state.value.copy(controls = state.value.controls +
+                (ControlId.SteeringHeat to ControlState(actual = 0)))
+        }
+        compose.mainClock.advanceTimeBy(20)
+        val before = captureHost("overlapping-pulses-before")
+
+        node.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(16)
+        val after = captureHost("overlapping-pulses-after")
+        assertTrue("a new zero-radius Pulse cannot replace the earliest expanding base", before.getPixel(x, y) == after.getPixel(x, y))
+
+        node.performTouchInput { cancel() }
+        compose.mainClock.advanceTimeBy(600)
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun quickTapKeepsDownQualifiedRippleWhenBindingDisablesOnTheSameUpGrid() = assertQuickPendingTap("control")
+    @Test fun quickTapKeepsDownQualifiedRippleWhenBindingDisablesOnTheSameUpDock() = assertQuickPendingTap("dock")
+
+    private fun assertQuickPendingTap(prefix: String) {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        mountInteractionState(state) { event ->
+            if (event == ContentEvent.ControlTapped(ControlId.SteeringHeat)) state.value = state.value.copy(controls =
+                state.value.controls + (ControlId.SteeringHeat to ControlState(actual = 0, target = 2, available = false)))
+        }
+        compose.mainClock.autoAdvance = false
+        val tag = "$prefix-SteeringHeat"
+        val area = compose.onNodeWithTag(if (prefix == "dock") "$tag-press-area" else tag, useUnmergedTree = true)
+        // No 150ms acceptance wait: the physical gesture is a 10ms tap.
+        compose.onNodeWithTag(tag).performTouchInput { down(center); advanceEventTime(10); up() }
+        compose.mainClock.advanceTimeBy(32)
+        compose.onNodeWithTag(tag).assertIsNotEnabled()
+        assertTrue("same UP immediately projects target, never actual", state.value.controls.getValue(ControlId.SteeringHeat).actual == 0 && state.value.controls.getValue(ControlId.SteeringHeat).target == 2)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, true))
+        compose.mainClock.advanceTimeBy(600)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+        assertTrue("one quick tap dispatches once", events.size == 1)
+        captureHost("quick-up-pending-tail-$prefix")
+        compose.mainClock.autoAdvance = true
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test fun pauseAndWindowFocusLossClearRippleWithoutReplayOnResume() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val owner = object : androidx.lifecycle.LifecycleOwner {
+            override val lifecycle = androidx.lifecycle.LifecycleRegistry.createUnsafe(this).apply {
+                currentState = androidx.lifecycle.Lifecycle.State.RESUMED
+            }
+        }
+        mountInteractionState(state, lifecycleOwner = owner)
+        compose.mainClock.autoAdvance = false
+        val node = compose.onNodeWithTag("dock-Lock")
+        val area = compose.onNodeWithTag("dock-Lock-press-area", useUnmergedTree = true)
+        val view = (compose.onNodeWithTag(hostTag).fetchSemanticsNode().root as ViewRootForTest).view
+        val lifecycle = owner.lifecycle
+        node.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(240)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, true))
+        compose.runOnIdle { lifecycle.handleLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_PAUSE) }
+        compose.mainClock.advanceTimeByFrame()
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+        compose.runOnIdle { lifecycle.handleLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_RESUME) }
+        compose.mainClock.advanceTimeBy(320)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+        node.performTouchInput { cancel() }
+        val focusDispatch = android.view.ViewTreeObserver::class.java.getDeclaredMethod("dispatchOnWindowFocusChange", java.lang.Boolean.TYPE).apply { isAccessible = true }
+        node.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(240)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, true))
+        compose.runOnIdle { focusDispatch.invoke(view.viewTreeObserver, false) }
+        compose.mainClock.advanceTimeByFrame()
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+        compose.runOnIdle { focusDispatch.invoke(view.viewTreeObserver, true) }
+        compose.mainClock.advanceTimeBy(320)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+        node.performTouchInput { cancel() }
+        // No paused composition/frame in between: the formal window recomposer
+        // can freeze at pause. Cleanup must happen in the observer itself.
+        node.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(240)
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, true))
+        compose.runOnIdle {
+            lifecycle.handleLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_PAUSE)
+            lifecycle.handleLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_RESUME)
+        }
+        compose.mainClock.advanceTimeByFrame()
+        area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
+        node.performTouchInput { cancel() }
+        assertTrue("cancel/blur/pause never send a vehicle request", events.isEmpty())
+        captureHost("ripple-lifecycle-clean-tail")
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun unknownControlsNeverAdvertiseOrEmitStateFeedback() {
+        val state = androidx.compose.runtime.mutableStateOf(previewState(PreviewScenario.NoData).copy(previewMode = false))
+        mountInteractionState(state)
+        ControlId.entries.forEach { id ->
+            listOf("control-${id.name}", "dock-${id.name}").forEach { tag ->
+                val node = compose.onNodeWithTag(tag)
+                node.assertIsNotEnabled().assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
+                    .assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "状态未知"))
+                node.performTouchInput { click() }
+            }
+        }
+        assertTrue("unknown click never dispatches", events.isEmpty())
+        captureHost("unknown-control-states")
+    }
+
+    @Test fun multistateRippleOnlyAppearsAtOffAndTerminalEdges() {
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, controls = ContentUiState().controls.mapValues { (id, control) ->
+            control.copy(actual = when (id) {
+                ControlId.Ventilation -> 2
+                ControlId.Heating -> 1
+                ControlId.Massage -> 2
+                ControlId.SteeringHeat -> 1
+                ControlId.Lock -> 0
+            })
+        }))
+        mountInteractionState(state)
+        listOf("Ventilation", "Heating", "Massage", "SteeringHeat").forEach { id ->
+            compose.onNodeWithTag("control-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
+            compose.onNodeWithTag("dock-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
+        }
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Ventilation to ControlState(actual = 0))) }
+        compose.onNodeWithTag("control-Ventilation").assert(SemanticsMatcher.expectValue(PressFeedback, "touch-ripple"))
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Heating to ControlState(actual = 4))) }
+        compose.onNodeWithTag("dock-Heating").assert(SemanticsMatcher.expectValue(PressFeedback, "touch-ripple"))
     }
 
     @Test fun dividerTracksActualContentWidth() {
-        val width = androidx.compose.runtime.mutableStateOf(640.dp)
+         val width = androidx.compose.runtime.mutableStateOf(640.dp)
         compose.setContent { ContentTheme(dark) { ContentPanel(ContentUiState(), {}, Modifier.width(width.value).testTag(hostTag)) } }
         for (value in listOf(640, 520, 400, 640)) {
             compose.runOnIdle { width.value = value.dp }

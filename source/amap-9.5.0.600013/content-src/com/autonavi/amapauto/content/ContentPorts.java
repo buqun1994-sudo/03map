@@ -87,9 +87,28 @@ public final class ContentPorts {
     }
 
     public interface VehiclePort {
+        /** Transport connection only; neither a known field nor permission to write a candidate. */
         boolean isAvailable();
 
         boolean isLockAvailable();
+
+        /** Existing seat entries have ordinary-UID Binder evidence; steering remains a candidate. */
+        default boolean isSeatControlAvailable(String seatId) {
+            return isAvailable() && (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(seatId)
+                    || ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId)
+                    || ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId));
+        }
+
+        /** Exact formal target gate. Seat AUTO and every steering write are research candidates. */
+        default boolean isSeatLevelAvailable(String seatId, int level) {
+            return level >= 0 && level <= 3 && isSeatControlAvailable(seatId);
+        }
+
+        /** Leaving seat AUTO also needs an unvalidated companion-field write, not a manual write. */
+        default boolean isSeatLevelAvailable(String seatId, int currentLevel, int targetLevel) {
+            return isSeatLevelAvailable(seatId, targetLevel)
+                    && !(ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId) && currentLevel == 4);
+        }
 
         boolean requestLock(boolean locked, long requestId);
 
@@ -136,6 +155,9 @@ public final class ContentPorts {
         public final int chargeRemainingMinutes;
         public final int ventilationLevel;
         public final int heatingLevel;
+        public final boolean heatingAutoKnown;
+        public final boolean heatingAutoActive;
+        public final int steeringHeatLevel;
         public final int massageLevel;
         public final int massageModeRaw;
         public final boolean massageSwitchKnown;
@@ -144,10 +166,30 @@ public final class ContentPorts {
         public final boolean lockKnown;
         public final boolean locked;
 
+        /**
+         * Legacy 20-argument contract: levels are already normalized OFF/1/2/3 (0..3),
+         * never raw Binder values. A valid historical heating mode implies non-AUTO;
+         * -1 or an out-of-range value stays unknown. AUTO requires the companion-aware overload.
+         */
         public VehicleSnapshot(boolean dataAvailable, boolean preview, float temperatureC,
                 int batteryPercent, int rangeRaw, int chargeState, int chargeConnectionRaw,
                 int chargeBmsRaw, int chargeScheduleRaw, float chargePowerKw,
                 int chargeRemainingMinutes, int ventilationLevel, int heatingLevel,
+                int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
+                boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked) {
+            this(dataAvailable, preview, temperatureC, batteryPercent, rangeRaw, chargeState,
+                    chargeConnectionRaw, chargeBmsRaw, chargeScheduleRaw, chargePowerKw,
+                    chargeRemainingMinutes, ventilationLevel, heatingLevel,
+                    heatingLevel >= 0 && heatingLevel <= 3, false, -1,
+                    massageLevel, massageModeRaw, massageSwitchKnown, massageActive,
+                    seatControlsKnown, lockKnown, locked);
+        }
+
+        public VehicleSnapshot(boolean dataAvailable, boolean preview, float temperatureC,
+                int batteryPercent, int rangeRaw, int chargeState, int chargeConnectionRaw,
+                int chargeBmsRaw, int chargeScheduleRaw, float chargePowerKw,
+                int chargeRemainingMinutes, int ventilationLevel, int heatingLevel,
+                boolean heatingAutoKnown, boolean heatingAutoActive, int steeringHeatLevel,
                 int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
                 boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked) {
             this.dataAvailable = dataAvailable;
@@ -161,15 +203,27 @@ public final class ContentPorts {
             this.chargeScheduleRaw = chargeScheduleRaw;
             this.chargePowerKw = chargePowerKw;
             this.chargeRemainingMinutes = chargeRemainingMinutes;
-            this.ventilationLevel = ventilationLevel;
-            this.heatingLevel = heatingLevel;
-            this.massageLevel = massageLevel;
+            this.ventilationLevel = normalizedLevel(ventilationLevel, 3);
+            this.heatingLevel = consistentHeatingLevel(heatingLevel, heatingAutoKnown, heatingAutoActive);
+            this.heatingAutoKnown = heatingAutoKnown;
+            this.heatingAutoActive = heatingAutoKnown && heatingAutoActive;
+            this.steeringHeatLevel = normalizedLevel(steeringHeatLevel, 3);
+            this.massageLevel = normalizedLevel(massageLevel, 3);
             this.massageModeRaw = massageModeRaw;
             this.massageSwitchKnown = massageSwitchKnown;
             this.massageActive = massageActive;
             this.seatControlsKnown = seatControlsKnown;
             this.lockKnown = lockKnown;
             this.locked = locked;
+        }
+
+        /** Normalized-mode invariant, shared by Snapshot, Store, State copies and Mapper. */
+        public static int consistentHeatingLevel(int level, boolean autoKnown, boolean autoActive) {
+            return autoKnown && level >= 0 && level <= 4 && (level == 4) == autoActive ? level : -1;
+        }
+
+        public static int normalizedLevel(int level, int maxLevel) {
+            return level >= 0 && level <= maxLevel ? level : -1;
         }
 
         public static VehicleSnapshot unavailable() {

@@ -34,6 +34,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -267,27 +268,39 @@ private fun PrototypeGrid(state: ContentUiState, onEvent: (ContentEvent) -> Unit
 }
 
 private fun shortcutStatus(id: ShortcutId, state: ContentUiState): String {
-    val control = id.control?.let { state.controls.getValue(it) } ?: return if (id == ShortcutId.SteeringHeat) "未接入" else "设置"
+    val control = id.control?.let { state.controls.getValue(it) } ?: return "设置"
     return when {
         control.pending -> "待确认"
         !control.known -> "状态未知"
         id == ShortcutId.Lock -> if (control.actual == 1) "已锁" else "未锁"
         control.actual == 0 -> "关闭"
+        id == ShortcutId.Heating && control.actual == 4 -> "自动"
+        id == ShortcutId.SteeringHeat && control.actual == 3 -> "自动"
         else -> "${control.actual}档"
     }
 }
 
 private fun shortcutIcon(id: ShortcutId, state: ContentUiState): Int? = when (id) {
-    ShortcutId.Lock -> if (state.controls.getValue(ControlId.Lock).displayed == 1) R.drawable.content_oem_ico_lock_close else R.drawable.content_oem_ico_lock_open
-    ShortcutId.SteeringHeat -> R.drawable.content_oem_ic_carset_wheel_hot_r_o
+    ShortcutId.Lock -> state.controls.getValue(ControlId.Lock).let { if (!it.known && !it.pending || it.displayed == 1) R.drawable.content_oem_ico_lock_close else R.drawable.content_oem_ico_lock_open }
+    ShortcutId.SteeringHeat -> steeringHeatIcon(state.controls.getValue(ControlId.SteeringHeat).displayed)
     ShortcutId.Settings -> R.drawable.content_oem_ic_settings
     else -> seatIcon(requireNotNull(id.control), state)
+}
+
+/** OEM HeatWheelBtnView.setNowBackground(main, activated): the misleading
+ * auto_* names are the manual/off variants; 01 carries the automatic A badge.
+ * They are state variants, not a made-up animation frame sequence. */
+internal fun steeringHeatIcon(level: Int): Int = when (level) {
+    1 -> R.drawable.content_oem_ic_carset_wheel_hot_auto_01_r_o
+    2 -> R.drawable.content_oem_ic_carset_wheel_hot_auto_02_r_o
+    3 -> R.drawable.content_oem_ic_carset_wheel_hot_01_r_o
+    else -> R.drawable.content_oem_ic_carset_wheel_hot_auto_00_r_o
 }
 
 @Composable
 private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color = when {
     id == ShortcutId.Lock && state.controls.getValue(ControlId.Lock).known && state.controls.getValue(ControlId.Lock).displayed == 0 -> Color(0xFF3FA9FF)
-    id == ShortcutId.SteeringHeat -> MaterialTheme.colorScheme.onSurfaceVariant
+    id == ShortcutId.SteeringHeat -> Color.Unspecified
     id.control != null && id.control != ControlId.Lock -> Color.Unspecified
     else -> MaterialTheme.colorScheme.primary
 }
@@ -306,26 +319,50 @@ private fun shortcutEvent(id: ShortcutId, state: ContentUiState): ContentEvent? 
     else -> null
 }
 
+internal fun shortcutRippleEnabled(id: ShortcutId, state: ContentUiState): Boolean {
+    val idControl = id.control ?: return true
+    val control = state.controls.getValue(idControl)
+    if (!control.available || !control.known || control.pending) return false
+    if (idControl == ControlId.Lock) return control.actual in 0..1
+    val terminal = when (idControl) {
+        ControlId.Heating -> 4
+        ControlId.SteeringHeat -> 3
+        ControlId.Ventilation, ControlId.Massage -> 1
+        ControlId.Lock -> error("lock handled above")
+    }
+    return control.actual == 0 || control.actual == terminal
+}
+
 @Composable
 private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (ContentEvent) -> Unit, height: androidx.compose.ui.unit.Dp) {
     val control = id.control?.let { state.controls.getValue(it) }
-    val enabled = id != ShortcutId.SteeringHeat && (control == null || control.available && !control.pending)
+    val enabled = control == null || control.available && !control.pending
     val selected = shortcutSelected(id, state)
+    val rippleEnabled = shortcutRippleEnabled(id, state)
     val tag = if (id.control != null) "control-${id.name}" else "shortcut-${id.name}"
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     var action by remember { mutableIntStateOf(0) }
-    Surface(
+    val base = MaterialTheme.colorScheme.surfaceVariant
+    val selectedColor = MaterialTheme.colorScheme.primaryContainer
+    val polymorphicSelected = selected && id != ShortcutId.Lock
+    val idleColor = if (polymorphicSelected) selectedColor else base
+    val feedback = rememberBoundaryPressFeedback(interactions, rippleEnabled, idleColor,
+        if (polymorphicSelected) base else selectedColor)
+    Box(
         modifier = Modifier.fillMaxWidth().height(height).testTag(tag)
-            .downwardSoftShadow(MaterialTheme.colorScheme.surfaceVariant, state.dark)
+            .downwardSoftShadow(base, state.dark)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(interactionSource = interactions, indication = ripple(), enabled = enabled, role = Role.Button) {
+            .then(feedback.touchCoordinates)
+            .then(feedback.pointerDownLatch)
+            .then(feedback.area(idleColor))
+            .clickable(interactionSource = interactions, indication = null,
+                enabled = enabled, role = Role.Button) {
                 action++
                 shortcutEvent(id, state)?.let(onEvent)
             }
-            .semantics { contentDescription = id.label; stateDescription = shortcutStatus(id, state); this.selected = selected; this[PressActive] = pressed && enabled; this[PressFeedback] = "touch-ripple" },
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+            .semantics { contentDescription = id.label; stateDescription = shortcutStatus(id, state); this.selected = selected; this[PressActive] = pressed && enabled; this[PressFeedback] = if (rippleEnabled) "touch-ripple" else "none" },
+        contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(LocalIconPressed provides (pressed && enabled), LocalIconAction provides action) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -419,7 +456,7 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
         Surface(
             Modifier.fillMaxSize().testTag("floating-dock").downwardSoftShadow(MaterialTheme.colorScheme.surface, state.dark), shape = RoundedCornerShape(12.dp),
-            color = if (state.dark) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface, shadowElevation = 0.dp,
+            color = MaterialTheme.colorScheme.surface, shadowElevation = 0.dp,
         ) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val dockWidth = if (compact) maxWidth.coerceAtLeast(288.dp) else maxWidth
@@ -428,12 +465,17 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                         ShortcutId.entries.forEach { id ->
                             val control = id.control?.let { state.controls.getValue(it) }
                             val selected = shortcutSelected(id, state)
-                            val enabled = id != ShortcutId.SteeringHeat && (control == null || control.available && !control.pending)
+                            val enabled = control == null || control.available && !control.pending
+                            val rippleEnabled = shortcutRippleEnabled(id, state)
                             val slot = (if (!compact && id == ShortcutId.Lock) Modifier.width(114.dp) else Modifier.weight(1f))
-                                .fillMaxHeight().background(if (selected && id == ShortcutId.Lock) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                .fillMaxHeight()
                                 .semantics { this.selected = selected; stateDescription = shortcutStatus(id, state) }
                             RoundedPressButton(slot, "dock-${id.name}", id.label, enabled, compact,
-                                onClick = { shortcutEvent(id, state)?.let(onEvent) }, rectangular = false, selected = selected && id != ShortcutId.Lock) {
+                                onClick = { shortcutEvent(id, state)?.let(onEvent) }, rectangular = false,
+                                selected = selected && id != ShortcutId.Lock,
+                                selectedColor = MaterialTheme.colorScheme.secondaryContainer,
+                                rippleEnabled = rippleEnabled,
+                                rippleColor = if (selected && id != ShortcutId.Lock) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.secondaryContainer) {
                                 val icon = shortcutIcon(id, state)
                                 if (icon == null) Text("方向盘加热", style = MaterialTheme.typography.labelMedium, maxLines = 2)
                                 else ShortcutOemIcon(id, state, icon, Modifier.size(if (compact) 32.dp else 48.dp).testTag("dock-icon-${id.name}"))
@@ -449,7 +491,11 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
 @Composable
 private fun RoundedPressButton(
     modifier: Modifier, tag: String, description: String, enabled: Boolean, compact: Boolean,
-    onClick: () -> Unit, rectangular: Boolean = true, selected: Boolean = false, content: @Composable () -> Unit,
+    onClick: () -> Unit, rectangular: Boolean = true, selected: Boolean = false,
+    selectedColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    rippleEnabled: Boolean = !rectangular,
+    rippleColor: Color = selectedColor,
+    content: @Composable () -> Unit,
 ) {
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
@@ -460,13 +506,20 @@ private fun RoundedPressButton(
         tween(if (active) 200 else 240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "press-opacity")
     val scale by pressScale(active)
     val background = if (opacity == 0f) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = opacity)
+    val base = if (selected) selectedColor else MaterialTheme.colorScheme.surface
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled && rippleEnabled && !rectangular, base, rippleColor)
     Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(tag)
-        .clickable(interactionSource = interactions, indication = if (rectangular) null else ripple(), enabled = enabled, role = Role.Button, onClick = { action++; onClick() })
-        .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong(); this[PressScale] = scale; this[PressFeedback] = if (rectangular) "opacity-rectangle" else "touch-ripple" },
+        .then(feedback.touchCoordinates)
+            .then(feedback.pointerDownLatch)
+        .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Button, onClick = { action++; onClick() })
+        .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong(); this[PressScale] = scale; this[PressFeedback] = if (rectangular || rippleEnabled) if (rectangular) "opacity-rectangle" else "touch-ripple" else "none" },
         contentAlignment = Alignment.Center) {
-        Box(Modifier.size(if (compact) 48.dp else 72.dp).testTag("$tag-press-area")
-            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else background, RoundedCornerShape(if (compact) 12.dp else 16.dp)),
-            contentAlignment = Alignment.Center) {
+        val shape = RoundedCornerShape(if (compact) 12.dp else 16.dp)
+        val pressArea = Modifier.size(if (compact) 48.dp else 72.dp)
+            .clip(shape)
+            .then(if (rectangular) Modifier.background(background, shape) else feedback.area(base))
+            .testTag("$tag-press-area")
+        Box(pressArea, contentAlignment = Alignment.Center) {
             CompositionLocalProvider(LocalIconPressed provides active, LocalIconAction provides action) { content() }
         }
     }
@@ -603,12 +656,16 @@ private fun sourceIcon(source: MediaSource): Int = when (source) {
 }
 
 private fun seatIcon(id: ControlId, state: ContentUiState): Int {
-    val level = state.controls.getValue(id).displayed.coerceIn(0, 3)
+    val level = state.controls.getValue(id).displayed.coerceIn(0, if (id == ControlId.Heating) 4 else 3)
+    if (id == ControlId.Heating && level == 4) {
+        return R.drawable.content_oem_ic_carset_seat_l_hot_auto_00_r_o
+    }
     if (state.dark) return when (id) {
         ControlId.Ventilation -> listOf(R.drawable.content_oem_ico_skin_seat_ventilate_l_off_night, R.drawable.content_oem_ico_skin_seat_ventilate_l_1_color_night, R.drawable.content_oem_ico_skin_seat_ventilate_l_2_color_night, R.drawable.content_oem_ico_skin_seat_ventilate_l_3_color_night)[level]
         ControlId.Heating -> listOf(R.drawable.content_oem_ico_skin_seat_heat_l_off_night, R.drawable.content_oem_ico_skin_seat_heat_l_1_night, R.drawable.content_oem_ico_skin_seat_heat_l_2_night, R.drawable.content_oem_ico_skin_seat_heat_l_3_night)[level]
         ControlId.Massage -> listOf(R.drawable.content_oem_ico_skin_seat_massage_l_off_night, R.drawable.content_oem_ico_skin_seat_massage_l_1_night, R.drawable.content_oem_ico_skin_seat_massage_l_2_night, R.drawable.content_oem_ico_skin_seat_massage_l_3_night)[level]
         ControlId.Lock -> R.drawable.content_oem_ico_lock_close
+        ControlId.SteeringHeat -> steeringHeatIcon(level)
     }
     return when (id) {
         ControlId.Ventilation -> when (level) {
@@ -630,6 +687,7 @@ private fun seatIcon(id: ControlId, state: ContentUiState): Int {
             else -> R.drawable.content_oem_ico_skin_seat_massage_l_off_day
         }
         ControlId.Lock -> R.drawable.content_oem_ico_lock_close
+        ControlId.SteeringHeat -> steeringHeatIcon(level)
     }
 }
 
@@ -641,20 +699,34 @@ private fun seatAccent(control: ControlId): Color = when (control) {
     ControlId.Ventilation -> Color(0xFF3FA9FF)
     ControlId.Heating -> Color(0xFFFF6400)
     ControlId.Massage -> Color(0xFFA14FEC)
-    ControlId.Lock -> Color.Unspecified
+    ControlId.Lock, ControlId.SteeringHeat -> Color.Unspecified
 }
 
 /** The same OEM resource, frame segment and palette feed both visible entrances. */
 @Composable
 private fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, modifier: Modifier) {
     val control = id.control
+    val projected = control?.let { state.controls.getValue(it) }
+    if (projected != null && !projected.known && !projected.pending) {
+        OemIcon(icon, modifier, tint = MaterialTheme.colorScheme.primary.copy(alpha = .45f),
+            motionKey = "unknown", animationAsset = null, animateOnAction = false)
+        return
+    }
     if (control == null || control == ControlId.Lock) {
         OemIcon(icon, modifier, tint = shortcutTint(id, state),
             motionKey = if (control == null) icon else state.controls.getValue(control).displayed)
         return
     }
     val value = state.controls.getValue(control)
-    val level = value.displayed.coerceIn(0, 3)
+    val level = value.displayed.coerceIn(0, if (control == ControlId.Heating) 4 else 3)
+    if (control == ControlId.SteeringHeat || control == ControlId.Heating && level == 4) {
+        val original = androidx.compose.ui.graphics.vector.ImageVector.vectorResource(icon)
+        val base = if (state.dark) Color.White else Color.Black
+        val colors = remember(original, base) { oemNeutralLayerColors(original, base) }
+        OemIcon(icon, modifier, tint = Color.Unspecified, pathColors = colors,
+            motionKey = level, animationAsset = null, animateOnAction = false)
+        return
+    }
     val accent = seatAccent(control)
     val base = if (state.dark) Color.White else Color.Black
     val body = if (level > 0) accent else base
@@ -662,7 +734,7 @@ private fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, mo
         ControlId.Ventilation -> "ventilate"
         ControlId.Heating -> "heat"
         ControlId.Massage -> "massage"
-        ControlId.Lock -> error("not a seat")
+        ControlId.Lock, ControlId.SteeringHeat -> error("not a seat")
     }
     // OEM DockAcButton orders heat/vent high→low, massage low→high.
     val gear = when {
@@ -685,7 +757,7 @@ private fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, mo
             listOf("color3", "**", "填充 1") to if (level > 0) accent else base,
         )
         ControlId.Massage -> mapOf(listOf("color1", "**", "填充 1") to body)
-        ControlId.Lock -> emptyMap()
+        ControlId.Lock, ControlId.SteeringHeat -> emptyMap()
     }
     OemIcon(icon, modifier, tint = Color.Unspecified,
         pathColors = if (level > 0) mapOf(0 to accent) else emptyMap(), motionKey = level,

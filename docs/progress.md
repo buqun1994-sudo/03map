@@ -2,6 +2,14 @@
 
 > **职责：** 只记录当前状态、已完成闭环、阻断和下一步。历史细节分别留在代码地图、研究文档、验证矩阵和归档文档，不在这里复制流水账。
 
+## 当前车控与内容区任务：颜色、循环和边界 Ripple（2026-10-03，本机/签名包完成，实车未执行）
+
+正式主链已接入方向盘 `ControlId` 与主档位／active 联合回读、关闭／2档／1档／自动投影，主驾座椅加热增加关闭／3／2／1／自动投影；Store、Mapper、Binding、Preview 和 OEM Vector 状态保持单一 owner。Dock 浅／深底色为 `#FFFFFF`／`#232323`，选中为 `#E9E9E9`／`#303030`；锁无常驻 selected 底，多态仅0↔on边界 Ripple，档级切换保持底色。
+
+边界反馈现在由真实 pointer DOWN 的 Initial pass 锁存资格、base 和颜色，暂停／失焦／取消／离屏会清理当前 Pulse；最早未铺满 Pulse 保持重叠动画底色。最终四模块共766项测试通过（content-ui 163、runtime 567、app 13、map-host 23），四模块 Lint 0 errors，文档／Skill／代码地图／资源hash检查通过。最终签名包为 `apk-work/9.5.0.600013/source-build.yrbPlq/signed.apk`，SHA-256 `1dfcf4977e3ec8b17419c9e7fa9785b00234afc3c17a1e6fb5cc4734104397c0`，包级 v1/v2/v3、DEX、资源和原生库压缩校验通过。
+
+三次设备发现均扫描253个TCP 5555地址但未找到 `S56_HQX / SDK 28`，因此没有安装、启动、正式应用读取、车辆写入、readback或恢复证据。正式Port继续对方向盘写入和主驾加热自动进出保持能力门禁；目标车机上线后再按[车控与Ripple验证记录](testing/车控与Ripple改造验证记录-20261003.md)执行保留数据安装和现场闭环。
+
 ## 当前歌词任务：统一Provider、渐进正文/封面与Apple后端（2026-10-03，本机/签名候选完成）
 
 八Provider共用目录检索和偏好、逐行先显与真实逐字升级、不等慢来源闭合、最多4唯一URL/2图片lane/9秒共同预算。偏好及Apple状态Flow主动唤醒暂停中的同歌，暖图缓存保留显示但不阻止新偏好重搜；录音proof、人工歌词/原生图优先、Store唯一时间线与1GiB预算保持。Apple已接官方登录Cookie、web bearer、storefront、目录/TTML/512封面主链，当前无登录UI时DISCONNECTED/零网络，后续只需设置页接接口再做真实账号验证。

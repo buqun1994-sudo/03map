@@ -63,6 +63,9 @@ public final class ContentState {
     public long lyricsPositionCapturedAtMs;
     public int ventilationLevel = -1;
     public int heatingLevel = -1;
+    public boolean heatingAutoKnown;
+    public boolean heatingAutoActive;
+    public int steeringHeatLevel = -1;
     public int massageLevel = -1;
     public int massageModeRaw = -1;
     public boolean massageSwitchKnown;
@@ -127,7 +130,11 @@ public final class ContentState {
         copy.lyricsPlaybackSpeed = lyricsPlaybackSpeed;
         copy.lyricsPositionCapturedAtMs = lyricsPositionCapturedAtMs;
         copy.ventilationLevel = ventilationLevel;
-        copy.heatingLevel = heatingLevel;
+        copy.heatingLevel = ContentPorts.VehicleSnapshot.consistentHeatingLevel(
+                heatingLevel, heatingAutoKnown, heatingAutoActive);
+        copy.heatingAutoKnown = heatingAutoKnown;
+        copy.heatingAutoActive = heatingAutoKnown && heatingAutoActive;
+        copy.steeringHeatLevel = steeringHeatLevel;
         copy.massageLevel = massageLevel;
         copy.massageModeRaw = massageModeRaw;
         copy.massageSwitchKnown = massageSwitchKnown;

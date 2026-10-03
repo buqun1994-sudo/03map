@@ -1,9 +1,9 @@
 package com.icar03.content.ui
 
 /** Pure presentation contract: no Android, vendor IDs, permissions or business ports. */
-enum class ControlId(val label: String) { Lock("车锁"), Ventilation("通风"), Heating("加热"), Massage("按摩") }
+enum class ControlId(val label: String) { Lock("车锁"), SteeringHeat("方向盘加热"), Ventilation("通风"), Heating("加热"), Massage("按摩") }
 enum class ShortcutId(val label: String, val control: ControlId? = null) {
-    Lock("车锁", ControlId.Lock), SteeringHeat("方向盘加热"),
+    Lock("车锁", ControlId.Lock), SteeringHeat("方向盘加热", ControlId.SteeringHeat),
     Ventilation("通风", ControlId.Ventilation), Heating("加热", ControlId.Heating),
     Massage("按摩", ControlId.Massage), Settings("设置")
 }
@@ -15,7 +15,7 @@ enum class MediaSource(val label: String) {
     Bluetooth("蓝牙音乐"), AiMusic("爱趣听"), CloudMusic("网易云音乐"), Usb("USB音乐"), Local("本机音乐")
 }
 data class ControlState(val actual: Int = 0, val target: Int? = null, val available: Boolean = true, val known: Boolean = true) {
-    val displayed: Int get() = target ?: actual
+    val displayed: Int get() = target ?: if (known) actual else -1
     val pending: Boolean get() = target != null
 }
 data class LevelState(val actual: Float, val target: Float? = null, val available: Boolean = true) {
@@ -77,8 +77,8 @@ sealed interface ContentEvent {
 fun previewState(scenario: PreviewScenario = PreviewScenario.Ready): ContentUiState {
     val base = ContentUiState(scenario = scenario)
     return when (scenario) {
-        PreviewScenario.NoData -> base.copy(temperature = "--", range = "--", media = MediaState(title = null, artist = null, available = false), controls = base.controls.mapValues { it.value.copy(available = false) }, brightness = base.brightness.copy(available = false), volume = base.volume.copy(available = false))
-        PreviewScenario.Unavailable -> base.copy(controls = base.controls.mapValues { it.value.copy(available = false) }, brightness = base.brightness.copy(available = false), volume = base.volume.copy(available = false), media = base.media.copy(available = false), message = "能力不可用 · 未连接任何车辆或媒体服务")
+        PreviewScenario.NoData -> base.copy(temperature = "--", range = "--", media = MediaState(title = null, artist = null, available = false), controls = base.controls.mapValues { it.value.copy(actual = -1, target = null, available = false, known = false) }, brightness = base.brightness.copy(available = false), volume = base.volume.copy(available = false))
+        PreviewScenario.Unavailable -> base.copy(controls = base.controls.mapValues { it.value.copy(actual = -1, target = null, available = false, known = false) }, brightness = base.brightness.copy(available = false), volume = base.volume.copy(available = false), media = base.media.copy(available = false), message = "能力不可用 · 未连接任何车辆或媒体服务")
         PreviewScenario.Failure -> base.copy(message = "失败演练 · 下一次操作将在 900ms 后回弹")
         PreviewScenario.Pending -> base.copy(controls = base.controls + (ControlId.Ventilation to ControlState(actual = 0, target = 2)), message = "冻结待确认样本 · 切换场景可取消")
         PreviewScenario.Playing -> base.copy(media = base.media.copy(playing = true))

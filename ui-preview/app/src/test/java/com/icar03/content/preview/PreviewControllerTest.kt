@@ -12,17 +12,43 @@ class PreviewControllerTest {
         val controller = PreviewController(this)
         controller.dispatch(ContentEvent.ControlTapped(ControlId.Ventilation))
         assertEquals(0, controller.state.value.controls.getValue(ControlId.Ventilation).actual)
-        assertEquals(1, controller.state.value.controls.getValue(ControlId.Ventilation).target)
+        assertEquals(3, controller.state.value.controls.getValue(ControlId.Ventilation).target)
         advanceUntilIdle()
-        assertEquals(1, controller.state.value.controls.getValue(ControlId.Ventilation).actual)
+        assertEquals(3, controller.state.value.controls.getValue(ControlId.Ventilation).actual)
         assertNull(controller.state.value.controls.getValue(ControlId.Ventilation).target)
     }
     @Test fun pendingControlIgnoresRepeatTap() = runTest {
         val controller = PreviewController(this)
         repeat(4) { controller.dispatch(ContentEvent.ControlTapped(ControlId.Heating)) }
         advanceUntilIdle()
-        assertEquals(1, controller.state.value.controls.getValue(ControlId.Heating).actual)
+        assertEquals(3, controller.state.value.controls.getValue(ControlId.Heating).actual)
     }
+    @Test fun everyPreviewControlMatchesFormalCyclesAndWaitsForSimulatedReadback() = runTest {
+        val cycles = mapOf(ControlId.Lock to listOf(0, 1, 0), ControlId.Ventilation to listOf(0, 3, 2, 1, 0),
+            ControlId.Massage to listOf(0, 3, 2, 1, 0), ControlId.Heating to listOf(0, 3, 2, 1, 4, 0),
+            ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0))
+        cycles.forEach { (id, levels) ->
+            val initial = previewState()
+            val controller = PreviewController(this, initial.copy(controls = initial.controls + (id to ControlState(actual = 0))))
+            levels.zipWithNext().forEach { (actual, target) ->
+                controller.dispatch(ContentEvent.ControlTapped(id))
+                assertEquals(actual, controller.state.value.controls.getValue(id).actual)
+                assertEquals(target, controller.state.value.controls.getValue(id).target)
+                advanceUntilIdle()
+                assertEquals(target, controller.state.value.controls.getValue(id).actual)
+                assertNull(controller.state.value.controls.getValue(id).target)
+            }
+        }
+    }
+
+    @Test fun readableUnknownNeverInventsPreviewReadback() = runTest {
+        val initial = previewState().let { it.copy(controls = it.controls.mapValues { (_, control) -> control.copy(actual = -1, known = false) }) }
+        val controller = PreviewController(this, initial)
+        ControlId.entries.forEach { controller.dispatch(ContentEvent.ControlTapped(it)) }
+        advanceUntilIdle()
+        assertEquals(initial, controller.state.value)
+    }
+
     @Test fun failureRollsBackEveryKindOfOperation() = runTest {
         val controller = PreviewController(this, previewState(PreviewScenario.Failure))
         controller.dispatch(ContentEvent.ControlTapped(ControlId.Lock))
@@ -48,7 +74,9 @@ class PreviewControllerTest {
         advanceUntilIdle()
         assertNull(controller.state.value.media.title)
         assertEquals("--", controller.state.value.range)
-        assertEquals(0, controller.state.value.controls.getValue(ControlId.Massage).actual)
+        assertEquals(-1, controller.state.value.controls.getValue(ControlId.Massage).actual)
+        assertFalse(controller.state.value.controls.getValue(ControlId.Massage).known)
+        assertFalse(controller.state.value.controls.getValue(ControlId.Massage).available)
         assertNull(controller.state.value.message)
     }
     @Test fun lifecycleStopRollsBackAndResumeDoesNotReplay() = runTest {

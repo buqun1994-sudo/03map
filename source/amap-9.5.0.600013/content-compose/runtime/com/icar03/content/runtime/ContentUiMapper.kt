@@ -9,8 +9,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Read from existing ports; a media session does not imply source switching. */
-data class RuntimeCapabilities(val vehicle: Boolean = false, val lock: Boolean = false, val source: Boolean = false)
+/** Connection, known readback and a permitted next write are independent capabilities. */
+data class RuntimeCapabilities(
+    val vehicle: Boolean = false,
+    val lock: Boolean = false,
+    val source: Boolean = false,
+    // Explicit Store-approved cycle targets. A connected Binder alone enables no seat writes.
+    val writableSeatControls: Set<String> = emptySet(),
+)
 
 class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private var waitRowLines: List<ContentPorts.LyricsLine>? = null
@@ -54,13 +60,19 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         val realVehicle = state.vehicleDataAvailable && !state.vehiclePreview
         val vehicleIdle = state.pendingVehicleCommand.isEmpty()
         val realMedia = state.mediaDataAvailable && !state.mediaPreview
-        fun seat(id: String, actual: Int, known: Boolean = actual in 0..3): ControlState {
+        fun seat(id: String, actual: Int, maxLevel: Int = 3, known: Boolean = actual in 0..maxLevel): ControlState {
             return ControlState(actual = if (realVehicle && known) actual else -1,
-                target = state.pendingSeatLevel.takeIf { state.pendingVehicleCommand == id && it in 0..3 },
-                available = vehicleIdle && realVehicle && state.seatControlsKnown && capabilities.vehicle && known,
-                known = realVehicle && known && actual in 0..3)
+                target = state.pendingSeatLevel.takeIf { state.pendingVehicleCommand == id && it in 0..maxLevel },
+                available = vehicleIdle && realVehicle && state.seatControlsKnown
+                    && id in capabilities.writableSeatControls && known,
+                known = realVehicle && known && actual in 0..maxLevel)
         }
         val massage = if (state.massageSwitchKnown && !state.massageActive) 0 else state.massageLevel
+        val heating = ContentPorts.VehicleSnapshot.consistentHeatingLevel(
+            state.heatingLevel, state.heatingAutoKnown, state.heatingAutoActive)
+        val heatingKnown = heating in 0..4
+        val steering = state.steeringHeatLevel
+        val steeringKnown = steering in 0..3
         val controls = mapOf(
             ControlId.Lock to ControlState(
                 actual = if (realVehicle && state.lockKnown) if (state.locked) 1 else 0 else -1,
@@ -68,9 +80,10 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 available = vehicleIdle && realVehicle && state.lockKnown && capabilities.lock,
                 known = realVehicle && state.lockKnown),
             ControlId.Ventilation to seat(ContentRegistry.Shortcuts.SEAT_VENTILATION, state.ventilationLevel),
-            ControlId.Heating to seat(ContentRegistry.Shortcuts.SEAT_HEATING, state.heatingLevel),
+            ControlId.Heating to seat(ContentRegistry.Shortcuts.SEAT_HEATING, heating, maxLevel = 4, known = heatingKnown),
+            ControlId.SteeringHeat to seat(ContentRegistry.Shortcuts.STEERING_HEATING, steering, maxLevel = 3, known = steeringKnown),
             ControlId.Massage to seat(ContentRegistry.Shortcuts.SEAT_MASSAGE, massage,
-                state.massageSwitchKnown && (massage in 0..3 || state.massageActive)),
+                known = state.massageSwitchKnown && (massage in 0..3 || state.massageActive)),
         )
         val source = MediaSource.entries.firstOrNull { it.label == ContentRegistry.normalizeMediaSource(state.mediaSource) } ?: MediaSource.Local
         val isSong = realMedia && state.mediaSongIdentity == ContentPorts.MediaSongIdentity.SONG
