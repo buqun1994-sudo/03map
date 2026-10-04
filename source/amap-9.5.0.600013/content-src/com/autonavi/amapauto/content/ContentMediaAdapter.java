@@ -36,15 +36,19 @@ import com.icar03.content.runtime.media.ContentMediaSessionBluetoothActivity;
 import com.icar03.content.runtime.media.ContentMediaSessionCandidate;
 import com.icar03.content.runtime.media.ContentMediaSessionTransport;
 import com.icar03.content.runtime.media.ContentPublicMediaBrowsers;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 
 public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private static final String TAG = "ContentMediaAdapter";
@@ -77,12 +81,13 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private ContentPorts.MediaSnapshotListener listener;
     private MediaSessionManager sessionManager;
     private MediaSessionManager.OnActiveSessionsChangedListener sessionListener;
-    private MediaController controller;
+    private volatile MediaController controller;
     private List<MediaController> systemControllers = new ArrayList<>();
     private final Map<MediaSession.Token, ObservedController> observed = new LinkedHashMap<>();
     private final ContentMediaSessionArbiter sessionArbiter = new ContentMediaSessionArbiter();
     private final Set<String> quarantinedRecordings = new HashSet<>();
     private ContentPublicMediaBrowsers browsers;
+    private List<ContentPublicMediaBrowsers.Session> browserSessions = Collections.emptyList();
     private Runnable discovery;
     private long sourceEpoch;
     private long sourceChangedAt;
@@ -108,8 +113,41 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private Handler sourceHandler;
     private String actualSource;
     private Integer lastSourceReadbackCode;
-    private boolean running;
-    private long lifecycle;
+    private volatile boolean running;
+    private volatile long lifecycle;
+    private volatile boolean sourceWriteAvailable;
+    private final ExternalReads externalReads;
+    private final Executor injectedSourceExecutor;
+    // Facts and immutable deliveries are copied under this monitor. The FIFO is drained
+    // on main after every outer producer has released it; reentrant listeners only append.
+    private final ArrayDeque<Runnable> deliveries = new ArrayDeque<>();
+    private boolean drainingDeliveries;
+    private ContentPorts.MediaSnapshot lastPublishedSnapshot;
+    private boolean lastPublishedSourceAvailable;
+    private Bitmap snapshotArtwork;
+    private int snapshotArtworkGeneration;
+    private SourceRequest sourceRequest;
+    private long nextSourceRequestSequence;
+    private long acceptedSourceRequestSequence;
+    private long sourceServiceVersion;
+    private boolean sourceDirty;
+    private boolean audioDirty;
+    private boolean capabilityDirty;
+    private boolean endpointDirty;
+    private boolean sourceReadFailed;
+    private Runnable sourceRetry;
+    private long lastSourceReadSequence;
+    private long nextSourceCommandSequence;
+    private long pendingSourceCommandSequence;
+    private long pendingSourceCommandServiceVersion;
+    private IBinder pendingSourceCommandService;
+    private String pendingSourceCommandTarget;
+    private int cachedAudioMode = AudioManager.MODE_NORMAL;
+    private long sessionListSequence;
+    private BroadcastReceiver environmentReceiver;
+    private BroadcastReceiver packageReceiver;
+    private Runnable selectionRecheck;
+    private long selectionEvaluations;
     private int generation;
     private MediaSession.Token confirmedSongToken;
     private long metadataMissingSince = -1L;
@@ -126,11 +164,62 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private String avrcpRecordingKey = "";
 
     public ContentMediaAdapter(Context context) {
-        this.context = context.getApplicationContext();
-        this.audioManager = (AudioManager) this.context.getSystemService(Context.AUDIO_SERVICE);
+        this(context, new ExternalReads(), null);
     }
 
-    @Override public synchronized boolean isAvailable() { return controller != null; }
+    ContentMediaAdapter(Context context, ExternalReads externalReads, Executor sourceExecutor) {
+        this.context = context.getApplicationContext();
+        this.audioManager = (AudioManager) this.context.getSystemService(Context.AUDIO_SERVICE);
+        this.externalReads = externalReads;
+        this.injectedSourceExecutor = sourceExecutor;
+    }
+
+    @Override public boolean isAvailable() { return controller != null; }
+
+    /** No Binder, PackageManager or adapter monitor on a Store/UI projection. */
+    @Override public boolean isSourceAvailable() { return sourceWriteAvailable; }
+
+    private void onMain(Runnable action) {
+        if (Looper.myLooper() == handler.getLooper() && !Thread.holdsLock(this)) action.run();
+        else handler.post(action);
+    }
+
+    private void effectLocked(Runnable effect) { deliveries.addLast(effect); }
+
+    private void currentEffectLocked(long epoch, Runnable effect) {
+        effectLocked(() -> { if (isCurrent(epoch)) effect.run(); });
+    }
+
+    private void drainDeliveries() {
+        if (Thread.holdsLock(this)) throw new IllegalStateException("media delivery under adapter monitor");
+        synchronized (this) {
+            if (drainingDeliveries) return;
+            drainingDeliveries = true;
+        }
+        try {
+            while (true) {
+                Runnable next;
+                synchronized (this) {
+                    next = deliveries.pollFirst();
+                    if (next == null) return;
+                }
+                try { next.run(); }
+                catch (RuntimeException error) { Log.w(TAG, "media delivery failed", error); }
+            }
+        } finally {
+            final boolean pending;
+            synchronized (this) {
+                drainingDeliveries = false;
+                pending = !deliveries.isEmpty();
+            }
+            if (pending) handler.post(this::drainDeliveries);
+        }
+    }
+
+    private void executeSource(Handler worker, Runnable action) {
+        if (injectedSourceExecutor != null) injectedSourceExecutor.execute(action);
+        else if (worker != null) worker.post(action);
+    }
 
     @Override public boolean requestPlayback(boolean playing) {
         MediaController current;
@@ -159,21 +248,6 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         }
     }
 
-    @Override public boolean isSourceAvailable() {
-        Intent intent = new Intent(MEDIA_SOURCE_ACTION);
-        intent.setComponent(new ComponentName(MEDIA_CENTER_PACKAGE, MEDIA_CENTER_CLASS));
-        try {
-            android.content.pm.ResolveInfo resolved = context.getPackageManager().resolveService(intent, 0);
-            if (resolved == null || resolved.serviceInfo == null || !resolved.serviceInfo.enabled
-                    || !resolved.serviceInfo.applicationInfo.enabled) return false;
-            android.content.pm.ServiceInfo service = resolved.serviceInfo;
-            boolean ownPackage = context.getPackageName().equals(service.packageName);
-            return (ownPackage || service.exported) && (service.permission == null
-                    || context.checkSelfPermission(service.permission)
-                        == android.content.pm.PackageManager.PERMISSION_GRANTED);
-        } catch (RuntimeException error) { return false; }
-    }
-
     @Override public boolean requestSource(String source) {
         int code = sourceCode(source);
         final long epoch;
@@ -185,117 +259,222 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         intent.setComponent(new ComponentName(MEDIA_CENTER_PACKAGE, MEDIA_CENTER_CLASS));
         intent.putExtra("audio_source", code);
         try {
-            if (context.startService(intent) == null) return false;
+            if (context.startService(intent) == null) {
+                invalidateSource(epoch, false, false, true, false);
+                return false;
+            }
+            onMain(() -> {
+                synchronized (ContentMediaAdapter.this) {
+                    if (!isCurrent(epoch)) return;
+                    pendingSourceCommandSequence = ++nextSourceCommandSequence;
+                    pendingSourceCommandTarget = ContentRegistry.normalizeMediaSource(source);
+                    pendingSourceCommandService = sourceService;
+                    pendingSourceCommandServiceVersion = sourceServiceVersion;
+                }
+            });
             handler.postDelayed(new Runnable() {
                 @Override public void run() {
                     if (!isCurrent(epoch)) return;
-                    refreshSessions(epoch);
-                    refreshSource(epoch);
+                    invalidateSource(epoch, true, true, true, sourceConnection == null);
                 }
             }, REFRESH_DELAY_MS);
             return true;
         } catch (RuntimeException error) {
             Log.w(TAG, "media source command failed", error);
+            invalidateSource(epoch, false, false, true, false);
             return false;
         }
     }
 
-    @Override public synchronized void start(ContentPorts.MediaSnapshotListener listener) {
-        if (running) return;
-        this.listener = listener;
-        running = true;
-        final long epoch = ++lifecycle;
-        sourceThread = new HandlerThread("content-media-source");
-        sourceThread.start();
-        sourceHandler = new Handler(sourceThread.getLooper());
-        artworkExecutor = Executors.newSingleThreadExecutor(runnable -> new Thread(runnable, "content-media-artwork"));
-        browsers = new ContentPublicMediaBrowsers(context, handler, new ContentPublicMediaBrowsers.Listener() {
-            @Override public void onSessionsChanged(List<ContentPublicMediaBrowsers.Session> sessions) {
-                if (isCurrent(epoch)) reconcileControllers(epoch);
-            }
-        });
-        discovery = new Runnable() {
-            @Override public void run() {
-                if (!isCurrent(epoch)) return;
-                refreshSessions(epoch);
-                synchronized (ContentMediaAdapter.this) {
-                    // Bounded service discovery covers players that start after the map. No progress polling.
-                    if (isCurrent(epoch)) handler.postDelayed(this, controller == null ? 5000L : 30000L);
-                }
-            }
-        };
-        sessionListener = new MediaSessionManager.OnActiveSessionsChangedListener() {
-            @Override public void onActiveSessionsChanged(List<MediaController> controllers) {
-                if (isCurrent(epoch)) updateController(controllers, epoch);
-            }
-        };
-        try {
-            sessionManager = (MediaSessionManager) context.getSystemService(Context.MEDIA_SESSION_SERVICE);
-            if (sessionManager != null) {
-                sessionManager.addOnActiveSessionsChangedListener(sessionListener,
-                        new ComponentName(context, ContentMediaListener.class), handler);
-            }
-        } catch (RuntimeException error) { Log.w(TAG, "media session access unavailable", error); }
-        bindSourceStatus(epoch);
-        refreshSessions(epoch);
-        startAvrcpMonitor(epoch);
-        handler.postDelayed(discovery, 5000L);
+    @Override public void start(ContentPorts.MediaSnapshotListener nextListener) {
+        onMain(() -> startOnMain(nextListener));
     }
 
-    @Override public synchronized void stop() {
-        running = false;
-        lifecycle++;
-        stopAvrcpMonitor();
-        clearAvrcpEvent();
-        handler.removeCallbacksAndMessages(null);
-        if (sessionManager != null && sessionListener != null) {
-            try { sessionManager.removeOnActiveSessionsChangedListener(sessionListener); }
-            catch (RuntimeException ignored) { }
+    private void startOnMain(ContentPorts.MediaSnapshotListener nextListener) {
+        synchronized (this) { if (running) return; }
+        HandlerThread workerThread = new HandlerThread("content-media-source");
+        workerThread.start();
+        Handler worker = new Handler(workerThread.getLooper());
+        MediaSessionManager manager = (MediaSessionManager) context.getSystemService(Context.MEDIA_SESSION_SERVICE);
+        final long epoch;
+        synchronized (this) {
+            listener = nextListener;
+            running = true;
+            epoch = ++lifecycle;
+            sourceThread = workerThread;
+            sourceHandler = worker;
+            sessionManager = manager;
+            lastPublishedSnapshot = null;
+            cachedAudioMode = AudioManager.MODE_NORMAL;
+            artworkExecutor = Executors.newSingleThreadExecutor(runnable -> new Thread(runnable, "content-media-artwork"));
+            browsers = new ContentPublicMediaBrowsers(context, handler,
+                    sessions -> { if (isCurrent(epoch)) reconcileControllers(epoch); });
+            discovery = new Runnable() {
+                @Override public void run() {
+                    if (!isCurrent(epoch)) return;
+                    refreshSessions(epoch);
+                    invalidateSource(epoch, sourceReadFailed, true, true, sourceConnection == null);
+                    // Bounded discovery, never a media position poll.
+                    if (isCurrent(epoch)) handler.postDelayed(this, controller == null ? 5000L : 30000L);
+                }
+            };
+            sessionListener = controllers -> updateController(controllers, epoch);
+            final MediaSessionManager.OnActiveSessionsChangedListener activeListener = sessionListener;
+            currentEffectLocked(epoch, () -> {
+                try {
+                    if (manager != null) manager.addOnActiveSessionsChangedListener(activeListener,
+                            new ComponentName(context, ContentMediaListener.class), handler);
+                } catch (RuntimeException error) { Log.w(TAG, "media session access unavailable", error); }
+                startAvrcpMonitor(epoch);
+                startEnvironmentMonitor(epoch);
+                refreshSessions(epoch);
+                bindSourceStatus(epoch);
+                if (isCurrent(epoch)) handler.postDelayed(discovery, 5000L);
+            });
+            queueSnapshotLocked(epoch);
         }
-        unregisterController();
-        if (browsers != null) browsers.close();
-        browsers = null;
-        discovery = null;
-        systemControllers.clear();
-        quarantinedRecordings.clear();
-        sourceEpoch++;
-        sourceChangedAt = 0L;
-        sessionArbiter.reset();
-        hasReadbackSource = false;
-        initialSourceCorrelation = false;
-        sourceInventoryReady = false;
-        publishedRecording = "";
-        clearConfirmedSong();
-        cancelArtwork();
-        if (artworkExecutor != null) artworkExecutor.shutdownNow();
-        artworkExecutor = null;
-        artworkCache.evictAll();
-        failedArtwork.clear();
-        final IBinder service = sourceService;
-        final Binder callback = sourceCallback;
-        final boolean legacySourceContract = sourceLegacyContract;
-        if (sourceHandler != null) {
-            sourceHandler.removeCallbacksAndMessages(null);
-            sourceHandler.post(new Runnable() {
-                @Override public void run() { unregisterSourceCallback(service, callback, legacySourceContract); }
+        drainDeliveries();
+    }
+
+    @Override public void stop() { onMain(this::stopOnMain); }
+
+    private void stopOnMain() {
+        synchronized (this) {
+            if (!running) return;
+            running = false;
+            lifecycle++;
+            sourceWriteAvailable = false;
+            final BroadcastReceiver avrcp = avrcpReceiver;
+            final BroadcastReceiver environment = environmentReceiver;
+            final BroadcastReceiver packages = packageReceiver;
+            avrcpReceiver = environmentReceiver = packageReceiver = null;
+            final Runnable oldDiscovery = discovery;
+            final Runnable oldRecheck = selectionRecheck;
+            discovery = selectionRecheck = null;
+            final MediaSessionManager manager = sessionManager;
+            final MediaSessionManager.OnActiveSessionsChangedListener activeListener = sessionListener;
+            final ContentPublicMediaBrowsers registry = browsers;
+            final ExecutorService artworkWorker = artworkExecutor;
+            final HandlerThread oldThread = sourceThread;
+            final Handler oldWorker = sourceHandler;
+            final IBinder service = sourceService;
+            final Binder callback = sourceCallback;
+            final boolean legacy = sourceLegacyContract;
+            final ServiceConnection connection = sourceConnection;
+            final List<ObservedController> previous = new ArrayList<>(observed.values());
+            observed.clear();
+            controller = null;
+            browsers = null;
+            browserSessions = Collections.emptyList();
+            artworkExecutor = null;
+            systemControllers.clear();
+            quarantinedRecordings.clear();
+            sourceEpoch++;
+            sourceServiceVersion++;
+            sourceChangedAt = 0L;
+            sessionArbiter.reset();
+            hasReadbackSource = initialSourceCorrelation = sourceInventoryReady = false;
+            sourceDirty = audioDirty = capabilityDirty = endpointDirty = false;
+            sourceReadFailed = false;
+            pendingSourceCommandSequence = 0L;
+            pendingSourceCommandService = null;
+            pendingSourceCommandTarget = null;
+            cancelSourceRetryLocked();
+            // An old physical read remains in flight until its completion retires it.
+            // A restart marks dirty and waits, so there cannot be two concurrent source reads.
+            publishedRecording = "";
+            clearConfirmedSong();
+            cancelArtwork();
+            artworkCache.evictAll();
+            failedArtwork.clear();
+            sourceConnection = null;
+            sourceService = null;
+            sourceCallback = null;
+            sourceLegacyContract = false;
+            sourceHandler = null;
+            sourceThread = null;
+            actualSource = null;
+            lastSourceReadbackCode = null;
+            sessionManager = null;
+            sessionListener = null;
+            listener = null;
+            lastPublishedSnapshot = null;
+            effectLocked(() -> {
+                unregisterReceiver(avrcp); unregisterReceiver(environment); unregisterReceiver(packages);
+                if (oldDiscovery != null) handler.removeCallbacks(oldDiscovery);
+                if (oldRecheck != null) handler.removeCallbacks(oldRecheck);
+                if (manager != null && activeListener != null) {
+                    try { manager.removeOnActiveSessionsChangedListener(activeListener); }
+                    catch (RuntimeException ignored) { }
+                }
+                for (ObservedController item : previous) unregisterCallback(item);
+                if (registry != null) registry.close();
+                if (artworkWorker != null) artworkWorker.shutdownNow();
+                executeSource(oldWorker, () -> unregisterSourceCallback(service, callback, legacy));
+                if (connection != null) {
+                    try { context.unbindService(connection); } catch (RuntimeException ignored) { }
+                }
+                if (oldThread != null) oldThread.quitSafely();
             });
         }
-        if (sourceConnection != null) {
-            try { context.unbindService(sourceConnection); }
-            catch (RuntimeException ignored) { }
+        drainDeliveries();
+    }
+
+    private void unregisterReceiver(BroadcastReceiver receiver) {
+        if (receiver != null) {
+            try { context.unregisterReceiver(receiver); } catch (RuntimeException ignored) { }
         }
-        if (sourceThread != null) sourceThread.quitSafely();
-        sourceConnection = null;
-        sourceService = null;
-        sourceCallback = null;
-        sourceLegacyContract = false;
-        sourceHandler = null;
-        sourceThread = null;
-        actualSource = null;
-        lastSourceReadbackCode = null;
-        sessionManager = null;
-        sessionListener = null;
-        listener = null;
+    }
+
+    private void startEnvironmentMonitor(final long epoch) {
+        BroadcastReceiver audio = new BroadcastReceiver() {
+            @Override public void onReceive(Context ignored, Intent intent) {
+                invalidateSource(epoch, false, true, false, false);
+            }
+        };
+        IntentFilter audioFilter = new IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED);
+        audioFilter.addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+        audioFilter.addAction("android.media.AUDIO_MODE_CHANGED");
+        BroadcastReceiver packages = new BroadcastReceiver() {
+            @Override public void onReceive(Context ignored, Intent intent) {
+                if (!isCurrent(epoch)) return;
+                if (intent != null && intent.getData() != null
+                        && MEDIA_CENTER_PACKAGE.equals(intent.getData().getSchemeSpecificPart())) {
+                    onMain(() -> {
+                        synchronized (ContentMediaAdapter.this) {
+                            if (!isCurrent(epoch)) return;
+                            detachSourceLocked();
+                            changeActualSourceLocked(null);
+                            queueSnapshotLocked(epoch);
+                        }
+                        drainDeliveries();
+                        invalidateSource(epoch, false, true, true, true);
+                    });
+                }
+                refreshSessions(epoch);
+            }
+        };
+        IntentFilter packageFilter = new IntentFilter(Intent.ACTION_PACKAGE_ADDED);
+        packageFilter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        packageFilter.addAction(Intent.ACTION_PACKAGE_CHANGED);
+        packageFilter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        packageFilter.addDataScheme("package");
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(audio, audioFilter, null, handler, Context.RECEIVER_EXPORTED);
+                context.registerReceiver(packages, packageFilter, null, handler, Context.RECEIVER_EXPORTED);
+            } else {
+                context.registerReceiver(audio, audioFilter, null, handler);
+                context.registerReceiver(packages, packageFilter, null, handler);
+            }
+            synchronized (this) {
+                if (isCurrent(epoch)) { environmentReceiver = audio; packageReceiver = packages; return; }
+            }
+            unregisterReceiver(audio); unregisterReceiver(packages);
+        } catch (RuntimeException error) {
+            unregisterReceiver(audio); unregisterReceiver(packages);
+            Log.w(TAG, "media environment monitor unavailable", error);
+        }
     }
 
     private void startAvrcpMonitor(final long epoch) {
@@ -325,7 +504,14 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         avrcpReceiver = null;
     }
 
-    private synchronized void acceptAvrcpEvent(Intent intent, long epoch) {
+    private void acceptAvrcpEvent(Intent intent, long epoch) {
+        onMain(() -> {
+            synchronized (ContentMediaAdapter.this) { acceptAvrcpEventLocked(intent, epoch); }
+            drainDeliveries();
+        });
+    }
+
+    private void acceptAvrcpEventLocked(Intent intent, long epoch) {
         if (!isCurrent(epoch) || intent == null || controller == null) return;
         ObservedController selected = observed.get(controller.getSessionToken());
         if (!isBluetooth(controller) || selected == null || selected.destroyed
@@ -334,7 +520,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         if (!"蓝牙音乐".equals(selectedSource)) return;
         String action = intent.getAction();
         if (!java.util.Arrays.asList(AVRCP_ACTIONS).contains(action)) return;
-        MediaFields fields = mediaFields(safeMetadata(controller));
+        MediaFields fields = selected.facts.metadata.fields;
         if (songIdentityFor(controller, fields) != ContentPorts.MediaSongIdentity.SONG) return;
         Bundle extras;
         try { extras = intent.getExtras(); } catch (RuntimeException error) { return; }
@@ -383,7 +569,8 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         avrcpEventSequence = ++nextAvrcpEventSequence;
         Log.i(TAG, "AVRCP accepted sequence=" + avrcpEventSequence
                 + " position=" + avrcpPositionMs + " state=" + avrcpPlaybackState);
-        publishSnapshot(epoch);
+        queueSnapshotLocked(epoch);
+        markSourceDirtyLocked(epoch, false, true, false, false);
     }
 
     private void clearAvrcpEvent() {
@@ -436,114 +623,158 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         }
     }
 
-    private synchronized boolean isCurrent(long epoch) { return running && lifecycle == epoch; }
+    private boolean isCurrent(long epoch) { return running && lifecycle == epoch; }
 
-    private void bindSourceStatus(final long epoch) {
-        Intent sourceIntent;
-        android.content.pm.ResolveInfo resolved;
-        boolean legacyContract = false;
-        try {
-            sourceIntent = new Intent(CURRENT_SOURCE_STATUS_ACTION).setPackage(MEDIA_CENTER_PACKAGE);
-            resolved = context.getPackageManager().resolveService(sourceIntent, 0);
-            if (resolved == null || resolved.serviceInfo == null) {
-                sourceIntent = new Intent(SOURCE_STATUS_ACTION).setPackage(MEDIA_CENTER_PACKAGE);
-                resolved = context.getPackageManager().resolveService(sourceIntent, 0);
-                legacyContract = true;
-            }
-            if (resolved == null || resolved.serviceInfo == null || !resolved.serviceInfo.enabled
-                    || !resolved.serviceInfo.applicationInfo.enabled) return;
-            android.content.pm.ServiceInfo info = resolved.serviceInfo;
-            if (!context.getPackageName().equals(info.packageName) && !info.exported) return;
-            if (info.permission != null && context.checkSelfPermission(info.permission)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
-            sourceIntent.setComponent(new ComponentName(info.packageName, info.name));
-        } catch (RuntimeException error) {
-            return;
-        }
-        final boolean useLegacyContract = legacyContract;
-        final String descriptor = useLegacyContract ? SOURCE_DESCRIPTOR : CURRENT_SOURCE_DESCRIPTOR;
-        final String callbackDescriptor = useLegacyContract ? CALLBACK_DESCRIPTOR : CURRENT_CALLBACK_DESCRIPTOR;
+    private void bindSourceStatus(long epoch) { invalidateSource(epoch, false, true, true, true); }
+
+    private void installSourceConnection(final long epoch, final SourceEndpoint endpoint) {
+        if (endpoint == null) return;
+        final boolean legacy = endpoint.legacy;
+        final String descriptor = legacy ? SOURCE_DESCRIPTOR : CURRENT_SOURCE_DESCRIPTOR;
         final ServiceConnection connection = new ServiceConnection() {
             @Override public void onServiceConnected(ComponentName name, final IBinder service) {
-                Handler worker;
-                synchronized (ContentMediaAdapter.this) {
-                    if (!isCurrent(epoch) || sourceConnection != this) return;
-                    worker = sourceHandler;
-                }
-                worker.post(new Runnable() {
-                    @Override public void run() {
-                        try {
-                            if (!descriptor.equals(service.getInterfaceDescriptor())) {
-                                Log.w(TAG, "media source descriptor mismatch: " + service.getInterfaceDescriptor());
-                                return;
+                final ServiceConnection owner = this;
+                onMain(() -> {
+                    final Handler worker;
+                    final long version;
+                    synchronized (ContentMediaAdapter.this) {
+                        if (!isCurrent(epoch) || sourceConnection != owner) return;
+                        final IBinder previousService = sourceService;
+                        final Binder previousCallback = sourceCallback;
+                        final boolean previousLegacy = sourceLegacyContract;
+                        worker = sourceHandler;
+                        if (previousService != null && previousCallback != null) effectLocked(() ->
+                                executeSource(worker, () -> unregisterSourceCallback(
+                                        previousService, previousCallback, previousLegacy)));
+                        version = ++sourceServiceVersion;
+                        sourceService = service;
+                        sourceCallback = null;
+                        sourceLegacyContract = legacy;
+                        sourceInventoryReady = false;
+                        sourceReadFailed = false;
+                        cancelSourceRetryLocked();
+                        // Block retained public sessions while this connection has no readback.
+                        reconcileSelectionLocked(epoch);
+                        currentEffectLocked(epoch, () -> executeSource(worker, () -> {
+                            boolean valid = false;
+                            try { valid = descriptor.equals(service.getInterfaceDescriptor()); }
+                            catch (RemoteException | RuntimeException error) {
+                                Log.w(TAG, "media source descriptor unavailable", error);
                             }
-                        } catch (RemoteException | RuntimeException error) {
-                            Log.w(TAG, "media source descriptor unavailable", error);
-                            return;
-                        }
-                        final Binder callback = new Binder() {
-                            @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
-                                    throws RemoteException {
-                                if (code == INTERFACE_TRANSACTION) {
-                                    if (reply != null) reply.writeString(callbackDescriptor);
-                                    return true;
-                                }
-                                if (useLegacyContract) {
-                                    if (code < 1 || code > 7) return super.onTransact(code, data, reply, flags);
-                                    data.enforceInterface(CALLBACK_DESCRIPTOR);
-                                    if (code == 1 || code == 2 || code == 4) refreshSource(epoch);
-                                    if (reply != null) reply.writeNoException();
-                                    return true;
-                                }
-                                if (code < 1 || code > 5) return super.onTransact(code, data, reply, flags);
-                                data.enforceInterface(CURRENT_CALLBACK_DESCRIPTOR);
-                                if (code == 3) {
-                                    data.createStringArrayList();
-                                } else if (code == 4) {
-                                    data.readString();
-                                } else if (code == 5) {
-                                    data.readString();
-                                    return true;
-                                }
-                                if (code == 1 || code == 2 || code == 4) refreshSource(epoch);
-                                if (reply != null) {
-                                    reply.writeNoException();
-                                    if (code == 4) reply.writeInt(0);
-                                }
-                                return true;
-                            }
-                        };
-                        synchronized (ContentMediaAdapter.this) {
-                            if (!isCurrent(epoch)) return;
-                            if (sourceService != service) sourceInventoryReady = false;
-                            sourceService = service;
-                            sourceCallback = callback;
-                            sourceLegacyContract = useLegacyContract;
-                        }
-                        registerSourceCallback(service, callback, useLegacyContract);
-                        readSourceStatus(epoch, service, useLegacyContract);
+                            final boolean verified = valid;
+                            handler.post(() -> acceptSourceConnection(epoch, owner, service, legacy, version, verified));
+                        }));
                     }
+                    drainDeliveries();
                 });
             }
             @Override public void onServiceDisconnected(ComponentName name) {
-                synchronized (ContentMediaAdapter.this) {
-                    if (!isCurrent(epoch) || sourceConnection != this) return;
-                    sourceService = null;
-                    sourceLegacyContract = false;
-                    changeActualSource(null);
-                }
-                reconcileControllers(epoch);
+                final ServiceConnection owner = this;
+                onMain(() -> {
+                    synchronized (ContentMediaAdapter.this) {
+                        if (!isCurrent(epoch) || sourceConnection != owner) return;
+                        sourceServiceVersion++;
+                        sourceService = null;
+                        sourceCallback = null;
+                        sourceLegacyContract = false;
+                        sourceInventoryReady = true;
+                        changeActualSourceLocked(null);
+                        reconcileSelectionLocked(epoch);
+                        markSourceDirtyLocked(epoch, false, true, true, false);
+                    }
+                    drainDeliveries();
+                });
             }
         };
-        synchronized (this) { sourceConnection = connection; }
-        try {
-            if (!context.bindService(sourceIntent, connection, Context.BIND_AUTO_CREATE)) {
-                synchronized (this) { if (sourceConnection == connection) sourceConnection = null; }
-            }
-        } catch (RuntimeException error) {
-            synchronized (this) { if (sourceConnection == connection) sourceConnection = null; }
-            Log.w(TAG, "media source status unavailable", error);
+        synchronized (this) {
+            if (!isCurrent(epoch) || sourceConnection != null) return;
+            sourceConnection = connection;
         }
+        boolean bound = false;
+        try { bound = context.bindService(endpoint.intent(), connection, Context.BIND_AUTO_CREATE); }
+        catch (RuntimeException error) { Log.w(TAG, "media source status unavailable", error); }
+        if (!bound) {
+            synchronized (this) { if (sourceConnection == connection) sourceConnection = null; }
+        }
+    }
+
+    private void acceptSourceConnection(long epoch, ServiceConnection connection, IBinder service,
+            boolean legacy, long version, boolean verified) {
+        synchronized (this) {
+            if (!isCurrent(epoch) || sourceConnection != connection || sourceService != service
+                    || sourceServiceVersion != version) return;
+            if (verified) {
+                final Binder callback = sourceBinderCallback(epoch, service, legacy, version);
+                sourceCallback = callback;
+                final Handler worker = sourceHandler;
+                currentEffectLocked(epoch, () -> executeSource(worker, () -> registerSourceCallback(service, callback, legacy)));
+                markSourceDirtyLocked(epoch, true, true, true, false);
+            } else {
+                sourceInventoryReady = true;
+                changeActualSourceLocked(null);
+                reconcileSelectionLocked(epoch);
+                markSourceDirtyLocked(epoch, false, true, true, false);
+            }
+        }
+        drainDeliveries();
+    }
+
+    private Binder sourceBinderCallback(final long epoch, final IBinder service,
+            final boolean legacy, final long version) {
+        final String callbackDescriptor = legacy ? CALLBACK_DESCRIPTOR : CURRENT_CALLBACK_DESCRIPTOR;
+        return new Binder() {
+            @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
+                if (code == INTERFACE_TRANSACTION) {
+                    if (reply != null) reply.writeString(callbackDescriptor);
+                    return true;
+                }
+                if (code < 1 || code > (legacy ? 7 : 5)) return super.onTransact(code, data, reply, flags);
+                data.enforceInterface(callbackDescriptor);
+                if (!legacy) {
+                    if (code == 3) data.createStringArrayList();
+                    else if (code == 4 || code == 5) data.readString();
+                    if (code == 5) return true;
+                }
+                if (code == 1 || code == 2 || code == 4) {
+                    // Binder threads acknowledge only the invalidation. They never enter
+                    // the adapter monitor or perform a read/reconcile/notification.
+                    handler.post(() -> {
+                        synchronized (ContentMediaAdapter.this) {
+                            if (!isCurrent(epoch) || sourceService != service || sourceServiceVersion != version) return;
+                            markSourceDirtyLocked(epoch, true, true, false, false);
+                        }
+                        drainDeliveries();
+                    });
+                }
+                if (reply != null) {
+                    reply.writeNoException();
+                    if (!legacy && code == 4) reply.writeInt(0);
+                }
+                return true;
+            }
+        };
+    }
+
+    private void detachSourceLocked() {
+        final Handler worker = sourceHandler;
+        final IBinder service = sourceService;
+        final Binder callback = sourceCallback;
+        final boolean legacy = sourceLegacyContract;
+        final ServiceConnection connection = sourceConnection;
+        sourceServiceVersion++;
+        sourceConnection = null;
+        sourceService = null;
+        sourceCallback = null;
+        sourceLegacyContract = false;
+        sourceInventoryReady = true;
+        sourceReadFailed = false;
+        cancelSourceRetryLocked();
+        effectLocked(() -> {
+            executeSource(worker, () -> unregisterSourceCallback(service, callback, legacy));
+            if (connection != null) {
+                try { context.unbindService(connection); } catch (RuntimeException ignored) { }
+            }
+        });
     }
 
     private void registerSourceCallback(IBinder service, Binder callback, boolean legacyContract) {
@@ -586,170 +817,405 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         }
     }
 
-    private void refreshSource(final long epoch) {
-        synchronized (this) {
-            if (!isCurrent(epoch) || sourceHandler == null) return;
-            final IBinder service = sourceService;
-            final boolean legacyContract = sourceLegacyContract;
-            if (service != null) sourceHandler.post(new Runnable() {
-                @Override public void run() {
-                    readSourceStatus(epoch, service, legacyContract);
-                }
-            });
-        }
-    }
+    private void refreshSource(long epoch) { invalidateSource(epoch, true, true, false, false); }
 
-    private void readSourceStatus(final long epoch, final IBinder service, final boolean legacyContract) {
-        if (!isCurrent(epoch)) return;
-        String source = null;
-        Integer rawCode = null;
-        Parcel data = Parcel.obtain();
-        Parcel reply = Parcel.obtain();
-        try {
-            data.writeInterfaceToken(legacyContract ? SOURCE_DESCRIPTOR : CURRENT_SOURCE_DESCRIPTOR);
-            int transaction = legacyContract ? 6 : 38;
-            if (service.transact(transaction, data, reply, 0)) {
-                reply.readException();
-                rawCode = reply.readInt();
-                source = sourceForStatus(rawCode);
+    private void invalidateSource(long epoch, boolean source, boolean audio, boolean capability, boolean endpoint) {
+        onMain(() -> {
+            synchronized (ContentMediaAdapter.this) {
+                if (!isCurrent(epoch)) return;
+                markSourceDirtyLocked(epoch, source, audio, capability, endpoint);
             }
-        } catch (RemoteException | RuntimeException error) {
-            Log.w(TAG, "media source readback unavailable", error);
-        } finally { reply.recycle(); data.recycle(); }
-        final String readback = source;
-        final Integer observedCode = rawCode;
-        handler.post(new Runnable() {
-            @Override public void run() {
-                synchronized (ContentMediaAdapter.this) {
-                    if (!isCurrent(epoch) || sourceService != service) return;
-                    boolean inventoryChanged = !sourceInventoryReady || !java.util.Objects.equals(actualSource, readback);
-                    if (!sourceInventoryReady || !java.util.Objects.equals(lastSourceReadbackCode, observedCode)) {
-                        Log.i(TAG, "media source readback raw=" + observedCode + " mapped=" + readback);
-                    }
-                    lastSourceReadbackCode = observedCode;
-                    sourceInventoryReady = true;
-                    changeActualSource(readback);
-                    if (inventoryChanged) refreshSessions(epoch); else reconcileSelection(epoch);
-                }
-            }
+            drainDeliveries();
         });
     }
 
-    private void refreshSessions(long epoch) {
-        MediaSessionManager manager;
+    private void markSourceDirtyLocked(long epoch, boolean source, boolean audio, boolean capability, boolean endpoint) {
+        if (!isCurrent(epoch)) return;
+        sourceDirty |= source;
+        audioDirty |= audio;
+        capabilityDirty |= capability;
+        endpointDirty |= endpoint;
+        kickSourceReadLocked();
+    }
+
+    private void kickSourceReadLocked() {
+        if (!running || sourceHandler == null || sourceRequest != null) return;
+        boolean readSource = sourceDirty && sourceService != null && sourceCallback != null;
+        if (!readSource && !audioDirty && !capabilityDirty && !endpointDirty) { sourceDirty = false; return; }
+        final SourceRequest request = new SourceRequest(lifecycle, sourceService, sourceLegacyContract,
+                sourceServiceVersion, ++nextSourceRequestSequence, readSource,
+                audioDirty, capabilityDirty, endpointDirty && sourceConnection == null,
+                readSource && sourceService == pendingSourceCommandService
+                        && sourceServiceVersion == pendingSourceCommandServiceVersion ? pendingSourceCommandSequence : 0L);
+        sourceRequest = request;
+        sourceDirty = audioDirty = capabilityDirty = endpointDirty = false;
+        final Handler worker = sourceHandler;
+        effectLocked(() -> executeSource(worker, () -> readSourceStatus(request)));
+    }
+
+    private void readSourceStatus(SourceRequest request) {
+        Integer raw = null;
+        Integer mode = null;
+        Boolean available = null;
+        SourceEndpoint endpoint = null;
+        if (request.readSource) {
+            try { raw = externalReads.sourceStatus(request.service, request.legacy); }
+            catch (RuntimeException error) { Log.w(TAG, "media source readback unavailable", error); }
+        }
+        if (request.readAudio) {
+            try { mode = externalReads.audioMode(audioManager); } catch (RuntimeException ignored) { }
+        }
+        if (request.readCapability) {
+            try { available = externalReads.sourceWriteAvailable(context); }
+            catch (RuntimeException ignored) { available = false; }
+        }
+        if (request.readEndpoint) {
+            try { endpoint = externalReads.sourceEndpoint(context); } catch (RuntimeException ignored) { }
+        }
+        final SourceResult result = new SourceResult(request, raw, mode, available, endpoint);
+        // Completion must retire an old in-flight request even after stop/restart.
+        handler.post(() -> acceptSourceResult(result));
+    }
+
+    private void acceptSourceResult(SourceResult result) {
+        SourceRequest request = result.request;
         synchronized (this) {
-            if (!isCurrent(epoch)) return;
-            manager = sessionManager;
+            if (sourceRequest != request) return;
+            sourceRequest = null;
+            boolean admissible = isCurrent(request.epoch) && sourceService == request.service
+                    && sourceServiceVersion == request.serviceVersion
+                    && request.sequence > acceptedSourceRequestSequence;
+            if (admissible) {
+                acceptedSourceRequestSequence = request.sequence;
+                boolean selectionChanged = false;
+                boolean commandConfirmed = false;
+                if (request.readSource) {
+                    lastSourceReadSequence = request.sequence;
+                    boolean previouslyFailed = sourceReadFailed;
+                    sourceReadFailed = result.rawCode == null;
+                    cancelSourceRetryLocked();
+                    if (sourceReadFailed && !previouslyFailed) scheduleSourceRetryLocked(request);
+                    String readback = result.rawCode == null ? null : sourceForStatus(result.rawCode);
+                    commandConfirmed = readback != null && request.commandSequence != 0L
+                            && request.commandSequence == pendingSourceCommandSequence
+                            && readback.equals(pendingSourceCommandTarget);
+                    if (commandConfirmed) pendingSourceCommandSequence = 0L;
+                    boolean inventoryChanged = !sourceInventoryReady || !java.util.Objects.equals(actualSource, readback);
+                    if (!sourceInventoryReady || !java.util.Objects.equals(lastSourceReadbackCode, result.rawCode)) {
+                        Log.i(TAG, "media source readback raw=" + result.rawCode + " mapped=" + readback);
+                    }
+                    lastSourceReadbackCode = result.rawCode;
+                    sourceInventoryReady = true;
+                    changeActualSourceLocked(readback);
+                    selectionChanged = inventoryChanged;
+                    if (inventoryChanged) currentEffectLocked(request.epoch, () -> refreshSessions(request.epoch));
+                    if (result.rawCode == null) { capabilityDirty = true; endpointDirty |= sourceConnection == null; }
+                }
+                if (result.audioMode != null && cachedAudioMode != result.audioMode) {
+                    cachedAudioMode = result.audioMode;
+                    selectionChanged = true;
+                }
+                boolean capabilityChanged = result.writeAvailable != null && sourceWriteAvailable != result.writeAvailable;
+                if (result.writeAvailable != null) sourceWriteAvailable = result.writeAvailable;
+                if (result.endpoint != null) currentEffectLocked(request.epoch,
+                        () -> installSourceConnection(request.epoch, result.endpoint));
+                // A duplicate source notification has no arbitration or publication work.
+                if (selectionChanged) reconcileSelectionLocked(request.epoch, commandConfirmed);
+                else if (capabilityChanged || commandConfirmed) queueSnapshotLocked(request.epoch, commandConfirmed);
+            }
+            kickSourceReadLocked();
         }
-        List<MediaController> active = new ArrayList<>();
-        if (manager != null) {
-            try { active = manager.getActiveSessions(new ComponentName(context, ContentMediaListener.class)); }
-            catch (RuntimeException error) { Log.w(TAG, "active media sessions unavailable", error); }
-        }
-        updateController(active, epoch);
+        drainDeliveries();
     }
 
-    private synchronized void unregisterController() {
-        for (ObservedController item : observed.values()) {
-            try { item.controller.unregisterCallback(item.callback); }
-            catch (RuntimeException ignored) { }
-        }
-        observed.clear();
-        controller = null;
+    private void cancelSourceRetryLocked() {
+        final Runnable retry = sourceRetry;
+        sourceRetry = null;
+        if (retry != null) effectLocked(() -> handler.removeCallbacks(retry));
     }
 
-    private synchronized void updateController(List<MediaController> controllers, final long epoch) {
-        if (!isCurrent(epoch)) return;
-        systemControllers = controllers == null ? new ArrayList<MediaController>() : new ArrayList<>(controllers);
-        Set<String> packages = new HashSet<>();
-        for (MediaController item : systemControllers) if (item != null) packages.add(item.getPackageName());
-        if (actualSource != null || sourceService != null) packages.add(MEDIA_CENTER_PACKAGE);
-        String marker = "网易云音乐".equals(actualSource) ? "cloudmusic"
-                : "爱趣听".equals(actualSource) ? ".musicservice"
-                : "USB音乐".equals(actualSource) ? "usbplayer"
-                : "本机音乐".equals(actualSource) ? "hddplayer"
-                : "蓝牙音乐".equals(actualSource) ? "bluetooth" : null;
-        if (browsers != null) browsers.refresh(packages, marker);
-        reconcileControllers(epoch);
+    private void scheduleSourceRetryLocked(final SourceRequest request) {
+        final Runnable retry = new Runnable() {
+            @Override public void run() {
+                synchronized (ContentMediaAdapter.this) {
+                    if (sourceRetry != this) return;
+                    sourceRetry = null;
+                    if (!isCurrent(request.epoch) || sourceService != request.service
+                            || sourceServiceVersion != request.serviceVersion
+                            || lastSourceReadSequence != request.sequence || !sourceReadFailed) return;
+                    markSourceDirtyLocked(request.epoch, true, true, true, false);
+                }
+                drainDeliveries();
+            }
+        };
+        sourceRetry = retry;
+        currentEffectLocked(request.epoch, () -> handler.postDelayed(retry, 1_000L));
     }
 
-    private synchronized void reconcileControllers(final long epoch) {
-        if (!isCurrent(epoch)) return;
-        Map<MediaSession.Token, MediaController> merged = new LinkedHashMap<>();
-        for (MediaController item : systemControllers) if (item != null) merged.put(item.getSessionToken(), item);
-        if (browsers != null) for (ContentPublicMediaBrowsers.Session session : browsers.getSessions()) {
-            MediaController item = session.getController();
-            if (!merged.containsKey(item.getSessionToken())) merged.put(item.getSessionToken(), item);
-        }
-        for (MediaSession.Token token : new ArrayList<>(observed.keySet())) {
-            if (merged.containsKey(token)) continue;
-            ObservedController item = observed.remove(token);
-            try { item.controller.unregisterCallback(item.callback); } catch (RuntimeException ignored) { }
-        }
-        for (Map.Entry<MediaSession.Token, MediaController> candidate : merged.entrySet()) {
-            final MediaSession.Token token = candidate.getKey();
-            if (observed.containsKey(token)) continue;
-            final ObservedController item = new ObservedController(candidate.getValue());
-            item.identity = recordingIdentity(safeMetadata(item.controller));
-            item.identityObservedAt = SystemClock.elapsedRealtime();
-            PlaybackState initialPlayback = safePlayback(item.controller);
-            item.lastPosition = initialPlayback == null ? -1L : initialPlayback.getPosition();
-            item.lastPositionUpdate = initialPlayback == null ? 0L : initialPlayback.getLastPositionUpdateTime();
-            item.lastPlaybackState = initialPlayback == null ? PlaybackState.STATE_NONE : initialPlayback.getState();
-            item.callback = new MediaController.Callback() {
-                private void changed(boolean metadata) {
+    private void refreshSessions(long epoch) {
+        onMain(() -> {
+            final MediaSessionManager manager;
+            final Handler worker;
+            final long sequence;
+            synchronized (ContentMediaAdapter.this) {
+                if (!isCurrent(epoch)) return;
+                manager = sessionManager;
+                worker = sourceHandler;
+                sequence = ++sessionListSequence;
+            }
+            executeSource(worker, () -> {
+                List<MediaController> active = new ArrayList<>();
+                if (manager != null) {
+                    try { active = manager.getActiveSessions(new ComponentName(context, ContentMediaListener.class)); }
+                    catch (RuntimeException error) { Log.w(TAG, "active media sessions unavailable", error); }
+                }
+                final List<MediaController> inventory = active == null ? Collections.emptyList() : new ArrayList<>(active);
+                handler.post(() -> {
                     synchronized (ContentMediaAdapter.this) {
-                        if (!isCurrent(epoch) || observed.get(token) != item) return;
-                        if (metadata) {
-                            String next = recordingIdentity(safeMetadata(item.controller));
-                            if (!next.equals(item.identity)) item.identityObservedAt = SystemClock.elapsedRealtime();
-                            item.identity = next;
+                        if (!isCurrent(epoch) || sessionListSequence != sequence) return;
+                    }
+                    updateController(inventory, epoch);
+                });
+            });
+        });
+    }
+
+    private static void unregisterCallback(ObservedController item) {
+        try { item.controller.unregisterCallback(item.callback); } catch (RuntimeException ignored) { }
+    }
+
+    private void updateController(List<MediaController> controllers, final long epoch) {
+        final List<MediaController> inventory = controllers == null ? Collections.emptyList() : new ArrayList<>(controllers);
+        onMain(() -> {
+            // Package/token identity is cold inventory work, outside the adapter monitor.
+            Set<String> packages = new HashSet<>();
+            for (MediaController item : inventory) if (item != null) packages.add(item.getPackageName());
+            final ContentPublicMediaBrowsers registry;
+            final String marker;
+            synchronized (ContentMediaAdapter.this) {
+                if (!isCurrent(epoch)) return;
+                sessionListSequence++;
+                systemControllers = new ArrayList<>(inventory);
+                if (actualSource != null || sourceService != null) packages.add(MEDIA_CENTER_PACKAGE);
+                marker = "网易云音乐".equals(actualSource) ? "cloudmusic"
+                        : "爱趣听".equals(actualSource) ? ".musicservice"
+                        : "USB音乐".equals(actualSource) ? "usbplayer"
+                        : "本机音乐".equals(actualSource) ? "hddplayer"
+                        : "蓝牙音乐".equals(actualSource) ? "bluetooth" : null;
+                registry = browsers;
+            }
+            if (registry != null) registry.refresh(packages, marker);
+            reconcileControllers(epoch);
+        });
+    }
+
+    private void reconcileControllers(final long epoch) {
+        onMain(() -> {
+            Map<MediaSession.Token, MediaController> merged = new LinkedHashMap<>();
+            List<MediaController> active;
+            ContentPublicMediaBrowsers registry;
+            synchronized (ContentMediaAdapter.this) {
+                if (!isCurrent(epoch)) return;
+                active = new ArrayList<>(systemControllers);
+                registry = browsers;
+            }
+            for (MediaController candidate : active) if (candidate != null) merged.put(candidate.getSessionToken(), candidate);
+            List<ContentPublicMediaBrowsers.Session> sessions = registry == null
+                    ? Collections.emptyList() : new ArrayList<>(registry.getSessions());
+            for (ContentPublicMediaBrowsers.Session session : sessions) {
+                MediaController candidate = session.getController();
+                merged.putIfAbsent(candidate.getSessionToken(), candidate);
+            }
+            List<ObservedController> additions = new ArrayList<>();
+            for (Map.Entry<MediaSession.Token, MediaController> candidate : merged.entrySet()) {
+                synchronized (ContentMediaAdapter.this) { if (observed.containsKey(candidate.getKey())) continue; }
+                ObservedController item = new ObservedController(candidate.getValue());
+                item.callback = controllerCallback(item, epoch);
+                additions.add(item);
+            }
+            synchronized (ContentMediaAdapter.this) {
+                if (!isCurrent(epoch)) return;
+                browserSessions = Collections.unmodifiableList(sessions);
+                for (MediaSession.Token token : new ArrayList<>(observed.keySet())) {
+                    if (merged.containsKey(token)) continue;
+                    ObservedController item = observed.remove(token);
+                    item.destroyed = true;
+                    effectLocked(() -> unregisterCallback(item));
+                }
+                for (ObservedController item : additions) {
+                    observed.put(item.token, item);
+                    currentEffectLocked(epoch, () -> {
+                        try { item.controller.registerCallback(item.callback, handler); }
+                        catch (RuntimeException error) { Log.w(TAG, "media callback unavailable", error); }
+                    });
+                }
+                for (ObservedController item : observed.values()) queueBootstrapLocked(item, epoch);
+                reconcileSelectionLocked(epoch);
+            }
+            drainDeliveries();
+        });
+    }
+
+    private MediaController.Callback controllerCallback(final ObservedController item, final long epoch) {
+        return new MediaController.Callback() {
+            @Override public void onPlaybackStateChanged(PlaybackState state) {
+                // No latest merge: each real pause/seek/resume and publisher timestamp
+                // is admitted and snapshotted in the callback's FIFO order.
+                onMain(() -> {
+                    synchronized (ContentMediaAdapter.this) {
+                        if (!isCurrent(epoch) || observed.get(item.token) != item) return;
+                        item.playbackSequence++;
+                        item.playbackKnown = true;
+                        boolean changed = updatePlaybackLocked(item, state, true);
+                        if (changed) {
+                            reconcileSelectionLocked(epoch);
+                            if (item.bluetooth) markSourceDirtyLocked(epoch, false, true, false, false);
+                        } else queueSnapshotLocked(epoch);
+                    }
+                    drainDeliveries();
+                });
+            }
+            @Override public void onMetadataChanged(MediaMetadata metadata) {
+                onMain(() -> {
+                    synchronized (ContentMediaAdapter.this) {
+                        if (!isCurrent(epoch) || observed.get(item.token) != item) return;
+                        item.metadataSequence++;
+                        item.metadataKnown = true;
+                        if (updateMetadataLocked(item, metadata)) {
                             generation++;
-                        }
-                        PlaybackState position = safePlayback(item.controller);
-                        if (position != null) {
-                            if (!metadata && position.getState() != item.lastPlaybackState
-                                    && sameToken(avrcpToken, item.controller)) avrcpPlaybackState = -1;
-                            item.lastPlaybackState = position.getState();
-                            if (!metadata && item.lastPosition >= 0L && position.getPosition() - item.lastPosition >= 250L
-                                    && position.getLastPositionUpdateTime() > item.lastPositionUpdate
-                                    && freshPlaybackEvidence(safeMetadata(item.controller), position, sourceChangedAt)) {
-                                item.progressSourceEpoch = sourceEpoch;
-                            }
-                            item.lastPosition = position.getPosition();
-                            item.lastPositionUpdate = position.getLastPositionUpdateTime();
-                        }
-                        reconcileSelection(epoch);
+                            reconcileSelectionLocked(epoch);
+                            if (item.bluetooth) markSourceDirtyLocked(epoch, false, true, false, false);
+                        } else queueSnapshotLocked(epoch);
                     }
-                    refreshSource(epoch);
-                }
-                @Override public void onPlaybackStateChanged(PlaybackState state) { changed(false); }
-                @Override public void onMetadataChanged(MediaMetadata metadata) { changed(true); }
-                @Override public void onAudioInfoChanged(MediaController.PlaybackInfo info) { changed(true); }
-                @Override public void onSessionDestroyed() {
+                    drainDeliveries();
+                });
+            }
+            @Override public void onAudioInfoChanged(MediaController.PlaybackInfo info) {
+                onMain(() -> {
                     synchronized (ContentMediaAdapter.this) {
-                        if (!isCurrent(epoch) || observed.get(token) != item) return;
-                        item.destroyed = true;
-                        observed.remove(token);
-                        try { item.controller.unregisterCallback(item.callback); } catch (RuntimeException ignored) { }
-                        for (int index = systemControllers.size() - 1; index >= 0; index--) {
-                            MediaController previous = systemControllers.get(index);
-                            if (previous != null && previous.getSessionToken().equals(token)) systemControllers.remove(index);
-                        }
-                        if (browsers != null) browsers.onSessionDestroyed(token);
-                        reconcileSelection(epoch);
+                        if (!isCurrent(epoch) || observed.get(item.token) != item) return;
+                        item.audioSequence++;
+                        item.audioKnown = true;
+                        if (updateAudioLocked(item, info)) reconcileSelectionLocked(epoch);
+                        if (item.bluetooth) markSourceDirtyLocked(epoch, false, true, false, false);
                     }
-                    handler.post(() -> { if (isCurrent(epoch)) refreshSessions(epoch); });
-                }
-            };
-            observed.put(token, item);
-            try { item.controller.registerCallback(item.callback, handler); }
-            catch (RuntimeException error) { Log.w(TAG, "media callback unavailable", error); }
-        }
-        reconcileSelection(epoch);
+                    drainDeliveries();
+                });
+            }
+            @Override public void onSessionDestroyed() {
+                onMain(() -> {
+                    synchronized (ContentMediaAdapter.this) {
+                        if (!isCurrent(epoch) || observed.get(item.token) != item) return;
+                        item.destroyed = true;
+                        observed.remove(item.token);
+                        sessionListSequence++;
+                        systemControllers.removeIf(previous -> previous != null && previous.getSessionToken().equals(item.token));
+                        final ContentPublicMediaBrowsers registry = browsers;
+                        effectLocked(() -> unregisterCallback(item));
+                        if (registry != null) currentEffectLocked(epoch, () -> registry.onSessionDestroyed(item.token));
+                        reconcileSelectionLocked(epoch);
+                        currentEffectLocked(epoch, () -> refreshSessions(epoch));
+                    }
+                    drainDeliveries();
+                });
+            }
+        };
     }
 
-    private void reconcileSelection(long epoch) {
+    private void queueBootstrapLocked(ObservedController item, long epoch) {
+        if (item.bootstrapInFlight || item.destroyed || item.metadataKnown && item.playbackKnown && item.audioKnown) return;
+        item.bootstrapInFlight = true;
+        final BootstrapRequest request = new BootstrapRequest(epoch, item);
+        final Handler worker = sourceHandler;
+        currentEffectLocked(epoch, () -> executeSource(worker, () -> {
+            MediaMetadata metadata = null;
+            PlaybackState playback = null;
+            MediaController.PlaybackInfo audio = null;
+            boolean metadataRead = false, playbackRead = false, audioRead = false;
+            if (request.readMetadata) {
+                try { metadata = externalReads.metadata(item.controller); metadataRead = true; } catch (RuntimeException ignored) { }
+            }
+            if (request.readPlayback) {
+                try { playback = externalReads.playback(item.controller); playbackRead = true; } catch (RuntimeException ignored) { }
+            }
+            if (request.readAudio) {
+                try { audio = externalReads.audioInfo(item.controller); audioRead = true; } catch (RuntimeException ignored) { }
+            }
+            final BootstrapResult result = new BootstrapResult(request, metadata, playback, audio,
+                    metadataRead, playbackRead, audioRead);
+            handler.post(() -> acceptBootstrap(result));
+        }));
+    }
+
+    private void acceptBootstrap(BootstrapResult result) {
+        BootstrapRequest request = result.request;
+        ObservedController item = request.item;
+        synchronized (this) {
+            if (!isCurrent(request.epoch) || observed.get(item.token) != item || item.destroyed) return;
+            item.bootstrapInFlight = false;
+            boolean changed = false;
+            // Callback arguments, including an explicit null, always beat an old pull.
+            if (result.metadataRead && !item.metadataKnown && item.metadataSequence == request.metadataSequence) {
+                item.metadataKnown = true;
+                changed |= updateMetadataLocked(item, result.metadata);
+            }
+            if (result.playbackRead && !item.playbackKnown && item.playbackSequence == request.playbackSequence) {
+                item.playbackKnown = true;
+                changed |= updatePlaybackLocked(item, result.playback, false);
+                if (item.metadataSequence != request.metadataSequence) item.playbackMatchesMetadata = false;
+            }
+            if (result.audioRead && !item.audioKnown && item.audioSequence == request.audioSequence) {
+                item.audioKnown = true;
+                changed |= updateAudioLocked(item, result.audio);
+            }
+            if (changed) reconcileSelectionLocked(request.epoch);
+        }
+        drainDeliveries();
+    }
+
+    private boolean updateMetadataLocked(ObservedController item, MediaMetadata metadata) {
+        if (item.facts.metadata.metadata == metadata) return false;
+        MetadataFacts next = new MetadataFacts(metadata);
+        boolean changed = !sameMetadata(item.facts.metadata, next);
+        item.facts = new ControllerFacts(next, item.facts.playback, item.facts.audio);
+        if (!next.identity.equals(item.identity)) {
+            item.identityObservedAt = SystemClock.elapsedRealtime();
+            item.playbackMatchesMetadata = false;
+        }
+        item.identity = next.identity;
+        return changed;
+    }
+
+    private boolean updatePlaybackLocked(ObservedController item, PlaybackState state, boolean callback) {
+        boolean changed = !samePlayback(item.facts.playback, state) || !item.playbackMatchesMetadata;
+        item.playbackMatchesMetadata = true;
+        item.facts = new ControllerFacts(item.facts.metadata, state, item.facts.audio);
+        if (state != null) {
+            if (callback && state.getState() != item.lastPlaybackState && sameToken(avrcpToken, item.controller)) avrcpPlaybackState = -1;
+            if (callback && item.lastPosition >= 0L && state.getPosition() - item.lastPosition >= 250L
+                    && state.getLastPositionUpdateTime() > item.lastPositionUpdate
+                    && freshPlaybackEvidence(item.facts.metadata.fields, state, sourceChangedAt)) item.progressSourceEpoch = sourceEpoch;
+            item.lastPosition = state.getPosition();
+            item.lastPositionUpdate = state.getLastPositionUpdateTime();
+            item.lastPlaybackState = state.getState();
+        } else {
+            item.lastPosition = -1L; item.lastPositionUpdate = 0L; item.lastPlaybackState = PlaybackState.STATE_NONE;
+        }
+        return changed;
+    }
+
+    private boolean updateAudioLocked(ObservedController item, MediaController.PlaybackInfo info) {
+        AudioAttributes next = info == null ? null : info.getAudioAttributes();
+        AudioAttributes previous = item.facts.audio;
+        item.facts = new ControllerFacts(item.facts.metadata, item.facts.playback, next);
+        return previous != next && (previous == null || next == null
+                || previous.getUsage() != next.getUsage() || previous.getContentType() != next.getContentType());
+    }
+
+    private void reconcileSelectionLocked(long epoch) { reconcileSelectionLocked(epoch, false); }
+
+    private void reconcileSelectionLocked(long epoch, boolean commandConfirmed) {
+        selectionEvaluations++;
         MediaController selected = selectController();
         if (!sameToken(controller, selected)) {
             if (!sameToken(confirmedSongToken, selected)) clearConfirmedSong();
@@ -757,20 +1223,46 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             generation++;
             cancelArtwork();
         }
-        publishSnapshot(epoch);
+        queueSnapshotLocked(epoch, commandConfirmed);
     }
 
     private MediaController selectController() {
         if (actualSource == null && !sourceInventoryReady && sourceService == null) {
-            MediaController arbitrated = selectWithoutSourceReadback();
-            if (arbitrated != null) return arbitrated;
+            ContentMediaSessionArbitrationDecision decision = selectWithoutSourceReadback();
+            MediaController selected = null;
+            int best = -1;
+            if (decision.getSessionId() != null) {
+                for (ObservedController item : observed.values()) {
+                    if (!item.destroyed && item.sessionId.equals(decision.getSessionId())) {
+                        selected = item.controller;
+                        best = playbackTier(item.facts.playback);
+                        break;
+                    }
+                }
+            }
+            // The arbiter exclusively owns song selection, including CLEAR and a
+            // KEEP_CURRENT(null) wait. An ended retained title cannot resurrect it.
+            // Explicit non-song public media retains presentation precedence over
+            // a paused song, without becoming a song candidate in the arbiter.
+            for (ObservedController item : observed.values()) {
+                PlaybackState state = item.facts.playback;
+                if (item.destroyed || !matchesActualSource(item) || state == null
+                        || state.getState() == PlaybackState.STATE_STOPPED || state.getState() == PlaybackState.STATE_NONE
+                        || state.getState() == PlaybackState.STATE_ERROR
+                        || songIdentityFor(item.controller, item.facts.metadata.fields) != ContentPorts.MediaSongIdentity.NON_SONG) continue;
+                int tier = playbackTier(state);
+                if (tier > best || tier == best && sameToken(controller, item.controller)) {
+                    selected = item.controller;
+                    best = tier;
+                }
+            }
+            return selected;
         }
         MediaController selected = null;
         int best = -1;
         for (ObservedController item : observed.values()) {
             if (item.destroyed || !matchesActualSource(item)) continue;
-            MediaMetadata metadata = safeMetadata(item.controller);
-            MediaFields fields = mediaFields(metadata);
+            MediaFields fields = item.facts.metadata.fields;
             PlaybackState state = safePlayback(item.controller);
             boolean playing = state != null && (state.getState() == PlaybackState.STATE_PLAYING
                     || state.getState() == PlaybackState.STATE_FAST_FORWARDING || state.getState() == PlaybackState.STATE_REWINDING);
@@ -791,18 +1283,24 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return selected;
     }
 
-    private MediaController selectWithoutSourceReadback() {
+    private static int playbackTier(PlaybackState state) {
+        if (state == null) return 1;
+        int value = state.getState();
+        if (value == PlaybackState.STATE_PLAYING || value == PlaybackState.STATE_FAST_FORWARDING
+                || value == PlaybackState.STATE_REWINDING) return 3;
+        return value == PlaybackState.STATE_BUFFERING || value == PlaybackState.STATE_CONNECTING ? 2 : 1;
+    }
+
+    private ContentMediaSessionArbitrationDecision selectWithoutSourceReadback() {
         ArrayList<ContentMediaSessionCandidate> candidates = new ArrayList<>();
-        Map<String, ObservedController> bySession = new LinkedHashMap<>();
         int index = 0;
         for (ObservedController item : observed.values()) {
             if (item.destroyed || !matchesActualSource(item)) continue;
-            MediaMetadata metadata = safeMetadata(item.controller);
-            MediaFields fields = mediaFields(metadata);
+            MediaFields fields = item.facts.metadata.fields;
             PlaybackState state = safePlayback(item.controller);
             AudioAttributes audio = safeAudioAttributes(item.controller);
-            String packageName = item.controller.getPackageName();
-            String sessionId = item.controller.getSessionToken().toString();
+            String packageName = item.packageName;
+            String sessionId = item.sessionId;
             String sourceId = sourceForController(item.controller);
             if (sourceId == null) sourceId = packageName;
             Integer playbackState = state == null ? null : state.getState();
@@ -819,16 +1317,12 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                     bluetoothCommunicationActive(item.controller),
                     !fields.artist.isEmpty() || !fields.album.isEmpty());
             candidates.add(candidate);
-            bySession.put(sessionId, item);
         }
         ContentMediaSessionArbitrationDecision decision = sessionArbiter.evaluate(
                 candidates, SystemClock.elapsedRealtime(), context.getPackageName(),
-                browsers != null && browsers.getSessions().isEmpty());
-        if (decision.getAction() == ContentMediaSessionArbitrationAction.CLEAR) return null;
-        String selectedId = decision.getSessionId();
-        if (selectedId == null) return null;
-        ObservedController selected = bySession.get(selectedId);
-        return selected == null ? null : selected.controller;
+                browsers != null && browserSessions.isEmpty());
+        scheduleSelectionRecheckLocked(decision.getRecheckAfterMs());
+        return decision;
     }
 
     private boolean isSystemController(MediaController candidate) {
@@ -837,7 +1331,29 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return false;
     }
 
+    private void scheduleSelectionRecheckLocked(Long delayMs) {
+        if (delayMs == null || selectionRecheck != null) return;
+        final long epoch = lifecycle;
+        final Runnable recheck = () -> {
+            synchronized (ContentMediaAdapter.this) {
+                selectionRecheck = null;
+                if (!isCurrent(epoch)) return;
+                reconcileSelectionLocked(epoch);
+            }
+            drainDeliveries();
+        };
+        selectionRecheck = recheck;
+        currentEffectLocked(epoch, () -> handler.postDelayed(recheck, Math.max(1L, delayMs)));
+    }
+
     private void changeActualSource(String source) {
+        onMain(() -> {
+            synchronized (ContentMediaAdapter.this) { changeActualSourceLocked(source); }
+            drainDeliveries();
+        });
+    }
+
+    private void changeActualSourceLocked(String source) {
         if (java.util.Objects.equals(actualSource, source)) return;
         initialSourceCorrelation = !hasReadbackSource && source != null && publishedRecording.isEmpty();
         if (source != null) hasReadbackSource = true;
@@ -863,25 +1379,25 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         // to an unrecognised source). Never turn unknown SDK codes into a source guess.
         if (actualSource == null) return !sourceInventoryReady && sourceService == null && precise != null;
         if (precise != null) return actualSource.equals(precise);
-        if (!MEDIA_CENTER_PACKAGE.equals(item.controller.getPackageName())) return false;
+        if (!MEDIA_CENTER_PACKAGE.equals(item.packageName)) return false;
         if (item.confirmedSourceEpoch == sourceEpoch) return true;
-        MediaMetadata metadata = safeMetadata(item.controller);
-        String identity = recordingIdentity(metadata);
-        PlaybackState playback = safePlayback(item.controller);
+        MediaFields fields = item.facts.metadata.fields;
+        String identity = item.identity;
+        PlaybackState playback = item.facts.playback;
         // A shared proxy needs post-readback identity plus fresh non-placeholder playback evidence.
         // Initial cold selection may use observed position advancement; later switches need a new identity.
         // A callback, a refreshed timestamp, or position=0 alone remains insufficient.
         boolean newIdentity = !quarantinedRecordings.contains(identity) && item.identityObservedAt >= sourceChangedAt;
         boolean initialProgress = initialSourceCorrelation && item.progressSourceEpoch == sourceEpoch;
-        if (!identity.isEmpty() && (newIdentity || initialProgress)
-                && freshPlaybackEvidence(metadata, playback, sourceChangedAt)) {
+        if (!identity.isEmpty() && item.playbackMatchesMetadata && (newIdentity || initialProgress)
+                && freshPlaybackEvidence(fields, playback, sourceChangedAt)) {
             item.confirmedSourceEpoch = sourceEpoch;
             return true;
         }
         return false;
     }
 
-    private static boolean freshPlaybackEvidence(MediaMetadata metadata, PlaybackState state, long after) {
+    private static boolean freshPlaybackEvidence(MediaFields fields, PlaybackState state, long after) {
         if (state == null || state.getPosition() < 0L || state.getLastPositionUpdateTime() <= 0L
                 || state.getLastPositionUpdateTime() < after
                 || state.getLastPositionUpdateTime() > SystemClock.elapsedRealtime()) return false;
@@ -890,20 +1406,21 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 && playbackState != PlaybackState.STATE_BUFFERING
                 && playbackState != PlaybackState.STATE_CONNECTING
                 && playbackState != PlaybackState.STATE_PAUSED) return false;
-        return state.getPosition() > 0L || mediaFields(metadata).durationMs >= 1000L;
+        return state.getPosition() > 0L || fields.durationMs >= 1000L;
     }
 
     private String sourceForController(MediaController candidate) {
         if (candidate == null) return null;
         Set<String> preciseSources = new HashSet<>();
-        if (browsers != null) for (ContentPublicMediaBrowsers.Session session : browsers.getSessions()) {
+        for (ContentPublicMediaBrowsers.Session session : browserSessions) {
             if (!sameToken(candidate, session.getController())) continue;
             String source = sourceForComponent(session.getComponent());
             if (source != null) preciseSources.add(source);
         }
         if (preciseSources.size() > 1) return null;
         if (!preciseSources.isEmpty()) return preciseSources.iterator().next();
-        return sourceForPackage(candidate.getPackageName());
+        ObservedController item = observed.get(candidate.getSessionToken());
+        return sourceForPackage(item == null ? null : item.packageName);
     }
 
     private static String sourceForComponent(ComponentName component) {
@@ -920,8 +1437,33 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return null;
     }
 
-    private synchronized void publishSnapshot(long epoch) {
+    private void publishSnapshot(long epoch) {
+        onMain(() -> {
+            synchronized (ContentMediaAdapter.this) { queueSnapshotLocked(epoch); }
+            drainDeliveries();
+        });
+    }
+
+    private void queueSnapshotLocked(long epoch) { queueSnapshotLocked(epoch, false); }
+
+    private void queueSnapshotLocked(long epoch, boolean commandConfirmed) {
         if (!isCurrent(epoch) || listener == null) return;
+        ContentPorts.MediaSnapshot snapshot = snapshotLocked(epoch);
+        boolean capability = sourceWriteAvailable;
+        if (!commandConfirmed && sameSnapshot(lastPublishedSnapshot, snapshot)
+                && capability == lastPublishedSourceAvailable) return;
+        lastPublishedSnapshot = snapshot;
+        lastPublishedSourceAvailable = capability;
+        final Publication publication = new Publication(epoch, listener, snapshot);
+        effectLocked(() -> {
+            synchronized (ContentMediaAdapter.this) {
+                if (!isCurrent(publication.epoch) || listener != publication.listener) return;
+            }
+            publication.listener.onMediaSnapshot(publication.snapshot);
+        });
+    }
+
+    private ContentPorts.MediaSnapshot snapshotLocked(long epoch) {
         MediaController current = controller;
         ObservedController item = current == null ? null : observed.get(current.getSessionToken());
         boolean correlated = item != null && !item.destroyed && matchesActualSource(item);
@@ -930,28 +1472,29 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             clearConfirmedSong();
             cancelArtwork();
             publishedRecording = "";
-            listener.onMediaSnapshot(ContentPorts.MediaSnapshot.unavailable());
-            return;
+            return ContentPorts.MediaSnapshot.unavailable();
         }
-        MediaMetadata metadata = correlated ? safeMetadata(current) : null;
-        PlaybackState playback = correlated ? safePlayback(current) : null;
-        MediaFields fields = mediaFields(metadata);
-        String identity = metadata == null ? "" : recordingIdentity(metadata);
+        MetadataFacts metadata = correlated ? item.facts.metadata : MetadataFacts.EMPTY;
+        PlaybackState playback = correlated ? item.facts.playback : null;
+        MediaFields fields = metadata.fields;
+        String identity = metadata.identity;
         if (!correlated) clearConfirmedSong();
         ContentPorts.MediaSongIdentity songIdentity = correlated
                 ? resolveSongIdentity(current, fields, songIdentityFor(current, fields), epoch)
                 : ContentPorts.MediaSongIdentity.UNKNOWN;
         publishedRecording = identity;
         long actions = playback == null ? 0L : playback.getActions();
-        Bitmap artwork = bitmapArtwork(metadata);
-        if (songIdentity == ContentPorts.MediaSongIdentity.SONG && artwork == null && metadata != null) {
-            List<String> uris = artworkUris(metadata);
+        Bitmap artwork = metadata.artwork;
+        if (artwork != null && artwork.isRecycled()) artwork = null;
+        if (songIdentity == ContentPorts.MediaSongIdentity.SONG && artwork == null && metadata.metadata != null) {
+            List<String> uris = metadata.artworkUris;
             if (!uris.isEmpty() && !identity.isEmpty()) {
                 artwork = uriArtwork(epoch, source + '\u001f' + avrcpRecordingKey(fields), uris);
             } else cancelArtwork();
         } else cancelArtwork();
-        long position = playback == null || playback.getPosition() < 0L ? -1L : playback.getPosition();
-        long updateTime = playback == null ? 0L : playback.getLastPositionUpdateTime();
+        boolean recordingPlayback = correlated && item.playbackMatchesMetadata;
+        long position = !recordingPlayback || playback == null || playback.getPosition() < 0L ? -1L : playback.getPosition();
+        long updateTime = !recordingPlayback || playback == null ? 0L : playback.getLastPositionUpdateTime();
         if (position < 0L || updateTime <= 0L || updateTime > SystemClock.elapsedRealtime()) updateTime = 0L;
         float speed = playback == null ? 0f : playback.getPlaybackSpeed();
         if (!Float.isFinite(speed)) speed = 0f;
@@ -969,14 +1512,34 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         boolean playing = effectiveState == PlaybackState.STATE_PLAYING
                 || effectiveState == PlaybackState.STATE_FAST_FORWARDING
                 || effectiveState == PlaybackState.STATE_REWINDING;
-        listener.onMediaSnapshot(new ContentPorts.MediaSnapshot(true, false, source, playing, generation,
+        int bitmapGeneration = artwork == null ? 0 : artwork.getGenerationId();
+        if (snapshotArtwork == artwork && bitmapGeneration != snapshotArtworkGeneration) generation++;
+        snapshotArtwork = artwork;
+        snapshotArtworkGeneration = bitmapGeneration;
+        return new ContentPorts.MediaSnapshot(true, false, source, playing, generation,
                 fields.title.isEmpty() ? "暂无媒体" : fields.title,
                 fields.artist.isEmpty() ? "未连接" : fields.artist,
                 (actions & (PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE)) != 0L,
                 (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L, artwork,
                 fields.mediaId, fields.album, duration, position, updateTime,
                 playing ? speed : 0f, fields.embeddedLyrics, songIdentity, playbackState,
-                avrcpEventSequence, avrcpPositionMs, avrcpPlaybackState, avrcpElapsedRealtimeMs));
+                avrcpEventSequence, avrcpPositionMs, avrcpPlaybackState, avrcpElapsedRealtimeMs);
+    }
+
+    private static boolean sameSnapshot(ContentPorts.MediaSnapshot first, ContentPorts.MediaSnapshot second) {
+        return first != null && first.dataAvailable == second.dataAvailable && first.preview == second.preview
+                && java.util.Objects.equals(first.source, second.source) && first.playing == second.playing
+                && first.generation == second.generation && java.util.Objects.equals(first.title, second.title)
+                && java.util.Objects.equals(first.artist, second.artist) && first.playbackAvailable == second.playbackAvailable
+                && first.nextAvailable == second.nextAvailable && first.artwork == second.artwork
+                && first.mediaId.equals(second.mediaId) && first.album.equals(second.album)
+                && first.durationMs == second.durationMs && first.positionMs == second.positionMs
+                && first.positionElapsedRealtimeMs == second.positionElapsedRealtimeMs
+                && Float.compare(first.playbackSpeed, second.playbackSpeed) == 0
+                && first.embeddedLyrics.equals(second.embeddedLyrics) && first.songIdentity == second.songIdentity
+                && first.playbackState == second.playbackState && first.avrcpEventSequence == second.avrcpEventSequence
+                && first.avrcpPositionMs == second.avrcpPositionMs && first.avrcpPlaybackState == second.avrcpPlaybackState
+                && first.avrcpElapsedRealtimeMs == second.avrcpElapsedRealtimeMs;
     }
 
     private ContentPorts.MediaSongIdentity resolveSongIdentity(
@@ -1055,21 +1618,22 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private void scheduleMetadataGrace(final long epoch, long delayMs) {
         if (metadataGraceTimeout != null) return;
-        metadataGraceTimeout = new Runnable() {
-            @Override public void run() {
-                synchronized (ContentMediaAdapter.this) {
-                    metadataGraceTimeout = null;
-                    if (!isCurrent(epoch)) return;
-                    publishSnapshot(epoch);
-                }
+        final Runnable timeout = () -> {
+            synchronized (ContentMediaAdapter.this) {
+                if (!isCurrent(epoch)) return;
+                metadataGraceTimeout = null;
+                queueSnapshotLocked(epoch);
             }
+            drainDeliveries();
         };
-        handler.postDelayed(metadataGraceTimeout, Math.max(1L, delayMs));
+        metadataGraceTimeout = timeout;
+        currentEffectLocked(epoch, () -> handler.postDelayed(timeout, Math.max(1L, delayMs)));
     }
 
     private void cancelMetadataGrace() {
-        if (metadataGraceTimeout != null) handler.removeCallbacks(metadataGraceTimeout);
+        final Runnable timeout = metadataGraceTimeout;
         metadataGraceTimeout = null;
+        if (timeout != null) effectLocked(() -> handler.removeCallbacks(timeout));
     }
 
     private void clearConfirmedSong() {
@@ -1079,24 +1643,19 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         metadataMissingSince = -1L;
     }
 
-    private static AudioAttributes safeAudioAttributes(MediaController candidate) {
-        try {
-            MediaController.PlaybackInfo info = candidate == null ? null : candidate.getPlaybackInfo();
-            return info == null ? null : info.getAudioAttributes();
-        } catch (RuntimeException ignored) {
-            return null;
-        }
+    private AudioAttributes safeAudioAttributes(MediaController candidate) {
+        ObservedController item = candidate == null ? null : observed.get(candidate.getSessionToken());
+        return item == null ? null : item.facts.audio;
     }
 
     private boolean bluetoothCommunicationActive(MediaController candidate) {
-        if (audioManager == null || !isBluetooth(candidate)) return false;
-        int mode;
-        try { mode = audioManager.getMode(); } catch (RuntimeException ignored) { return false; }
-        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION;
+        return isBluetooth(candidate) && (cachedAudioMode == AudioManager.MODE_IN_CALL
+                || cachedAudioMode == AudioManager.MODE_IN_COMMUNICATION);
     }
 
-    private static boolean isBluetooth(MediaController candidate) {
-        return candidate != null && "com.android.bluetooth".equals(candidate.getPackageName());
+    private boolean isBluetooth(MediaController candidate) {
+        ObservedController item = candidate == null ? null : observed.get(candidate.getSessionToken());
+        return item != null && item.bluetooth;
     }
 
     private Bitmap uriArtwork(final long epoch, final String identity, final List<String> uris) {
@@ -1125,7 +1684,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         final long sequence = ++artworkSequence;
         final long sourceVersion = sourceEpoch;
         final MediaSession.Token token = controller.getSessionToken();
-        final String recording = avrcpRecordingKey(mediaFields(safeMetadata(controller)));
+        final String recording = avrcpRecordingKey(observed.get(token).facts.metadata.fields);
         final CancellationSignal cancellation = new CancellationSignal();
         artworkCancellation = cancellation;
         artworkTimeout = () -> {
@@ -1133,17 +1692,20 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 if (!isCurrent(epoch) || sequence != artworkSequence || !requestKey.equals(artworkRequestKey)) return;
                 for (String uri : candidates) rememberArtworkFailure(identity + '\u001f' + uri);
                 cancelArtwork();
-                publishSnapshot(epoch);
+                queueSnapshotLocked(epoch);
             }
+            drainDeliveries();
         };
-        handler.postDelayed(artworkTimeout, Math.min(13_000L, 3_000L * candidates.size() + 1_000L));
-        artworkTask = artworkExecutor.submit(() -> {
+        final Runnable timeout = artworkTimeout;
+        currentEffectLocked(epoch, () -> handler.postDelayed(timeout, Math.min(13_000L, 3_000L * candidates.size() + 1_000L)));
+        final ExecutorService executor = artworkExecutor;
+        FutureTask<Void> task = new FutureTask<>(() -> {
             Bitmap result = null;
             String resultUri = null;
             List<String> failures = new ArrayList<>();
             for (String uri : candidates) {
                 if (cancellation.isCanceled() || Thread.currentThread().isInterrupted()) break;
-                result = ContentMediaArtwork.decode(context, uri, cancellation);
+                result = externalReads.artwork(context, uri, cancellation);
                 if (result != null && !result.isRecycled()) {
                     resultUri = uri;
                     break;
@@ -1154,41 +1716,45 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             final String loadedUri = resultUri;
             handler.post(() -> {
                 synchronized (ContentMediaAdapter.this) {
-                    MediaMetadata currentMetadata = safeMetadata(controller);
-                    MediaFields currentFields = mediaFields(currentMetadata);
                     ObservedController selected = controller == null ? null : observed.get(controller.getSessionToken());
+                    MetadataFacts currentMetadata = selected == null ? MetadataFacts.EMPTY : selected.facts.metadata;
+                    MediaFields currentFields = currentMetadata.fields;
                     boolean currentRequest = isCurrent(epoch) && sourceEpoch == sourceVersion
                             && sequence == artworkSequence && requestKey.equals(artworkRequestKey)
                             && sameToken(token, controller) && selected != null && !selected.destroyed
                             && matchesActualSource(selected)
                             && recording.equals(avrcpRecordingKey(currentFields))
-                            && uris.equals(artworkUris(currentMetadata))
+                            && uris.equals(currentMetadata.artworkUris)
                             && songIdentityFor(controller, currentFields) == ContentPorts.MediaSongIdentity.SONG
                             && !cancellation.isCanceled();
                     if (!currentRequest) {
-                        if (loaded != null && !loaded.isRecycled()) loaded.recycle();
+                        if (loaded != null) effectLocked(() -> { if (!loaded.isRecycled()) loaded.recycle(); });
                         if (isCurrent(epoch) && sequence == artworkSequence && requestKey.equals(artworkRequestKey)) {
                             cancelArtwork();
-                            publishSnapshot(epoch);
+                            queueSnapshotLocked(epoch);
                         }
-                        return;
+                    } else {
+                        artworkTask = null;
+                        artworkCancellation = null;
+                        final Runnable previousTimeout = artworkTimeout;
+                        if (previousTimeout != null) effectLocked(() -> handler.removeCallbacks(previousTimeout));
+                        artworkTimeout = null;
+                        for (String uri : failures) rememberArtworkFailure(identity + '\u001f' + uri);
+                        if (loaded != null && !loaded.isRecycled()) {
+                            String cacheKey = identity + '\u001f' + loadedUri;
+                            artworkCache.put(cacheKey, loaded);
+                            failedArtwork.remove(cacheKey);
+                            generation++;
+                        }
+                        artworkRequestKey = null;
+                        queueSnapshotLocked(epoch);
                     }
-                    artworkTask = null;
-                    artworkCancellation = null;
-                    if (artworkTimeout != null) handler.removeCallbacks(artworkTimeout);
-                    artworkTimeout = null;
-                    for (String uri : failures) rememberArtworkFailure(identity + '\u001f' + uri);
-                    if (loaded != null && !loaded.isRecycled()) {
-                        String cacheKey = identity + '\u001f' + loadedUri;
-                        artworkCache.put(cacheKey, loaded);
-                        failedArtwork.remove(cacheKey);
-                        generation++;
-                    }
-                    artworkRequestKey = null;
-                    publishSnapshot(epoch);
                 }
+                drainDeliveries();
             });
-        });
+        }, null);
+        artworkTask = task;
+        currentEffectLocked(epoch, () -> executor.execute(task));
         return null;
     }
 
@@ -1202,13 +1768,18 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private void cancelArtwork() {
         artworkSequence++;
-        if (artworkTimeout != null) handler.removeCallbacks(artworkTimeout);
+        final Runnable timeout = artworkTimeout;
+        final CancellationSignal cancellation = artworkCancellation;
+        final Future<?> task = artworkTask;
         artworkTimeout = null;
-        if (artworkCancellation != null) artworkCancellation.cancel();
-        if (artworkTask != null) artworkTask.cancel(true);
         artworkCancellation = null;
         artworkTask = null;
         artworkRequestKey = null;
+        if (timeout != null || cancellation != null || task != null) effectLocked(() -> {
+            if (timeout != null) handler.removeCallbacks(timeout);
+            if (cancellation != null) cancellation.cancel();
+            if (task != null) task.cancel(true);
+        });
     }
 
     private static Bitmap bitmapArtwork(MediaMetadata metadata) {
@@ -1271,8 +1842,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return new MediaFields(title, artist, mediaId, album, duration, embedded);
     }
 
-    private static String recordingIdentity(MediaMetadata metadata) {
-        MediaFields fields = mediaFields(metadata);
+    private static String recordingIdentity(MediaFields fields) {
         if (fields.title.isEmpty()) return "";
         if (!fields.mediaId.isEmpty()) return "id:" + fields.mediaId;
         return (fields.title + '\u001f' + fields.artist + '\u001f' + fields.album).trim().toLowerCase(java.util.Locale.ROOT);
@@ -1288,12 +1858,9 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return "";
     }
 
-    private static MediaMetadata safeMetadata(MediaController candidate) {
-        try { return candidate == null ? null : candidate.getMetadata(); } catch (RuntimeException ignored) { return null; }
-    }
-
-    private static PlaybackState safePlayback(MediaController candidate) {
-        try { return candidate == null ? null : candidate.getPlaybackState(); } catch (RuntimeException ignored) { return null; }
+    private PlaybackState safePlayback(MediaController candidate) {
+        ObservedController item = candidate == null ? null : observed.get(candidate.getSessionToken());
+        return item == null ? null : item.facts.playback;
     }
 
     private static boolean sameToken(MediaSession.Token token, MediaController candidate) {
@@ -1317,7 +1884,15 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private static final class ObservedController {
         final MediaController controller;
+        final MediaSession.Token token;
+        final String packageName;
+        final String sessionId;
+        final boolean bluetooth;
         MediaController.Callback callback;
+        ControllerFacts facts = ControllerFacts.EMPTY;
+        boolean metadataKnown, playbackKnown, audioKnown, bootstrapInFlight;
+        boolean playbackMatchesMetadata;
+        long metadataSequence, playbackSequence, audioSequence;
         String identity = "";
         long identityObservedAt;
         long lastPosition = -1L;
@@ -1326,7 +1901,165 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         long progressSourceEpoch = -1L;
         long confirmedSourceEpoch = -1L;
         boolean destroyed;
-        ObservedController(MediaController controller) { this.controller = controller; }
+        ObservedController(MediaController controller) {
+            this.controller = controller;
+            token = controller.getSessionToken();
+            packageName = controller.getPackageName();
+            sessionId = token.toString();
+            bluetooth = "com.android.bluetooth".equals(packageName);
+        }
+    }
+
+    private static final class MetadataFacts {
+        static final MetadataFacts EMPTY = new MetadataFacts(null);
+        final MediaMetadata metadata;
+        final MediaFields fields;
+        final String identity;
+        final Bitmap artwork;
+        final List<String> artworkUris;
+        MetadataFacts(MediaMetadata metadata) {
+            this.metadata = metadata;
+            fields = mediaFields(metadata);
+            identity = recordingIdentity(fields);
+            artwork = bitmapArtwork(metadata);
+            artworkUris = Collections.unmodifiableList(ContentMediaAdapter.artworkUris(metadata));
+        }
+    }
+
+    private static final class ControllerFacts {
+        static final ControllerFacts EMPTY = new ControllerFacts(MetadataFacts.EMPTY, null, null);
+        final MetadataFacts metadata;
+        final PlaybackState playback;
+        final AudioAttributes audio;
+        ControllerFacts(MetadataFacts metadata, PlaybackState playback, AudioAttributes audio) {
+            this.metadata = metadata; this.playback = playback; this.audio = audio;
+        }
+    }
+
+    private static boolean sameMetadata(MetadataFacts first, MetadataFacts second) {
+        MediaFields a = first.fields, b = second.fields;
+        return a.title.equals(b.title) && a.artist.equals(b.artist) && a.mediaId.equals(b.mediaId)
+                && a.album.equals(b.album) && a.durationMs == b.durationMs && a.embeddedLyrics.equals(b.embeddedLyrics)
+                && first.artwork == second.artwork && first.artworkUris.equals(second.artworkUris);
+    }
+
+    private static boolean samePlayback(PlaybackState first, PlaybackState second) {
+        return first == second || first != null && second != null && first.getState() == second.getState()
+                && first.getActions() == second.getActions() && first.getPosition() == second.getPosition()
+                && first.getLastPositionUpdateTime() == second.getLastPositionUpdateTime()
+                && Float.compare(first.getPlaybackSpeed(), second.getPlaybackSpeed()) == 0;
+    }
+
+    private static final class Publication {
+        final long epoch;
+        final ContentPorts.MediaSnapshotListener listener;
+        final ContentPorts.MediaSnapshot snapshot;
+        Publication(long epoch, ContentPorts.MediaSnapshotListener listener, ContentPorts.MediaSnapshot snapshot) {
+            this.epoch = epoch; this.listener = listener; this.snapshot = snapshot;
+        }
+    }
+
+    private static final class BootstrapRequest {
+        final long epoch;
+        final ObservedController item;
+        final boolean readMetadata, readPlayback, readAudio;
+        final long metadataSequence, playbackSequence, audioSequence;
+        BootstrapRequest(long epoch, ObservedController item) {
+            this.epoch = epoch; this.item = item;
+            readMetadata = !item.metadataKnown; readPlayback = !item.playbackKnown; readAudio = !item.audioKnown;
+            metadataSequence = item.metadataSequence; playbackSequence = item.playbackSequence; audioSequence = item.audioSequence;
+        }
+    }
+
+    private static final class BootstrapResult {
+        final BootstrapRequest request;
+        final MediaMetadata metadata;
+        final PlaybackState playback;
+        final MediaController.PlaybackInfo audio;
+        final boolean metadataRead, playbackRead, audioRead;
+        BootstrapResult(BootstrapRequest request, MediaMetadata metadata, PlaybackState playback,
+                MediaController.PlaybackInfo audio, boolean metadataRead, boolean playbackRead, boolean audioRead) {
+            this.request = request; this.metadata = metadata; this.playback = playback; this.audio = audio;
+            this.metadataRead = metadataRead; this.playbackRead = playbackRead; this.audioRead = audioRead;
+        }
+    }
+
+    private static final class SourceRequest {
+        final long epoch, serviceVersion, sequence, commandSequence;
+        final IBinder service;
+        final boolean legacy, readSource, readAudio, readCapability, readEndpoint;
+        SourceRequest(long epoch, IBinder service, boolean legacy, long serviceVersion, long sequence,
+                boolean readSource, boolean readAudio, boolean readCapability, boolean readEndpoint, long commandSequence) {
+            this.epoch = epoch; this.service = service; this.legacy = legacy;
+            this.serviceVersion = serviceVersion; this.sequence = sequence; this.commandSequence = commandSequence;
+            this.readSource = readSource; this.readAudio = readAudio;
+            this.readCapability = readCapability; this.readEndpoint = readEndpoint;
+        }
+    }
+
+    private static final class SourceResult {
+        final SourceRequest request;
+        final Integer rawCode, audioMode;
+        final Boolean writeAvailable;
+        final SourceEndpoint endpoint;
+        SourceResult(SourceRequest request, Integer rawCode, Integer audioMode, Boolean writeAvailable, SourceEndpoint endpoint) {
+            this.request = request; this.rawCode = rawCode; this.audioMode = audioMode;
+            this.writeAvailable = writeAvailable; this.endpoint = endpoint;
+        }
+    }
+
+    static final class SourceEndpoint {
+        final ComponentName component;
+        final boolean legacy;
+        SourceEndpoint(ComponentName component, boolean legacy) { this.component = component; this.legacy = legacy; }
+        Intent intent() {
+            return new Intent(legacy ? SOURCE_STATUS_ACTION : CURRENT_SOURCE_STATUS_ACTION)
+                    .setPackage(MEDIA_CENTER_PACKAGE).setComponent(component);
+        }
+    }
+
+    /** Package-private seam for deterministic worker/argument tests; no second state machine. */
+    static class ExternalReads {
+        MediaMetadata metadata(MediaController controller) { return controller.getMetadata(); }
+        PlaybackState playback(MediaController controller) { return controller.getPlaybackState(); }
+        MediaController.PlaybackInfo audioInfo(MediaController controller) { return controller.getPlaybackInfo(); }
+        int audioMode(AudioManager manager) { return manager == null ? AudioManager.MODE_NORMAL : manager.getMode(); }
+        Bitmap artwork(Context context, String uri, CancellationSignal cancellation) {
+            return ContentMediaArtwork.decode(context, uri, cancellation);
+        }
+        boolean sourceWriteAvailable(Context context) {
+            Intent intent = new Intent(MEDIA_SOURCE_ACTION).setComponent(new ComponentName(MEDIA_CENTER_PACKAGE, MEDIA_CENTER_CLASS));
+            return accessible(context, context.getPackageManager().resolveService(intent, 0));
+        }
+        SourceEndpoint sourceEndpoint(Context context) {
+            Intent intent = new Intent(CURRENT_SOURCE_STATUS_ACTION).setPackage(MEDIA_CENTER_PACKAGE);
+            android.content.pm.ResolveInfo resolved = context.getPackageManager().resolveService(intent, 0);
+            boolean legacy = resolved == null || resolved.serviceInfo == null;
+            if (legacy) resolved = context.getPackageManager().resolveService(
+                    new Intent(SOURCE_STATUS_ACTION).setPackage(MEDIA_CENTER_PACKAGE), 0);
+            if (!accessible(context, resolved)) return null;
+            return new SourceEndpoint(new ComponentName(resolved.serviceInfo.packageName, resolved.serviceInfo.name), legacy);
+        }
+        private static boolean accessible(Context context, android.content.pm.ResolveInfo resolved) {
+            if (resolved == null || resolved.serviceInfo == null) return false;
+            android.content.pm.ServiceInfo service = resolved.serviceInfo;
+            return service.enabled && service.applicationInfo != null && service.applicationInfo.enabled
+                    && (context.getPackageName().equals(service.packageName) || service.exported)
+                    && (service.permission == null || context.checkSelfPermission(service.permission)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED);
+        }
+        Integer sourceStatus(IBinder service, boolean legacy) {
+            Parcel data = Parcel.obtain(), reply = Parcel.obtain();
+            try {
+                data.writeInterfaceToken(legacy ? SOURCE_DESCRIPTOR : CURRENT_SOURCE_DESCRIPTOR);
+                if (!service.transact(legacy ? 6 : 38, data, reply, 0)) return null;
+                reply.readException();
+                return reply.readInt();
+            } catch (RemoteException | RuntimeException error) {
+                Log.w(TAG, "media source readback unavailable", error);
+                return null;
+            } finally { reply.recycle(); data.recycle(); }
+        }
     }
 
     private static final class MediaFields {

@@ -3,10 +3,8 @@ package com.icar03.content.runtime
 import com.autonavi.amapauto.content.ContentPorts
 import com.autonavi.amapauto.content.ContentRegistry
 import com.autonavi.amapauto.content.ContentState
-import com.icar03.content.ui.*
 import com.icar03.content.runtime.lyrics.ContentLyricsCursor
-import java.text.SimpleDateFormat
-import java.util.Date
+import com.icar03.content.ui.*
 import java.util.Locale
 
 /** Connection, known readback and a permitted next write are independent capabilities. */
@@ -14,19 +12,30 @@ data class RuntimeCapabilities(
     val vehicle: Boolean = false,
     val lock: Boolean = false,
     val source: Boolean = false,
-    // Explicit Store-approved cycle targets. A connected Binder alone enables no seat writes.
     val writableSeatControls: Set<String> = emptySet(),
 )
 
+/** Each domain is projected before publication; a lyrics event never allocates the shell. */
 class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
+    private val clockPresenter = ContentClockPresenter(locale)
     private var waitRowLines: List<ContentPorts.LyricsLine>? = null
     private var waitRowDurationMs = -1L
     private var waitRowTimed = false
     private var projectedWaitRows: List<LyricWaitRow> = emptyList()
     private var projectedLineSource: List<ContentPorts.LyricsLine>? = null
     private var projectedLines: List<LyricLine> = emptyList()
+    private var shellSource: ContentState? = null
+    private var shellBrightness: ContentPorts.SystemSnapshot? = null
+    private var shellVolume: ContentPorts.SystemSnapshot? = null
+    private var shellCapabilities: RuntimeCapabilities? = null
+    private var shell: ContentUiState? = null
+    private var lyricsSource: ContentState? = null
+    private var lyrics: LyricsState = LyricsState()
+    internal var shellProjectionCount = 0L
+        private set
+    internal var lyricsProjectionCount = 0L
+        private set
 
-    /** Snapshot copies share immutable rows; playback/clock changes never rebuild the song. */
     private fun lines(state: ContentState): List<LyricLine> {
         if (projectedLineSource !== state.lyricsLines) {
             projectedLineSource = state.lyricsLines
@@ -38,25 +47,58 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         return projectedLines
     }
 
+    private fun duration(state: ContentState): Long =
+        if (state.lyricsAnchor.timelineReady) state.lyricsAnchor.durationMs else state.mediaDurationMs
+
     private fun waitRows(state: ContentState): List<LyricWaitRow> {
-        if (waitRowLines !== state.lyricsLines || waitRowDurationMs != state.mediaDurationMs || waitRowTimed != state.lyricsTimed) {
+        val duration = duration(state)
+        if (waitRowLines !== state.lyricsLines || waitRowDurationMs != duration || waitRowTimed != state.lyricsTimed) {
             waitRowLines = state.lyricsLines
-            waitRowDurationMs = state.mediaDurationMs
+            waitRowDurationMs = duration
             waitRowTimed = state.lyricsTimed
             projectedWaitRows = if (!state.lyricsTimed) emptyList() else {
-                ContentLyricsCursor.waitRows(state.lyricsLines, state.mediaDurationMs)
-                    .map { LyricWaitRow(it.afterIndex, it.startMs, it.endMs) }
+                ContentLyricsCursor.waitRows(state.lyricsLines, duration).map { LyricWaitRow(it.afterIndex, it.startMs, it.endMs) }
             }
         }
         return projectedWaitRows
     }
 
+    private fun song(state: ContentState) = state.mediaDataAvailable && !state.mediaPreview &&
+        state.mediaSongIdentity == ContentPorts.MediaSongIdentity.SONG
+
+    private fun metadataReady(state: ContentState) = song(state) && state.pendingSource.isEmpty() &&
+        state.mediaRecordingKey.isNotBlank() && state.mediaTitle.isNotBlank() && state.mediaTitle != "暂无媒体"
+
+    fun clock(state: ContentState, nowMillis: Long = state.nowMillis): ClockText =
+        clockPresenter.project(nowMillis, state.showSeconds, state.showWeekday)
+
+    internal fun invalidateClock() = clockPresenter.invalidate()
+
+    /** Convenience for previews and complete-snapshot callers. Production subscribes by domain. */
     fun map(
         state: ContentState,
         brightness: ContentPorts.SystemSnapshot = ContentPorts.SystemSnapshot(false, 0),
         volume: ContentPorts.SystemSnapshot = ContentPorts.SystemSnapshot(false, 0),
         capabilities: RuntimeCapabilities = RuntimeCapabilities(),
     ): ContentUiState {
+        val text = clock(state)
+        return mapShell(state, brightness, volume, capabilities).copy(time = text.time, weekday = text.weekday, lyrics = mapLyrics(state))
+    }
+
+    fun mapShell(
+        state: ContentState,
+        brightness: ContentPorts.SystemSnapshot,
+        volume: ContentPorts.SystemSnapshot,
+        capabilities: RuntimeCapabilities,
+    ): ContentUiState {
+        val previous = shellSource
+        if (previous != null && sameShellFacts(previous, state) &&
+            sameSystem(shellBrightness, brightness) && sameSystem(shellVolume, volume) && shellCapabilities == capabilities) return shell!!
+        shellSource = state.copy()
+        shellBrightness = brightness
+        shellVolume = volume
+        shellCapabilities = capabilities.copy(writableSeatControls = capabilities.writableSeatControls.toSet())
+        shellProjectionCount++
         val realVehicle = state.vehicleDataAvailable && !state.vehiclePreview
         val vehicleIdle = state.pendingVehicleCommand.isEmpty()
         val realMedia = state.mediaDataAvailable && !state.mediaPreview
@@ -71,22 +113,18 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 target = target,
                 available = vehicleIdle && realVehicle && if (id == ControlId.Lock) {
                     state.lockKnown && capabilities.lock
-                } else state.seatControlsKnown && id.id in capabilities.writableSeatControls
-                    && (id.isLevel(actual) || id == ControlId.Massage && state.massageSwitchKnown && state.massageActive),
+                } else state.seatControlsKnown && id.id in capabilities.writableSeatControls &&
+                    (id.isLevel(actual) || id == ControlId.Massage && state.massageSwitchKnown && state.massageActive),
                 known = realVehicle && id.isLevel(actual),
             )
         }
         val source = MediaSource.entries.firstOrNull { it.label == ContentRegistry.normalizeMediaSource(state.mediaSource) } ?: MediaSource.Local
-        val isSong = realMedia && state.mediaSongIdentity == ContentPorts.MediaSongIdentity.SONG
-        val metadataReady = isSong && state.pendingSource.isEmpty()
-            && state.mediaRecordingKey.isNotBlank()
-            && state.mediaTitle.isNotBlank() && state.mediaTitle != "暂无媒体"
+        val ready = metadataReady(state)
         return ContentUiState(
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
             temperature = if (realVehicle && state.temperatureC.isFinite()) "${format(state.temperatureC)}°C" else "--",
-            time = if (state.nowMillis > 0) SimpleDateFormat(if (state.showSeconds) "HH:mm:ss" else "HH:mm", locale).format(Date(state.nowMillis)) else "--:--",
-            weekday = if (state.showWeekday && state.nowMillis > 0) SimpleDateFormat("EEEE", locale).format(Date(state.nowMillis)) else "",
+            time = "--:--", weekday = "",
             range = if (realVehicle && state.rangeRaw >= 0) state.rangeRaw.toString() else "--", rangeUnit = "km",
             batteryPercent = state.batteryPercent.takeIf { realVehicle && it in 0..100 },
             charging = realVehicle && state.chargeState == ContentState.CHARGE_CHARGING,
@@ -105,36 +143,77 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             controls = controls,
             brightness = LevelState(brightness.percent / 100f, available = brightness.available),
             volume = LevelState(volume.percent / 100f, available = volume.available),
-            media = MediaState(title = state.mediaTitle.takeIf { metadataReady && it.isNotBlank() },
-                artist = state.mediaArtist.takeIf { metadataReady && it.isNotBlank() },
-                isSong = isSong,
-                playing = realMedia && state.mediaPlaying,
+            media = MediaState(title = state.mediaTitle.takeIf { ready && it.isNotBlank() },
+                artist = state.mediaArtist.takeIf { ready && it.isNotBlank() },
+                isSong = song(state), playing = realMedia && state.mediaPlaying,
                 targetPlaying = when (state.mediaPlaybackTarget) { 0 -> false; 1 -> true; else -> null },
                 source = source, targetSource = MediaSource.entries.firstOrNull { it.label == state.pendingSource }, available = realMedia,
                 playbackAvailable = realMedia && state.mediaPlaybackAvailable,
                 nextAvailable = realMedia && state.mediaNextAvailable, sourceAvailable = capabilities.source),
-            lyrics = if (metadataReady) LyricsState(
-                recordingKey = state.mediaRecordingKey,
-                lines = lines(state),
-                activeIndex = state.lyricsActiveIndex,
-                // Loading is a song-only state; a stale lyrics callback must not leak into no-media UI.
-                loading = isSong && state.lyricsStatus == ContentPorts.LyricsSnapshot.LOADING,
-                timelineReady = state.lyricsTimelineReady,
-                positionMs = state.lyricsPositionMs, playbackSpeed = state.lyricsPlaybackSpeed,
-                capturedAtMs = state.lyricsPositionCapturedAtMs, durationMs = state.mediaDurationMs,
-                timed = state.lyricsTimed, scrollIndex = state.lyricsScrollIndex,
-                activeIndices = state.lyricsActiveIndices.toList(),
-                gapStartMs = state.lyricsGapStartMs, gapEndMs = state.lyricsGapEndMs,
-                waitRows = waitRows(state),
-                emptyState = when (state.lyricsStatus) {
-                    ContentPorts.LyricsSnapshot.NETWORK_ERROR -> LyricsEmptyState.NetworkError
-                    ContentPorts.LyricsSnapshot.INSTRUMENTAL -> LyricsEmptyState.Instrumental
-                    else -> LyricsEmptyState.NoLyrics
-                },
-            ) else LyricsState(),
             message = state.commandMessage.takeIf { state.commandStatus == ContentState.COMMAND_FAILED && it.isNotBlank() },
-        )
+        ).also { shell = it }
     }
+
+    fun mapLyrics(state: ContentState): LyricsState {
+        val previous = lyricsSource
+        if (previous != null && sameLyricsFacts(previous, state)) return lyrics
+        lyricsSource = state.copy()
+        lyricsProjectionCount++
+        val anchor = state.lyricsAnchor
+        val canonical = anchor.timelineReady
+        val duration = duration(state)
+        lyrics = if (metadataReady(state)) LyricsState(
+            recordingKey = state.mediaRecordingKey, lines = lines(state), activeIndex = state.lyricsActiveIndex,
+            loading = state.lyricsStatus == ContentPorts.LyricsSnapshot.LOADING,
+            timelineReady = state.lyricsTimelineReady && state.lyricsTimed,
+            positionMs = if (canonical) anchor.basePositionMs else state.lyricsPositionMs,
+            playbackSpeed = if (canonical) anchor.speed else state.lyricsPlaybackSpeed,
+            capturedAtMs = if (canonical) anchor.capturedAtMs else state.lyricsPositionCapturedAtMs,
+            durationMs = duration, timed = state.lyricsTimed, scrollIndex = state.lyricsScrollIndex,
+            activeIndices = state.lyricsActiveIndices.toList(), gapStartMs = state.lyricsGapStartMs, gapEndMs = state.lyricsGapEndMs,
+            waitRows = waitRows(state),
+            emptyState = when (state.lyricsStatus) {
+                ContentPorts.LyricsSnapshot.NETWORK_ERROR -> LyricsEmptyState.NetworkError
+                ContentPorts.LyricsSnapshot.INSTRUMENTAL -> LyricsEmptyState.Instrumental
+                else -> LyricsEmptyState.NoLyrics
+            },
+            anchorRevision = anchor.revision,
+            atEnd = duration > 0L && state.lyricsPositionMs >= duration,
+        ) else LyricsState()
+        return lyrics
+    }
+
+    private fun sameSystem(a: ContentPorts.SystemSnapshot?, b: ContentPorts.SystemSnapshot) =
+        a != null && a.available == b.available && a.percent == b.percent
+
+    private fun sameLyricsFacts(a: ContentState, b: ContentState): Boolean =
+        metadataReady(a) == metadataReady(b) && a.mediaRecordingKey == b.mediaRecordingKey &&
+            a.lyricsLines === b.lyricsLines && a.lyricsStatus == b.lyricsStatus && a.lyricsTimed == b.lyricsTimed &&
+            a.lyricsTimelineReady == b.lyricsTimelineReady && a.lyricsAnchor === b.lyricsAnchor &&
+            a.lyricsActiveIndex == b.lyricsActiveIndex && a.lyricsScrollIndex == b.lyricsScrollIndex &&
+            a.lyricsActiveIndices.contentEquals(b.lyricsActiveIndices) && a.lyricsGapStartMs == b.lyricsGapStartMs &&
+            a.lyricsGapEndMs == b.lyricsGapEndMs && duration(a) == duration(b) &&
+            (duration(a) > 0L && a.lyricsPositionMs >= duration(a)) == (duration(b) > 0L && b.lyricsPositionMs >= duration(b)) &&
+            (a.lyricsAnchor.timelineReady || a.lyricsPositionMs == b.lyricsPositionMs &&
+                a.lyricsPlaybackSpeed == b.lyricsPlaybackSpeed && a.lyricsPositionCapturedAtMs == b.lyricsPositionCapturedAtMs)
+
+    private fun sameShellFacts(a: ContentState, b: ContentState): Boolean =
+        a.themeMode == b.themeMode && a.pageIndex == b.pageIndex &&
+            a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
+            a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
+            a.chargeState == b.chargeState && a.chargePowerKw.toBits() == b.chargePowerKw.toBits() && a.chargeRemainingMinutes == b.chargeRemainingMinutes &&
+            a.pendingVehicleCommand == b.pendingVehicleCommand && a.pendingSeatLevel == b.pendingSeatLevel && a.pendingLocked == b.pendingLocked &&
+            a.seatControlsKnown == b.seatControlsKnown && a.lockKnown == b.lockKnown && a.locked == b.locked &&
+            a.ventilationLevel == b.ventilationLevel && a.heatingLevel == b.heatingLevel &&
+            a.heatingAutoKnown == b.heatingAutoKnown && a.heatingAutoActive == b.heatingAutoActive &&
+            a.passengerHeatingLevel == b.passengerHeatingLevel && a.passengerHeatingAutoKnown == b.passengerHeatingAutoKnown &&
+            a.passengerHeatingAutoActive == b.passengerHeatingAutoActive && a.steeringHeatLevel == b.steeringHeatLevel &&
+            a.massageLevel == b.massageLevel && a.massageSwitchKnown == b.massageSwitchKnown && a.massageActive == b.massageActive &&
+            a.mediaDataAvailable == b.mediaDataAvailable && a.mediaPreview == b.mediaPreview && a.mediaSource == b.mediaSource &&
+            a.pendingSource == b.pendingSource && a.mediaPlaying == b.mediaPlaying && a.mediaSongIdentity == b.mediaSongIdentity &&
+            a.mediaRecordingKey == b.mediaRecordingKey && a.mediaTitle == b.mediaTitle && a.mediaArtist == b.mediaArtist &&
+            a.mediaPlaybackAvailable == b.mediaPlaybackAvailable && a.mediaNextAvailable == b.mediaNextAvailable &&
+            a.mediaPlaybackTarget == b.mediaPlaybackTarget && a.commandStatus == b.commandStatus && a.commandMessage == b.commandMessage
 
     private fun format(value: Float): String = if (value % 1f == 0f) value.toInt().toString() else String.format(locale, "%.1f", value)
 }

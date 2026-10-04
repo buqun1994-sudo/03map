@@ -47,7 +47,13 @@ data class LyricsState(
     val gapStartMs: Long = -1L, val gapEndMs: Long = -1L,
     val waitRows: List<LyricWaitRow> = emptyList(),
     val emptyState: LyricsEmptyState = LyricsEmptyState.NoLyrics,
+    // A genuine media anchor revision, never a presentation-frame counter.
+    val anchorRevision: Long = 0L,
+    // Semantic endpoint owned by Store; the stable anchor's base can predate it.
+    val atEnd: Boolean = false,
 )
+/** Clock text is a separate presentation domain, not a media progress projection. */
+data class ClockText(val time: String = "--:--", val weekday: String = "")
 data class ContentUiState(
     val dark: Boolean = false, val page: PanelPage = PanelPage.Shortcuts,
     val scenario: PreviewScenario = PreviewScenario.Ready,

@@ -60,13 +60,13 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
         )
     }
 
-    @Synchronized fun positionMs(): Long = timeline.current(durationMs).let {
-        if (it.timelineReady) it.positionMs else -1L
-    }
+    @Synchronized fun anchor(): ContentPorts.LyricsPlaybackAnchor = timeline.anchor()
 
-    @Synchronized fun speed(): Float = timeline.current(durationMs).speed.toFloat()
+    @Synchronized fun positionMs(): Long = timeline.anchor().sampleAt(elapsedRealtime())
 
-    @Synchronized fun ready(): Boolean = timeline.current(durationMs).timelineReady
+    @Synchronized fun speed(): Float = timeline.anchor().speed
+
+    @Synchronized fun ready(): Boolean = timeline.anchor().timelineReady
 
     @Synchronized fun durationMs(): Long = durationMs
 

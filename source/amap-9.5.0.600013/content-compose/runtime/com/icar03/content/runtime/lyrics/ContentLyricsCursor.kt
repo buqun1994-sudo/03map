@@ -38,8 +38,8 @@ public object ContentLyricsCursor {
 
     private const val INTRO_MIN_MS = 5_000L
     private const val GAP_MIN_MS = 6_000L
-    private const val TAIL_MS = 1_200L
-    private const val LEAD_MS = 800L
+    internal const val TAIL_MS = 1_200L
+    internal const val LEAD_MS = 800L
     private const val MAIN_OVERLAP_MIN_MS = 500L
     private const val BACKGROUND_OVERLAP_MIN_MS = 100L
     private const val PREVIOUS_ROW_LIMIT = 3
@@ -49,6 +49,18 @@ public object ContentLyricsCursor {
         lines: List<ContentPorts.LyricsLine>,
         positionMs: Long,
         durationMs: Long
+    ): Cursor = resolveWithTimings(lines, positionMs, durationMs) { timing(lines[it]) }
+
+    internal fun sameFacts(first: Cursor, second: Cursor): Boolean =
+        first.activeIndex == second.activeIndex && first.scrollIndex == second.scrollIndex &&
+            first.activeIndices.contentEquals(second.activeIndices) &&
+            first.gapStartMs == second.gapStartMs && first.gapEndMs == second.gapEndMs
+
+    internal fun resolveWithTimings(
+        lines: List<ContentPorts.LyricsLine>,
+        positionMs: Long,
+        durationMs: Long,
+        timingAt: (Int) -> RowTiming
     ): Cursor {
         if (lines.isEmpty()) return Cursor(-1, -1, intArrayOf())
         if (positionMs < 0L) return Cursor(-1, -1, intArrayOf())
@@ -71,7 +83,6 @@ public object ContentLyricsCursor {
         var groupFirst = latest
         while (groupFirst > 0 && lines[groupFirst - 1].timeMs == currentStart) groupFirst--
         val firstCandidate = maxOf(0, groupFirst - PREVIOUS_ROW_LIMIT)
-        val timings = (firstCandidate..latest).map { timing(lines[it]) }
         val heldPrevious = BooleanArray(groupFirst - firstCandidate)
         var currentEnd = -1L
         var relevantEnd = -1L
@@ -79,7 +90,7 @@ public object ContentLyricsCursor {
 
         // Equal-start voices are one current group, not three-row overlap candidates.
         for (index in firstCandidate..latest) {
-            val row = timings[index - firstCandidate]
+            val row = timingAt(index)
             if (index >= groupFirst) {
                 currentEnd = maxOf(currentEnd, row.end)
                 relevantEnd = maxOf(relevantEnd, row.end)
@@ -110,7 +121,7 @@ public object ContentLyricsCursor {
         val active = ArrayList<Int>()
         var activeIndex = -1
         for (index in firstCandidate..latest) {
-            val row = timings[index - firstCandidate]
+            val row = timingAt(index)
             if (positionMs < row.start || (row.end >= 0L && positionMs >= row.end)) continue
             if (index < groupFirst) {
                 if (heldPrevious[index - firstCandidate]) active.add(index)
@@ -145,7 +156,7 @@ public object ContentLyricsCursor {
         return low
     }
 
-    private data class RowTiming(
+    internal data class RowTiming(
         val start: Long,
         val end: Long,
         val mainEnd: Long,
@@ -158,7 +169,7 @@ public object ContentLyricsCursor {
                 declaredEnd > nextStart
     }
 
-    private fun timing(line: ContentPorts.LyricsLine): RowTiming {
+    internal fun timing(line: ContentPorts.LyricsLine): RowTiming {
         val mainEnd = line.words.maxOfOrNull { it.endTimeMs } ?: -1L
         val backgroundEnd = line.backgroundWords.maxOfOrNull { it.endTimeMs } ?: -1L
         val declaredEnd = line.endTimeMs.takeIf { it >= line.timeMs } ?: -1L

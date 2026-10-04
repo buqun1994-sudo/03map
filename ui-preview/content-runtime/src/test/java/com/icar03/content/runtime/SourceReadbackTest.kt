@@ -48,7 +48,7 @@ class SourceReadbackTest {
         val service = SourceBinder(6)
         try {
             adapter.start { snapshots += it }
-            context.connect(service); drainSource(adapter)
+            drainSource(adapter); context.connect(service); drainSource(adapter)
             assertEquals("蓝牙音乐", snapshots.last().source)
             assertTrue(snapshots.last().dataAvailable)
             assertFalse(snapshots.last().playbackAvailable)
@@ -73,7 +73,7 @@ class SourceReadbackTest {
         val snapshots = mutableListOf<ContentPorts.MediaSnapshot>()
         val service = SourceBinder(4)
         try {
-            adapter.start { snapshots += it }; context.connect(service); drainSource(adapter)
+            adapter.start { snapshots += it }; drainSource(adapter); context.connect(service); drainSource(adapter)
             assertEquals("USB音乐", snapshots.last().source)
             service.raw = 11; service.changed(); drainSource(adapter)
             assertEquals("本机音乐", snapshots.last().source)
@@ -92,7 +92,7 @@ class SourceReadbackTest {
         val store = ContentStore(context, ContentPorts.PreviewVehiclePort(), adapter, ContentPorts.AndroidSystemPort(context))
         val service = SourceBinder(6)
         try {
-            context.connect(service); drainSource(adapter)
+            drainSource(adapter); context.connect(service); drainSource(adapter)
             store.selectMediaSource("爱趣听"); drainCommands(store)
             assertEquals(4, context.lastCommand!!.getIntExtra("audio_source", -1))
             assertEquals("爱趣听", store.snapshot().pendingSource)
@@ -123,7 +123,7 @@ class SourceReadbackTest {
         val service = ImbSourceBinder(13)
         try {
             adapter.start { snapshots += it }
-            context.connect(service); drainSource(adapter)
+            drainSource(adapter); context.connect(service); drainSource(adapter)
             assertEquals("爱趣听", snapshots.last().source)
             assertTrue(snapshots.last().dataAvailable)
             assertTrue("current IMB readback must use transaction 38", service.transactions.contains(38))
@@ -144,7 +144,7 @@ class SourceReadbackTest {
         val service = ImbSourceBinder(13)
         try {
             adapter.start { snapshots += it }
-            context.connect(service); drainSource(adapter)
+            drainSource(adapter); context.connect(service); drainSource(adapter)
             service.raw = 10
             val data = Parcel.obtain(); val reply = Parcel.obtain()
             try {
@@ -167,10 +167,10 @@ class SourceReadbackTest {
         try {
             adapter.start { snapshots += it }
             val first = ImbSourceBinder(13)
-            context.connect(first); drainSource(adapter)
+            drainSource(adapter); context.connect(first); drainSource(adapter)
             context.connection!!.onServiceDisconnected(COMPONENT)
             val replacement = ImbSourceBinder(6)
-            context.connect(replacement); drainSource(adapter)
+            drainSource(adapter); context.connect(replacement); drainSource(adapter)
             assertEquals("蓝牙音乐", snapshots.last().source)
             assertFalse(replacement.transactions.contains(6))
             assertTrue(replacement.transactions.contains(38))
@@ -227,7 +227,7 @@ class SourceReadbackTest {
                 object : ContentPublicMediaBrowsers.Client { override fun connect() {}; override fun disconnect() {} }
             })
         try {
-            context.connect(service); drainSource(adapter)
+            drainSource(adapter); context.connect(service); drainSource(adapter)
             val browsers = ContentMediaAdapter::class.java.getDeclaredField("browsers").apply { isAccessible = true }
             (browsers.get(adapter) as ContentPublicMediaBrowsers).close()
             browsers.set(adapter, registry)
@@ -267,7 +267,7 @@ class SourceReadbackTest {
             })
         val aq = ComponentName("com.tencent.wecarflow", "com.tencent.wecarflow.service.MusicService")
         try {
-            adapter.start { }; context.connect(service); drainSource(adapter)
+            adapter.start { }; drainSource(adapter); context.connect(service); drainSource(adapter)
             val field = ContentMediaAdapter::class.java.getDeclaredField("browsers").apply { isAccessible = true }
             (field.get(adapter) as ContentPublicMediaBrowsers).close(); field.set(adapter, registry)
             val candidates = (1..8).map { ComponentName(aq.packageName, "com.tencent.wecarflow.a.Browser$it") } + aq
@@ -306,12 +306,17 @@ class SourceReadbackTest {
             entered.countDown(); check(release.await(5L, TimeUnit.SECONDS))
         } }
         try {
-            context.connect(SourceBinder(13)); drainSource(adapter)
+            drainSource(adapter); context.connect(SourceBinder(13)); drainSource(adapter)
             assertEquals("爱趣听", store.snapshot().mediaSource)
             context.connection!!.onServiceDisconnected(COMPONENT)
             store.selectMediaSource("蓝牙音乐"); drainCommands(store)
             assertEquals("蓝牙音乐", store.snapshot().pendingSource)
-            context.connect(replacement)
+            drainSource(adapter); context.connect(replacement)
+            val verified = CountDownLatch(1)
+            (ContentMediaAdapter::class.java.getDeclaredField("sourceHandler").apply { isAccessible = true }
+                .get(adapter) as Handler).post { verified.countDown() }
+            assertTrue(verified.await(2L, TimeUnit.SECONDS))
+            shadowOf(Looper.getMainLooper()).idle()
             assertTrue(entered.await(2L, TimeUnit.SECONDS))
             shadowOf(bt).callbacks.toList().forEach { it.onPlaybackStateChanged(bt.playbackState) }
             shadowOf(Looper.getMainLooper()).idle()
@@ -350,7 +355,7 @@ class SourceReadbackTest {
         val snapshots = mutableListOf<ContentPorts.MediaSnapshot>()
         val service = SourceBinder(6)
         try {
-            adapter.start { snapshots += it }; context.connect(service); drainSource(adapter)
+            adapter.start { snapshots += it }; drainSource(adapter); context.connect(service); drainSource(adapter)
             assertEquals("蓝牙音乐", snapshots.last().source)
             assertTrue(adapter.requestSource("爱趣听"))
             assertEquals(4, context.lastCommand!!.getIntExtra("audio_source", -1))
@@ -375,13 +380,13 @@ class SourceReadbackTest {
         val snapshots = mutableListOf<ContentPorts.MediaSnapshot>()
         val old = SourceBinder(6)
         try {
-            adapter.start { snapshots += it }; context.connect(old); drainSource(adapter)
+            adapter.start { snapshots += it }; drainSource(adapter); context.connect(old); drainSource(adapter)
             val oldConnection = context.connection!!
             val oldCallback = old.callback!!
             adapter.stop()
             adapter.start { snapshots += it }
             val current = SourceBinder(4)
-            context.connect(current); drainSource(adapter)
+            drainSource(adapter); context.connect(current); drainSource(adapter)
             val before = snapshots.last().generation
             old.raw = 10
             old.changed(oldCallback)
@@ -407,20 +412,13 @@ class SourceReadbackTest {
             val snapshots = mutableListOf<ContentPorts.MediaSnapshot>()
             adapter.start { snapshots += it }
             val wrong = SourceBinder(10, descriptor = "not.the.source.interface")
-            context.connect(wrong); drainSource(adapter)
+            drainSource(adapter); context.connect(wrong); drainSource(adapter)
             assertEquals(0, wrong.reads)
             assertFalse(snapshots.last().dataAvailable)
         } finally { adapter.stop() }
     }
 
-    private fun drainSource(adapter: ContentMediaAdapter) {
-        val worker = ContentMediaAdapter::class.java.getDeclaredField("sourceHandler").apply { isAccessible = true }
-            .get(adapter) as Handler
-        val drained = CountDownLatch(1)
-        worker.post { drained.countDown() }
-        assertTrue(drained.await(2, TimeUnit.SECONDS))
-        shadowOf(Looper.getMainLooper()).idle()
-    }
+    private fun drainSource(adapter: ContentMediaAdapter) = ContentMediaAdapterTestSupport.drainSource(adapter)
 
     private class SourceContext(base: Context) : ContextWrapper(base) {
         var binds = 0; var unbinds = 0

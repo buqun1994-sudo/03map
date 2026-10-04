@@ -40,6 +40,7 @@ public final class ContentState {
     public int controlIndex;
     public boolean mediaDataAvailable;
     public boolean mediaPreview;
+    public boolean mediaSourceWriteAvailable;
     public String mediaSource = "本机音乐";
     public String pendingSource = "";
     public boolean mediaPlaying;
@@ -64,6 +65,8 @@ public final class ContentState {
     public long lyricsGapEndMs = -1L;
     public boolean lyricsTimed = true;
     public boolean lyricsTimelineReady;
+    public ContentPorts.LyricsPlaybackAnchor lyricsAnchor = ContentPorts.LyricsPlaybackAnchor.unknown();
+    // Low-frequency semantic event sample; continuous render time comes only from lyricsAnchor.
     public long lyricsPositionMs = -1L;
     public float lyricsPlaybackSpeed;
     public long lyricsPositionCapturedAtMs;
@@ -130,6 +133,7 @@ public final class ContentState {
         copy.controlIndex = controlIndex;
         copy.mediaDataAvailable = mediaDataAvailable;
         copy.mediaPreview = mediaPreview;
+        copy.mediaSourceWriteAvailable = mediaSourceWriteAvailable;
         copy.mediaSource = mediaSource;
         copy.pendingSource = pendingSource;
         copy.mediaPlaying = mediaPlaying;
@@ -154,6 +158,7 @@ public final class ContentState {
         copy.lyricsGapEndMs = lyricsGapEndMs;
         copy.lyricsTimed = lyricsTimed;
         copy.lyricsTimelineReady = lyricsTimelineReady;
+        copy.lyricsAnchor = lyricsAnchor;
         copy.lyricsPositionMs = lyricsPositionMs;
         copy.lyricsPlaybackSpeed = lyricsPlaybackSpeed;
         copy.lyricsPositionCapturedAtMs = lyricsPositionCapturedAtMs;

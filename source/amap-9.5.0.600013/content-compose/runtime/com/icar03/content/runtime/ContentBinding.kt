@@ -1,24 +1,32 @@
 package com.icar03.content.runtime
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.database.ContentObserver
 import android.graphics.Bitmap
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import com.autonavi.amapauto.content.ContentPorts
-import com.autonavi.amapauto.content.ContentRegistry
 import com.autonavi.amapauto.content.ContentState
 import com.autonavi.amapauto.content.ContentStore
 import com.icar03.content.ui.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.math.roundToInt
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicLongArray
+import kotlin.math.roundToInt
 
 /** Shared never destroys the caller's store; Owned transfers lifetime to this binding. */
 enum class StoreOwnership { Shared, Owned }
 
-/** Main-thread API. Store callbacks may arrive on any thread, but projections never do. */
+/** Main-thread projection. External system reads/writes run on one serial worker. */
 class ContentBinding(
     private val store: ContentStore,
     private val ownership: StoreOwnership = StoreOwnership.Shared,
@@ -27,17 +35,36 @@ class ContentBinding(
 ) : AutoCloseable {
     private val handler = Handler(Looper.getMainLooper())
     private var generation = 0L
+    private val workerEpoch = AtomicLong()
+    private val latestSystemRequest = AtomicLongArray(2)
     private var systemWriteSequence = 0L
+    private var systemObservationSequence = 0L
+    private var appliedSystemObservation = 0L
+    private var systemReadInFlight = false
+    private var systemReadDirty = false
+    private var systemJob: Future<*>? = null
+    private val systemWorker = Executors.newSingleThreadExecutor()
+    private val systemTargets = arrayOfNulls<Float>(2)
+    private val systemKindSequence = LongArray(2)
     private var running = false
     private var closed = false
+    private var queuedProjectionEpoch: Long? = null
     private var listener: ContentStore.Listener? = null
     private var brightness = ContentPorts.SystemSnapshot(false, 0)
     private var volume = ContentPorts.SystemSnapshot(false, 0)
     private var sourcesOpen = false
     private var feedback: String? = null
-    private var commandSequence = store.snapshot().commandSequence
-    private val mutableState = MutableStateFlow(inactive(mapper.map(store.snapshot())))
+    private var feedbackRevision = 0L
+    private fun replaceFeedback(message: String?) { feedback = message; feedbackRevision++ }
+    private var latestSnapshot = store.snapshot()
+    private var commandSequence = latestSnapshot.commandSequence
+    private val mutableState = MutableStateFlow(inactive(shell(latestSnapshot)))
+    /** Shell only. Lyrics and wall clock are independently projected and collected at their leaves. */
     val state: StateFlow<ContentUiState> = mutableState.asStateFlow()
+    private val mutableLyrics = MutableStateFlow(mapper.mapLyrics(latestSnapshot))
+    val lyrics: StateFlow<LyricsState> = mutableLyrics.asStateFlow()
+    private val mutableClock = MutableStateFlow(mapper.clock(latestSnapshot))
+    val clock: StateFlow<ClockText> = mutableClock.asStateFlow()
     private val mutableArtwork = MutableStateFlow<Bitmap?>(null)
     val artwork: StateFlow<Bitmap?> = mutableArtwork.asStateFlow()
     private val mutableActive = MutableStateFlow(false)
@@ -51,6 +78,45 @@ class ContentBinding(
     private var ambientSequence = 0L
     private var ambientJob: Future<*>? = null
     private val artworkWorker = Executors.newSingleThreadExecutor()
+    private var environment: Context? = null
+    private var observersRegistered = false
+    private val brightnessObserver = object : ContentObserver(handler) {
+        override fun onChange(selfChange: Boolean) { requestSystemRead() }
+    }
+    private val environmentReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!running) return
+            if (intent.action == VOLUME_CHANGED) requestSystemRead()
+            else {
+                mapper.invalidateClock()
+                projectClock(System.currentTimeMillis())
+            }
+        }
+    }
+    private val clockTick = Runnable { if (running) projectClock(System.currentTimeMillis()) }
+    private val systemTick = object : Runnable {
+        override fun run() {
+            if (!running) return
+            requestSystemRead()
+            handler.postDelayed(this, 1_000L)
+        }
+    }
+
+    /** App-context observers are attached by the actual Compose host, not by media callbacks. */
+    internal fun observeEnvironment(context: Context) {
+        checkMain()
+        val app = context.applicationContext
+        if (environment === app) return
+        detachObservers()
+        environment = app
+        if (running) attachObservers()
+    }
+
+    internal fun clearEnvironment() {
+        checkMain()
+        detachObservers()
+        environment = null
+    }
 
     fun start() {
         checkMain()
@@ -58,21 +124,26 @@ class ContentBinding(
         running = true
         mutableActive.value = true
         val epoch = ++generation
+        workerEpoch.set(epoch)
         store.startLyrics()
-        readSystem()
         listener = ContentStore.Listener { snapshot ->
-            val copy = snapshot.copy()
             if (Looper.myLooper() == Looper.getMainLooper()) {
-                if (running && generation == epoch) project(copy)
-            } else handler.post { if (running && generation == epoch) project(store.snapshot()) }
+                if (running && generation == epoch) project(snapshot)
+            } else {
+                // UI publication may be coalesced; Store already reduced every media fact.
+                synchronized(handler) {
+                    if (workerEpoch.get() != epoch || queuedProjectionEpoch == epoch) return@Listener
+                    queuedProjectionEpoch = epoch
+                    handler.post {
+                        synchronized(handler) { if (queuedProjectionEpoch == epoch) queuedProjectionEpoch = null }
+                        if (running && generation == epoch) project(store.snapshot())
+                    }
+                }
+            }
         }.also(store::addListener)
-        fun tick() {
-            if (!running || generation != epoch) return
-            readSystem()
-            store.updateClock(System.currentTimeMillis())
-            handler.postDelayed({ tick() }, 1000L)
-        }
-        tick()
+        attachObservers()
+        projectClock(System.currentTimeMillis())
+        systemTick.run()
     }
 
     fun stop() {
@@ -82,14 +153,22 @@ class ContentBinding(
         mutableActive.value = false
         store.stopLyrics()
         generation++
+        workerEpoch.set(generation)
         ambientSequence++
         ambientJob?.cancel(true)
         ambientJob = null
+        systemJob?.cancel(true)
+        systemJob = null
+        systemReadInFlight = false
+        systemReadDirty = false
+        systemTargets.fill(null)
         listener?.let(store::removeListener)
         listener = null
+        detachObservers()
         handler.removeCallbacksAndMessages(null)
+        synchronized(handler) { queuedProjectionEpoch = null }
         sourcesOpen = false
-        feedback = null
+        replaceFeedback(null)
         mutableArtwork.value = null
         mutableAmbient.value = null
         retainedAmbient = null
@@ -101,7 +180,7 @@ class ContentBinding(
     private fun inactive(state: ContentUiState) = state.copy(
         sourcesOpen = false, message = null,
         controls = state.controls.mapValues { it.value.copy(available = false) },
-        brightness = state.brightness.copy(available = false), volume = state.volume.copy(available = false),
+        brightness = state.brightness.copy(available = false, target = null), volume = state.volume.copy(available = false, target = null),
         media = state.media.copy(playbackAvailable = false, nextAvailable = false, sourceAvailable = false),
     )
 
@@ -110,22 +189,23 @@ class ContentBinding(
         if (closed) return
         stop()
         closed = true
+        environment = null
         artworkWorker.shutdownNow()
+        systemWorker.shutdownNow()
         if (ownership == StoreOwnership.Owned) store.destroy()
     }
 
     fun dispatch(event: ContentEvent) {
         checkMain()
         if (!running || closed) return
-        if (event is ContentEvent.ControlTapped || event == ContentEvent.PlayPause || event == ContentEvent.NextTrack
-            || event is ContentEvent.SourceSelected || event is ContentEvent.BrightnessChanged || event is ContentEvent.VolumeChanged) feedback = null
-        // Always gate against a fresh store snapshot, not the last rendered frame.
+        if (event is ContentEvent.ControlTapped || event == ContentEvent.PlayPause || event == ContentEvent.NextTrack ||
+            event is ContentEvent.SourceSelected || event is ContentEvent.BrightnessChanged || event is ContentEvent.VolumeChanged) replaceFeedback(null)
+        // A fresh capability snapshot is a cached fact, never a synchronous service probe.
         project(store.snapshot())
         when (event) {
             is ContentEvent.ControlTapped -> {
                 if (state.value.controls[event.id]?.available != true) return
-                if (event.id == ControlId.Lock) store.toggleLock()
-                else store.cycleSeatLevel(event.id.id)
+                if (event.id == ControlId.Lock) store.toggleLock() else store.cycleSeatLevel(event.id.id)
             }
             is ContentEvent.BrightnessChanged -> writeSystem(0, event.value)
             is ContentEvent.VolumeChanged -> writeSystem(1, event.value)
@@ -138,61 +218,142 @@ class ContentBinding(
                 project(store.snapshot())
             }
             is ContentEvent.PageSelected -> store.setPageIndex(if (event.page == PanelPage.Lyrics) 1 else 0)
-            ContentEvent.OpenSources -> {
-                if (state.value.media.sourceAvailable) sourcesOpen = true
-                project(store.snapshot())
-            }
-            ContentEvent.DismissSheet -> { sourcesOpen = false; feedback = null; project(store.snapshot()) }
-            ContentEvent.SettingsTapped -> { feedback = "设置入口尚未接入"; project(store.snapshot()) }
-            // Preview and theme events have no production routing.
+            ContentEvent.OpenSources -> { if (state.value.media.sourceAvailable) sourcesOpen = true; publishShell() }
+            ContentEvent.DismissSheet -> { sourcesOpen = false; replaceFeedback(null); publishShell() }
+            ContentEvent.SettingsTapped -> { replaceFeedback("设置入口尚未接入"); publishShell() }
             else -> Unit
         }
-    }
-
-    private fun writeSystem(kind: Int, value: Float) {
-        if (!value.isFinite()) return
-        val requestSequence = ++systemWriteSequence
-        val before = read(kind)
-        if (!before.available) { readSystem(); project(store.snapshot()); return }
-        val target = (value.coerceIn(0f, 1f) * 100f).roundToInt()
-        if (kotlin.math.abs(before.percent - target) <= 1) { readSystem(); project(store.snapshot()); return }
-        val accepted = try { store.systemPort().write(kind, target) } catch (_: RuntimeException) { false }
-        val actual = read(kind)
-        feedback = if (accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) null else "系统状态未确认"
-        readSystem()
-        project(store.snapshot())
-        val epoch = generation
-        handler.postDelayed({
-            if (running && generation == epoch && systemWriteSequence == requestSequence) {
-                readSystem()
-                val confirmed = if (kind == 0) brightness else volume
-                if (accepted && confirmed.available && kotlin.math.abs(confirmed.percent - target) <= 1) feedback = null
-                project(store.snapshot())
-            }
-        }, 250L)
     }
 
     private fun read(kind: Int): ContentPorts.SystemSnapshot = try {
         store.systemPort().read(kind) ?: ContentPorts.SystemSnapshot(false, 0)
     } catch (_: RuntimeException) { ContentPorts.SystemSnapshot(false, 0) }
 
-    private fun readSystem() { brightness = read(0); volume = read(1) }
+    private fun requestSystemRead() {
+        if (!running || closed) return
+        if (systemReadInFlight) { systemReadDirty = true; return }
+        systemReadInFlight = true
+        val epoch = generation
+        val sequence = ++systemObservationSequence
+        systemJob = systemWorker.submit {
+            if (workerEpoch.get() != epoch) return@submit
+            val light = read(0)
+            val sound = read(1)
+            handler.post {
+                if (!running || generation != epoch) return@post
+                systemReadInFlight = false
+                applySystem(sequence, light, sound)
+                if (systemReadDirty) { systemReadDirty = false; requestSystemRead() }
+            }
+        }
+    }
+
+    private fun applySystem(sequence: Long, light: ContentPorts.SystemSnapshot, sound: ContentPorts.SystemSnapshot) {
+        if (sequence <= appliedSystemObservation) return
+        appliedSystemObservation = sequence
+        brightness = light
+        volume = sound
+        publishShell()
+    }
+
+    private fun writeSystem(kind: Int, value: Float) {
+        if (!value.isFinite()) return
+        val target = (value.coerceIn(0f, 1f) * 100f).roundToInt()
+        val requestSequence = ++systemWriteSequence
+        val feedbackOwner = feedbackRevision
+        systemKindSequence[kind] = requestSequence
+        latestSystemRequest.set(kind, requestSequence)
+        systemTargets[kind] = target / 100f
+        publishShell()
+        val epoch = generation
+        val observation = ++systemObservationSequence
+        systemJob = systemWorker.submit {
+            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
+            val before = read(kind)
+            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
+            val accepted = before.available && (kotlin.math.abs(before.percent - target) <= 1 ||
+                try { store.systemPort().write(kind, target) } catch (_: RuntimeException) { false })
+            val light = read(0)
+            val sound = read(1)
+            handler.post {
+                if (!running || generation != epoch) return@post
+                if (systemKindSequence[kind] == requestSequence) systemTargets[kind] = null
+                val actual = if (kind == 0) light else sound
+                if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner) {
+                    feedback = if (accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) null else "系统状态未确认"
+                }
+                applySystem(observation, light, sound)
+                publishShell()
+                handler.postDelayed({
+                    if (running && generation == epoch && systemWriteSequence == requestSequence) {
+                        confirmSystem(kind, target, accepted, requestSequence, feedbackOwner, epoch)
+                    }
+                }, 250L)
+            }
+        }
+    }
+
+    private fun confirmSystem(kind: Int, target: Int, accepted: Boolean, requestSequence: Long, feedbackOwner: Long, epoch: Long) {
+        val observation = ++systemObservationSequence
+        systemJob = systemWorker.submit {
+            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
+            val light = read(0)
+            val sound = read(1)
+            handler.post {
+                if (!running || generation != epoch) return@post
+                val actual = if (kind == 0) light else sound
+                if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner && accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) feedback = null
+                applySystem(observation, light, sound)
+                publishShell()
+            }
+        }
+    }
+
+    private fun shell(snapshot: ContentState): ContentUiState = mapper.mapShell(snapshot, brightness, volume, RuntimeCapabilities(
+        snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, snapshot.mediaSourceWriteAvailable, snapshot.writableSeatControls))
+
+    private fun publishShell() {
+        val projected = shell(latestSnapshot)
+        val message = feedback ?: projected.message
+        val light = if (systemTargets[0] == null) projected.brightness else projected.brightness.copy(target = systemTargets[0])
+        val sound = if (systemTargets[1] == null) projected.volume else projected.volume.copy(target = systemTargets[1])
+        val result = if (projected.sourcesOpen == sourcesOpen && projected.message == message && light === projected.brightness && sound === projected.volume) projected
+            else projected.copy(sourcesOpen = sourcesOpen, message = message, brightness = light, volume = sound)
+        if (mutableState.value != result) mutableState.value = result
+    }
+
+    private fun projectClock(nowMillis: Long) {
+        mutableClock.value = mapper.clock(latestSnapshot, nowMillis)
+        handler.removeCallbacks(clockTick)
+        if (running) {
+            val unit = if (latestSnapshot.showSeconds) 1_000L else 60_000L
+            val remainder = (nowMillis % unit).let { if (it < 0L) it + unit else it }
+            handler.postDelayed(clockTick, unit - remainder)
+        }
+    }
 
     private fun project(snapshot: ContentState) {
-        if (snapshot.commandSequence != commandSequence) { commandSequence = snapshot.commandSequence; feedback = null }
-        val projected = mapper.map(snapshot, brightness, volume, RuntimeCapabilities(
-            snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, store.isMediaSourceAvailable,
-            snapshot.writableSeatControls))
-        mutableState.value = projected.copy(sourcesOpen = sourcesOpen, message = feedback ?: projected.message)
-        mutableArtwork.value = snapshot.mediaArtwork?.takeIf {
-            projected.media.isSong && snapshot.pendingSource.isEmpty() && !it.isRecycled
+        val previous = latestSnapshot
+        latestSnapshot = snapshot
+        if (snapshot.commandSequence != commandSequence) { commandSequence = snapshot.commandSequence; replaceFeedback(null) }
+        publishShell()
+        mutableLyrics.value = mapper.mapLyrics(snapshot)
+        if (snapshot.nowMillis != previous.nowMillis) {
+            projectClock(snapshot.nowMillis.takeIf { it > 0L } ?: System.currentTimeMillis())
+        } else if (snapshot.showSeconds != previous.showSeconds || snapshot.showWeekday != previous.showWeekday) {
+            projectClock(System.currentTimeMillis())
         }
-        if (!projected.media.isSong) {
+        projectArtwork(snapshot)
+    }
+
+    private fun projectArtwork(snapshot: ContentState) {
+        val isSong = snapshot.mediaDataAvailable && !snapshot.mediaPreview && snapshot.mediaSongIdentity == ContentPorts.MediaSongIdentity.SONG
+        mutableArtwork.value = snapshot.mediaArtwork?.takeIf { isSong && snapshot.pendingSource.isEmpty() && !it.isRecycled }
+        if (!isSong) {
             cancelAmbientRequest()
-            mutableAmbient.value = null // The persistent renderer performs the same soft departure.
+            mutableAmbient.value = null
             return
         }
-        // Missing/reloading artwork and pause do not withdraw the current background.
         mutableAmbient.value = retainedAmbient
         val source = mutableArtwork.value
         val bitmapGeneration = source?.generationId ?: 0
@@ -208,16 +369,11 @@ class ContentBinding(
                 ambientJob = artworkWorker.submit {
                     val field = ambientFactory(source)
                     handler.post {
-                        if (running && generation == epoch && ambientSequence == sequence
-                            && ambientRecording == recording && ambientSource === source
-                            && !source.isRecycled && source.generationId == bitmapGeneration) {
+                        if (running && generation == epoch && ambientSequence == sequence && ambientRecording == recording && ambientSource === source &&
+                            !source.isRecycled && source.generationId == bitmapGeneration) {
                             ambientJob = null
-                            if (field != null) {
-                                retainedAmbient = field
-                                mutableAmbient.value = field
-                            }
+                            if (field != null) { retainedAmbient = field; mutableAmbient.value = field }
                         } else {
-                            // These textures were never published, so no Canvas can reference them.
                             field?.base?.takeUnless { it.isRecycled }?.recycle()
                             field?.glow?.takeUnless { it.isRecycled }?.recycle()
                         }
@@ -236,5 +392,30 @@ class ContentBinding(
         ambientBitmapGeneration = 0
     }
 
+    @Suppress("DEPRECATION")
+    private fun attachObservers() {
+        val context = environment ?: return
+        if (observersRegistered) return
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_LOCALE_CHANGED)
+            addAction(VOLUME_CHANGED)
+        }
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(environmentReceiver, filter, Context.RECEIVER_EXPORTED)
+        else context.registerReceiver(environmentReceiver, filter)
+        context.contentResolver.registerContentObserver(Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS), false, brightnessObserver)
+        observersRegistered = true
+    }
+
+    private fun detachObservers() {
+        val context = environment ?: return
+        if (!observersRegistered) return
+        context.unregisterReceiver(environmentReceiver)
+        context.contentResolver.unregisterContentObserver(brightnessObserver)
+        observersRegistered = false
+    }
+
     private fun checkMain() { check(Looper.myLooper() == Looper.getMainLooper()) { "ContentBinding must be used on the main thread" } }
+    private companion object { const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION" }
 }

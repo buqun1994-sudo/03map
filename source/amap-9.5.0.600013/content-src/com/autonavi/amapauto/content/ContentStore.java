@@ -56,12 +56,15 @@ public final class ContentStore {
     private ContentPorts.MediaSnapshot latestMedia = ContentPorts.MediaSnapshot.unavailable();
     private int lyricsConsumers;
     private android.graphics.Bitmap fallbackArtwork;
+    private com.icar03.content.runtime.lyrics.CanonicalSemanticIndex lyricsSemanticIndex;
+    private List<ContentPorts.LyricsLine> indexedLyricsLines;
+    private long indexedLyricsDurationMs = Long.MIN_VALUE;
     private final Runnable advanceLyrics = new Runnable() {
         @Override public void run() {
             boolean changed;
             synchronized (ContentStore.this) {
                 if (destroyed || lyricsConsumers == 0) return;
-                changed = alignLyricsLocked();
+                changed = alignLyricsLocked(false);
             }
             if (changed) publish();
         }
@@ -118,6 +121,7 @@ public final class ContentStore {
 
     private ContentState snapshotLocked() {
         ContentState snapshot = state.copy();
+        snapshot.mediaSourceWriteAvailable = !destroyed && mediaPort.isSourceAvailable();
         snapshot.vehicleWriteAvailable = !destroyed && vehiclePort.isAvailable();
         snapshot.lockWriteAvailable = !destroyed && vehiclePort.isLockAvailable();
         java.util.Set<String> writable = new java.util.HashSet<>();
@@ -291,8 +295,11 @@ public final class ContentStore {
         if (snapshot == null) {
             return;
         }
+        boolean changed;
         synchronized (this) {
             if (destroyed || snapshot.dataAvailable && snapshot.generation < state.mediaGeneration) return;
+            ContentState previous = state.copy();
+            state.mediaSourceWriteAvailable = !destroyed && mediaPort.isSourceAvailable();
             boolean newRecording = !snapshot.recordingKey().equals(state.mediaRecordingKey);
             latestMedia = snapshot;
             state.mediaSongIdentity = snapshot.songIdentity;
@@ -349,9 +356,10 @@ public final class ContentStore {
                     commandHandler.removeCallbacks(mediaFeedbackTimeout);
                 }
             }
-            alignLyricsLocked();
+            changed = mediaFactsChangedLocked(previous);
+            changed = alignLyricsLocked(changed) || changed;
         }
-        publish();
+        if (changed) publish();
         synchronized (this) {
             if (!destroyed && lyricsConsumers > 0 && lyricsPort != null && latestMedia == snapshot) {
                 lyricsPort.update(snapshot);
@@ -360,17 +368,21 @@ public final class ContentStore {
     }
 
     /** Binding leases suspend requests/timeline work while the content host is stopped. */
-    public synchronized void startLyrics() {
-        if (destroyed || ++lyricsConsumers != 1) return;
-        if (lyricsPort != null) {
-            lyricsPort.start(new ContentPorts.LyricsSnapshotListener() {
-                @Override public void onLyricsSnapshot(ContentPorts.LyricsSnapshot snapshot) {
-                    acceptLyricsSnapshot(snapshot);
-                }
-            });
-            lyricsPort.update(latestMedia);
+    public void startLyrics() {
+        boolean changed;
+        synchronized (this) {
+            if (destroyed || ++lyricsConsumers != 1) return;
+            if (lyricsPort != null) {
+                lyricsPort.start(new ContentPorts.LyricsSnapshotListener() {
+                    @Override public void onLyricsSnapshot(ContentPorts.LyricsSnapshot snapshot) {
+                        acceptLyricsSnapshot(snapshot);
+                    }
+                });
+                lyricsPort.update(latestMedia);
+            }
+            changed = alignLyricsLocked(true);
         }
-        alignLyricsLocked();
+        if (changed) publish();
     }
 
     public synchronized void stopLyrics() {
@@ -380,69 +392,124 @@ public final class ContentStore {
     }
 
     public void acceptLyricsSnapshot(ContentPorts.LyricsSnapshot snapshot) {
+        boolean changed;
         synchronized (this) {
             if (destroyed || lyricsConsumers == 0 || snapshot == null
                     || !state.mediaDataAvailable || state.mediaPreview
                     || !latestMedia.hasSongMetadata()
                     || snapshot.mediaGeneration != state.mediaGeneration
                     || !snapshot.recordingKey.equals(state.mediaRecordingKey)) return;
+            boolean bodyChanged = !state.lyricsLines.equals(snapshot.lines);
+            changed = state.lyricsStatus != snapshot.status || state.lyricsTimed != snapshot.timed
+                    || bodyChanged;
             state.lyricsStatus = snapshot.status;
-            state.lyricsLines = snapshot.lines;
+            if (bodyChanged) state.lyricsLines = snapshot.lines;
             state.lyricsTimed = snapshot.timed;
+            android.graphics.Bitmap previousArtwork = state.mediaArtwork;
             if (snapshot.artwork != null && !snapshot.artwork.isRecycled()) {
                 fallbackArtwork = snapshot.artwork;
                 if (latestMedia.artwork == null || latestMedia.artwork.isRecycled())
                     state.mediaArtwork = fallbackArtwork;
             }
-            alignLyricsLocked();
+            changed = state.mediaArtwork != previousArtwork || changed;
+            changed = alignLyricsLocked(changed) || changed;
         }
-        publish();
+        if (changed) publish();
     }
 
-    private boolean alignLyricsLocked() {
+    /** Only facts changed by a media event participate; sampled time is never a publish reason. */
+    private boolean mediaFactsChangedLocked(ContentState previous) {
+        return previous.mediaDataAvailable != state.mediaDataAvailable
+                || previous.mediaPreview != state.mediaPreview
+                || previous.mediaSourceWriteAvailable != state.mediaSourceWriteAvailable
+                || !java.util.Objects.equals(previous.mediaSource, state.mediaSource)
+                || previous.mediaPlaying != state.mediaPlaying
+                || previous.mediaSongIdentity != state.mediaSongIdentity
+                || previous.mediaGeneration != state.mediaGeneration
+                || !java.util.Objects.equals(previous.mediaTitle, state.mediaTitle)
+                || !java.util.Objects.equals(previous.mediaArtist, state.mediaArtist)
+                || previous.mediaPlaybackAvailable != state.mediaPlaybackAvailable
+                || previous.mediaNextAvailable != state.mediaNextAvailable
+                || previous.mediaArtwork != state.mediaArtwork
+                || !java.util.Objects.equals(previous.mediaRecordingKey, state.mediaRecordingKey)
+                || !java.util.Objects.equals(previous.mediaId, state.mediaId)
+                || !java.util.Objects.equals(previous.mediaAlbum, state.mediaAlbum)
+                || previous.mediaDurationMs != state.mediaDurationMs
+                || previous.lyricsLines != state.lyricsLines
+                || previous.lyricsStatus != state.lyricsStatus || previous.lyricsTimed != state.lyricsTimed
+                || previous.mediaPlaybackTarget != state.mediaPlaybackTarget
+                || !java.util.Objects.equals(previous.pendingSource, state.pendingSource)
+                || previous.commandStatus != state.commandStatus || previous.commandSequence != state.commandSequence
+                || !java.util.Objects.equals(previous.commandMessage, state.commandMessage);
+    }
+
+    /** Timer wakes sample the existing anchor; they never publish a new clock fact. */
+    private boolean alignLyricsLocked(boolean semanticEvent) {
         commandHandler.removeCallbacks(advanceLyrics);
-        int previous = state.lyricsActiveIndex;
-        boolean previouslyReady = state.lyricsTimelineReady;
-        long previousPosition = state.lyricsPositionMs;
-        float previousSpeed = state.lyricsPlaybackSpeed;
-        state.lyricsTimelineReady = state.lyricsTimed && lyricsTimeline.ready();
-        long position = state.lyricsTimelineReady ? lyricsTimeline.positionMs() : -1L;
-        float speed = state.lyricsTimelineReady ? lyricsTimeline.speed() : 0f;
-        state.lyricsPositionMs = position;
-        state.lyricsPlaybackSpeed = speed;
-        state.lyricsPositionCapturedAtMs = state.lyricsTimelineReady ? android.os.SystemClock.elapsedRealtime() : 0L;
+        final long now = android.os.SystemClock.elapsedRealtime();
+        final ContentPorts.LyricsPlaybackAnchor anchor = lyricsTimeline.anchor();
+        final boolean ready = state.lyricsTimed && anchor.timelineReady;
+        final long position = ready ? anchor.sampleAt(now) : -1L;
+        final long duration = lyricsTimeline.durationMs();
+        if (lyricsSemanticIndex == null || indexedLyricsLines != state.lyricsLines
+                || indexedLyricsDurationMs != duration) {
+            lyricsSemanticIndex = new com.icar03.content.runtime.lyrics.CanonicalSemanticIndex(
+                    state.lyricsLines, duration);
+            indexedLyricsLines = state.lyricsLines;
+            indexedLyricsDurationMs = duration;
+        }
         com.icar03.content.runtime.lyrics.ContentLyricsCursor.Cursor cursor =
-                com.icar03.content.runtime.lyrics.ContentLyricsCursor.resolve(
-                        state.lyricsLines, position, lyricsTimeline.durationMs());
-        int index = cursor.getActiveIndex();
+                lyricsSemanticIndex.resolve(position);
+        final boolean atEnd = ready && duration > 0L && position >= duration;
+        final boolean previouslyAtEnd = state.lyricsTimelineReady && state.lyricsAnchor.durationMs > 0L
+                && state.lyricsPositionMs >= state.lyricsAnchor.durationMs;
+        final boolean changed = atEnd != previouslyAtEnd
+                || state.lyricsAnchor != anchor || state.lyricsTimelineReady != ready
+                || state.lyricsActiveIndex != cursor.getActiveIndex()
+                || state.lyricsScrollIndex != cursor.getScrollIndex()
+                || !java.util.Arrays.equals(state.lyricsActiveIndices, cursor.getActiveIndices())
+                || state.lyricsGapStartMs != cursor.getGapStartMs()
+                || state.lyricsGapEndMs != cursor.getGapEndMs();
+        state.lyricsAnchor = anchor;
+        state.lyricsTimelineReady = ready;
+        state.lyricsActiveIndex = cursor.getActiveIndex();
         state.lyricsScrollIndex = cursor.getScrollIndex();
         state.lyricsActiveIndices = cursor.getActiveIndices();
         state.lyricsGapStartMs = cursor.getGapStartMs();
         state.lyricsGapEndMs = cursor.getGapEndMs();
-        // Unknown position has no timed cursor. Previewing text is a presentation choice,
-        // never evidence that playback (or the scroll destination) is at the first row.
-        state.lyricsActiveIndex = index;
-        if (!destroyed && lyricsConsumers > 0 && state.mediaPlaying && state.lyricsTimelineReady
-                && speed > 0f && !state.lyricsLines.isEmpty()) {
-            long duration = lyricsTimeline.durationMs();
-            long remaining = duration > 0L ? duration - position : Long.MAX_VALUE;
-            int low = 0;
-            int high = state.lyricsLines.size();
-            while (low < high) {
-                int middle = low + (high - low) / 2;
-                if (state.lyricsLines.get(middle).timeMs <= position) low = middle + 1;
-                else high = middle;
-            }
-            if (low < state.lyricsLines.size()) {
-                remaining = Math.min(remaining, state.lyricsLines.get(low).timeMs - position);
-            }
-            if (remaining > 0L) {
-                long delay = Math.max(16L, Math.min(100L, (long) Math.ceil(remaining / (double) speed)));
-                commandHandler.postDelayed(advanceLyrics, delay);
+        state.lyricsPlaybackSpeed = ready ? anchor.speed : 0f;
+        if (changed || semanticEvent) {
+            // Legacy event position is paired with its own capture, never anchor.capturedAtMs.
+            state.lyricsPositionMs = position;
+            state.lyricsPositionCapturedAtMs = ready ? now : 0L;
+        }
+        if (!destroyed && lyricsConsumers > 0 && ready && anchor.speed != 0f
+                && !state.lyricsLines.isEmpty()) {
+            final long next = anchor.speed > 0f ? lyricsSemanticIndex.nextChangePosition(position)
+                    : lyricsSemanticIndex.previousChangePosition(position);
+            if (next >= 0L) {
+                commandHandler.postDelayed(advanceLyrics, lyricsBoundaryDelay(anchor, next, now));
             }
         }
-        return previous != index || previouslyReady != state.lyricsTimelineReady
-                || previousPosition != position || Float.compare(previousSpeed, speed) != 0;
+        return changed;
+    }
+
+    /** Convert an exact integer semantic boundary using the stable canonical pair. */
+    private static long lyricsBoundaryDelay(ContentPorts.LyricsPlaybackAnchor anchor,
+            long targetPosition, long now) {
+        final double offset = anchor.speed > 0f
+                ? Math.ceil((targetPosition - (double) anchor.basePositionMs) / anchor.speed)
+                : Math.floor((anchor.basePositionMs - ((double) targetPosition + 1.0)) / -anchor.speed) + 1.0;
+        final double deadline = anchor.capturedAtMs + offset;
+        if (deadline >= Long.MAX_VALUE) return Long.MAX_VALUE - now;
+        // A late delivery samples actual elapsed time and skips obsolete intermediate facts.
+        // Fractional speed rounding may land just before an integer boundary: recheck once.
+        long elapsedDeadline = Math.max(now + 1L, (long) deadline);
+        if ((anchor.speed > 0f && anchor.sampleAt(elapsedDeadline) < targetPosition)
+                || (anchor.speed < 0f && anchor.sampleAt(elapsedDeadline) > targetPosition)) {
+            if (elapsedDeadline < Long.MAX_VALUE) elapsedDeadline++;
+        }
+        return Math.max(1L, elapsedDeadline - now);
     }
 
     /** The same admission rule serves rendering, cyclic taps and explicit targets. */

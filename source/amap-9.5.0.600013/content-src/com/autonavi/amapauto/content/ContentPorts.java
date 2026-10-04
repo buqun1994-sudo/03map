@@ -410,6 +410,45 @@ public final class ContentPorts {
         }
     }
 
+    /**
+     * Canonical MediaSession/AVRCP fact, not a sampled render position. The timeline
+     * retains this exact instance until a real event changes the trajectory.
+     */
+    public static final class LyricsPlaybackAnchor {
+        private static final LyricsPlaybackAnchor UNKNOWN =
+                new LyricsPlaybackAnchor(0L, 0L, 0f, 0L, false, 0L);
+        public final long basePositionMs;
+        public final long capturedAtMs;
+        public final float speed;
+        public final long durationMs;
+        public final boolean timelineReady;
+        public final long revision;
+
+        public LyricsPlaybackAnchor(long basePositionMs, long capturedAtMs, float speed,
+                long durationMs, boolean timelineReady, long revision) {
+            this.basePositionMs = Math.max(0L, basePositionMs);
+            this.capturedAtMs = Math.max(0L, capturedAtMs);
+            this.speed = Float.isNaN(speed) || Float.isInfinite(speed) ? 0f : speed;
+            this.durationMs = Math.max(0L, durationMs);
+            this.timelineReady = timelineReady;
+            this.revision = revision;
+        }
+
+        /** Pure local sampling. Unknown is distinct from a verified seek to zero. */
+        public long sampleAt(long elapsedRealtimeMs) {
+            if (!timelineReady) return -1L;
+            if (speed == 0f) return durationMs > 0L ? Math.min(basePositionMs, durationMs) : basePositionMs;
+            long elapsed = elapsedRealtimeMs > capturedAtMs ? elapsedRealtimeMs - capturedAtMs : 0L;
+            double position = Math.max(0.0, basePositionMs + elapsed * (double) speed);
+            long sampled = (long) position;
+            return durationMs > 0L ? Math.min(sampled, durationMs) : sampled;
+        }
+
+        public static LyricsPlaybackAnchor unknown() {
+            return UNKNOWN;
+        }
+    }
+
     public interface LyricsSnapshotListener {
         void onLyricsSnapshot(LyricsSnapshot snapshot);
     }

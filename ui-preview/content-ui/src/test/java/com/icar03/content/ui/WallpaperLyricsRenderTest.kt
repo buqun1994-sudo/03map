@@ -68,7 +68,7 @@ class WallpaperLyricsRenderTest {
     private val longText = "合成的长句需要自然换行并完整保留末尾词语，不通过缩小字号挤进视窗。".repeat(4)
 
     @Test
-    fun currentRowIsLargeBeforeItsFirstWordAndCharacterRiseUsesFixedEaseOutWindow() {
+    fun currentRowIsLargeBeforeItsFirstWordAndRisesWithoutAnOnsetJump() {
         val text = "每个字符轻轻浮起"
         val lines = listOf(LyricLine(0L, "上一句已缓缓退远"),
             LyricLine(1_000L, text, "Each character rises gently", words = listOf(LyricWord(2_000L, 6_000L, text))),
@@ -87,7 +87,7 @@ class WallpaperLyricsRenderTest {
         assertArrayEquals("becoming a singing row does not suddenly change font size", pixels(before), pixels(first))
         project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 2_000L))
         val riseStart = captureHost("character-wave-rise-start")
-        assertTrue("a character starts from the lower baseline", changedPixels(first, riseStart) > 20)
+        assertArrayEquals("onset starts on the same baseline, without a downward flash", pixels(first), pixels(riseStart))
         var peak: Bitmap? = null
         listOf(2_125L, 2_250L, 2_375L, 2_500L).forEachIndexed { index, time ->
             project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = time))
@@ -99,7 +99,7 @@ class WallpaperLyricsRenderTest {
         project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 8_000L))
         val complete = captureHost("character-wave-complete")
         project(initial.copy(activeIndex = 1, activeIndices = listOf(1), positionMs = 8_500L))
-        assertArrayEquals("completed characters return to a stable baseline after the fixed window", pixels(complete), pixels(captureHost()))
+        assertArrayEquals("completed characters retain the slightly raised baseline after the fixed window", pixels(complete), pixels(captureHost()))
     }
 
     @Test
@@ -209,10 +209,14 @@ class WallpaperLyricsRenderTest {
                     words = listOf(LyricWord(line.timeMs, line.timeMs + 1_000L, line.text)))
             }
             project(initial.copy(lines = upgraded, activeIndex = 21, scrollIndex = 21, activeIndices = listOf(21)))
-            // autoAdvance=false: drive the first replacement composition, before its animation travels.
+            // The first request frame holds the matching old document while the worker compiles.
             compose.mainClock.advanceTimeByFrame()
+            assertFalse("the old document is explicitly held, never indexed by the new cursor", value(LyricLayoutReady))
+            assertEquals(beforeHeights, value(LyricRowHeights))
+            compose.mainClock.advanceTimeByFrame()
+            assertTrue("atomic document publication is observed before measuring replacement geometry", value(LyricLayoutReady))
             val afterHeights = value(LyricRowHeights)
-            assertEquals("first replacement frame must expose the upgraded geometry", upgraded.size, afterHeights.size)
+            assertEquals("first published replacement frame exposes the upgraded geometry", upgraded.size, afterHeights.size)
             val afterCenter = afterHeights.take(21).sum() + afterHeights[21] / 2f + value(LyricScrollOffset)
             assertEquals("same visible lyric keeps its screen position at replacement", beforeCenter, afterCenter, .2f)
             captureHost("upgrade-first-frame")
@@ -542,6 +546,7 @@ class WallpaperLyricsRenderTest {
             }
             CompositionLocalProvider(
                 LocalDensity provides Density(current.density, fontScale = 1f),
+                LocalLyricGeometryDispatcher provides kotlinx.coroutines.Dispatchers.Unconfined,
                 LocalLyricPreparationDispatcher provides kotlinx.coroutines.Dispatchers.Unconfined,
                 LocalIconVisible provides current.visible,
             ) {
@@ -565,7 +570,8 @@ class WallpaperLyricsRenderTest {
 
     private fun body() = compose.onNode(SemanticsMatcher.keyIsDefined(LyricRowHeights), useUnmergedTree = true)
 
-    private fun <T> value(key: SemanticsPropertyKey<T>): T = body().fetchSemanticsNode().config[key]
+    private fun <T> value(key: SemanticsPropertyKey<T>): T = compose.onNode(
+        SemanticsMatcher.keyIsDefined(key), useUnmergedTree = true).fetchSemanticsNode().config[key]
 
     @OptIn(ExperimentalComposeUiApi::class)
     private fun captureHost(name: String? = null, requireInk: Boolean = true): Bitmap {

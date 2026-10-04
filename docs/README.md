@@ -14,7 +14,11 @@
 
 **当前歌词／封面统一Provider（2026-10-03）：** 八来源注册、共享目录、基础正文先显／逐字立即升级、两路封面下载与平台偏好已完成；Apple鉴权与资源主链已接入，无登录UI时保持不可用。隔离本次改动的正式源码快照720项测试、四Lint和签名构建通过，车机发现失败，未安装／实测耗时；并行颜色／车控UI不包含在此候选。源码owner和设置接线见[统一解析](<architecture/歌词封面统一解析.md>)，当前候选、验证范围和后续最小验收见[本轮记录](<testing/歌词封面统一Provider验证记录-20261003.md>)。本轮实现、测试和文档按用户要求随本次Git提交保存，不推送。
 
-**上一轮歌词／背景低开销重构（2026-10-03，后续逐字节奏修正）：** 当前正式源码由[WallpaperLyrics](<../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/WallpaperLyrics.kt>)＋[LyricInkRenderer](<../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/LyricInkRenderer.kt>)继续分离稳定geometry、Default worker纹理与热frame；current48sp／非current40sp、合法跟随句成为current即强调、Unicode安全视觉单元按源word startFraction触发固定约1000ms ease-out上浮，从基线下方约2.5dp回到基线，不放大、不做逐字辉光，滚动／离屏自然结束可见动效。背景worker最长边192、10Hz预合成，screen稳态1／500ms转场最多2bitmap；12MiB仅sharp／soft LRU条目预算，cold vector仍有绘制成本且暂缺blur／精确rise。content-ui完整测试与Lint、三项仓库自检及正式源码签名构建均通过；[本轮签名APK](<../apk-work/9.5.0.600013/source-build.FN31ZV/signed.apk>) SHA-256 为 `07da4d1d48c43acbda5cb9d7cabf40b1928f7599c4b2fb871c72505541114f0b`，v1／v2／v3、原生库／DEX／资源闭包通过。设备发现exit1，383ms扫描253个地址未找到S56_HQX／SDK28，因此未安装／smoke／车机性能或现场视觉验收。
+**当前周期卡顿职责重构（2026-10-04，本机与签名完成）：** 同包线程／Binder审计后完成callback事实缓存、来源合流、所有外层锁外FIFO发布、稳定唯一时间锚点与精确语义截止时间；Mapper／Binding在投影前分成shell、lyrics、clock、artwork，Compose在叶节点订阅，时钟／系统服务不贯穿媒体回调。保留获取与一秒向上2.5dp保持终点。当前整合正式树896项测试（893本次执行＋3缓存复用）、五Lint 0 errors、同身份签名构建及最终交付APK闭包核验通过；包含已整合车控输入。职责见[方案](<plans/周期卡顿的媒体事实与呈现调度重构.md>)，唯一候选、输入指纹与最小现场观察见[本轮记录](<testing/周期卡顿职责重构验证记录-20261004.md>)。按用户要求停止连接／安装，留待上车自测，不把本机合同通过当周期卡顿实车验收。
+
+**上一轮歌词微动态与帧调度重构（2026-10-04）：** 用户验收获取速度后明确拒绝歌词下闪／卡顿，本轮按先定位→职责方案→正式源码重构执行；采用第二种语义：字符从正常基线以固定1000ms ease-out向上2.5dp并保持终点。整曲shaping移到独立Default文档，candidate只有匹配时成对准入文档／source；physical cells合批、每ink独立edge只随实际几何更新，可见真实fill／rise／gap区间按需请求帧，词间speed休眠到下一边界。旧微动态参数被本轮覆盖；签名候选、完整回归和当前车机连接边界只以[当前记录](<testing/歌词微动态与帧调度重构验证记录-20261004.md>)为准，owner见[方案](<plans/歌词真值与渲染批次重构方案.md>)。已验收的歌词／封面获取主链保持，旧包gfxinfo不能代验新候选。
+
+**上一轮歌词／背景低开销重构（2026-10-03，后续逐字节奏修正）：** 当时正式源码由[WallpaperLyrics](<../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/WallpaperLyrics.kt>)＋[LyricInkRenderer](<../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/LyricInkRenderer.kt>)继续分离稳定geometry、Default worker纹理与热frame；current48sp／非current40sp、合法跟随句成为current即强调、Unicode安全视觉单元按源word startFraction触发固定约1000ms ease-out上浮，从基线下方约2.5dp回到基线，不放大、不做逐字辉光，滚动／离屏自然结束可见动效。背景worker最长边192、10Hz预合成，screen稳态1／500ms转场最多2bitmap；12MiB仅sharp／soft LRU条目预算，cold vector仍有绘制成本且暂缺blur／精确rise。content-ui完整测试与Lint、三项仓库自检及正式源码签名构建均通过；[本轮签名APK](<../apk-work/9.5.0.600013/source-build.FN31ZV/signed.apk>) SHA-256 为 `07da4d1d48c43acbda5cb9d7cabf40b1928f7599c4b2fb871c72505541114f0b`，v1／v2／v3、原生库／DEX／资源闭包通过。设备发现exit1，383ms扫描253个地址未找到S56_HQX／SDK28，因此未安装／smoke／车机性能或现场视觉验收。
 
 **上一轮媒体／歌词连续性与自动缓存：** 首曲冷缓存渐进替换／正文几何、当前车机实际`MediaCenterPlayAction`／`IMBMediaCenterInterface`事务38来源回读、共享`.player.MediaPlaybackService`公开Browser、03歌词式会话仲裁、当时40/44sp稳定字号、背景多周期微动、共享1GiB始终自动缓存与同歌前后台READY续接已施工；真实前奏／间奏三点以独立静态等待行融入歌词流，必要加载居中。历史四模块584项测试、四Lint、同身份签名构建和宿主闭包通过；第一候选爱趣听实机仍回蓝牙，最终候选已保留数据覆盖安装且设备端哈希一致，地图／来源／前后台／首曲seek交互仍待当次车机状态下确认。证据及边界见[历史记录](<testing/媒体来源歌词连续性与自动缓存验证记录-20261002.md>)。媒体／歌词任务先只读对照03歌词当前源码与测试，参考仓库与旧包实测不得替代本轮候选验收。
 
@@ -64,7 +68,11 @@
 | [车机媒体能力研究](<research/车机媒体能力研究.md>) | 车机能力的原始证据、适配输入和验证状态 | 不替代产品需求，也不把研究探针直接写成正式 APK UI 已完成 |
 | [摄像头实时画面研究](<research/车机摄像头实时画面可行性研究.md>) | DJI环视、Camera2、去畸变实验与DVR视频链路的设备证据和可行性边界 | 不把独立探针的实机预览或GPU校正写成正式地图功能、专用流媒体后视镜或原厂接管已完成 |
 | [逐字符歌词研究](<research/逐字符歌词低开销渲染与Apple风格适配-20261003.md>) | 本轮静态根因、锁定参考、Android成本边界、参数与开放字体身份 | 不编造FPS或继承上游／旧车机性能 |
-| [歌词／背景重构验证记录](<testing/歌词渲染与背景性能重构验证记录-20261003.md>) | 本轮实际检查、帧目验、最终APK与设备／性能待验边界 | 不把测试入口或旧已安装候选当本轮验收 |
+| [歌词／背景重构验证记录](<testing/歌词渲染与背景性能重构验证记录-20261003.md>) | 旧候选实际检查、帧目验及未安装边界 | 旧固定上浮参数不覆盖当前需求 |
+| [连续微动态方案](<plans/歌词真值与渲染批次重构方案.md>) | 当前根因及媒体真值／文档／纹理／帧职责 | 不是取消逐字微动态 |
+| [微动态与帧调度验证](<testing/歌词微动态与帧调度重构验证记录-20261004.md>) | 当前native轨迹／合批／文档配对／按需帧、签名候选与设备连接 | 不把旧gfxinfo或本机批次数代作车机性能 |
+| [周期卡顿职责方案](<plans/周期卡顿的媒体事实与呈现调度重构.md>) | 同包诊断边界、媒体事实／锁外发布／稳定锚点／分域调度职责 | 不作为新包现场性能证明 |
+| [周期卡顿重构验证](<testing/周期卡顿职责重构验证记录-20261004.md>) | 本轮稳定输入、完整回归／Lint、实际签名APK闭包及上车观察 | 不继承旧候选验收或重复累加专项数量 |
 
 ## 4. 参考、历史与协作资产
 
@@ -94,4 +102,4 @@ node scripts/check-skills.mjs
 node scripts/check-code-map.mjs
 ```
 
-这些检查验证文档结构、Skill和代码地图边界；代码或工程行为变更仍需按[验证矩阵](<testing/验证矩阵.md>)完成构建与运行验证。
+这些检查验证文档结构、Skill和代码地图边界；代码或工程行为变更仍需按[验证矩阵](<testing/验证矩阵.md>)选择相关构建与运行验证。[构建与验证入口](<operations/构建与验证入口.md>)负责分层CLI、源码／APK证据分离、阶段计时、固定输入缓存和共享构建锁，不累加历史专项为每轮全量门槛。

@@ -97,7 +97,7 @@ class MediaArtworkTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             assertNull(seen.last().artwork)
             val task = ContentMediaAdapter::class.java.getDeclaredField("artworkTask").apply { isAccessible = true }
             (task.get(adapter) as Future<*>).get(3, TimeUnit.SECONDS)
@@ -121,7 +121,7 @@ class MediaArtworkTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             awaitArtwork(adapter)
             val decoded = seen.last().artwork!!
             assertEquals(Color.BLUE, decoded.getPixel(0, 0))
@@ -145,7 +145,7 @@ class MediaArtworkTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             awaitArtwork(adapter)
             assertEquals(Color.BLUE, seen.last().artwork!!.getPixel(0, 0))
             @Suppress("UNCHECKED_CAST")
@@ -162,7 +162,7 @@ class MediaArtworkTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             awaitArtwork(adapter)
             assertNull(seen.last().artwork)
             writeImage(file)
@@ -185,7 +185,7 @@ class MediaArtworkTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             artworkTask(adapter)!!.get(3, TimeUnit.SECONDS)
             changeSource(adapter, "网易云音乐")
             shadowOf(Looper.getMainLooper()).idle()
@@ -207,7 +207,7 @@ class MediaArtworkTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             artworkTask(adapter)!!.get(3, TimeUnit.SECONDS)
             writeImage(file, color = Color.RED)
             val replacement = session(file)
@@ -225,13 +225,14 @@ class MediaArtworkTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             artworkTask(adapter)!!.get(3, TimeUnit.SECONDS)
             shadowOf(controller).setMetadata(MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "replacement")
                 .putString(MediaMetadata.METADATA_KEY_TITLE, "replacement")
                 .putString(MediaMetadata.METADATA_KEY_ARTIST, "artist")
                 .putLong(MediaMetadata.METADATA_KEY_DURATION, 180_000L).build())
+            shadowOf(controller).callbacks.toList().forEach { it.onMetadataChanged(controller.metadata) }
             shadowOf(Looper.getMainLooper()).idle()
             assertEquals("replacement", seen.last().title)
             assertNull(seen.last().artwork)
@@ -246,6 +247,7 @@ class MediaArtworkTest {
             .get(adapter) as Future<*>?
 
     private fun awaitArtwork(adapter: ContentMediaAdapter) {
+        ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
         artworkTask(adapter)!!.get(3, TimeUnit.SECONDS)
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -269,14 +271,16 @@ class MediaArtworkTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             val task = ContentMediaAdapter::class.java.getDeclaredField("artworkTask").apply { isAccessible = true }
             (task.get(adapter) as Future<*>).get(3, TimeUnit.SECONDS)
             adapter.stop()
             shadowOf(controller).setMetadata(MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "different-recording")
-                .putString(MediaMetadata.METADATA_KEY_TITLE, "新歌曲").build())
-            adapter.start { seen += it }
+                .putString(MediaMetadata.METADATA_KEY_TITLE, "新歌曲")
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, "真实歌手")
+                .putLong(MediaMetadata.METADATA_KEY_DURATION, 180_000L).build())
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             shadowOf(Looper.getMainLooper()).idle()
             assertEquals("新歌曲", seen.last().title); assertNull(seen.last().artwork)
         } finally { adapter.stop(); file.delete() }

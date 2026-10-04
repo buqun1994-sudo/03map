@@ -85,6 +85,8 @@ fun ContentPanel(
     state: ContentUiState, onEvent: (ContentEvent) -> Unit, modifier: Modifier = Modifier,
     artwork: @Composable (() -> Unit)? = null,
     ambientBackground: @Composable (() -> Unit)? = null,
+    clockText: @Composable () -> ClockText = { ClockText(state.time, state.weekday) },
+    lyricsState: @Composable () -> LyricsState = { state.lyrics },
 ) {
     val view = LocalView.current
     val latestEvent by rememberUpdatedState(onEvent)
@@ -102,12 +104,12 @@ fun ContentPanel(
         val edge = if (compact) 8.dp else 20.dp
         ambientBackground?.invoke()
         Column(Modifier.fillMaxSize()) {
-            PrototypeTopBar(state)
+            PrototypeTopBar(state, clockText)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (state.previewMode) {
                     if (state.page == PanelPage.Shortcuts) {
                         Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
-                    } else LyricsPage(state, dispatch)
+                    } else LyricsPage(state, dispatch, lyricsState)
                 } else {
                     val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
                     val currentPage by rememberUpdatedState(state.page)
@@ -130,7 +132,7 @@ fun ContentPanel(
                                     Modifier.padding(vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                        } else LyricsPage(state, dispatch)
+                        } else LyricsPage(state, dispatch, lyricsState)
                         }
                     }
                 }
@@ -155,7 +157,8 @@ fun ContentPanel(
 }
 
 @Composable
-private fun PrototypeTopBar(state: ContentUiState) {
+private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> ClockText) {
+    val clock = clockText()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val measurer = rememberTextMeasurer()
@@ -169,9 +172,9 @@ private fun PrototypeTopBar(state: ContentUiState) {
         val temperature = state.temperature.replace("°C", "°").replace("°", "°C")
         val range = state.range + state.rangeUnit
         fun timeWithWeekday(time: String, weekday: String) = time + if (weekday.isEmpty()) "" else " " + weekday
-        val fullTime = timeWithWeekday(state.time, state.weekday)
-        val minuteTime = timeWithWeekday(state.time.take(5), state.weekday)
-        val shortWeekdayTime = timeWithWeekday(state.time.take(5), state.weekday.replace("星期", "周"))
+        val fullTime = timeWithWeekday(clock.time, clock.weekday)
+        val minuteTime = timeWithWeekday(clock.time.take(5), clock.weekday)
+        val shortWeekdayTime = timeWithWeekday(clock.time.take(5), clock.weekday.replace("星期", "周"))
         val temperatureGap = gap + 4.dp
         val fullStatus = state.chargeStatus
         val statuses = if (fullStatus == null) listOf("") else listOf(
@@ -631,18 +634,19 @@ private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) 
 }
 
 @Composable
-private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
-    if (state.lyrics.lines.isNotEmpty()) {
-        androidx.compose.runtime.key(state.lyrics.recordingKey) {
-            WallpaperLyrics(state.lyrics, state.dark)
+private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyricsState: @Composable () -> LyricsState) {
+    val lyrics = lyricsState()
+    if (lyrics.lines.isNotEmpty()) {
+        androidx.compose.runtime.key(lyrics.recordingKey) {
+            WallpaperLyrics(lyrics, state.dark)
         }
         return
     }
     // A song change can briefly have no lines. Keep the ambient canvas uninterrupted;
     // show the existing empty/source affordance only after lookup actually finishes.
-    val showLoading = state.media.isSong && state.lyrics.loading
+    val showLoading = state.media.isSong && lyrics.loading
     if (!state.previewMode && showLoading) return
-    val emptyState = if (state.media.isSong) state.lyrics.emptyState else LyricsEmptyState.NoLyrics
+    val emptyState = if (state.media.isSong) lyrics.emptyState else LyricsEmptyState.NoLyrics
     val emptyText = when {
         showLoading -> "正在匹配歌词…"
         emptyState == LyricsEmptyState.NetworkError -> "网络错误"

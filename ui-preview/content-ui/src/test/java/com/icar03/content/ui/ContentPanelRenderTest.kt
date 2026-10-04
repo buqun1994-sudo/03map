@@ -120,6 +120,10 @@ open class ContentPanelLightPrototypeRenderTest {
         }
         compose.waitForIdle()
         compose.onNodeWithTag("wallpaper-lyrics").assertIsDisplayed()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(SemanticsMatcher.expectValue(LyricLayoutReady, true), useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNode(SemanticsMatcher.expectValue(ActiveLyric, 1)).assertIsDisplayed()
         compose.onNodeWithText("暂无歌词").assertDoesNotExist()
         compose.onNodeWithText("此处仅预览歌词空态。").assertDoesNotExist()

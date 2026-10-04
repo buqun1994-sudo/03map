@@ -31,28 +31,36 @@ class LyricInkArchitectureTest {
         assertArrayEquals(intArrayOf(0, 1, 2), lyricGraphemeBoundaries("优雅"))
     }
 
-    @Test fun everyVisualUnitUsesFixedEaseOutRiseWindow() {
+    @Test fun everyVisualUnitRisesFromItsBaselineAndKeepsItsFixedEndpoint() {
         val word = LyricWord(1_000L, 3_000L, "优雅")
-        assertEquals(-1f, lyricCharacterRiseProgress(word, 0f, .5f, -1L), 0f)
+        assertEquals(0f, lyricCharacterRiseProgress(word, 0f, .5f, -1L), 0f)
+        assertEquals(0f, lyricCharacterRiseProgress(word, 0f, .5f, 999L), 0f)
         assertEquals(0f, lyricCharacterRiseProgress(word, 0f, .5f, 1_000L), 0f)
         assertEquals(.578125f, lyricCharacterRiseProgress(word, 0f, .5f, 1_250L), .0001f)
         assertEquals(.875f, lyricCharacterRiseProgress(word, 0f, .5f, 1_500L), .0001f)
         assertEquals(.984375f, lyricCharacterRiseProgress(word, 0f, .5f, 1_750L), .0001f)
-        assertEquals(-1f, lyricCharacterRiseProgress(word, 0f, .5f, 2_000L), 0f)
-        assertEquals(-1f, lyricCharacterRiseProgress(word, .5f, 1f, 1_500L), 0f)
+        assertEquals(1f, lyricCharacterRiseProgress(word, 0f, .5f, 2_000L), 0f)
+        assertEquals(1f, lyricCharacterRiseProgress(word, 0f, .5f, 20_000L), 0f)
+        assertEquals(0f, lyricCharacterRiseProgress(word, .5f, 1f, 1_999L), 0f)
         assertEquals(0f, lyricCharacterRiseProgress(word, .5f, 1f, 2_000L), 0f)
         assertEquals(.875f, lyricCharacterRiseProgress(word, .5f, 1f, 2_500L), .0001f)
-        assertEquals(-1f, lyricCharacterRiseProgress(word, .5f, 1f, 3_000L), 0f)
-        assertEquals(-1f, lyricCharacterRiseProgress(word.copy(endTimeMs = 1_001L), 0f, 1f, 2_000L), 0f)
+        assertEquals(1f, lyricCharacterRiseProgress(word, .5f, 1f, 3_000L), 0f)
         val shortWord = LyricWord(1_000L, 1_001L, "短词")
         assertEquals(.875f, lyricCharacterRiseProgress(shortWord, 0f, 1f, 1_500L), .0001f)
-        assertEquals(-1f, lyricCharacterRiseProgress(shortWord, .5f, 1f, 1_000L), 0f)
-        assertEquals(-1f, lyricCharacterRiseProgress(word, .5f, .5f, 2_000L), 0f)
+        assertEquals(1f, lyricCharacterRiseProgress(shortWord, 0f, 1f, 2_000L), 0f)
+        assertEquals(0f, lyricCharacterRiseProgress(word, .5f, .5f, 2_000L), 0f)
+        assertEquals(0f, lyricCharacterRiseProgress(word.copy(endTimeMs = 999L), 0f, 1f, 2_000L), 0f)
         assertTrue("ease-out starts faster and settles more slowly",
             .578125f > .875f - .578125f && .875f - .578125f > .984375f - .875f)
         assertEquals(1_000L, word.startTimeMs); assertEquals(3_000L, word.endTimeMs)
-        // Seeking backwards reproduces a pure sample, not accumulated per-character state.
-        assertEquals(.875f, lyricCharacterRiseProgress(word, .5f, 1f, 2_500L), .0001f)
+        assertEquals("seek reproduces the same sample", .875f,
+            lyricCharacterRiseProgress(word, .5f, 1f, 2_500L), .0001f)
+        for (time in 999L..2_001L) {
+            val offset = -metrics.lift * lyricCharacterRiseProgress(word, 0f, .5f, time)
+            val next = -metrics.lift * lyricCharacterRiseProgress(word, 0f, .5f, time + 1L)
+            assertTrue("motion can only move upwards", next <= offset)
+            assertTrue("no onset or end discontinuity", kotlin.math.abs(next - offset) < .01f)
+        }
     }
 
     @Test fun currentPresentationStartsBeforeTheFirstRealSingingWord() {
@@ -100,12 +108,13 @@ class LyricInkArchitectureTest {
             val text = atoms.joinToString("")
             val words = atoms.mapIndexed { index, atom -> LyricWord(1_000L + index * 500L, 1_500L + index * 500L, atom) }
             val lines = listOf(LyricLine(1_000L, text, words = words))
-            val rows = lines.map { prepareLyricRow(it, 200, metrics, realFace) }
+            val shapeMetrics = metrics.copy(lift = 0f) // Independently verify the complete atlas without motion.
+            val rows = lines.map { prepareLyricRow(it, 200, shapeMetrics, realFace) }
             val tops = floatArrayOf(0f)
-            val cache = LyricInkCache(rows, metrics, 1080f)
+            val cache = LyricInkCache(rows, shapeMetrics, 1080f)
             val slices = cache.prepare(lyricSliceWindow(rows, tops, 300f, 1080f), setOf(0), 0)
             val actual = Bitmap.createBitmap(200, 1080, Bitmap.Config.ARGB_8888)
-            LyricInkPainter(metrics).draw(Canvas(actual), slices, rows, tops, cache, 300f, setOf(0), 0,
+            LyricInkPainter(shapeMetrics).draw(Canvas(actual), slices, rows, tops, cache, 300f, setOf(0), 0,
                 LyricsState(lines = lines, activeIndex = 0, scrollIndex = 0, timelineReady = true), 10_000L, true)
             val expected = Bitmap.createBitmap(200, 1080, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(expected)
@@ -114,7 +123,7 @@ class LyricInkArchitectureTest {
                 val ink = slice.sharp!!
                 val y = 300f + slice.track.top
                 val saved = canvas.save(); canvas.translate(0f, y)
-                cache.edgeAt(y, 1f, (slice.visual.top + slice.visual.bottom) / 2f)
+                ink.edgeAt(y, 1f, (slice.visual.top + slice.visual.bottom) / 2f)
                 paint.shader = ink.shader; canvas.drawRect(ink.bounds, paint)
                 canvas.restoreToCount(saved)
             }
@@ -170,7 +179,7 @@ class LyricInkArchitectureTest {
             val expected = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             Canvas(expected).apply {
                 translate(0f, y); scale(scale, scale, expectedPivot, pivotY)
-                cache.edgeAt(y, scale, pivotY)
+                sharp.edgeAt(y, scale, pivotY)
                 drawRect(sharp.bounds, Paint(Paint.FILTER_BITMAP_FLAG).apply { shader = sharp.shader; alpha = paintAlpha })
             }
             assertArrayEquals("inactive prepared RTL keeps the original baseline atlas at its edge: ${line.side}",
@@ -280,6 +289,209 @@ class LyricInkArchitectureTest {
         val straddling = Bitmap.createBitmap(8, 4, Bitmap.Config.ARGB_8888).apply { setPixel(3, 1, Color.WHITE) }
         assertArrayEquals("fractional caret cuts through an occupied pixel are conservative", BooleanArray(2),
             LyricInk(straddling, bounds, edge, fractional).clearMotionBoundary)
+    }
+
+    private fun pixels(bitmap: Bitmap) = IntArray(bitmap.width * bitmap.height).also {
+        bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+    }
+
+    @Test fun nativeSingleCharacterRisesOnlyUpwardsAndNeverFallsBackAtItsEndpoint() {
+        val word = LyricWord(1_000L, 1_001L, "优")
+        val lines = listOf(LyricLine(1_000L, word.text, words = listOf(word)))
+        val rows = lines.map { prepareLyricRow(it, 200, metrics, face) }
+        val tops = floatArrayOf(0f)
+        val cache = LyricInkCache(rows, metrics, 400f)
+        val slices = cache.prepare(listOf(LyricSliceAddress(0, 0, 0)), setOf(0), 0)
+        val slice = slices.single(); val ink = slice.sharp!!
+        assertTrue("fixture has an isolated movable glyph", ink.cells.single().onsetMs.isFinite())
+        val lyrics = LyricsState(lines = lines, timelineReady = true, scrollIndex = 0, activeIndex = 0)
+        val painter = LyricInkPainter(metrics)
+        fun draw(time: Long): Bitmap = Bitmap.createBitmap(200, 400, Bitmap.Config.ARGB_8888).also {
+            painter.draw(Canvas(it), slices, rows, tops, cache, 100f, setOf(0), 0, lyrics, time, true)
+        }
+        assertArrayEquals("opening instant cannot jump down", pixels(draw(999L)), pixels(draw(1_000L)))
+        val y = 100f + slice.track.top
+        listOf(1_250L to -1.4453125f, 1_500L to -2.1875f, 1_750L to -2.4609375f,
+            2_000L to -2.5f, 8_000L to -2.5f).forEach { (time, shift) ->
+            val actual = draw(time)
+            val expected = Bitmap.createBitmap(200, 400, Bitmap.Config.ARGB_8888)
+            ink.edgeAt(y, 1f, (slice.visual.top + slice.visual.bottom) / 2f)
+            Canvas(expected).apply {
+                translate(0f, y + shift)
+                drawRect(ink.bounds, Paint(Paint.FILTER_BITMAP_FLAG).apply { shader = ink.shader })
+            }
+            assertArrayEquals("actual native offset must match fixed upward sample at $time", pixels(expected), pixels(actual))
+        }
+        val settled = draw(2_000L)
+        assertArrayEquals("completed rise keeps the elevated baseline", pixels(settled), pixels(draw(8_000L)))
+        val revisited = draw(1_500L)
+        draw(8_000L)
+        assertArrayEquals("seek samples the same geometry", pixels(revisited), pixels(draw(1_500L)))
+    }
+
+    @Test fun stableCharactersBatchAndStationarySlicesDoNotUpdateShaderMatrices() {
+        val word = LyricWord(1_000L, 3_000L, "优雅字符保持连续上浮")
+        val lines = listOf(LyricLine(1_000L, word.text, words = listOf(word)), LyricLine(4_000L, "静止背景"))
+        val rows = lines.map { prepareLyricRow(it, 544, metrics, face) }
+        val tops = lyricFlow(rows.map { it.height }, emptyList(), 64f).lineTops
+        val cache = LyricInkCache(rows, metrics, 1080f)
+        val slices = cache.prepare(lyricSliceWindow(rows, tops, 300f, 1080f), setOf(0), 0)
+        val painter = LyricInkPainter(metrics)
+        val lyrics = LyricsState(lines = lines, timelineReady = true, scrollIndex = 0, activeIndex = 0)
+        val canvas = Canvas(Bitmap.createBitmap(544, 1080, Bitmap.Config.ARGB_8888))
+        val inks = slices.flatMap { listOfNotNull(it.sharp, it.soft) }.distinct()
+        fun draw(time: Long, offset: Float = 300f) = painter.draw(canvas, slices, rows, tops, cache,
+            offset, setOf(0), 0, lyrics, time, true)
+        draw(999L)
+        val beforeBatches = painter.drawBatches
+        val beforeCells = painter.sampledCells
+        assertTrue("stationary glyphs merge physical neighbours", beforeBatches < beforeCells)
+        assertEquals("every stationary slice uses one batch regardless of character count", slices.size, beforeBatches)
+        assertEquals("there is no per-character state-stack movement before onset", 0, painter.motionTranslations)
+        val matrices = inks.sumOf { it.edgeMatrixUpdates }
+        repeat(100) { draw(999L) }
+        assertEquals("one slice cannot invalidate another stationary slice's Shader", matrices, inks.sumOf { it.edgeMatrixUpdates })
+        draw(1_500L)
+        val activeBatches = painter.drawBatches
+        assertTrue("active character differences remain visible", painter.motionTranslations > 0)
+        draw(8_000L)
+        assertTrue("completed characters merge again", painter.drawBatches < painter.sampledCells)
+        val expectedSettledBatches = slices.sumOf { slice ->
+            if (slice.row != 0) 1 else slice.sharp!!.cells.let { cells ->
+                if (cells.isEmpty()) 0 else 1 + cells.zipWithNext().count { (left, right) ->
+                    left.bounds.right != right.bounds.left || left.onsetMs.isFinite() != right.onsetMs.isFinite()
+                }
+            }
+        }
+        assertEquals("settled safe/connected ink blocks each use one batch", expectedSettledBatches, painter.drawBatches)
+        val settled = inks.sumOf { it.edgeMatrixUpdates }
+        println("batch-cost: cells=$beforeCells before=$beforeBatches active=$activeBatches settled=${painter.drawBatches} stationary-edge-updates=$matrices")
+        draw(8_000L, 301f)
+        assertTrue("actual travel still updates edge geometry", inks.sumOf { it.edgeMatrixUpdates } > settled)
+    }
+
+    @Test fun coldCompletedPartialWordDoesNotBrightenUnmappedBody() {
+        val text = "合成词语保持整行"
+        val fixed = metrics.copy(lift = 0f)
+        val realFace = lyricTypeface(org.robolectric.RuntimeEnvironment.getApplication().assets)
+        for (mappedText in listOf("合成", text)) for (dark in listOf(false, true)) {
+            val line = LyricLine(1_000, text, words = listOf(LyricWord(1_000, 3_000, mappedText)))
+            val rows = listOf(prepareLyricRow(line, 544, fixed, realFace))
+            val cache = LyricInkCache(rows, fixed, 400f)
+            val actual = Bitmap.createBitmap(544, 400, Bitmap.Config.ARGB_8888)
+            val lyrics = LyricsState(lines = listOf(line), timelineReady = true, activeIndex = 0, scrollIndex = 0)
+            LyricInkPainter(fixed).draw(Canvas(actual), emptyList(), rows, floatArrayOf(0f), cache,
+                120f, setOf(0), 0, lyrics, 4_000, dark, fallback = listOf(LyricSliceAddress(0, 0, 0)))
+            assertEquals("held raster never prepares a bitmap during cold draw", 0, cache.rasterizations)
+            val expected = Bitmap.createBitmap(544, 400, Bitmap.Config.ARGB_8888)
+            val reference = prepareLyricRow(line, 544, fixed, realFace).tracks.single()
+            reference.layout.paint.color = if (dark) Color.WHITE else Color.rgb(39, 48, 59)
+            reference.layout.paint.alpha = if (mappedText == text) 255 else (LyricVisuals.UNSUNG_ALPHA * 255).roundToInt()
+            Canvas(expected).apply {
+                translate(0f, 120f + reference.top)
+                reference.layout.draw(this)
+            }
+            fun pixels(image: Bitmap) = IntArray(image.width * image.height).also {
+                image.getPixels(it, 0, image.width, 0, 0, image.width, image.height)
+            }
+            assertArrayEquals("cold uniform ink only completes when the actual whole visual body is mapped, mapped=$mappedText dark=$dark",
+                pixels(expected), pixels(actual))
+        }
+    }
+
+    @Test fun joiningScriptCannotTurnNeighbouringLatinInkWhiteAroundAColouredEmoji() {
+        val fixed = metrics.copy(lift = 0f)
+        val realFace = lyricTypeface(org.robolectric.RuntimeEnvironment.getApplication().assets)
+        val emoji = "👩🏽‍🚀"
+        val text = "AB${emoji}CD سلام"
+        val lines = listOf(LyricLine(1_000, text, words = listOf(
+            LyricWord(1_000, 2_000, "AB${emoji}CD"), LyricWord(2_000, 3_000, "سلام"))))
+        val rows = listOf(prepareLyricRow(lines.single(), 544, fixed, realFace))
+        val cache = LyricInkCache(rows, fixed, 400f)
+        val slices = cache.prepare(listOf(LyricSliceAddress(0, 0, 0)), setOf(0), 0)
+        val slice = slices.single()
+        val ink = slice.sharp!!
+        val offset = 120f
+        val y = offset + slice.track.top
+        val start = text.indexOf(emoji)
+        val emojiBounds = android.graphics.Path().let { selection ->
+            slice.track.layout.getSelectionPath(start, start + emoji.length, selection)
+            RectF().also { selection.computeBounds(it, true) }
+        }
+        assertTrue("the actual emoji raster has colour", ink.colouredGlyphs.any { it })
+        val lyrics = LyricsState(lines = lines, timelineReady = true, activeIndex = 0, scrollIndex = 0)
+        for (dark in listOf(false, true)) {
+            val actual = Bitmap.createBitmap(544, 400, Bitmap.Config.ARGB_8888)
+            LyricInkPainter(fixed).draw(Canvas(actual), slices, rows, floatArrayOf(0f), cache,
+                offset, setOf(0), 0, lyrics, 8_000, dark)
+            val expected = Bitmap.createBitmap(544, 400, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(expected)
+            canvas.translate(0f, y)
+            ink.edgeAt(y, 1f, (slice.visual.top + slice.visual.bottom) / 2f)
+            val paint = Paint(Paint.FILTER_BITMAP_FLAG).apply { shader = ink.shader }
+            val tint = android.graphics.PorterDuffColorFilter(if (dark) Color.WHITE else Color.rgb(39, 48, 59),
+                android.graphics.PorterDuff.Mode.SRC_IN)
+            // Independent oracle: preserve exactly the full-context emoji selection; theme
+            // tint every other atlas region without consulting the prepared colour cells.
+            paint.colorFilter = tint
+            canvas.drawRect(RectF(ink.bounds.left, ink.bounds.top, emojiBounds.left, ink.bounds.bottom), paint)
+            canvas.drawRect(RectF(emojiBounds.right, ink.bounds.top, ink.bounds.right, ink.bounds.bottom), paint)
+            paint.colorFilter = null
+            canvas.drawRect(RectF(emojiBounds.left, ink.bounds.top, emojiBounds.right, ink.bounds.bottom), paint)
+            fun pixels(image: Bitmap) = IntArray(image.width * image.height).also {
+                image.getPixels(it, 0, image.width, 0, 0, image.width, image.height)
+            }
+            assertArrayEquals("joining + Latin + actual RGBA emoji keeps each theme's native ink, dark=$dark",
+                pixels(expected), pixels(actual))
+        }
+    }
+
+    @Test fun batchingPreservesPartialRealWordMasksUnmappedInkColourAndBidi() {
+        val realFace = lyricTypeface(org.robolectric.RuntimeEnvironment.getApplication().assets)
+        val fixed = metrics.copy(lift = 0f) // This oracle isolates batching from separately verified motion.
+        val fixtures = listOf(
+            "合成词语保持整行" to listOf("合成"),
+            "office" to listOf("of", "fice"),
+            "ABC אבג 123 سلام" to listOf("ABC ", "אבג ", "123 ", "سلام"),
+            "A\u202Bאבג 123 - abc\u202C Z" to listOf("A\u202Bאבג 123 - abc\u202C Z"),
+            "A👩🏽‍🚀𠮷B" to listOf("A", "👩🏽‍🚀", "𠮷", "B"),
+        )
+        for ((text, atoms) in fixtures) {
+            val words = atoms.mapIndexed { i, atom -> LyricWord(1_000L + i * 500L, 1_500L + i * 500L, atom) }
+            val lines = listOf(LyricLine(1_000L, text, words = words))
+            val rows = lines.map { prepareLyricRow(it, 200, fixed, realFace) }
+            val tops = floatArrayOf(0f)
+            val cache = LyricInkCache(rows, fixed, 400f)
+            val slices = cache.prepare(lyricSliceWindow(rows, tops, 100f, 400f), setOf(0), 0)
+            val lyrics = LyricsState(lines = lines, activeIndex = 0, scrollIndex = 0, timelineReady = true)
+            for (dark in listOf(false, true)) for (time in listOf(999L, 1_200L, 1_800L, 8_000L)) {
+                val actual = Bitmap.createBitmap(200, 400, Bitmap.Config.ARGB_8888)
+                LyricInkPainter(fixed).draw(Canvas(actual), slices, rows, tops, cache, 100f, setOf(0), 0, lyrics, time, dark)
+                // Deliberately unbatched reference, using the original full-context selection
+                // cells rather than the worker's physical-order cells or appendBatch algorithm.
+                val expected = Bitmap.createBitmap(200, 400, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(expected)
+                val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+                val tint = android.graphics.PorterDuffColorFilter(if (dark) Color.WHITE else Color.rgb(39, 48, 59),
+                    android.graphics.PorterDuff.Mode.SRC_IN)
+                for (slice in slices) {
+                    val ink = slice.sharp!!
+                    val saved = canvas.save(); canvas.translate(0f, 100f + slice.track.top)
+                    ink.edgeAt(100f + slice.track.top, 1f, (slice.visual.top + slice.visual.bottom) / 2f)
+                    slice.visual.reveals.forEach { it.sample(time) }
+                    slice.visual.glyphs.forEachIndexed { index, glyph ->
+                        if (!ink.hasInk[index]) return@forEachIndexed
+                        val reveal = glyph.reveal
+                        paint.colorFilter = if (ink.colouredGlyphs[index]) null else tint
+                        paint.shader = if (reveal != null && reveal.fraction > 0f) ink.highlight[glyph.revealIndex] else ink.shader
+                        paint.alpha = ((if (reveal != null && reveal.fraction > 0f) 1f else LyricVisuals.UNSUNG_ALPHA) * 255).roundToInt()
+                        canvas.drawRect(glyph.bounds, paint)
+                    }
+                    canvas.restoreToCount(saved)
+                }
+                assertArrayEquals("unbatched real-mask oracle: $text at $time dark=$dark", pixels(expected), pixels(actual))
+            }
+        }
     }
 
     @Test fun preparedCacheSurvivesHundredsOfPlaybackDrawsAndThemeChanges() {

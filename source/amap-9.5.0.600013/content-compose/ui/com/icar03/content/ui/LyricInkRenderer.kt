@@ -67,26 +67,22 @@ private fun lyricShapedText(text: String, cjk: Typeface): CharSequence {
     return result
 }
 
-/**
- * Fixed-duration ease-out rise for one visual unit.
- *
- * The source word interval still determines when a unit starts, while the visual
- * animation always lasts about one second. A negative result means the unit is
- * outside its animation window and should stay on its baseline.
- */
-internal fun lyricCharacterRiseProgress(word: LyricWord, startFraction: Float, endFraction: Float,
-    position: Long): Float {
-    if (word.endTimeMs <= word.startTimeMs || endFraction <= startFraction) return -1f
-    val wordDuration = (word.endTimeMs - word.startTimeMs).toDouble()
-    val onset = word.startTimeMs + wordDuration * startFraction
-    val elapsed = position.toDouble() - onset
-    val duration = LyricVisuals.CHARACTER_RISE_DURATION_MS.toDouble()
-    if (elapsed < 0.0 || elapsed >= duration) return -1f
-    val t = (elapsed / duration).toFloat().coerceIn(0f, 1f)
+/** Source-derived onset; this is presentation metadata, never a fabricated parser timestamp. */
+internal fun lyricCharacterOnset(word: LyricWord, startFraction: Float, endFraction: Float): Double {
+    if (word.endTimeMs <= word.startTimeMs || endFraction <= startFraction) return Double.NaN
+    return word.startTimeMs + (word.endTimeMs - word.startTimeMs).toDouble() * startFraction
+}
+
+/** Start on the original baseline, rise for one second, then stay slightly above it. */
+internal fun lyricCharacterRiseAt(onset: Double, position: Long): Float {
+    if (!onset.isFinite() || position < 0L) return 0f
+    val t = ((position.toDouble() - onset) / LyricVisuals.CHARACTER_RISE_DURATION_MS)
+        .coerceIn(0.0, 1.0).toFloat()
     val remaining = 1f - t
-    // Ease-out cubic: the unit leaves the lower baseline quickly, then settles gently.
     return 1f - remaining * remaining * remaining
 }
+internal fun lyricCharacterRiseProgress(word: LyricWord, startFraction: Float, endFraction: Float,
+    position: Long): Float = lyricCharacterRiseAt(lyricCharacterOnset(word, startFraction, endFraction), position)
 
 internal fun lyricGraphemeBoundaries(text: String): IntArray {
     val breaker = BreakIterator.getCharacterInstance(Locale.ROOT)
@@ -138,6 +134,10 @@ internal class LyricReveal(
         if (rtl) intArrayOf(Color.argb((LyricVisuals.UNSUNG_ALPHA * 255).roundToInt(), 255, 255, 255), Color.WHITE)
         else intArrayOf(Color.WHITE, Color.argb((LyricVisuals.UNSUNG_ALPHA * 255).roundToInt(), 255, 255, 255)),
         null, Shader.TileMode.CLAMP)
+    // The feather can affect this wrapped/Bidi fragment only while these source fractions
+    // cross it. They are presentation bounds, never replacement word timestamps.
+    val fillStartFraction = (before / (total + feather)).coerceIn(0f, 1f)
+    val fillEndFraction = ((before + right - left + feather) / (total + feather)).coerceIn(0f, 1f)
     var fraction: Float = 0f
         private set
     fun sample(position: Long) {
@@ -160,7 +160,11 @@ internal data class LyricGlyph(
     val revealIndex: Int = -1,
 )
 internal data class LyricVisualLine(val index: Int, val top: Int, val bottom: Int,
-    val glyphs: List<LyricGlyph>, val reveals: List<LyricReveal>, val pivotX: Float = 0f)
+    val glyphs: List<LyricGlyph>, val reveals: List<LyricReveal>, val pivotX: Float = 0f) {
+    val fullRevealEndMs: Long = if (glyphs.isNotEmpty() && glyphs.all { glyph ->
+        glyph.reveal?.word?.let { it.startTimeMs >= 0L && it.endTimeMs > it.startTimeMs } == true
+    }) reveals.maxOfOrNull { it.word.endTimeMs } ?: -1L else -1L
+}
 
 internal class LyricTrack(val layout: StaticLayout, val top: Float, val alpha: Float,
     val isMain: Boolean, val words: List<LyricWord>, val visualLines: List<LyricVisualLine>) {
@@ -269,6 +273,14 @@ private fun compileLyricInk(layout: StaticLayout, text: String, words: List<Lyri
     }
     val boundaries = lyricMotionBoundaries(text)
     val safe = independentlyMovable(text)
+    // Colour cells still need boundaries around safe graphemes when a joining script makes
+    // the whole line immovable. Never let one RGBA emoji remove theme tint from Latin ink.
+    val colourCuts = if (safe) boundaries.toList() else buildList {
+        for (index in 0 until boundaries.lastIndex) {
+            val start = boundaries[index]; val end = boundaries[index + 1]
+            if (independentlyMovable(text.substring(start, end))) { add(start); add(end) }
+        }
+    }
     return (0 until layout.lineCount).map { row ->
         val top = layout.getLineTop(row); val bottom = layout.getLineBottom(row)
         val start = layout.getLineStart(row); val end = layout.getLineEnd(row)
@@ -277,7 +289,7 @@ private fun compileLyricInk(layout: StaticLayout, text: String, words: List<Lyri
         // but none may move independently: the original joined glyph stays at its baseline.
         val wordCuts = ranges.flatMap { listOf(it.first, it.second) }.filter { it in start..end }
         val runCuts = directionRuns[row].flatMap { listOf(it.start, it.end) }
-        val cuts = ((if (safe) boundaries.filter { it in start..end } else listOf(start, end)) +
+        val cuts = (colourCuts.filter { it in start..end } +
             wordCuts + runCuts + listOf(start, end)).distinct().sorted()
         for (i in 0 until cuts.lastIndex) {
             val a = cuts[i]; val b = cuts[i + 1]
@@ -309,18 +321,38 @@ private fun compileLyricInk(layout: StaticLayout, text: String, words: List<Lyri
 }
 
 private data class LyricRasterKey(val row: Int, val track: Int, val line: Int, val blur: Boolean)
-internal class LyricInk(val bitmap: Bitmap, val bounds: RectF, edge: Shader, visual: LyricVisualLine, dynamic: Boolean = true) {
+internal data class LyricInkCell(val bounds: RectF, val revealIndex: Int, val coloured: Boolean, val onsetMs: Double)
+
+/** A texture owns its shader geometry; playback sampling never changes another slice's edge. */
+internal class LyricInk(val bitmap: Bitmap, val bounds: RectF, private val edge: Shader,
+    visual: LyricVisualLine, dynamic: Boolean = true) {
     private val source = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
         setLocalMatrix(Matrix().apply { setTranslate(bounds.left, bounds.top) })
     }
     val shader: Shader = ComposeShader(source, edge, PorterDuff.Mode.DST_IN)
     val highlight: List<Shader> = if (dynamic) visual.reveals.map { ComposeShader(shader, it.gradient, PorterDuff.Mode.DST_IN) } else emptyList()
-    // Sharp-only metadata shares one raster read; soft masks need no source scan.
-    // Inspect actual RGBA, not Unicode ranges: supplementary Han and IVS are not emoji.
+    private val edgeMatrix = Matrix()
+    private var lastY = Float.NaN
+    private var lastScale = Float.NaN
+    private var lastPivot = Float.NaN
+    var edgeMatrixUpdates = 0
+        private set
+    fun edgeAt(worldY: Float, scale: Float, pivotY: Float) {
+        if (lastY == worldY && lastScale == scale && lastPivot == pivotY) return
+        lastY = worldY; lastScale = scale; lastPivot = pivotY
+        edgeMatrix.setScale(1f, 1f / scale)
+        edgeMatrix.postTranslate(0f, (-worldY - (1f - scale) * pivotY) / scale)
+        edge.setLocalMatrix(edgeMatrix)
+        edgeMatrixUpdates++
+    }
+    // One worker raster read supplies all immutable colour/ink/motion metadata.
     val colouredGlyphs = BooleanArray(visual.glyphs.size)
     val hasInk = BooleanArray(visual.glyphs.size)
     val clearMotionBoundary = BooleanArray(visual.glyphs.size)
+    val cells: List<LyricInkCell>
+    val hasColour: Boolean
     init {
+        val order = visual.glyphs.indices.sortedBy { visual.glyphs[it].bounds.left }
         if (dynamic) {
             val pixels = IntArray(bitmap.width * bitmap.height)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
@@ -336,9 +368,7 @@ internal class LyricInk(val bitmap: Bitmap, val bounds: RectF, edge: Shader, vis
                 }
                 clearMotionBoundary[index] = true
             }
-            // Grapheme/ligature cuts are not proof of isolated ink: kerning can put a
-            // stroke across a shared caret. Inspect neighbours in visual, not source order.
-            val order = visual.glyphs.indices.sortedBy { visual.glyphs[it].bounds.left }
+            // A source/grapheme cut need not be an isolated physical stroke. Preserve joined ink.
             for (i in 0 until order.lastIndex) {
                 val leftIndex = order[i]; val rightIndex = order[i + 1]
                 val left = visual.glyphs[leftIndex].bounds; val right = visual.glyphs[rightIndex].bounds
@@ -346,8 +376,6 @@ internal class LyricInk(val bitmap: Bitmap, val bounds: RectF, edge: Shader, vis
                 val boundary = left.right - bounds.left
                 val cut = floor(boundary).toInt()
                 if (cut !in 0 until bitmap.width) continue
-                // An integer cut must have ink on both sides at the same y. A fractional
-                // cut through any occupied source pixel is conservatively unsafe too.
                 val fractional = boundary != cut.toFloat()
                 val connected = (0 until bitmap.height).any { y ->
                     val at = y * bitmap.width + cut
@@ -359,6 +387,13 @@ internal class LyricInk(val bitmap: Bitmap, val bounds: RectF, edge: Shader, vis
                 }
             }
         }
+        cells = order.filter { hasInk[it] }.map { index ->
+            val glyph = visual.glyphs[index]
+            val onset = if (glyph.movable && clearMotionBoundary[index] && glyph.reveal != null)
+                lyricCharacterOnset(glyph.reveal.word, glyph.startFraction, glyph.endFraction) else Double.NaN
+            LyricInkCell(glyph.bounds, glyph.revealIndex, colouredGlyphs[index], onset)
+        }
+        hasColour = colouredGlyphs.any { it }
     }
     val bytes: Int get() = bitmap.allocationByteCount
 }
@@ -368,10 +403,9 @@ internal data class PreparedLyricSlice(val row: Int, val track: LyricTrack, val 
 /** Byte-bounded, per-visual-line textures; no texture can grow to a whole extremely long paragraph. */
 internal class LyricInkCache(private val rows: List<NativeLyricRow>, private val metrics: LyricMetrics, height: Float) {
     val viewportHeight = height
-    private val edgeMatrix = Matrix()
-    private val edge = LinearGradient(0f, 0f, 0f, height.coerceAtLeast(1f),
+    private fun edge(): Shader = LinearGradient(0f, 0f, 0f, viewportHeight.coerceAtLeast(1f),
         intArrayOf(Color.TRANSPARENT, Color.WHITE, Color.WHITE, Color.TRANSPARENT),
-        (metrics.main * 1.5f / height.coerceAtLeast(1f)).coerceIn(0f, .25f).let { floatArrayOf(0f, it, 1f - it, 1f) },
+        (metrics.main * 1.5f / viewportHeight.coerceAtLeast(1f)).coerceIn(0f, .25f).let { floatArrayOf(0f, it, 1f - it, 1f) },
         Shader.TileMode.CLAMP)
     private val textures = object : LruCache<LyricRasterKey, LyricInk>(LyricVisuals.CACHE_BYTES) {
         override fun sizeOf(key: LyricRasterKey, value: LyricInk) = value.bytes
@@ -387,11 +421,6 @@ internal class LyricInkCache(private val rows: List<NativeLyricRow>, private val
     }
     var rasterizations = 0
         private set
-    fun edgeAt(worldY: Float, scale: Float, pivotY: Float) {
-        edgeMatrix.setScale(1f, 1f / scale)
-        edgeMatrix.postTranslate(0f, (-worldY - (1f - scale) * pivotY) / scale)
-        edge.setLocalMatrix(edgeMatrix)
-    }
     fun prepare(window: List<LyricSliceAddress>, current: Set<Int>, focus: Int, allSharp: Boolean = false,
         checkCancellation: () -> Unit = {}): List<PreparedLyricSlice> = window.map { address ->
         checkCancellation()
@@ -418,7 +447,7 @@ internal class LyricInkCache(private val rows: List<NativeLyricRow>, private val
         rasterizations++
         if (blur) return soften(image, bounds,
             if (track.isMain) metrics.blur * metrics.activeMain / metrics.main else metrics.blur, visual)
-        return LyricInk(image, bounds, edge, visual)
+        return LyricInk(image, bounds, edge(), visual)
     }
     private fun soften(source: Bitmap, sourceBounds: RectF, radius: Float, visual: LyricVisualLine): LyricInk {
         val shift = IntArray(2)
@@ -428,7 +457,7 @@ internal class LyricInkCache(private val rows: List<NativeLyricRow>, private val
         // These inputs have never been published; only the immutable result reaches RenderThread.
         alpha.recycle(); source.recycle()
         val left = sourceBounds.left + shift[0]; val top = sourceBounds.top + shift[1]
-        return LyricInk(image, RectF(left, top, left + image.width, top + image.height), edge, visual, dynamic = false)
+        return LyricInk(image, RectF(left, top, left + image.width, top + image.height), edge(), visual, dynamic = false)
     }
 }
 internal data class LyricSliceAddress(val row: Int, val track: Int, val line: Int)
@@ -460,62 +489,91 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val light = PorterDuffColorFilter(Color.rgb(39, 48, 59), PorterDuff.Mode.SRC_IN)
     private val dark = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
+    private val batchBounds = RectF()
+    private var batchShader: Shader? = null
+    private var batchFilter: ColorFilter? = null
+    private var batchAlpha = 0
+    private var batchLift = 0f
+    private var canvasLift = 0f
+    private var batchPending = false
+    var drawBatches = 0
+        private set
+    var sampledCells = 0
+        private set
+    var motionTranslations = 0
+        private set
+
+    private fun emitBatch(canvas: Canvas) {
+        if (!batchPending) return
+        if (canvasLift != batchLift) {
+            canvas.translate(0f, batchLift - canvasLift)
+            canvasLift = batchLift
+            motionTranslations++
+        }
+        paint.shader = batchShader; paint.colorFilter = batchFilter; paint.alpha = batchAlpha
+        canvas.drawRect(batchBounds, paint)
+        drawBatches++
+        batchPending = false
+    }
+    private fun appendBatch(canvas: Canvas, bounds: RectF, shader: Shader, filter: ColorFilter?, alpha: Int, lift: Float) {
+        if (batchPending && batchShader === shader && batchFilter === filter && batchAlpha == alpha && batchLift == lift &&
+            batchBounds.right == bounds.left && batchBounds.top == bounds.top && batchBounds.bottom == bounds.bottom) {
+            batchBounds.right = bounds.right
+            return
+        }
+        emitBatch(canvas)
+        batchBounds.set(bounds); batchShader = shader; batchFilter = filter; batchAlpha = alpha; batchLift = lift
+        batchPending = true
+    }
     fun draw(canvas: Canvas, slices: List<PreparedLyricSlice>, rows: List<NativeLyricRow>, tops: FloatArray,
         cache: LyricInkCache, offset: Float, current: Set<Int>, focus: Int, lyrics: LyricsState, position: Long, dark: Boolean,
         fallback: List<LyricSliceAddress> = emptyList()) {
-        paint.colorFilter = if (dark) this.dark else light
+        drawBatches = 0; sampledCells = 0; motionTranslations = 0
+        val tint = if (dark) this.dark else light
+        paint.colorFilter = tint
         for (slice in slices) {
-            paint.colorFilter = if (dark) this.dark else light
+            paint.colorFilter = tint
             val track = slice.track
             val y = tops[slice.row] + offset + track.top
             @Suppress("DEPRECATION")
-            if (canvas.quickReject(0f, y + slice.visual.top,
-                    track.layout.width.toFloat(), y + slice.visual.bottom + metrics.lift, Canvas.EdgeType.AA)) continue
+            if (canvas.quickReject(0f, y + slice.visual.top - metrics.lift,
+                    track.layout.width.toFloat(), y + slice.visual.bottom, Canvas.EdgeType.AA)) continue
             val emphasized = slice.row in current
             val scale = if (track.isMain && !emphasized) metrics.main / metrics.activeMain else 1f
-            // Scaling a huge paragraph around its centre can move the first screen offscreen.
-            // Each visual line scales inside its premeasured slot, so slice selection stays valid.
             val pivotY = (slice.visual.top + slice.visual.bottom) / 2f
             val saved = canvas.save()
             canvas.translate(0f, y)
             canvas.scale(scale, scale, slice.visual.pivotX, pivotY)
-            cache.edgeAt(y, scale, pivotY)
             val opacity = if (!lyrics.timed) .92f else if (emphasized) 1f else when {
                 abs(slice.row - focus) <= 2 -> LyricVisuals.NEAR_ALPHA
                 slice.row < focus - 2 -> LyricVisuals.PAST_ALPHA
                 else -> LyricVisuals.FAR_ALPHA
             }
             val ink = if (emphasized || !lyrics.timed) slice.sharp ?: slice.soft else slice.soft
+            ink.edgeAt(y, scale, pivotY)
             val sharp = ink === slice.sharp
             val timed = sharp && lyrics.timed && emphasized && track.words.isNotEmpty()
-            if (!timed && (!sharp || ink.colouredGlyphs.none { it })) {
+            if (!timed && !ink.hasColour) {
                 paint.shader = ink.shader; paint.alpha = (opacity * track.alpha * 255).roundToInt()
                 canvas.drawRect(ink.bounds, paint)
+                drawBatches++
             } else {
                 val visual = slice.visual
-                if (timed) for (reveal in visual.reveals) reveal.sample(position)
-                for (glyphIndex in visual.glyphs.indices) {
-                    if (!ink.hasInk[glyphIndex]) continue
-                    val glyph = visual.glyphs[glyphIndex]
-                    paint.colorFilter = if (ink.colouredGlyphs[glyphIndex]) null else if (dark) this.dark else light
-                    val reveal = glyph.reveal
-                    val rise = if (timed && glyph.movable && ink.clearMotionBoundary[glyphIndex] && lyrics.timelineReady && reveal != null)
-                        lyricCharacterRiseProgress(reveal.word, glyph.startFraction, glyph.endFraction, position) else -1f
-                    val transform = canvas.save()
-                    if (rise >= 0f) canvas.translate(0f, metrics.lift * (1f - rise))
-                    if (timed && lyrics.timelineReady && reveal != null && reveal.fraction > 0f) {
-                        // One shaped alpha-mask pass: stacking a dim copy underneath would
-                        // thicken antialiased edges and double-apply the viewport fade.
-                        paint.shader = ink.highlight[glyph.revealIndex]
-                        paint.alpha = (track.alpha * 255).roundToInt()
-                    } else {
-                        paint.shader = ink.shader
-                        paint.alpha = ((if (!timed) opacity * track.alpha else
-                            if (track.isMain) LyricVisuals.UNSUNG_ALPHA else .34f) * 255).roundToInt()
-                    }
-                    canvas.drawRect(glyph.bounds, paint)
-                    canvas.restoreToCount(transform)
+                if (timed && lyrics.timelineReady) for (reveal in visual.reveals) reveal.sample(position)
+                batchPending = false; canvasLift = 0f
+                // Physical order is compiled once. Stable neighbours share one draw, while
+                // active characters retain distinct source-derived rises and complete shaping.
+                for (cell in ink.cells) {
+                    sampledCells++
+                    val reveal = if (timed && lyrics.timelineReady) visual.reveals.getOrNull(cell.revealIndex) else null
+                    val fraction = reveal?.fraction ?: 0f
+                    val shader = if (fraction > 0f && fraction < 1f) ink.highlight[cell.revealIndex] else ink.shader
+                    val alpha = (track.alpha * if (!timed) opacity else if (fraction >= 1f) 1f else
+                        if (fraction > 0f) 1f else if (track.isMain) LyricVisuals.UNSUNG_ALPHA else .34f) * 255f
+                    val lift = if (timed && lyrics.timelineReady) -metrics.lift * lyricCharacterRiseAt(cell.onsetMs, position) else 0f
+                    appendBatch(canvas, cell.bounds, shader, if (cell.coloured) null else tint, alpha.roundToInt(), lift)
                 }
+                emitBatch(canvas)
             }
             canvas.restoreToCount(saved)
         }
@@ -540,7 +598,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
             val centreY = y + pivotY
             val fade = (min(centreY, cache.viewportHeight - centreY) / (metrics.main * 1.5f)).coerceIn(0f, 1f)
             val singingOpacity = if (emphasized && track.words.isNotEmpty() && lyrics.timed &&
-                !(lyrics.timelineReady && track.words.all { it.endTimeMs > it.startTimeMs && position >= it.endTimeMs }))
+                !(lyrics.timelineReady && visual.fullRevealEndMs >= 0L && position >= visual.fullRevealEndMs))
                 LyricVisuals.UNSUNG_ALPHA else 1f
             val saved = canvas.save()
             canvas.translate(0f, y)

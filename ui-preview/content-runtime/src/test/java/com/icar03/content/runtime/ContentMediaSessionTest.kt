@@ -68,6 +68,7 @@ class ContentMediaSessionTest {
         val epoch = ContentMediaAdapter::class.java.getDeclaredField("lifecycle").apply { isAccessible = true }.getLong(adapter)
         ContentMediaAdapter::class.java.getDeclaredMethod("reconcileControllers", java.lang.Long.TYPE)
             .apply { isAccessible = true }.invoke(adapter, epoch)
+        ContentMediaAdapterTestSupport.drainSource(adapter)
     }
     private fun update(controller: MediaController, metadata: MediaMetadata, state: PlaybackState) {
         val shadow = shadowOf(controller)
@@ -89,12 +90,12 @@ class ContentMediaSessionTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             val last = seen.last()
             assertEquals("公开显示标题", last.title); assertEquals("公开显示歌手", last.artist)
             assertEquals("public-id", last.mediaId); assertEquals("专辑", last.album)
             assertEquals(180_000L, last.durationMs); assertEquals(100L, last.positionMs)
-            assertEquals(SystemClock.elapsedRealtime(), last.positionElapsedRealtimeMs)
+            assertEquals(requireNotNull(c.playbackState).lastPositionUpdateTime, last.positionElapsedRealtimeMs)
             assertEquals(1.25f, last.playbackSpeed, 0f); assertEquals(lyrics, last.embeddedLyrics)
             assertTrue(last.playing); assertFalse(last.playbackAvailable); assertSame(cover, last.artwork)
         } finally { adapter.stop() }
@@ -108,7 +109,7 @@ class ContentMediaSessionTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             assertEquals(-1L, seen.last().positionMs); assertEquals(0L, seen.last().positionElapsedRealtimeMs)
             assertEquals(0L, seen.last().durationMs)
         } finally { adapter.stop() }
@@ -123,7 +124,7 @@ class ContentMediaSessionTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }; assertSame(cover, seen.last().artwork)
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter); assertSame(cover, seen.last().artwork)
             changeSource(adapter, "网易云音乐")
             assertEquals("网易云音乐", seen.last().source); assertNull(seen.last().artwork)
             assertEquals("暂无媒体", seen.last().title); assertFalse(seen.last().playbackAvailable)
@@ -139,7 +140,7 @@ class ContentMediaSessionTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             assertFalse(seen.last().dataAvailable)
             changeSource(adapter, "USB音乐")
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1))
@@ -166,7 +167,7 @@ class ContentMediaSessionTest {
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }; changeSource(adapter, "网易云音乐")
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter); changeSource(adapter, "网易云音乐")
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
             val samePosition = playback(position = 1000L)
             shadowOf(c).setPlaybackState(samePosition)
@@ -194,7 +195,6 @@ class ContentMediaSessionTest {
             enabled = true; exported = true
             applicationInfo = ApplicationInfo().apply { packageName = "com.tencent.wecarflow"; enabled = true }
         }
-        shadowOf(app.packageManager).addResolveInfoForIntent(Intent(ContentPublicMediaBrowsers.ACTION), ResolveInfo().apply { serviceInfo = service })
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         var callback: ContentPublicMediaBrowsers.Callback? = null
@@ -205,13 +205,15 @@ class ContentMediaSessionTest {
                 object : ContentPublicMediaBrowsers.Client { override fun connect() {}; override fun disconnect() {} }
             })
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             val field = ContentMediaAdapter::class.java.getDeclaredField("browsers").apply { isAccessible = true }
             (field.get(adapter) as ContentPublicMediaBrowsers).close()
             field.set(adapter, browsers)
+            shadowOf(app.packageManager).addResolveInfoForIntent(Intent(ContentPublicMediaBrowsers.ACTION), ResolveInfo().apply { serviceInfo = service })
             changeSource(adapter, "网易云音乐")
             browsers.refresh(setOf("com.tencent.wecarflow"))
             callback!!.onConnected(c)
+            ContentMediaAdapterTestSupport.drainSource(adapter)
             assertEquals("歌曲cloud", seen.last().title); assertEquals("网易云音乐", seen.last().source)
             changeSource(adapter, "USB音乐")
             assertEquals("暂无媒体", seen.last().title); assertNull(seen.last().artwork)
@@ -224,7 +226,7 @@ class ContentMediaSessionTest {
         shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(paused); add(c)
         val adapter = ContentMediaAdapter(app); val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
             assertFalse(seen.last().playing)
             val buffering = PlaybackState.Builder().setState(PlaybackState.STATE_BUFFERING, 100L, 0f).build()
@@ -252,7 +254,7 @@ class ContentMediaSessionTest {
         shadowOf(c).setMetadata(metadata("same")); shadowOf(c).setPlaybackState(playback()); add(c)
         val adapter = ContentMediaAdapter(app); val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
             for ((usage, kind) in listOf(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE to AudioAttributes.CONTENT_TYPE_UNKNOWN,
                 AudioAttributes.USAGE_MEDIA to AudioAttributes.CONTENT_TYPE_SPEECH,
@@ -271,7 +273,7 @@ class ContentMediaSessionTest {
         shadowOf(song).setPlaybackState(PlaybackState.Builder().setState(PlaybackState.STATE_PAUSED, 100L, 0f).build()); add(song)
         val adapter = ContentMediaAdapter(app); val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
             val movie = controller("com.android.bluetooth")
             setAudio(movie, AudioAttributes.USAGE_MEDIA, AudioAttributes.CONTENT_TYPE_MOVIE)
@@ -289,7 +291,7 @@ class ContentMediaSessionTest {
         shadowOf(c).setPlaybackState(playback(actions = PlaybackState.ACTION_PLAY_PAUSE)); add(c)
         val adapter = ContentMediaAdapter(app); val seen = mutableListOf<ContentPorts.MediaSnapshot>()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             assertEquals(ContentPorts.MediaSongIdentity.SONG, seen.last().songIdentity)
             update(c, metadata("fallback"), playback())
             assertEquals(ContentPorts.MediaSongIdentity.UNKNOWN, seen.last().songIdentity)
@@ -302,7 +304,7 @@ class ContentMediaSessionTest {
         shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(zero); add(c)
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
-        adapter.start { seen += it }
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
         try {
             assertEquals("蓝牙音乐", seen.last().source)
             assertEquals(0L, seen.last().avrcpEventSequence)
@@ -347,7 +349,7 @@ class ContentMediaSessionTest {
         add(c)
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
-        adapter.start { seen += it }
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
         try {
             assertEquals("蓝牙音乐", seen.last().source)
             sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 90_000L)
@@ -378,7 +380,7 @@ class ContentMediaSessionTest {
         shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
-        adapter.start { seen += it }
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
         try {
             changeSource(adapter, "蓝牙音乐")
             val count = seen.size
@@ -413,7 +415,7 @@ class ContentMediaSessionTest {
         shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
-        adapter.start { seen += it }
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
         try {
             changeSource(adapter, "蓝牙音乐")
             sendAvrcp(Intent(AVRCP_STATUS).putExtra(SONG_POS, 30_000L))
@@ -467,10 +469,12 @@ class ContentMediaSessionTest {
             assertTrue(store.snapshot().lyricsTimelineReady)
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_200L))
             assertEquals(1, store.snapshot().lyricsActiveIndex)
-            assertEquals(1_200L, store.snapshot().lyricsPositionMs)
+            assertEquals(1_000L, store.snapshot().lyricsPositionMs)
+            assertEquals(1_200L, store.snapshot().lyricsAnchor.sampleAt(SystemClock.elapsedRealtime()))
             sendAvrcp(Intent(AVRCP_STATUS).putExtra(RAW_STATUS, 2.toByte()))
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
             assertEquals(1_200L, store.snapshot().lyricsPositionMs)
+            assertEquals(1_200L, store.snapshot().lyricsAnchor.sampleAt(SystemClock.elapsedRealtime()))
             assertEquals(0f, store.snapshot().lyricsPlaybackSpeed, 0f)
         } finally { store.destroy() }
     }
@@ -481,7 +485,7 @@ class ContentMediaSessionTest {
         shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
-        adapter.start { seen += it }
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
         try {
             changeSource(adapter, "蓝牙音乐")
             sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 30_000L).putExtra(SONG_LEN, 180_000L))
@@ -503,7 +507,7 @@ class ContentMediaSessionTest {
         add(c)
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
-        adapter.start { seen += it }
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
         try {
             changeSource(adapter, "蓝牙音乐")
             val count = seen.size
@@ -518,7 +522,7 @@ class ContentMediaSessionTest {
         shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
-        adapter.start { seen += it }
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
         changeSource(adapter, "蓝牙音乐")
         val old = ContentMediaAdapter::class.java.getDeclaredField("avrcpReceiver").apply { isAccessible = true }
             .get(adapter) as android.content.BroadcastReceiver
@@ -528,7 +532,7 @@ class ContentMediaSessionTest {
         old.onReceive(app, event)
         assertEquals(stoppedCount, seen.size)
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             changeSource(adapter, "蓝牙音乐")
             val count = seen.size
             old.onReceive(app, event)
@@ -563,11 +567,11 @@ class ContentMediaSessionTest {
         shadowOf(c).setMetadata(metadata("old")); shadowOf(c).setPlaybackState(playback()); add(c)
         val adapter = ContentMediaAdapter(app)
         val seen = mutableListOf<ContentPorts.MediaSnapshot>()
-        adapter.start { seen += it }
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
         val oldCallback = shadowOf(c).callbacks.single()
         adapter.stop()
         try {
-            adapter.start { seen += it }
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             val count = seen.size
             oldCallback.onMetadataChanged(metadata("late"))
             oldCallback.onPlaybackStateChanged(playback())

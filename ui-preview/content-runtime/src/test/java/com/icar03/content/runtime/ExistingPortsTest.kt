@@ -24,22 +24,29 @@ class ExistingPortsTest {
         val pm = shadowOf(app.packageManager)
         val component = ComponentName("com.tencent.wecarflow", "com.mengbo.service.MediaCenterPlayService")
         assertFalse(adapter.isSourceAvailable)
+        adapter.start { }
+        fun refreshCapability() {
+            app.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_PACKAGE_CHANGED)
+                .setData(android.net.Uri.parse("package:${component.packageName}")))
+            ContentMediaAdapterTestSupport.drainSource(adapter)
+        }
         val info = ServiceInfo().apply {
             name = component.className; packageName = component.packageName; enabled = true; exported = true
             applicationInfo = ApplicationInfo().apply { packageName = component.packageName; enabled = true }
         }
-        pm.addOrUpdateService(info)
-        assertTrue(adapter.isSourceAvailable)
-        info.exported = false; pm.addOrUpdateService(info)
-        assertFalse(adapter.isSourceAvailable)
-        info.exported = true; info.enabled = false; pm.addOrUpdateService(info)
-        assertFalse(adapter.isSourceAvailable)
-        info.enabled = true; info.permission = Manifest.permission.READ_CONTACTS; pm.addOrUpdateService(info)
-        shadowOf(app).denyPermissions(Manifest.permission.READ_CONTACTS)
-        assertFalse(adapter.isSourceAvailable)
-        shadowOf(app).grantPermissions(Manifest.permission.READ_CONTACTS)
-        assertTrue(adapter.isSourceAvailable)
-        adapter.stop()
+        try {
+            pm.addOrUpdateService(info); refreshCapability()
+            assertTrue(adapter.isSourceAvailable)
+            info.exported = false; pm.addOrUpdateService(info); refreshCapability()
+            assertFalse(adapter.isSourceAvailable)
+            info.exported = true; info.enabled = false; pm.addOrUpdateService(info); refreshCapability()
+            assertFalse(adapter.isSourceAvailable)
+            info.enabled = true; info.permission = Manifest.permission.READ_CONTACTS; pm.addOrUpdateService(info)
+            shadowOf(app).denyPermissions(Manifest.permission.READ_CONTACTS); refreshCapability()
+            assertFalse(adapter.isSourceAvailable)
+            shadowOf(app).grantPermissions(Manifest.permission.READ_CONTACTS); refreshCapability()
+            assertTrue(adapter.isSourceAvailable)
+        } finally { adapter.stop() }
     }
 
     @Test fun realSystemPortDoesNotAdvertiseVolumeWriteWithoutPermission() {

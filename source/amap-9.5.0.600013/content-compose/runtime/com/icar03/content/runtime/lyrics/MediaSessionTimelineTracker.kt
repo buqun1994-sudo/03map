@@ -4,6 +4,7 @@ package com.icar03.content.runtime.lyrics
 // Upstream provenance and scoped adaptations: PROVENANCE.json.
 
 import android.media.session.PlaybackState
+import com.autonavi.amapauto.content.ContentPorts
 import kotlin.math.max
 import kotlin.math.min
 
@@ -97,6 +98,12 @@ internal class MediaSessionTimelineTracker(
     private var supersededReportedPositionMs: Long? = null
     private var lastAvrcpCapturedAt: Long? = null
     private var ignoreReportedUntilAvrcp = false
+    private var playbackAnchor = ContentPorts.LyricsPlaybackAnchor.unknown()
+    private var anchorTrackKey = ""
+    private var anchorRevision = 0L
+
+    /** The canonical base/time/speed facts; querying never creates or changes an anchor. */
+    fun anchor(): ContentPorts.LyricsPlaybackAnchor = playbackAnchor
 
     fun onAvrcpPosition(
         positionMs: Long,
@@ -220,6 +227,7 @@ internal class MediaSessionTimelineTracker(
             wasPlaying = playing
         }
 
+        refreshAnchor(durationMs)
         val position = clamp(positionAt(now), durationMs)
         return MediaSessionTimeline(
             positionMs = position,
@@ -256,6 +264,7 @@ internal class MediaSessionTimelineTracker(
         deferNextReportedPosition = false
         timelineReady = true
         ignoreReportedUntilAvrcp = transport == MediaSessionTransport.BLUETOOTH_AVRCP
+        refreshAnchor(durationMs)
         return MediaSessionTimeline(
             positionMs = clamp(positionAt(now), durationMs),
             speed = lastSpeed,
@@ -287,6 +296,36 @@ internal class MediaSessionTimelineTracker(
         supersededReportedPositionMs = null
         lastAvrcpCapturedAt = null
         ignoreReportedUntilAvrcp = false
+        playbackAnchor = ContentPorts.LyricsPlaybackAnchor.unknown()
+        anchorTrackKey = ""
+    }
+
+    private fun refreshAnchor(durationMs: Long) {
+        if (!timelineReady) {
+            playbackAnchor = ContentPorts.LyricsPlaybackAnchor.unknown()
+            return
+        }
+        val speed = if (wasPlaying) lastSpeed.toFloat() else 0f
+        val old = playbackAnchor
+        // Identical trajectories from actual callbacks are still the same fact. Keep
+        // the original canonical pair as well as its published identity/revision.
+        if (anchorTrackKey == trackKey && old.timelineReady && old.speed == speed &&
+            old.durationMs == durationMs &&
+            (old.basePositionMs == basePositionMs && old.capturedAtMs == capturedAtElapsedRealtime ||
+                speed == 0f && old.basePositionMs == basePositionMs ||
+                speed != 0f && old.basePositionMs <= 9_007_199_254_740_991L &&
+                    basePositionMs <= 9_007_199_254_740_991L &&
+                    (basePositionMs - old.basePositionMs).toDouble() ==
+                    (capturedAtElapsedRealtime - old.capturedAtMs).toDouble() * speed.toDouble())
+        ) {
+            basePositionMs = old.basePositionMs
+            capturedAtElapsedRealtime = old.capturedAtMs
+            return
+        }
+        playbackAnchor = ContentPorts.LyricsPlaybackAnchor(
+            basePositionMs, capturedAtElapsedRealtime, speed, durationMs, true, ++anchorRevision
+        )
+        anchorTrackKey = trackKey
     }
 
     private fun positionAt(now: Long): Long {

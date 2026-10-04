@@ -6,6 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -31,13 +32,15 @@ fun BoundContentPanel(
 @Composable
 fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier) {
     val owner = LocalLifecycleOwner.current
-    DisposableEffect(binding, owner) {
+    val context = LocalContext.current
+    DisposableEffect(binding, owner, context) {
+        binding.observeEnvironment(context)
         val observer = LifecycleEventObserver { _, _ ->
             if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) binding.start() else binding.stop()
         }
         owner.lifecycle.addObserver(observer)
         if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) binding.start()
-        onDispose { owner.lifecycle.removeObserver(observer); binding.stop() }
+        onDispose { owner.lifecycle.removeObserver(observer); binding.stop(); binding.clearEnvironment() }
     }
     DisposableEffect(binding) { onDispose { binding.close() } }
     val state by binding.state.collectAsState()
@@ -50,6 +53,8 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier) {
             artwork = bitmap?.let { image -> { Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } },
             ambientBackground = {
                 MediaAmbientBackground(ambient, state.dark, active = active, animating = state.media.playing)
-            })
+            },
+            clockText = { val text by binding.clock.collectAsState(); text },
+            lyricsState = { val lyrics by binding.lyrics.collectAsState(); lyrics })
     }
 }

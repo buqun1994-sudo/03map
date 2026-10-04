@@ -295,39 +295,39 @@ class ContentRuntimeTest {
     }
 
     @Test fun systemReadbackDoesNotPretendAcceptedWriteWasConfirmed() {
-        val system = System(); val binding = binding(store(s = system)); binding.start()
-        binding.dispatch(ContentEvent.BrightnessChanged(.9f))
+        val system = System(); val binding = binding(store(s = system)); binding.start(); awaitSystem(binding)
+        binding.dispatch(ContentEvent.BrightnessChanged(.9f)); awaitSystem(binding)
         assertEquals(90, system.target)
         assertEquals(.25f, binding.state.value.brightness.actual)
         assertNull(binding.state.value.brightness.target)
         assertEquals("系统状态未确认", binding.state.value.message)
         system.percent = 90
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); awaitSystem(binding)
         assertEquals(.9f, binding.state.value.brightness.actual)
         system.available = false
-        binding.dispatch(ContentEvent.VolumeChanged(.5f))
+        binding.dispatch(ContentEvent.VolumeChanged(.5f)); awaitSystem(binding)
         assertEquals(1, system.writes)
         assertFalse(binding.state.value.volume.available)
     }
 
     @Test fun staleSystemReadbackCannotClearNewerFailureFeedback() {
-        val system = System(); val binding = binding(store(s = system)); binding.start()
-        binding.dispatch(ContentEvent.BrightnessChanged(.9f))
+        val system = System(); val binding = binding(store(s = system)); binding.start(); awaitSystem(binding)
+        binding.dispatch(ContentEvent.BrightnessChanged(.9f)); awaitSystem(binding)
         system.percent = 90
         system.accept = false
-        binding.dispatch(ContentEvent.BrightnessChanged(.6f))
+        binding.dispatch(ContentEvent.BrightnessChanged(.6f)); awaitSystem(binding)
         assertEquals(2, system.writes)
         assertEquals("系统状态未确认", binding.state.value.message)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); awaitSystem(binding)
         assertEquals("系统状态未确认", binding.state.value.message)
         assertEquals(.9f, binding.state.value.brightness.actual)
-        binding.dispatch(ContentEvent.BrightnessChanged(.9f))
+        binding.dispatch(ContentEvent.BrightnessChanged(.9f)); awaitSystem(binding)
         assertEquals(2, system.writes)
     }
 
     @Test fun stopCancelsQueuedCallbacksClockAndSystemReadbackWithoutReplayingCommands() {
-        val system = System(); val store = store(s = system); val binding = binding(store); binding.start()
-        binding.dispatch(ContentEvent.BrightnessChanged(.8f))
+        val system = System(); val store = store(s = system); val binding = binding(store); binding.start(); awaitSystem(binding)
+        binding.dispatch(ContentEvent.BrightnessChanged(.8f)); awaitSystem(binding)
         val snapshot = binding.state.value
         Thread { store.acceptMediaSnapshot(mediaSnapshot(source = MediaSource.Usb.label)) }.apply { start(); join() }
         binding.stop()
@@ -529,6 +529,12 @@ class ContentRuntimeTest {
         val before = store.snapshot()
         store.acceptMediaSnapshot(mediaSnapshot(source = MediaSource.CloudMusic.label))
         assertEquals(before.mediaSource, store.snapshot().mediaSource)
+    }
+
+    private fun awaitSystem(binding: ContentBinding) {
+        val executor = ContentBinding::class.java.getDeclaredField("systemWorker").apply { isAccessible = true }
+            .get(binding) as java.util.concurrent.ExecutorService
+        repeat(2) { executor.submit {}.get(2, TimeUnit.SECONDS); shadowOf(Looper.getMainLooper()).idle() }
     }
 
     private fun drainMediaCommands(store: ContentStore) {
