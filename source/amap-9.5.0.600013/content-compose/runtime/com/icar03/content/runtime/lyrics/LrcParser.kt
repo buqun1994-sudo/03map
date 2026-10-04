@@ -18,7 +18,7 @@ internal data class ParsedLyricLine(
     val endTimeMs: Long? = null,
     val backgroundWords: List<ParsedLyricWord> = emptyList(),
     val speaker: String = "",
-    val speakerSide: Int = TtmlSpeakerLayout.UNSPECIFIED,
+    val speakerSide: Int = LyricSpeakerLayout.UNSPECIFIED,
     val speakerPrefixLength: Int = 0
 )
 

@@ -29,7 +29,7 @@ class TtmlSpeakerLayoutTest {
         val rows = body(listOf("a b", "b", "a", "a b", ""),
             """<ttm:agent xml:id="a" type="person"/><ttm:agent xml:id="b" type="person"/>""")
         assertEquals(listOf(1, 1, 2, 1, 1), rows.map { it.speakerSide })
-        assertFalse(rows.any { it.speakerSide == TtmlSpeakerLayout.CENTER })
+        assertFalse(rows.any { it.speakerSide == LyricSpeakerLayout.CENTER })
     }
 
     @Test fun undeclaredVoicesUseStableSourceOrderAndSingleOrUntaggedRowsKeepTheDefault() {

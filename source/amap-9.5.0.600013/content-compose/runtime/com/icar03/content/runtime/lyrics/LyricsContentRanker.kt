@@ -156,7 +156,7 @@ internal object LyricsContentRanker {
 
     /** Already admitted vocal lanes remain attached to the same source-time/body rows. */
     private fun retainsSpeakerSides(old: List<ParsedLyricLine>, next: List<ParsedLyricLine>): Boolean {
-        val voiced = old.filter { it.speakerSide != TtmlSpeakerLayout.UNSPECIFIED }
+        val voiced = old.filter { it.speakerSide != LyricSpeakerLayout.UNSPECIFIED }
         if (voiced.isEmpty()) return true
         val available = next.groupBy { it.timeMs to it.text.filterNot(Char::isWhitespace) }
             .mapValues { (_, rows) -> rows.map { it.speakerSide }.toMutableList() }
@@ -171,7 +171,7 @@ internal object LyricsContentRanker {
         var added = false
         return old.indices.all { index ->
             val before = old[index]; val after = next[index]
-            if (before.speakerSide == TtmlSpeakerLayout.UNSPECIFIED && after.speakerSide != TtmlSpeakerLayout.UNSPECIFIED) added = true
+            if (before.speakerSide == LyricSpeakerLayout.UNSPECIFIED && after.speakerSide != LyricSpeakerLayout.UNSPECIFIED) added = true
             before.timeMs == after.timeMs &&
                 before.text.filterNot(Char::isWhitespace) == after.text.filterNot(Char::isWhitespace) &&
                 (before.translation.isBlank() || before.translation == after.translation) &&
@@ -227,7 +227,7 @@ internal object LyricsContentRanker {
             if (hasKana(line.text) && hasDistinctText(line.text, line.romanization) && hasLatinLetters(line.romanization)) {
                 romanizedCharacters += lineCharacters[index]
             }
-            if (line.speakerSide != TtmlSpeakerLayout.UNSPECIFIED) speakerCharacters += lineCharacters[index]
+            if (line.speakerSide != LyricSpeakerLayout.UNSPECIFIED) speakerCharacters += lineCharacters[index]
             // Empty tail markers and unverified line end hints must not improve duration fit.
             lastContentTime = maxOf(lastContentTime, line.timeMs, words.lastEndMs)
         }

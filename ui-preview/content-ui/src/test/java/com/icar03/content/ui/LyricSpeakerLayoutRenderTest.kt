@@ -56,14 +56,37 @@ class LyricSpeakerLayoutRenderTest {
         assertEquals(192 to 96, lyricVoiceInsets(LyricSide.Trailing, 8_000, 48f))
     }
 
-    private fun render(source: LyricLine, row: NativeLyricRow, cold: Boolean): Bitmap {
+    @Test fun defaultRowsUseTheWholeContentWidthBeforeWrappingWithTheHostMargins() {
+        val defaultLine = line.copy(text = "默认歌词不会再提前换行", words = emptyList())
+        val ordinary = prepareLyricRow(defaultLine, 544, metrics, face, baseInset = 48)
+        val leading = prepareLyricRow(defaultLine.copy(side = LyricSide.Leading), 544, metrics, face, baseInset = 48)
+        assertEquals(1, ordinary.tracks.first().layout.lineCount)
+        assertTrue("the same body genuinely distinguishes full width from a voice lane", leading.tracks.first().layout.lineCount > 1)
+        assertTrue(ordinary.tracks.all { it.left == 0f && it.layout.width == 544 })
+        for (cold in listOf(false, true)) {
+            val frame = render(defaultLine, ordinary, cold, canvasWidth = 640, baseInset = 48)
+            val ink = bounds(frame)
+            assertTrue("default ink reaches beyond the left voice boundary, cold=$cold", ink.right > 544)
+            assertTrue("both original host margins remain, cold=$cold", ink.left >= 48 && ink.right <= 592)
+            val directory = java.io.File("build/frames").apply { mkdirs() }
+            java.io.File(directory, "lyrics-default-width-sdk${android.os.Build.VERSION.SDK_INT}-${if (cold) "cold" else "warm"}.png")
+                .outputStream().use { frame.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+
+    private fun render(source: LyricLine, row: NativeLyricRow, cold: Boolean,
+        canvasWidth: Int = 400, baseInset: Int = 0): Bitmap {
         val rows = listOf(row)
         val tops = floatArrayOf(0f)
         val cache = LyricInkCache(rows, metrics, 600f)
         val window = row.tracks.flatMapIndexed { track, body -> body.visualLines.map { LyricSliceAddress(0, track, it.index) } }
         val slices = if (cold) emptyList() else cache.prepare(window, setOf(0), 0, allSharp = true)
-        return Bitmap.createBitmap(400, 600, Bitmap.Config.ARGB_8888).also { bitmap ->
-            LyricInkPainter(metrics).draw(Canvas(bitmap), slices, rows, tops, cache, 120f, setOf(0), 0,
+        return Bitmap.createBitmap(canvasWidth, 600, Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = Canvas(bitmap).apply {
+                clipRect(baseInset, 0, canvasWidth - baseInset, 600)
+                translate(baseInset.toFloat(), 0f)
+            }
+            LyricInkPainter(metrics).draw(canvas, slices, rows, tops, cache, 120f, setOf(0), 0,
                 LyricsState(lines = listOf(source), activeIndex = 0, scrollIndex = 0, timelineReady = true), 10_000L, true,
                 fallback = if (cold) window else emptyList())
         }

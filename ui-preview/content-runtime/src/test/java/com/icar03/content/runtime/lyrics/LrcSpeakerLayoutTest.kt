@@ -12,6 +12,16 @@ class LrcSpeakerLayoutTest {
         assertEquals(listOf(1L, 3L, 4L, 5L, 6L, 7L).map { it * 1_000L }, rows.map { it.timeMs })
     }
 
+    @Test fun markerOnlyIdentitiesCannotEnableOrChooseAFalseSoloLayout() {
+        val raw = "[00:01]V1：\n[00:02]V2：唯一独唱\n[00:03]合唱：合唱正文\n[00:04]V1：\n[00:05]V2：继续独唱"
+        val ordinary = LyricsResult(lyrics = raw).timedLines()
+        assertEquals(listOf("唯一独唱", "合唱正文", "继续独唱"), ordinary.map { it.text })
+        assertEquals(listOf(0, 0, 0), ordinary.map { it.speakerSide })
+        val duet = LyricsResult(lyrics = "$raw\n[00:06]V1：第二真实独唱").timedLines()
+        assertEquals(listOf(1, 1, 1, 2), duet.map { it.speakerSide })
+        assertEquals(listOf("v2", "group", "v2", "v1"), duet.map { it.speaker })
+    }
+
     @Test fun repeatedNamedLabelsSupportCypherWithoutAssigningUnmarkedLyrics() {
         val result = LyricsResult(lyrics = "[00:01]丙：第一句\n[00:02]甲：第二句\n[00:03]乙：第三句\n[00:04]丙：第四句\n[00:05]丁：第五句")
         assertEquals(listOf(1, 2, 1, 1, 2), result.timedLines().map { it.speakerSide })

@@ -63,23 +63,13 @@ internal object LrcSpeakerLayout {
         val artistIds = artistIdentity(track, artist).let { it.declared + it.featured }
         val labelled = identify(rows, artistIds)
         val speakerIds = labelled.filterNotNull().map(Label::identity).toSet()
-        val persons = labelled.filterNotNull().map(Label::identity)
-            .filterNot { it == "group" }.distinct()
-        val lanes = persons.withIndex().associate { (index, identity) ->
-            identity to if (index % 2 == 0) TtmlSpeakerLayout.LEADING else TtmlSpeakerLayout.TRAILING
-        }
         if (labelled.none { it != null }) return rows
         var current: Label? = null
-        return rows.mapIndexedNotNull { index, row ->
+        val projected = rows.mapIndexedNotNull { index, row ->
             val explicit = labelled[index]
             if (explicit != null) current = explicit
             if (explicit?.rest?.isBlank() == true) return@mapIndexedNotNull null
             val identity = current?.identity
-            val side = when {
-                identity == "group" -> TtmlSpeakerLayout.LEADING
-                identity == null || persons.size < 2 -> TtmlSpeakerLayout.UNSPECIFIED
-                else -> lanes.getValue(identity)
-            }
             val words = if (explicit == null || row.words.isEmpty()) row.words else {
                 val wordLabel = parseLabel(row.words.joinToString("") { it.text })
                 if (wordLabel != null && speakerIdentity(wordLabel, artistIds) == identity) {
@@ -92,8 +82,14 @@ internal object LrcSpeakerLayout {
                 translation = stripAuxiliaryPrefix(row.translation, speakerIds, artistIds),
                 romanization = stripAuxiliaryPrefix(row.romanization, speakerIds, artistIds),
                 speaker = identity.orEmpty(),
-                speakerSide = side
+                speakerSide = LyricSpeakerLayout.UNSPECIFIED
             )
+        }
+        val sides = LyricSpeakerLayout.sides(projected.map { row ->
+            if (row.speaker.isBlank()) emptyList() else listOf(row.speaker)
+        }, setOf("group"))
+        return projected.mapIndexed { index, row ->
+            if (row.speakerSide == sides[index]) row else row.copy(speakerSide = sides[index])
         }
     }
 
