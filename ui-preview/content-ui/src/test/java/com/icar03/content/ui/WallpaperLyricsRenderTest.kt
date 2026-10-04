@@ -312,12 +312,12 @@ class WallpaperLyricsRenderTest {
         assertEquals(1, value(ActiveLyric))
         body().assertTextEquals(lines[1].text)
         assertTrue("background adds a real subrow after translation", heights[0] > heights[1])
-        val first = captureHost()
+        val first = captureHost("duet-side-layout")
         val leading = inkBounds(first, rowTop(0, heights, 1).roundToInt(), rowBottom(0, heights, 1).roundToInt())!!
         val trailing = inkBounds(first, rowTop(1, heights, 1).roundToInt(), rowBottom(1, heights, 1).roundToInt())!!
         val center = inkBounds(first, rowTop(2, heights, 1).roundToInt(), rowBottom(2, heights, 1).roundToInt())!!
-        assertTrue("leading source and subrows begin at the inset", leading.left <= 54)
-        assertTrue("trailing duet and subrows end at the opposite inset", trailing.right >= 586)
+        assertTrue("leading source and subrows keep a visible near inset: $leading", leading.left in 40..65)
+        assertTrue("trailing duet and subrows mirror the near inset: $trailing", trailing.right in 575..600)
         assertEquals("center side is centered in native pixels", 320f, center.exactCenterX(), 8f)
         assertTrue("center side leaves space on both sides", center.left > 100 && center.right < 540)
 

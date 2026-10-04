@@ -18,6 +18,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.width
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -77,7 +78,7 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithContentDescription("播放").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithContentDescription("下一首").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithContentDescription("选择来源").assertIsDisplayed().assertIsEnabled()
-        compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(7)
+        compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(6)
         DockShortcuts.items.forEach { id ->
             val node = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed()
             node.assertHasClickAction()
@@ -318,6 +319,9 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithText("此处仅预览歌词空态。").assertDoesNotExist()
     }
 
+    private fun iconEntrances(id: ControlId): List<String> = if (DockShortcuts.items.any { it.control == id })
+        listOf("shortcut-icon", "dock-icon") else listOf("shortcut-icon")
+
     private fun mountInteractionState(state: androidx.compose.runtime.State<ContentUiState>, lifecycleOwner: androidx.lifecycle.LifecycleOwner? = null, onEvent: (ContentEvent) -> Unit = {}) {
         compose.setContent {
             val view = LocalView.current
@@ -373,10 +377,10 @@ open class ContentPanelLightPrototypeRenderTest {
             node.assert(SemanticsMatcher.expectValue(PressBackground, transparent))
         }
         val count = events.size
-        compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { down(center) }
+        compose.onNodeWithTag("control-SteeringHeat").performTouchInput { down(center) }
         compose.mainClock.advanceTimeBy(320)
-        compose.onNodeWithTag("dock-SteeringHeat").assert(SemanticsMatcher.expectValue(PressActive, true))
-        compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { up() }
+        compose.onNodeWithTag("control-SteeringHeat").assert(SemanticsMatcher.expectValue(PressActive, true))
+        compose.onNodeWithTag("control-SteeringHeat").performTouchInput { up() }
         compose.mainClock.advanceTimeBy(320)
         assertTrue("steering control is wired through the shared event path", count + 1 == events.size && events.last() == ContentEvent.ControlTapped(ControlId.SteeringHeat))
         compose.mainClock.autoAdvance = true
@@ -404,11 +408,12 @@ open class ContentPanelLightPrototypeRenderTest {
             compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls.mapValues { (id, control) -> if (id in seatIds) control.copy(actual = level) else control }) }
             seatIds.forEach { id ->
                 val grid = compose.onNodeWithTag("shortcut-icon-${id.name}", useUnmergedTree = true)
-                val dock = compose.onNodeWithTag("dock-icon-${id.name}", useUnmergedTree = true)
+                val dock = if (DockShortcuts.items.any { it.control == id }) compose.onNodeWithTag("dock-icon-${id.name}", useUnmergedTree = true) else null
+                if (dock == null) compose.onNodeWithTag("dock-icon-${id.name}", useUnmergedTree = true).assertDoesNotExist()
                 grid.assert(SemanticsMatcher.expectValue(OemTint, androidx.compose.ui.graphics.Color.Unspecified.value.toLong()))
-                dock.assert(SemanticsMatcher.expectValue(OemTint, androidx.compose.ui.graphics.Color.Unspecified.value.toLong()))
+                dock?.assert(SemanticsMatcher.expectValue(OemTint, androidx.compose.ui.graphics.Color.Unspecified.value.toLong()))
                 val gridResource = grid.fetchSemanticsNode().config[OemResource]
-                assertTrue("grid and dock must use same original level asset", gridResource == dock.fetchSemanticsNode().config[OemResource])
+                if (dock != null) assertTrue("declared grid and dock use same original level asset", gridResource == dock.fetchSemanticsNode().config[OemResource])
                 resources.getValue(id) += gridResource
                 compose.onNodeWithTag("control-${id.name}").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, if (level == 0) "关闭" else "${level}档"))
                 compose.onNodeWithText("${level}档").assertDoesNotExist()
@@ -491,13 +496,15 @@ open class ContentPanelLightPrototypeRenderTest {
         for (level in listOf(0, 2, 1, 3)) {
             compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.SteeringHeat to state.value.controls.getValue(ControlId.SteeringHeat).copy(actual = level))) }
             val grid = compose.onNodeWithTag("shortcut-icon-SteeringHeat", useUnmergedTree = true)
-            val dock = compose.onNodeWithTag("dock-icon-SteeringHeat", useUnmergedTree = true)
+            compose.onNodeWithTag("dock-icon-SteeringHeat", useUnmergedTree = true).assertDoesNotExist()
+            compose.waitUntil(3_000) {
+                val icon = grid.fetchSemanticsNode().config
+                icon[IconAnimationReady] && icon[OemResource] == expected.getValue(level)
+            }
             grid.assert(SemanticsMatcher.expectValue(OemTint, androidx.compose.ui.graphics.Color.Unspecified.value.toLong()))
-            assertTrue("grid and Dock share the same steering OEM resource", grid.fetchSemanticsNode().config[OemResource] == dock.fetchSemanticsNode().config[OemResource])
             grid.assert(SemanticsMatcher.expectValue(OemResource, expected.getValue(level)))
             resources += grid.fetchSemanticsNode().config[OemResource]
             assertWarmOemBody("shortcut-icon-SteeringHeat", "steering-$level", orange = level > 0)
-            assertWarmOemBody("dock-icon-SteeringHeat", "steering-dock-$level", orange = level > 0)
             compose.onNodeWithTag("control-SteeringHeat").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,
                 when (level) { 0 -> "关闭"; 3 -> "自动"; else -> "${level}档" }))
         }
@@ -571,9 +578,13 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithTag("dock-Ventilation").assertIsSelected()
         val frame = captureHost("selection-contrast")
         val expectedFill = if (dark) android.graphics.Color.rgb(72,72,72) else android.graphics.Color.WHITE
-        for (tag in listOf("brightness-fill", "volume-fill")) {
-            val fill = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            assertTrue("slider fill uses selected light layer in dark and original white in light", frame.getPixel(fill.left.toInt()+5, fill.top.toInt()+5) == expectedFill)
+        val expectedSliderBase = if (dark) android.graphics.Color.rgb(26,26,26) else android.graphics.Color.rgb(233,233,233)
+        for (tag in listOf("brightness-card", "volume-card")) {
+            val bar = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals("slider exposes its own unfilled track in both themes", expectedSliderBase,
+                frame.getPixel(bar.center.x.toInt(), bar.top.toInt() + 16))
+            assertEquals("slider fill uses the selected dark layer and original white in light", expectedFill,
+                frame.getPixel(bar.center.x.toInt(), bar.bottom.toInt() - 16))
         }
         fun sample(tag: String, image: Bitmap = frame): Int {
             val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
@@ -587,7 +598,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val media = compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot
         assertTrue("Dock base equals the actual media card fill", frame.getPixel(media.center.x.toInt(), media.top.toInt()+4) == dockBase)
         assertTrue("selected ventilation does not fill entire dock slot", sample("dock-Ventilation") == dockBase)
-        assertTrue("selected shortcut follows theme selection", sample("control-Ventilation") == selected)
+        assertTrue("dynamic shortcut keeps its base while its icon expresses selection", sample("control-Ventilation") == normal)
         assertTrue("nonselected shortcut is darker", sample("control-Heating") == normal)
         val inner = compose.onNodeWithTag("dock-Ventilation-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertTrue("seat selected rectangle uses Dock selected token", frame.getPixel(inner.left.toInt()+5, inner.center.y.toInt()) == (if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(233,233,233)))
@@ -613,6 +624,7 @@ open class ContentPanelLightPrototypeRenderTest {
             shortcutSelected = androidx.compose.ui.graphics.Color(0xFF223344),
             sliderBase = androidx.compose.ui.graphics.Color(0xFF334466),
             sliderFill = androidx.compose.ui.graphics.Color(0xFF778899),
+            sliderDivider = androidx.compose.ui.graphics.Color(0xFFDD3355),
             dockBase = androidx.compose.ui.graphics.Color(0xFF334455),
             dockSelected = androidx.compose.ui.graphics.Color(0xFF445566),
             mediaBase = androidx.compose.ui.graphics.Color(0xFF556677),
@@ -625,6 +637,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
             previewMode = false,
             sourcesOpen = true,
+            placeholderSwitches = mapOf(ShortcutId.RearWiper to true),
             controls = previewState().controls +
                 (ControlId.Ventilation to ControlState(actual = 2)) +
                 (ControlId.Heating to ControlState(actual = 0)),
@@ -652,7 +665,8 @@ open class ContentPanelLightPrototypeRenderTest {
             return frame.getPixel(bounds.left.toInt() + x, bounds.top.toInt() + bounds.height.toInt() / 2)
         }
         assertTrue("shortcut base has its own role", sample("control-Heating") == roles.shortcutBase.toArgb())
-        assertTrue("shortcut selected has its own role", sample("control-Ventilation") == roles.shortcutSelected.toArgb())
+        assertTrue("dynamic selected icon keeps shortcut base", sample("control-Ventilation") == roles.shortcutBase.toArgb())
+        assertTrue("ordinary toggle selected has its own role", sample("shortcut-RearWiper") == roles.shortcutSelected.toArgb())
         assertTrue("Dock base has its own role", sample("dock-Lock") == roles.dockBase.toArgb())
         assertTrue("media base has its own role", frame.getPixel(
             compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot.center.x.toInt(),
@@ -660,10 +674,7 @@ open class ContentPanelLightPrototypeRenderTest {
         ) == roles.mediaBase.toArgb())
         val dockSelected = compose.onNodeWithTag("dock-Ventilation-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertTrue("Dock selected has its own role", frame.getPixel(dockSelected.left.toInt() + 5, dockSelected.center.y.toInt()) == roles.dockSelected.toArgb())
-        val sliderCard = compose.onNodeWithTag("brightness-card").fetchSemanticsNode().boundsInRoot
-        assertTrue("slider base has its own role", frame.getPixel(sliderCard.center.x.toInt(), sliderCard.top.toInt() + 4) == roles.sliderBase.toArgb())
-        val slider = compose.onNodeWithTag("brightness-fill", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("slider fill has its own role", frame.getPixel(slider.left.toInt() + 5, slider.top.toInt() + 5) == roles.sliderFill.toArgb())
+
         val artwork = compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot
         assertTrue("media artwork base has its own role", frame.getPixel(artwork.left.toInt() + 36, artwork.top.toInt() + 4) == roles.mediaArtworkBase.toArgb())
         val source = compose.onNodeWithTag("source-Bluetooth").fetchSemanticsNode().boundsInRoot
@@ -673,6 +684,28 @@ open class ContentPanelLightPrototypeRenderTest {
 
         compose.runOnIdle { state.value = state.value.copy(sourcesOpen = false) }
         compose.waitForIdle()
+        val sliderFrame = captureHost("semantic-role-sliders", checkShortcutShadows = false)
+        val sliderCard = compose.onNodeWithTag("brightness-card").fetchSemanticsNode().boundsInRoot
+        assertEquals("slider base has its own role", roles.sliderBase.toArgb(),
+            sliderFrame.getPixel(sliderCard.center.x.toInt(), sliderCard.top.toInt() + 16))
+        assertEquals("slider fill has its own role", roles.sliderFill.toArgb(),
+            sliderFrame.getPixel(sliderCard.center.x.toInt(), sliderCard.bottom.toInt() - 16))
+        val steppedCard = compose.onNodeWithTag("control-Wiper").fetchSemanticsNode().boundsInRoot
+        assertEquals("manual OFF consumes the same independent unfilled slider role", roles.sliderBase.toArgb(),
+            sliderFrame.getPixel(steppedCard.center.x.toInt(), steppedCard.top.toInt() + 16))
+        val dividerY = steppedCard.top + steppedCard.height * .25f
+        val dividerX = steppedCard.center.x.toInt()
+        val dividerArgb = roles.sliderDivider.toArgb()
+        val background = roles.sliderBase.toArgb()
+        val sourceChannels = listOf(android.graphics.Color.red(dividerArgb), android.graphics.Color.green(dividerArgb), android.graphics.Color.blue(dividerArgb))
+        val baseChannels = listOf(android.graphics.Color.red(background), android.graphics.Color.green(background), android.graphics.Color.blue(background))
+        assertTrue("manual internal divider consumes its independent role rather than Material primary",
+            (dividerY.toInt() - 1..dividerY.toInt() + 1).any { y ->
+                val pixel = sliderFrame.getPixel(dividerX, y)
+                val channels = listOf(android.graphics.Color.red(pixel), android.graphics.Color.green(pixel), android.graphics.Color.blue(pixel))
+                channels.indices.all { channel -> channels[channel] in minOf(sourceChannels[channel], baseChannels[channel])..maxOf(sourceChannels[channel], baseChannels[channel]) } &&
+                    channels.indices.any { channel -> kotlin.math.abs(channels[channel] - baseChannels[channel]) > 20 }
+            })
         compose.mainClock.autoAdvance = false
         compose.mainClock.advanceTimeBy(320)
         compose.waitForIdle()
@@ -711,7 +744,7 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.mainClock.autoAdvance = true
         compose.onNodeWithTag("dock-Ventilation").performClick()
         assertTrue("one accepted button produces exactly one native click", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 1)
-        compose.onNodeWithTag("dock-SteeringHeat").performTouchInput { click() }
+        compose.onNodeWithTag("control-SteeringHeat").performTouchInput { click() }
         assertTrue("enabled steering has one sound", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 2)
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Ventilation to ControlState(actual = 2))) }
         assertTrue("readback has no click sound", com.autonavi.amapauto.jni.GAdaAndroid.clicks == 2)
@@ -724,7 +757,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val cycles = mapOf(ControlId.Ventilation to listOf(0, 3, 2, 1, 0),
             ControlId.Massage to listOf(0, 3, 2, 1, 0), ControlId.Heating to listOf(0, 3, 2, 1, 4, 0),
             ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0))
-        for ((id, levels) in cycles) for (prefix in listOf("control", "dock")) {
+        for ((id, levels) in cycles) for (prefix in if (DockShortcuts.items.any { it.control == id }) listOf("control", "dock") else listOf("control")) {
             for ((actual, target) in levels.zipWithNext()) {
                 compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (id to ControlState(actual = actual))) }
                 compose.mainClock.advanceTimeByFrame()
@@ -869,17 +902,17 @@ open class ContentPanelLightPrototypeRenderTest {
     private fun assertQuickPendingTap(prefix: String) {
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
         mountInteractionState(state) { event ->
-            if (event == ContentEvent.ControlTapped(ControlId.SteeringHeat)) state.value = state.value.copy(controls =
-                state.value.controls + (ControlId.SteeringHeat to ControlState(actual = 0, target = 2, available = false)))
+            if (event == ContentEvent.ControlTapped(ControlId.Heating)) state.value = state.value.copy(controls =
+                state.value.controls + (ControlId.Heating to ControlState(actual = 0, target = 3, available = false)))
         }
         compose.mainClock.autoAdvance = false
-        val tag = "$prefix-SteeringHeat"
+        val tag = "$prefix-Heating"
         val area = compose.onNodeWithTag(if (prefix == "dock") "$tag-press-area" else tag, useUnmergedTree = true)
         // No 150ms acceptance wait: the physical gesture is a 10ms tap.
         compose.onNodeWithTag(tag).performTouchInput { down(center); advanceEventTime(10); up() }
         compose.mainClock.advanceTimeBy(32)
         compose.onNodeWithTag(tag).assertIsNotEnabled()
-        assertTrue("same UP immediately projects target, never actual", state.value.controls.getValue(ControlId.SteeringHeat).actual == 0 && state.value.controls.getValue(ControlId.SteeringHeat).target == 2)
+        assertTrue("same UP immediately projects target, never actual", state.value.controls.getValue(ControlId.Heating).actual == 0 && state.value.controls.getValue(ControlId.Heating).target == 3)
         area.assert(SemanticsMatcher.expectValue(RippleRunning, true))
         compose.mainClock.advanceTimeBy(600)
         area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
@@ -944,7 +977,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val state = androidx.compose.runtime.mutableStateOf(previewState(PreviewScenario.NoData).copy(previewMode = false))
         mountInteractionState(state)
         ControlId.entries.forEach { id ->
-            listOf("control-${id.name}", "dock-${id.name}").forEach { tag ->
+            (listOf("control-${id.name}") + if (DockShortcuts.items.any { it.control == id }) listOf("dock-${id.name}") else emptyList()).forEach { tag ->
                 val node = compose.onNodeWithTag(tag)
                 node.assertIsNotEnabled().assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
                     .assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "状态未知"))
@@ -963,12 +996,14 @@ open class ContentPanelLightPrototypeRenderTest {
                 ControlId.Massage -> 2
                 ControlId.SteeringHeat -> 1
                 ControlId.Lock -> 0
+                ControlId.Wiper -> 1
             })
         }))
         mountInteractionState(state)
         listOf("Ventilation", "Heating", "PassengerHeating", "Massage", "SteeringHeat").forEach { id ->
             compose.onNodeWithTag("control-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
-            compose.onNodeWithTag("dock-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
+            if (DockShortcuts.items.any { it.name == id }) compose.onNodeWithTag("dock-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
+            else compose.onNodeWithTag("dock-$id").assertDoesNotExist()
         }
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Ventilation to ControlState(actual = 0))) }
         compose.onNodeWithTag("control-Ventilation").assert(SemanticsMatcher.expectValue(PressFeedback, "touch-ripple"))
@@ -1005,7 +1040,7 @@ open class ContentPanelLightPrototypeRenderTest {
             ControlId.PassengerHeating -> passenger
             ControlId.Ventilation -> ventilation
             ControlId.SteeringHeat -> steering
-            ControlId.Massage -> ControlState(actual = -1, available = false, known = false)
+            ControlId.Massage, ControlId.Wiper -> ControlState(actual = -1, available = false, known = false)
         } }
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
             previewMode = false,
@@ -1142,7 +1177,7 @@ open class ContentPanelLightPrototypeRenderTest {
             val night = vehicleControlIconRecipe(id, level, true)
             settle(tag, day.asset)
             fun assertTail(recipe: VehicleControlIconRecipe) {
-                for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                for (prefix in iconEntrances(id)) {
                     val icon = node("$prefix-${id.name}")
                     icon.assert(SemanticsMatcher.expectValue(OemResource, recipe.resource))
                     icon.assert(SemanticsMatcher.expectValue(IconAnimationAsset, recipe.asset))
@@ -1430,22 +1465,23 @@ open class ContentPanelLightPrototypeRenderTest {
         }
     }
 
-    @Test fun sevenEntrancesKeepWideRowOrderSliderGeometryAndFullCenteredNames() {
+    @Test fun expandedEntrancesKeepMetadataRowsVerticalGeometryAndFullCenteredNames() {
         mountInteractionState(androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false)))
         val catalog = ShortcutId.entries.toList()
-        fun tileTag(id: ShortcutId) = if (id.control == null) "shortcut-${id.name}" else "control-${id.name}"
-        val bounds = catalog.associateWith { compose.onNodeWithTag(tileTag(it)).assertIsDisplayed().getUnclippedBoundsInRoot() }
-        val ordered = bounds.entries.sortedWith(compareBy({ it.value.top.value }, { it.value.left.value })).map { it.key }
-        assertTrue("seven grid entries must preserve row-major product order", ordered == catalog)
-        catalog.take(4).forEach { assertTrue("first row remains 135dp", bounds.getValue(it).bottom - bounds.getValue(it).top == 135.dp) }
+        val bounds = catalog.associateWith { compose.onNodeWithTag(shortcutTag(it)).assertIsDisplayed().getUnclippedBoundsInRoot() }
+        val ordered = ShortcutGrid.buttons.sortedWith(compareBy({ bounds.getValue(it).top.value }, { bounds.getValue(it).left.value }))
+        assertTrue("button rows follow metadata order", ordered == ShortcutGrid.buttons)
+        ShortcutGrid.buttons.take(4).forEach { assertTrue("first row remains 135dp", bounds.getValue(it).bottom - bounds.getValue(it).top == 135.dp) }
         val brightness = compose.onNodeWithContentDescription("屏幕亮度").getUnclippedBoundsInRoot()
         val volume = compose.onNodeWithContentDescription("媒体音量").getUnclippedBoundsInRoot()
-        assertTrue("sliders retain the original 290dp lower region", brightness.bottom - brightness.top == 290.dp && volume.bottom - volume.top == 290.dp)
-        assertTrue("passenger/massage occupy lower left row", bounds.getValue(ShortcutId.PassengerHeating).top == bounds.getValue(ShortcutId.Massage).top &&
-            bounds.getValue(ShortcutId.Massage).right < brightness.left)
+        val wiper = bounds.getValue(ShortcutId.Wiper)
+        assertTrue("all three verticals share the original 290dp lower region", brightness.bottom - brightness.top == 290.dp && volume.bottom - volume.top == 290.dp && wiper.bottom - wiper.top == 290.dp)
+        assertTrue("lower ordinary toggles stack left of the stepped and two continuous verticals",
+            bounds.getValue(ShortcutId.RearWiper).left == bounds.getValue(ShortcutId.RearWash).left &&
+            bounds.getValue(ShortcutId.RearWash).right < wiper.left && wiper.right < brightness.left && brightness.right < volume.left)
         val dockBounds = DockShortcuts.items.associateWith { id ->
             val dock = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed().assertHasClickAction().getUnclippedBoundsInRoot()
-            assertTrue("each of seven Dock slots retains a 48dp touch region", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
+            assertTrue("each of six Dock slots retains a 48dp touch region", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
             dock
         }
         assertTrue("Dock preserves its explicit product order", dockBounds.entries.sortedBy { it.value.left.value }.map { it.key } == DockShortcuts.items)
@@ -1457,18 +1493,18 @@ open class ContentPanelLightPrototypeRenderTest {
             assertTrue("full name is not clipped or ellipsized: ${id.label}", layouts.single().lineCount <= 2 && !layouts.single().hasVisualOverflow)
         }
         compose.onNodeWithTag("control-PassengerHeating").performClick()
-        compose.onNodeWithTag("dock-PassengerHeating").performClick()
-        assertTrue("both new entrances dispatch the same independent passenger command", events.takeLast(2) == listOf(
-            ContentEvent.ControlTapped(ControlId.PassengerHeating), ContentEvent.ControlTapped(ControlId.PassengerHeating)))
+        assertTrue("passenger remains an independent shortcut command", events.last() == ContentEvent.ControlTapped(ControlId.PassengerHeating))
+        compose.onNodeWithTag("dock-PassengerHeating").assertDoesNotExist()
+        compose.onNodeWithTag("dock-SteeringHeat").assertDoesNotExist()
     }
 
-    @Test fun compactSevenSlotsScrollWithoutShrinkingHitRegionsOrTruncatingNames() {
+    @Test fun compactSixSlotsScrollWithoutShrinkingHitRegionsOrTruncatingNames() {
         val width = androidx.compose.runtime.mutableStateOf(400.dp)
         compose.setContent { ContentTheme(dark) { ContentPanel(ContentUiState(previewMode = false).copy(dark = dark), {}, Modifier.width(width.value).testTag(hostTag)) } }
         for (value in listOf(400.dp, 320.dp)) {
             compose.runOnIdle { width.value = value }
             ShortcutId.entries.forEach { id ->
-                val tile = compose.onNodeWithTag(if (id.control == null) "shortcut-${id.name}" else "control-${id.name}")
+                val tile = compose.onNodeWithTag(shortcutTag(id)).performScrollTo().assertIsDisplayed()
                 tile.assertHasClickAction()
                 val region = tile.getUnclippedBoundsInRoot()
                 assertTrue("narrow grid remains a real touch surface", region.right - region.left >= 48.dp && region.bottom - region.top >= 48.dp)
@@ -1478,7 +1514,7 @@ open class ContentPanelLightPrototypeRenderTest {
                 label.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
                 assertTrue("narrow full name is fully visible: ${id.label} at $value / tile=$region / text=${layouts.single().size} / lines=${layouts.single().lineCount} / widthOverflow=${layouts.single().didOverflowWidth} / heightOverflow=${layouts.single().didOverflowHeight}", layouts.single().lineCount <= 2 && !layouts.single().hasVisualOverflow)
             }
-            compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(7)
+            compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(6)
             DockShortcuts.items.forEach { id ->
                 val dock = compose.onNodeWithTag("dock-${id.name}").performScrollTo().assertIsDisplayed().getUnclippedBoundsInRoot()
                 assertTrue("seven-slot minimum width is scrollable, not squeezed below 48dp", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
@@ -1501,7 +1537,7 @@ open class ContentPanelLightPrototypeRenderTest {
             compose.mainClock.advanceTimeBy(128)
             modes.forEach { (id, level) ->
                 val recipe = vehicleControlIconRecipe(id, level, dark)
-                for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                for (prefix in iconEntrances(id)) {
                     val icon = compose.onNodeWithTag("$prefix-${id.name}", useUnmergedTree = true)
                     icon.assert(SemanticsMatcher.expectValue(OemResource, recipe.resource))
                     icon.assert(SemanticsMatcher.expectValue(IconAnimationAsset, recipe.asset))
@@ -1515,15 +1551,15 @@ open class ContentPanelLightPrototypeRenderTest {
             compose.mainClock.advanceTimeBy(352)
             val later = captureHost("new-vehicle-$step-later")
             ids.forEach { id ->
-                assertTrue("$id must move original path pixels after the 260ms generic transition has ended",
-                    !iconPixels(middle, "dock-icon-${id.name}").contentEquals(iconPixels(later, "dock-icon-${id.name}")))
+                for (prefix in iconEntrances(id)) assertTrue("$id must move original path pixels after the 260ms generic transition has ended",
+                    !iconPixels(middle, "$prefix-${id.name}").contentEquals(iconPixels(later, "$prefix-${id.name}")))
             }
             compose.mainClock.advanceTimeBy(600)
             val tail = captureHost("new-vehicle-$step-tail")
             compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
             compose.mainClock.advanceTimeBy(96)
             val held = captureHost("new-vehicle-$step-held")
-            for (id in ids) for (prefix in listOf("shortcut-icon", "dock-icon")) {
+            for (id in ids) for (prefix in iconEntrances(id)) {
                 val tag = "$prefix-${id.name}"
                 val icon = compose.onNodeWithTag(tag, useUnmergedTree = true)
                 icon.assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))

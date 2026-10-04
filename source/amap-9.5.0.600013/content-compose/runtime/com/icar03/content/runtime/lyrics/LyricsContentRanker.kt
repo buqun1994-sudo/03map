@@ -24,7 +24,8 @@ internal object LyricsContentRanker {
         val translationCoverage: Double = 0.0,
         val romanizationCoverage: Double = 0.0,
         val durationCoverage: Double = 0.0,
-        val consensusFamilies: Int = 0
+        val consensusFamilies: Int = 0,
+        val speakerCoverage: Double = 0.0
     ) {
         val score: Int get() = if (kind == LyricsKind.SYNCHRONIZED) {
             (WORD_POINTS * wordCoverage).roundToInt() +
@@ -111,7 +112,8 @@ internal object LyricsContentRanker {
     private fun capabilityGrade(quality: ContentQuality): Int =
         (if (quality.wordCoverage >= .80) 4 else 0) +
             (if (quality.translationCoverage >= .50) 2 else 0) +
-            (if (quality.romanizationCoverage >= .50) 1 else 0)
+            (if (quality.romanizationCoverage >= .50) 1 else 0) +
+            (if (quality.speakerCoverage > 0.0) 1 else 0)
 
     fun inspect(query: LyricsLookup, result: LyricsResult): ContentQuality =
         inspectBody(query, result).quality
@@ -138,14 +140,46 @@ internal object LyricsContentRanker {
         val newFeatures = capabilities(fresh)
         if (oldFeatures.indices.any { oldFeatures[it] && !newFeatures[it] }) return false
         if (fresh.durationCoverage + .10 < old.durationCoverage) return false
+        val oldRows = previous.candidate.timedLines()
+        val newRows = next.candidate.timedLines()
+        if (!retainsSpeakerSides(oldRows, newRows)) return false
         if (oldFeatures.indices.any { !oldFeatures[it] && newFeatures[it] }) return true
-        val oldText = normalizeContent(previous.candidate.timedLines().joinToString("") { it.text })
-        val newText = normalizeContent(next.candidate.timedLines().joinToString("") { it.text })
+        if (isSpeakerUpgrade(oldRows, newRows)) return true
+        val oldText = normalizeContent(oldRows.joinToString("") { it.text })
+        val newText = normalizeContent(newRows.joinToString("") { it.text })
         val oldLength = oldText.codePointCount(0, oldText.length)
         val newLength = newText.codePointCount(0, newText.length)
         return old.durationCoverage < MINIMUM_END_COVERAGE && fresh.durationCoverage >= MINIMUM_END_COVERAGE &&
             oldLength >= MINIMUM_CONSENSUS_CHARACTERS && newText.startsWith(oldText) &&
             newLength >= oldLength * 1.25
+    }
+
+    /** Already admitted vocal lanes remain attached to the same source-time/body rows. */
+    private fun retainsSpeakerSides(old: List<ParsedLyricLine>, next: List<ParsedLyricLine>): Boolean {
+        val voiced = old.filter { it.speakerSide != TtmlSpeakerLayout.UNSPECIFIED }
+        if (voiced.isEmpty()) return true
+        val available = next.groupBy { it.timeMs to it.text.filterNot(Char::isWhitespace) }
+            .mapValues { (_, rows) -> rows.map { it.speakerSide }.toMutableList() }
+        return voiced.all { line ->
+            available[line.timeMs to line.text.filterNot(Char::isWhitespace)]?.remove(line.speakerSide) == true
+        }
+    }
+
+    /** Vocal metadata alone upgrades only an unchanged body and axis, without losing its tracks. */
+    private fun isSpeakerUpgrade(old: List<ParsedLyricLine>, next: List<ParsedLyricLine>): Boolean {
+        if (old.size != next.size || old.isEmpty()) return false
+        var added = false
+        return old.indices.all { index ->
+            val before = old[index]; val after = next[index]
+            if (before.speakerSide == TtmlSpeakerLayout.UNSPECIFIED && after.speakerSide != TtmlSpeakerLayout.UNSPECIFIED) added = true
+            before.timeMs == after.timeMs &&
+                before.text.filterNot(Char::isWhitespace) == after.text.filterNot(Char::isWhitespace) &&
+                (before.translation.isBlank() || before.translation == after.translation) &&
+                (before.romanization.isBlank() || before.romanization == after.romanization) &&
+                (before.words.isEmpty() || before.words == after.words) &&
+                (before.backgroundWords.isEmpty() || before.backgroundWords == after.backgroundWords) &&
+                (before.endTimeMs == null || after.endTimeMs != null && after.endTimeMs >= before.endTimeMs)
+        } && added
     }
 
     fun plainText(result: LyricsResult): String = result.plainText()
@@ -174,6 +208,7 @@ internal object LyricsContentRanker {
         var wordCharacters = 0
         var translatedCharacters = 0
         var romanizedCharacters = 0
+        var speakerCharacters = 0
         var lastContentTime = 0L
         lines.forEachIndexed { index, line ->
             val nextLineStart = lines.asSequence().drop(index + 1)
@@ -192,6 +227,7 @@ internal object LyricsContentRanker {
             if (hasKana(line.text) && hasDistinctText(line.text, line.romanization) && hasLatinLetters(line.romanization)) {
                 romanizedCharacters += lineCharacters[index]
             }
+            if (line.speakerSide != TtmlSpeakerLayout.UNSPECIFIED) speakerCharacters += lineCharacters[index]
             // Empty tail markers and unverified line end hints must not improve duration fit.
             lastContentTime = maxOf(lastContentTime, line.timeMs, words.lastEndMs)
         }
@@ -202,6 +238,7 @@ internal object LyricsContentRanker {
                 wordCoverage = (wordCharacters / totalCharacters).coerceIn(0.0, 1.0),
                 translationCoverage = (translatedCharacters / totalCharacters).coerceIn(0.0, 1.0),
                 romanizationCoverage = (romanizedCharacters / totalCharacters).coerceIn(0.0, 1.0),
+                speakerCoverage = (speakerCharacters / totalCharacters).coerceIn(0.0, 1.0),
                 durationCoverage = (lastContentTime.toDouble() / recordingEnd).coerceIn(0.0, 1.0)
             ),
             grams = if (normalizedBody.codePointCount(0, normalizedBody.length) >= MINIMUM_CONSENSUS_CHARACTERS) {

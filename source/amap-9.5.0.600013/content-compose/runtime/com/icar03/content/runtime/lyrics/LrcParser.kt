@@ -17,7 +17,9 @@ internal data class ParsedLyricLine(
     val romanization: String = "",
     val endTimeMs: Long? = null,
     val backgroundWords: List<ParsedLyricWord> = emptyList(),
-    val speaker: String = ""
+    val speaker: String = "",
+    val speakerSide: Int = TtmlSpeakerLayout.UNSPECIFIED,
+    val speakerPrefixLength: Int = 0
 )
 
 internal object LrcParser {
@@ -152,7 +154,7 @@ internal object LrcParser {
         if (base.isEmpty()) return emptyList()
         val matchingWords = assignments(base, wordLines, WORD_TOLERANCE_MS) { original, wordLine ->
             wordLine.words.isNotEmpty() && wordLine.words.any { it.endTimeMs > original.timeMs } &&
-                original.text.filterNot(Char::isWhitespace) == wordLine.text.filterNot(Char::isWhitespace)
+                original.text.speakerTextKey() == wordLine.text.speakerTextKey()
         }
         val words = matchingWords.takeIf { it.size * 2 >= base.size }.orEmpty()
         val useWordTiming = base.indices.count { index ->
@@ -163,11 +165,17 @@ internal object LrcParser {
         val romanizations = auxiliaryLines(romanizedRaw, auxiliaryOffset(romanizedRaw, offset))
         val romanizationIndexes = assignments(base, romanizations, TRANSLATION_TOLERANCE_MS, preferLater = true)
         val aligned = base.mapIndexed { index, line ->
+            val wordLine = words[index]?.let { wordLines[it] }
+            val wordSpeaker = line.speaker.ifBlank { speakerPrefix(wordLine?.text.orEmpty())?.first.orEmpty() }
+            val wordPrefixLength = if (line.speaker.isBlank()) speakerPrefix(wordLine?.text.orEmpty())?.second ?: 0
+                else line.speakerPrefixLength
             line.copy(
                 translation = translationIndexes[index]?.let { translations[it].text }.orEmpty(),
-                words = if (useWordTiming) words[index]?.let { wordLines[it].words } ?: line.words else emptyList(),
+                words = if (useWordTiming) wordLine?.words ?: line.words else emptyList(),
                 romanization = romanizationIndexes[index]?.let { romanizations[it].text }.orEmpty(),
-                endTimeMs = words[index]?.let { wordLines[it].endTimeMs } ?: line.endTimeMs
+                endTimeMs = wordLine?.endTimeMs ?: line.endTimeMs,
+                speaker = wordSpeaker,
+                speakerPrefixLength = wordPrefixLength
             )
         }
         return rehangOnTrustedWords(originalRaw, wordRaw, offset, durationMs, aligned) ?: aligned
@@ -194,13 +202,15 @@ internal object LrcParser {
         }
         if (originalRows.size != aligned.size || originalRows.size < 2) return null
         val keys = originalRows.map { it.timeMs to it.text }
-        if (keys.toSet().size != keys.size || keys.toSet() != aligned.map { it.timeMs to it.text }.toSet()) return null
+        val alignedKeys = aligned.map { it.timeMs to it.text.speakerTextKey() }
+        if (keys.toSet().size != keys.size ||
+            originalRows.map { it.timeMs to it.text.speakerTextKey() }.toSet() != alignedKeys.toSet()) return null
 
         val wordRows = trustedYrcRows(wordRaw, offsetMs, durationMs) ?: return null
         if (wordRows.size != originalRows.size) return null
         if (originalRows.indices.any { index ->
-            val text = normalizeText(originalRows[index].text)
-            text.isEmpty() || text != normalizeText(wordRows[index].text)
+            val text = originalRows[index].text.speakerTextKey()
+            text.isEmpty() || text != wordRows[index].text.speakerTextKey()
         }) return null
         val oldLast = originalRows.maxOf(ParsedLyricLine::timeMs)
         val newLast = wordRows.last().timeMs
@@ -306,6 +316,21 @@ internal object LrcParser {
             assignedAuxiliary += candidate.auxiliary
         }
         return assignedOriginals
+    }
+
+    private fun String.speakerTextKey(): String =
+        substring(speakerPrefix(this)?.second ?: 0).filterNot(Char::isWhitespace)
+
+    private fun speakerPrefix(text: String): Pair<String, Int>? {
+        val start = text.indexOfFirst { !it.isWhitespace() }.takeIf { it >= 0 } ?: return null
+        val relativeColon = text.substring(start).indexOfFirst { it == ':' || it == '：' }
+        if (relativeColon !in 1..32) return null
+        val colon = start + relativeColon
+        val label = text.substring(start, colon).trim()
+        if (label.length > 10 || label.any(Char::isWhitespace)) return null
+        var end = colon + 1
+        while (end < text.length && text[end].isWhitespace()) end++
+        return label to end
     }
 
     private fun parseOffsetMs(raw: String): Long = offsets.find(raw)?.groupValues?.get(1)

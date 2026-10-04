@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { discoverModuleGraph } from './validate-content-planner.mjs';
+import { nativeToolchain } from './build-map-mute-native.mjs';
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -35,7 +36,7 @@ export function sourceFingerprint(root = repoRoot) {
       const relative = path.relative(path.join(root, 'ui-preview'), file);
       return /(?:^|\/)src\//.test(relative) || /(?:\.gradle\.kts|gradle\.properties|gradlew(?:\.bat)?|gradle-wrapper\.(?:jar|properties))$/.test(relative);
     }),
-    ...sourceFiles(path.join(root, 'scripts')).filter(file => /\.(?:mjs|sh|java|pro|json)$/.test(file)),
+    ...sourceFiles(path.join(root, 'scripts')).filter(file => /\.(?:mjs|sh|java|pro|json|py)$/.test(file)),
   ];
   const files = [...new Set(inputs)].sort().map(file => ({ path: path.relative(root, file).split(path.sep).join('/'), sha256: digest(fs.readFileSync(file)) }));
   return { sha256: digest(JSON.stringify(files)), files };
@@ -229,7 +230,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       });
     } else if (mode === 'toolchain') {
       const [destination, javaHome, sdk, apktool, aapt, r8, zipalign, apksigner] = args;
-      const files = { jdkRelease: path.join(javaHome, 'release'), sdkPlatform: path.join(sdk, 'platforms/android-35/android.jar'), apktool, aapt2: aapt, r8, zipalign, apksigner };
+      const files = { jdkRelease: path.join(javaHome, 'release'), sdkPlatform: path.join(sdk, 'platforms/android-35/android.jar'), apktool, aapt2: aapt, r8, zipalign, apksigner,
+        ...Object.fromEntries(Object.entries(nativeToolchain(sdk)).map(([name, file]) => [`ndk:${name}`, file])) };
       const inputs = Object.fromEntries(Object.entries(files).map(([name, file]) => [name, digest(fs.readFileSync(file))]));
       const javaRelease = fs.readFileSync(files.jdkRelease, 'utf8');
       fs.writeFileSync(destination, JSON.stringify({ sha256: digest(JSON.stringify(inputs)), inputs, javaRelease }, null, 2) + '\n');

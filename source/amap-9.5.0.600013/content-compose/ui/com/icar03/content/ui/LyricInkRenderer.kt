@@ -28,6 +28,9 @@ internal object LyricVisuals {
     const val CHARACTER_RISE_DURATION_MS = 1_000L
     const val FEATHER_EM = .16f
     const val CACHE_BYTES = 12 * 1024 * 1024
+    const val VOICE_FAR_INSET_RATIO = .15f
+    const val VOICE_NEAR_INSET_RATIO = .075f
+    const val VOICE_MAX_INSET_EM = 4f
 }
 
 internal data class LyricMetrics(
@@ -167,18 +170,40 @@ internal data class LyricVisualLine(val index: Int, val top: Int, val bottom: In
 }
 
 internal class LyricTrack(val layout: StaticLayout, val top: Float, val alpha: Float,
-    val isMain: Boolean, val words: List<LyricWord>, val visualLines: List<LyricVisualLine>) {
+    val isMain: Boolean, val words: List<LyricWord>, val visualLines: List<LyricVisualLine>, val left: Float = 0f) {
     val rasterPaint = TextPaint(layout.paint) // Immutable style; the draw-only fallback owns layout.paint.
 }
 internal class NativeLyricRow(val tracks: List<LyricTrack>, val height: Int, val mainPivotX: Float)
 
-internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics, face: Typeface, cjk: Typeface = face): NativeLyricRow {
+internal fun lyricVoiceInsets(side: LyricSide, width: Int, fontSize: Float): Pair<Int, Int> {
+    if (side == LyricSide.Unspecified || width <= 1 || !fontSize.isFinite() || fontSize <= 0f) return 0 to 0
+    val far = min(width * LyricVisuals.VOICE_FAR_INSET_RATIO, fontSize * LyricVisuals.VOICE_MAX_INSET_EM)
+        .roundToInt().coerceIn(0, (width - 1) / 2)
+    val near = min(width * LyricVisuals.VOICE_NEAR_INSET_RATIO, fontSize * LyricVisuals.VOICE_MAX_INSET_EM / 2f)
+        .roundToInt().coerceIn(0, far)
+    return when (side) {
+        LyricSide.Leading -> near to far
+        LyricSide.Trailing -> far to near
+        LyricSide.Center -> far to far
+        LyricSide.Unspecified -> 0 to 0
+    }
+}
+
+internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics, face: Typeface,
+    cjk: Typeface = face, baseInset: Int = 0): NativeLyricRow {
+    val base = baseInset.coerceAtLeast(0)
+    val physicalWidth = (width + base * 2).coerceAtLeast(1)
+    val (physicalLeft, physicalRight) = lyricVoiceInsets(line.side, physicalWidth, metrics.activeMain)
+    val mainLeftInset = (physicalLeft - base).coerceAtLeast(0)
+    val mainRightInset = (physicalRight - base).coerceAtLeast(0)
+    val mainLayoutWidth = (width - mainLeftInset - mainRightInset).coerceAtLeast(1)
     fun layout(text: String, fontSize: Float): StaticLayout {
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             color = Color.WHITE; textSize = fontSize; typeface = face
         }
         val shaped = lyricShapedText(text, cjk)
-        return StaticLayout.Builder.obtain(shaped, 0, shaped.length, paint, width)
+        return StaticLayout.Builder.obtain(shaped, 0, shaped.length, paint,
+            (width - mainLeftInset - mainRightInset).coerceAtLeast(1))
             .setAlignment(when (line.side) {
                 LyricSide.Trailing -> Layout.Alignment.ALIGN_OPPOSITE
                 LyricSide.Center -> Layout.Alignment.ALIGN_CENTER
@@ -191,15 +216,18 @@ internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics,
     fun add(text: String, size: Float, alpha: Float, main: Boolean, words: List<LyricWord> = emptyList()) {
         if (text.isBlank()) return
         val shaped = layout(text, size)
-        tracks += LyricTrack(shaped, top, alpha, main, words, compileLyricInk(shaped, text, words, size))
+        tracks += LyricTrack(shaped, top, alpha, main, words, compileLyricInk(shaped, text, words, size), mainLeftInset.toFloat())
         top += shaped.height + metrics.gap
     }
     add(line.text, metrics.activeMain, 1f, true, line.words)
     add(line.romanization, metrics.romanization, .62f, false)
     add(line.translation, metrics.translation, .76f, false)
     add(line.backgroundWords.joinToString("") { it.text }, metrics.translation, .9f, false, line.backgroundWords)
+    val mainTrack = tracks.firstOrNull { it.isMain }
+    val actualMainWidth = mainTrack?.layout?.width?.toFloat() ?: mainLayoutWidth.toFloat()
+    val actualMainLeft = mainTrack?.left ?: mainLeftInset.toFloat()
     return NativeLyricRow(tracks, (top - metrics.gap + metrics.padding).roundToInt().coerceAtLeast(1),
-        when (line.side) { LyricSide.Trailing -> width.toFloat(); LyricSide.Center -> width / 2f; else -> 0f })
+        actualMainLeft + when (line.side) { LyricSide.Trailing -> actualMainWidth; LyricSide.Center -> actualMainWidth / 2f; else -> 0f })
 }
 
 /** All string searches, caret queries, wrap segmentation and grapheme work happen once per immutable body. */
@@ -538,13 +566,13 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
             val track = slice.track
             val y = tops[slice.row] + offset + track.top
             @Suppress("DEPRECATION")
-            if (canvas.quickReject(0f, y + slice.visual.top - metrics.lift,
-                    track.layout.width.toFloat(), y + slice.visual.bottom, Canvas.EdgeType.AA)) continue
+            if (canvas.quickReject(track.left, y + slice.visual.top - metrics.lift,
+                    track.left + track.layout.width, y + slice.visual.bottom, Canvas.EdgeType.AA)) continue
             val emphasized = slice.row in current
             val scale = if (track.isMain && !emphasized) metrics.main / metrics.activeMain else 1f
             val pivotY = (slice.visual.top + slice.visual.bottom) / 2f
             val saved = canvas.save()
-            canvas.translate(0f, y)
+            canvas.translate(track.left, y)
             canvas.scale(scale, scale, slice.visual.pivotX, pivotY)
             val opacity = if (!lyrics.timed) .92f else if (emphasized) 1f else when {
                 abs(slice.row - focus) <= 2 -> LyricVisuals.NEAR_ALPHA
@@ -587,7 +615,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
             val visual = track.visualLines[address.line]
             val y = tops[address.row] + offset + track.top
             @Suppress("DEPRECATION")
-            if (canvas.quickReject(0f, y + visual.top, track.layout.width.toFloat(),
+            if (canvas.quickReject(track.left, y + visual.top, track.left + track.layout.width,
                     y + visual.bottom, Canvas.EdgeType.AA)) continue
             val emphasized = address.row in current
             val scale = if (track.isMain && !emphasized) metrics.main / metrics.activeMain else 1f
@@ -603,7 +631,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
                 !(lyrics.timelineReady && visual.fullRevealEndMs >= 0L && position >= visual.fullRevealEndMs))
                 LyricVisuals.UNSUNG_ALPHA else 1f
             val saved = canvas.save()
-            canvas.translate(0f, y)
+            canvas.translate(track.left, y)
             canvas.scale(scale, scale, visual.pivotX, pivotY)
             canvas.clipRect(0f, visual.top.toFloat(), track.layout.width.toFloat(), visual.bottom.toFloat())
             val textPaint = track.layout.paint

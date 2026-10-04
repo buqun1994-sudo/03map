@@ -123,7 +123,7 @@ try { await withBuildLock(${JSON.stringify(fixture)}, async () => {
 await test('standalone Compose acquires the same lock and rejects a concurrent writer', async () => {
   const isolated = path.join(fixture, 'compose-cli');
   fs.mkdirSync(path.join(isolated, 'scripts'), { recursive: true });
-  for (const name of ['build-compose-content.mjs', 'content-workflow.mjs', 'validate-content-planner.mjs']) fs.copyFileSync(path.join(root, 'scripts', name), path.join(isolated, 'scripts', name));
+  for (const name of ['build-compose-content.mjs', 'content-workflow.mjs', 'validate-content-planner.mjs', 'build-map-mute-native.mjs']) fs.copyFileSync(path.join(root, 'scripts', name), path.join(isolated, 'scripts', name));
   const command = path.join(isolated, 'scripts/build-compose-content.mjs');
   const environment = { ...process.env }; delete environment.CONTENT_WORKFLOW_LOCK_TOKEN;
   const invalidStage = path.join(isolated, 'apk-work/9.5.0.600013/source-build.fixture');

@@ -53,6 +53,7 @@ class ContentBinding(
     private var brightness = ContentPorts.SystemSnapshot(false, 0)
     private var volume = ContentPorts.SystemSnapshot(false, 0)
     private var sourcesOpen = false
+    private var placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap()
     private var feedback: String? = null
     private var feedbackRevision = 0L
     private fun replaceFeedback(message: String?) { feedback = message; feedbackRevision++ }
@@ -198,14 +199,35 @@ class ContentBinding(
     fun dispatch(event: ContentEvent) {
         checkMain()
         if (!running || closed) return
-        if (event is ContentEvent.ControlTapped || event == ContentEvent.PlayPause || event == ContentEvent.NextTrack ||
+        if (event is ContentEvent.PlaceholderToggled) {
+            if (event.id == ShortcutId.RearWiper || event.id == ShortcutId.RearWash) {
+                placeholderSwitches = placeholderSwitches + (event.id to (placeholderSwitches[event.id] != true))
+                replaceFeedback(event.id.label + "仅为本地反馈，车控尚未接入")
+                publishShell()
+            }
+            return
+        }
+        if (event is ContentEvent.ControlTapped || event is ContentEvent.ControlPowerTapped ||
+            event is ContentEvent.ControlAutomaticTapped || event is ContentEvent.ControlLevelChanged ||
+            event == ContentEvent.PlayPause || event == ContentEvent.NextTrack ||
             event is ContentEvent.SourceSelected || event is ContentEvent.BrightnessChanged || event is ContentEvent.VolumeChanged) replaceFeedback(null)
         // A fresh capability snapshot is a cached fact, never a synchronous service probe.
         project(store.snapshot())
         when (event) {
             is ContentEvent.ControlTapped -> {
                 if (state.value.controls[event.id]?.available != true) return
-                if (event.id == ControlId.Lock) store.toggleLock() else store.cycleSeatLevel(event.id.id)
+                if (event.id == ControlId.Lock) store.toggleLock()
+                else if (event.id == ControlId.Wiper) store.toggleControlPower(event.id.id)
+                else store.cycleControlLevel(event.id.id)
+            }
+            is ContentEvent.ControlPowerTapped -> {
+                if (state.value.controls[event.id]?.available == true) store.toggleControlPower(event.id.id)
+            }
+            is ContentEvent.ControlAutomaticTapped -> {
+                if (state.value.controls[event.id]?.available == true) store.toggleControlAutomatic(event.id.id)
+            }
+            is ContentEvent.ControlLevelChanged -> {
+                if (state.value.controls[event.id]?.available == true) store.setControlLevel(event.id.id, event.level)
             }
             is ContentEvent.BrightnessChanged -> writeSystem(0, event.value)
             is ContentEvent.VolumeChanged -> writeSystem(1, event.value)
@@ -317,8 +339,10 @@ class ContentBinding(
         val message = feedback ?: projected.message
         val light = if (systemTargets[0] == null) projected.brightness else projected.brightness.copy(target = systemTargets[0])
         val sound = if (systemTargets[1] == null) projected.volume else projected.volume.copy(target = systemTargets[1])
-        val result = if (projected.sourcesOpen == sourcesOpen && projected.message == message && light === projected.brightness && sound === projected.volume) projected
-            else projected.copy(sourcesOpen = sourcesOpen, message = message, brightness = light, volume = sound)
+        val result = if (projected.sourcesOpen == sourcesOpen && projected.message == message &&
+            light === projected.brightness && sound === projected.volume && projected.placeholderSwitches == placeholderSwitches) projected
+            else projected.copy(sourcesOpen = sourcesOpen, message = message, brightness = light, volume = sound,
+                placeholderSwitches = placeholderSwitches)
         if (mutableState.value != result) mutableState.value = result
     }
 

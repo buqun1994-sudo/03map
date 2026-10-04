@@ -44,22 +44,38 @@ class ContentModelsTest {
         }
     }
 
-    @Test fun dockKeepsSevenExplicitShortcutsSharingExistingVehicleControls() {
-        assertEquals(7, DockShortcuts.MAX_BUTTONS)
-        assertEquals(listOf("Lock", "SteeringHeat", "Ventilation", "Heating", "PassengerHeating", "Massage", "Settings"), DockShortcuts.items.map { it.name })
+    @Test fun dockKeepsSixExplicitShortcutsIndependentOfTheExpandedPage() {
+        assertEquals(6, DockShortcuts.MAX_BUTTONS)
+        assertEquals(listOf("Lock", "Wiper", "Ventilation", "Heating", "Massage", "Settings"), DockShortcuts.items.map { it.name })
         assertNotSame(ShortcutId.entries, DockShortcuts.items)
         assertTrue(ShortcutId.entries.containsAll(DockShortcuts.items))
-        assertEquals(listOf(ControlId.Lock, ControlId.SteeringHeat, ControlId.Ventilation, ControlId.Heating,
-            ControlId.PassengerHeating, ControlId.Massage), DockShortcuts.items.mapNotNull { it.control })
+        assertEquals(listOf(ControlId.Lock, ControlId.Wiper, ControlId.Ventilation, ControlId.Heating,
+            ControlId.Massage), DockShortcuts.items.mapNotNull { it.control })
         assertEquals(ControlId.SteeringHeat, ShortcutId.SteeringHeat.control)
+        assertFalse(DockShortcuts.items.contains(ShortcutId.SteeringHeat))
+        assertFalse(DockShortcuts.items.contains(ShortcutId.PassengerHeating))
         assertNull(ShortcutId.Settings.control)
+    }
+
+    @Test fun metadataDeclaresFourPresentationsWithoutDuplicatingVehicleState() {
+        assertEquals(4, QuickControlType.entries.size)
+        assertEquals(11, ShortcutId.entries.size)
+        assertTrue(ShortcutGrid.buttons.take(4).all { it.type == QuickControlType.DynamicIconSwitch })
+        assertEquals(listOf(ShortcutId.RearWiper, ShortcutId.RearWash), ShortcutGrid.lowerToggles)
+        assertEquals(listOf(ShortcutId.Wiper), ShortcutGrid.verticals)
+        assertEquals(ControlId.Wiper, ShortcutId.AutoWiper.control)
+        assertEquals(QuickControlType.OrdinaryToggle, ShortcutId.AutoWiper.type)
+        assertTrue(SystemQuickControl.entries.all { it.type == QuickControlType.ContinuousVertical })
+        assertNull(ShortcutId.RearWiper.control); assertNull(ShortcutId.RearWash.control)
+        assertTrue(ContentUiState().placeholderSwitches.isEmpty())
+        assertEquals(1, ControlState().rememberedLevel)
     }
 
     @Test fun dockRejectsOverflowDuplicatesAndMissingOrMovedLock() {
         val overflow = assertThrows(IllegalArgumentException::class.java) {
             DockShortcuts.checkedItems(DockShortcuts.items + ShortcutId.Settings)
         }
-        assertTrue("overflow must fail at the seven-button limit", overflow.message?.contains("at most 7 buttons") == true)
+        assertTrue("overflow must fail at the six-button limit", overflow.message?.contains("at most 6 buttons") == true)
         val invalid = listOf(
             emptyList(),
             listOf(ShortcutId.Lock, ShortcutId.Heating, ShortcutId.Heating),
@@ -84,7 +100,7 @@ class ContentModelsTest {
         assertThrows(UnsupportedOperationException::class.java) {
             (DockShortcuts.items as MutableList<ShortcutId>).clear()
         }
-        assertEquals(7, DockShortcuts.items.size)
+        assertEquals(6, DockShortcuts.items.size)
     }
 
     @Test fun lyricsEmptyReasonsDefaultToNoLyricsAndDoNotPretendToHaveATimeline() {
@@ -98,8 +114,8 @@ class ContentModelsTest {
         assertFalse(instrumental.loading)
     }
 
-    @Test fun sixControlsAndFiveStableSourcesAreUnique() {
-        assertEquals(6, ControlId.entries.size)
+    @Test fun sevenControlsAndFiveStableSourcesAreUnique() {
+        assertEquals(7, ControlId.entries.size)
         assertEquals(5, MediaSource.entries.size)
         assertEquals(5, MediaSource.entries.map { it.label }.toSet().size)
     }

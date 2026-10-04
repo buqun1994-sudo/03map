@@ -104,7 +104,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val visible = visibility ?: rememberLyricVisibility()
         val workEnabled = visible && !freezeMotion
         val request = remember(incoming.lines, width, requestedMetrics, face, cjk) {
-            LyricLayoutRequest(incoming.lines, width, requestedMetrics, face, cjk)
+            LyricLayoutRequest(incoming.lines, width, requestedMetrics, face, cjk, inset.roundToInt())
         }
         var candidate by remember(presentationKey) { mutableStateOf<LyricLayoutDocument?>(null) }
         val admitted = remember(presentationKey) { LyricPresentationHolder() }

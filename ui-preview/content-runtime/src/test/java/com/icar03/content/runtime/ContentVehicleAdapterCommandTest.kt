@@ -397,6 +397,83 @@ class ContentVehicleAdapterCommandTest {
         assertNoCompanionWrites(service)
     }
 
+    @Test fun frontWiperReadAndWriteTablesStayIndependentAndOnlyUseFunction608Area0() {
+        val service = VehicleCommandBinder()
+        val adapter = adapter(service)
+        val reads = mapOf(0 to 0, 1 to 5, 2 to 1, 3 to 2, 4 to 3, 5 to 4)
+        for ((raw, expected) in reads) {
+            service.values[608] = raw
+            val snapshot = readVehicleCommandSnapshot(adapter, service)
+            assertEquals(expected, ContentVehicleProtocol.normalizeWiperLevel(raw))
+            assertEquals(expected, snapshot.wiperLevel)
+            assertTrue(snapshot.wiperKnown)
+            assertTrue(adapter.isControlLevelAvailable("front_wiper", 0))
+        }
+        for (raw in listOf(Int.MIN_VALUE, -1000, -1, 6, 7, Int.MAX_VALUE)) {
+            service.values[608] = raw
+            val snapshot = readVehicleCommandSnapshot(adapter, service)
+            assertEquals(-1, ContentVehicleProtocol.normalizeWiperLevel(raw))
+            assertEquals(-1, snapshot.wiperLevel)
+            assertFalse(snapshot.wiperKnown)
+            assertFalse(adapter.requestControlLevel("front_wiper", 1, 920L))
+        }
+        val writes = mapOf(0 to 1, 5 to 2, 1 to 3, 2 to 4, 3 to 5, 4 to 6)
+        for ((mode, code) in writes) {
+            val write = ContentVehicleProtocol.controlLevelWrite("front_wiper", mode)!!
+            assertEquals(608, write.functionId)
+            assertEquals(code, write.value)
+            assertFalse(write.ensureMassageOn)
+        }
+        assertTrue(service.calls.filter { it.functionId == 608 }.all { it.transaction == 7 && it.area == 0 })
+        assertFalse(service.calls.any { it.functionId in listOf(561, 609, 610, 671) })
+        assertTrue(service.writes.isEmpty())
+    }
+
+    @Test fun frontWiperQueueAndBinderAckNeverReplaceIndependentActualReadback() {
+        val service = VehicleCommandBinder().apply { holdReadback = true }
+        val adapter = adapter(service)
+        val failures = mutableListOf<Long>()
+        val snapshots = observe(adapter, failures)
+        var actual = 0
+        for ((target, request) in listOf(1 to 3, 2 to 4, 3 to 5, 4 to 6, 5 to 2, 0 to 1)) {
+            val before = service.writes.size
+            assertTrue(adapter.requestControlLevel("front_wiper", target, 930L + target))
+            assertEquals(before, service.writes.size)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(listOf(VehiclePacket(5, 608, 0, request)), service.writes.drop(before))
+            assertEquals(actual, snapshots.last().wiperLevel)
+            assertTrue(snapshots.last().wiperKnown)
+            service.releaseReadback()
+            pollVehicleCommandAdapter(adapter)
+            assertEquals(target, snapshots.last().wiperLevel)
+            actual = target
+        }
+        assertTrue(failures.isEmpty())
+        assertFalse(service.calls.any { it.functionId in listOf(561, 609, 610, 671) })
+    }
+
+    @Test fun frontWiperReadAndWritePermissionFailuresNeverBorrowSeatOrLockState() {
+        for (permissionReply in listOf(false, true)) {
+            val service = VehicleCommandBinder().apply {
+                failReadFunction = 608; failReadWithPermissionReply = permissionReply
+            }
+            val adapter = adapter(service)
+            assertFalse(readVehicleCommandSnapshot(adapter, service).wiperKnown)
+            assertTrue(adapter.isSeatLevelAvailable("seat_heating", 4))
+            assertFalse(adapter.requestControlLevel("front_wiper", 5, 950L))
+            service.failReadFunction = null
+            readVehicleCommandSnapshot(adapter, service)
+            service.failWriteFunction = 608; service.failWithPermissionReply = permissionReply
+            val failures = mutableListOf<Long>()
+            val snapshots = observe(adapter, failures)
+            assertTrue(adapter.requestControlLevel("front_wiper", 5, 951L))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(listOf(951L), failures)
+            assertEquals(0, snapshots.last().wiperLevel)
+            assertEquals(listOf(VehiclePacket(5, 608, 0, 2)), service.writes)
+        }
+    }
+
     private fun adapter(service: VehicleCommandBinder) = attachedVehicleCommandAdapter(service).also(adapters::add)
 
     private fun observe(adapter: ContentVehicleAdapter, failures: MutableList<Long>): MutableList<ContentPorts.VehicleSnapshot> {
@@ -486,7 +563,7 @@ internal class VehicleCommandBinder : Binder() {
     var holdReadback = false
     val values = mutableMapOf(0x212 to 1, 0x282 to 1, 0x213 to 1, 0x34a to 1, 0x21c to 1, 0x2a5 to 1,
         0x241 to 2, 0x245 to 1, 0x243 to 1, 1047 to 1, 0x303 to 123,
-        0x305 to 0, 0x29d to 0, 0x308 to 0)
+        0x305 to 0, 0x29d to 0, 0x308 to 0, 608 to 0)
     val lastWrites = mutableMapOf<Int, Int>()
     val calls = mutableListOf<VehiclePacket>()
     val writes: List<VehiclePacket> get() = calls.filter { it.transaction == 5 }
@@ -528,6 +605,10 @@ internal class VehicleCommandBinder : Binder() {
                     0x241 -> if (value == 2) mapOf(0x241 to 2, 0x245 to 1, 0x243 to 1)
                         else mapOf(0x241 to 1, 0x245 to 0, 0x243 to 0)
                     0x243 -> mapOf(0x243 to value)
+                    608 -> mapOf(608 to when (value) {
+                        1 -> 0; 2 -> 1; 3 -> 2; 4 -> 3; 5 -> 4; 6 -> 5
+                        else -> error("unexpected front wiper request $value")
+                    })
                     else -> error("unexpected write function ${function.toString(16)}")
                 }
                 if (holdReadback) delayed += state else values.putAll(state)

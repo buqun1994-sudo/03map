@@ -113,9 +113,11 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 target = target,
                 available = vehicleIdle && realVehicle && if (id == ControlId.Lock) {
                     state.lockKnown && capabilities.lock
-                } else state.seatControlsKnown && id.id in capabilities.writableSeatControls &&
+                } else (if (id == ControlId.Wiper) state.wiperKnown else state.seatControlsKnown) &&
+                    id.id in capabilities.writableSeatControls &&
                     (id.isLevel(actual) || id == ControlId.Massage && state.massageSwitchKnown && state.massageActive),
                 known = realVehicle && id.isLevel(actual),
+                rememberedLevel = state.rememberedLevel(id),
             )
         }
         val source = MediaSource.entries.firstOrNull { it.label == ContentRegistry.normalizeMediaSource(state.mediaSource) } ?: MediaSource.Local
@@ -212,6 +214,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.passengerHeatingLevel == b.passengerHeatingLevel && a.passengerHeatingAutoKnown == b.passengerHeatingAutoKnown &&
             a.passengerHeatingAutoActive == b.passengerHeatingAutoActive && a.steeringHeatLevel == b.steeringHeatLevel &&
             a.massageLevel == b.massageLevel && a.massageSwitchKnown == b.massageSwitchKnown && a.massageActive == b.massageActive &&
+            a.wiperLevel == b.wiperLevel && a.wiperKnown == b.wiperKnown && a.rememberedControlLevels == b.rememberedControlLevels &&
             a.mediaDataAvailable == b.mediaDataAvailable && a.mediaPreview == b.mediaPreview && a.mediaSource == b.mediaSource &&
             a.pendingSource == b.pendingSource && a.mediaPlaying == b.mediaPlaying && a.mediaSongIdentity == b.mediaSongIdentity &&
             a.mediaRecordingKey == b.mediaRecordingKey && a.mediaTitle == b.mediaTitle && a.mediaArtist == b.mediaArtist &&

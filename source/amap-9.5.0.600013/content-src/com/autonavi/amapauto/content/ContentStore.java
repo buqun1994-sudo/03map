@@ -129,7 +129,7 @@ public final class ContentStore {
         snapshot.lockWriteAvailable = !destroyed && vehiclePort.isLockAvailable();
         java.util.Set<String> writable = new java.util.HashSet<>();
         for (VehicleControl control : VehicleControl.values()) {
-            if (control != VehicleControl.Lock && isSeatCycleControlAvailable(control.getId())) {
+            if (control != VehicleControl.Lock && isControlAvailable(control.getId())) {
                 writable.add(control.getId());
             }
         }
@@ -284,6 +284,9 @@ public final class ContentStore {
             state.seatControlsKnown = snapshot.seatControlsKnown;
             state.lockKnown = snapshot.lockKnown;
             state.locked = snapshot.locked;
+            state.wiperLevel = snapshot.wiperKnown ? VehicleControl.Wiper.normalizeLevel(snapshot.wiperLevel) : -1;
+            state.wiperKnown = state.wiperLevel >= 0;
+            rememberManualReadbackLocked();
             if (state.pendingVehicleCommand.length() != 0) {
                 if (!snapshot.dataAvailable || snapshot.preview || !vehiclePort.isAvailable()) {
                     finishVehicleCommandLocked(false, "车控连接中断，命令未确认");
@@ -524,22 +527,60 @@ public final class ContentStore {
         return Math.max(1L, elapsedDeadline - now);
     }
 
-    /** The same admission rule serves rendering, cyclic taps and explicit targets. */
-    public synchronized boolean isSeatCycleControlAvailable(String seatId) {
-        return canSetSeatLevelLocked(seatId, nextSeatLevelLocked(seatId));
+    private boolean controlReadbackKnownLocked(VehicleControl control) {
+        return control == VehicleControl.Wiper ? state.wiperKnown : state.seatControlsKnown;
+    }
+
+    private void rememberManualReadbackLocked() {
+        if (!state.vehicleDataAvailable || state.vehiclePreview || !vehiclePort.isAvailable()) return;
+        java.util.Map<String, Integer> updated = null;
+        for (VehicleControl control : VehicleControl.values()) {
+            if (control == VehicleControl.Lock || !controlReadbackKnownLocked(control)) continue;
+            int actual = state.controlLevel(control);
+            if (!control.isManualLevel(actual) || state.rememberedLevel(control) == actual) continue;
+            if (updated == null) updated = new java.util.HashMap<>(state.getRememberedControlLevels());
+            updated.put(control.getId(), actual);
+            preferenceStore.saveManualLevel(control, actual);
+        }
+        if (updated != null) state.setRememberedControlLevels(updated);
+    }
+
+    /** Seat click availability retains its existing cycle policy. Wiper has explicit intents. */
+    public synchronized boolean isControlAvailable(String controlId) {
+        VehicleControl control = VehicleControl.fromId(controlId);
+        if (control != VehicleControl.Wiper) return isControlCycleAvailable(controlId);
+        if (canSetControlLevelLocked(controlId,
+                control.powerToggleLevel(state.controlLevel(control), state.rememberedLevel(control)))
+                || canSetControlLevelLocked(controlId, control.automaticToggleLevel(state.controlLevel(control)))) return true;
+        for (int manual = 0; manual <= control.getMaxManualLevel(); manual++) {
+            if (canSetControlLevelLocked(controlId, manual)) return true;
+        }
+        return false;
+    }
+
+    public synchronized boolean isControlCycleAvailable(String controlId) {
+        return canSetControlLevelLocked(controlId, nextControlLevelLocked(controlId));
+    }
+
+    public boolean isSeatCycleControlAvailable(String seatId) {
+        return isControlCycleAvailable(seatId);
+    }
+
+    public void cycleControlLevel(String controlId) {
+        dispatchControlLevel(controlId, null, LevelIntent.Select);
     }
 
     public void cycleSeatLevel(String seatId) {
-        dispatchSeatLevel(seatId, null);
+        cycleControlLevel(seatId);
     }
 
-    private int actualSeatLevelLocked(String seatId) {
-        VehicleControl control = VehicleControl.fromId(seatId);
+    private int actualControlLevelLocked(String controlId) {
+        VehicleControl control = VehicleControl.fromId(controlId);
         return control == null ? -1 : state.controlLevel(control);
     }
 
-    private int nextSeatLevelLocked(String seatId) {
-        VehicleControl control = VehicleControl.fromId(seatId);
+    private int nextControlLevelLocked(String controlId) {
+        VehicleControl control = VehicleControl.fromId(controlId);
         if (control == null || control == VehicleControl.Lock) return -1;
         int actualLevel = state.controlLevel(control);
         if (control.isLevel(actualLevel)) return control.nextLevel(actualLevel);
@@ -548,33 +589,60 @@ public final class ContentStore {
                 && state.massageSwitchKnown && state.massageActive ? 0 : -1;
     }
 
-    private boolean canSetSeatLevelLocked(String seatId, int targetLevel) {
-        VehicleControl control = VehicleControl.fromId(seatId);
+    private boolean canSetControlLevelLocked(String controlId, int targetLevel) {
+        VehicleControl control = VehicleControl.fromId(controlId);
         if (control == null || control == VehicleControl.Lock
                 || destroyed || state.pendingVehicleCommand.length() != 0
                 || !control.isLevel(targetLevel)
-                || !state.vehicleDataAvailable || state.vehiclePreview || !state.seatControlsKnown
-                || !vehiclePort.isAvailable() || !vehiclePort.isSeatControlAvailable(seatId)) return false;
+                || !state.vehicleDataAvailable || state.vehiclePreview || !controlReadbackKnownLocked(control)
+                || !vehiclePort.isAvailable() || !vehiclePort.isControlAvailable(controlId)) return false;
         int actualLevel = state.controlLevel(control);
         if (actualLevel == targetLevel) return false;
         if (actualLevel < 0 && !(control == VehicleControl.Massage
                 && state.massageSwitchKnown && state.massageActive && targetLevel == 0)) return false;
-        return vehiclePort.isSeatLevelAvailable(seatId, actualLevel, targetLevel);
+        return vehiclePort.isControlLevelAvailable(controlId, actualLevel, targetLevel);
     }
+
+    private enum LevelIntent { Select, Power, Automatic }
 
     public void setSeatLevel(String seatId, int targetLevel) {
-        dispatchSeatLevel(seatId, targetLevel);
+        setControlLevel(seatId, targetLevel);
     }
 
-    private void dispatchSeatLevel(String seatId, Integer explicitTarget) {
+    public void setControlLevel(String controlId, int targetLevel) {
+        dispatchControlLevel(controlId, targetLevel, LevelIntent.Select);
+    }
+
+    public void toggleControlPower(String controlId) {
+        if (VehicleControl.Lock.getId().equals(controlId)) toggleLock();
+        else dispatchControlLevel(controlId, null, LevelIntent.Power);
+    }
+
+    public void toggleControlAutomatic(String controlId) {
+        dispatchControlLevel(controlId, null, LevelIntent.Automatic);
+    }
+
+    private int controlTargetLocked(String controlId, Integer explicitTarget, LevelIntent intent) {
+        VehicleControl control = VehicleControl.fromId(controlId);
+        if (control == null || control == VehicleControl.Lock) return -1;
+        int actual = state.controlLevel(control);
+        if (intent == LevelIntent.Power) {
+            if (control == VehicleControl.Massage && state.massageSwitchKnown && state.massageActive) return 0;
+            return control.powerToggleLevel(actual, state.rememberedLevel(control));
+        }
+        if (intent == LevelIntent.Automatic) return control.automaticToggleLevel(actual);
+        return explicitTarget == null ? nextControlLevelLocked(controlId) : explicitTarget;
+    }
+
+    private void dispatchControlLevel(String controlId, Integer explicitTarget, LevelIntent intent) {
         long requestId;
         int targetLevel;
         synchronized (this) {
-            // Resolve the next mode and reserve the sole request in one state transaction.
-            targetLevel = explicitTarget == null ? nextSeatLevelLocked(seatId) : explicitTarget;
-            if (!canSetSeatLevelLocked(seatId, targetLevel)) return;
+            // Resolve the intent and reserve the sole request in one state transaction.
+            targetLevel = controlTargetLocked(controlId, explicitTarget, intent);
+            if (!canSetControlLevelLocked(controlId, targetLevel)) return;
             requestId = ++nextVehicleRequestId;
-            beginVehicleCommandLocked(seatId, targetLevel, false, requestId);
+            beginVehicleCommandLocked(controlId, targetLevel, false, requestId);
         }
         publish();
         synchronized (this) {
@@ -582,7 +650,7 @@ public final class ContentStore {
         }
         boolean accepted;
         try {
-            accepted = vehiclePort.requestSeatLevel(seatId, targetLevel, requestId);
+            accepted = vehiclePort.requestControlLevel(controlId, targetLevel, requestId);
         } catch (RuntimeException failure) {
             accepted = false;
         }
@@ -864,9 +932,9 @@ public final class ContentStore {
         if (ContentRegistry.Shortcuts.LOCK.equals(state.pendingVehicleCommand)) {
             return snapshot.lockKnown && snapshot.locked == state.pendingLocked;
         }
-        if (!snapshot.seatControlsKnown) return false;
         VehicleControl control = VehicleControl.fromId(state.pendingVehicleCommand);
-        if (control == null || actualSeatLevelLocked(state.pendingVehicleCommand) != state.pendingSeatLevel) return false;
+        if (control == null || !controlReadbackKnownLocked(control)
+                || actualControlLevelLocked(state.pendingVehicleCommand) != state.pendingSeatLevel) return false;
         return control != VehicleControl.Massage
                 || snapshot.massageSwitchKnown && snapshot.massageActive == (state.pendingSeatLevel > 0);
     }

@@ -151,9 +151,9 @@ class LyricInkArchitectureTest {
             bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         }
         listOf(LyricLine(1_000L, "אבג"), LyricLine(1_000L, "אבג", side = LyricSide.Trailing)).forEach { line ->
-            val expectedPivot = if (line.side == LyricSide.Trailing) 0f else width.toFloat()
             val rows = listOf(prepareLyricRow(line, width, metrics, realFace))
             val track = rows.single().tracks.single()
+            val expectedPivot = if (line.side == LyricSide.Trailing) 0f else track.layout.width.toFloat()
             val visual = track.visualLines.single()
             assertEquals(Layout.DIR_RIGHT_TO_LEFT, track.layout.getParagraphDirection(0))
             assertEquals(expectedPivot, visual.pivotX, 0f)
@@ -178,7 +178,7 @@ class LyricInkArchitectureTest {
             painter.draw(Canvas(actual), slices, rows, tops, cache, offset, emptySet(), 0, lyrics, 0L, true)
             val expected = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             Canvas(expected).apply {
-                translate(0f, y); scale(scale, scale, expectedPivot, pivotY)
+                translate(track.left, y); scale(scale, scale, expectedPivot, pivotY)
                 sharp.edgeAt(y, scale, pivotY)
                 drawRect(sharp.bounds, Paint(Paint.FILTER_BITMAP_FLAG).apply { shader = sharp.shader; alpha = paintAlpha })
             }
@@ -188,7 +188,7 @@ class LyricInkArchitectureTest {
             painter.draw(Canvas(cold), emptyList(), rows, tops, cache, offset, emptySet(), 0, lyrics, 0L, true, fallback = window)
             val expectedCold = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             Canvas(expectedCold).apply {
-                translate(0f, y); scale(scale, scale, expectedPivot, pivotY)
+                translate(track.left, y); scale(scale, scale, expectedPivot, pivotY)
                 clipRect(0f, visual.top.toFloat(), width.toFloat(), visual.bottom.toFloat())
                 val textPaint = track.layout.paint
                 val oldColor = textPaint.color; val oldAlpha = textPaint.alpha
@@ -200,7 +200,8 @@ class LyricInkArchitectureTest {
                 pixels(expectedCold), pixels(cold))
             val mixed = prepareLyricRow(line.copy(text = "אבג\nABC"), width, metrics, realFace)
             assertEquals("each paragraph has its own precompiled alignment pivot",
-                if (line.side == LyricSide.Trailing) listOf(0f, width.toFloat()) else listOf(width.toFloat(), 0f),
+                if (line.side == LyricSide.Trailing) listOf(0f, mixed.tracks.single().layout.width.toFloat())
+                    else listOf(mixed.tracks.single().layout.width.toFloat(), 0f),
                 mixed.tracks.single().visualLines.map { it.pivotX })
         }
     }

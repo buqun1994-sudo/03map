@@ -71,7 +71,8 @@ run_stage source-fingerprint node "$repo_root/scripts/content-workflow.mjs" fing
 run_stage toolchain-fingerprint node "$repo_root/scripts/content-workflow.mjs" toolchain "$build_root/toolchain-before.json" "$JAVA_HOME" "$ANDROID_SDK_ROOT" "$APKTOOL_JAR" "$aapt2" "$r8_jar" "$ZIPALIGN" "$APKSIGNER"
 run_stage assets node "$repo_root/scripts/check-content-assets.mjs"
 mkdir -p "$stage" "$classes" "$dex"
-run_stage source-copy rsync -a --exclude='/content-src/' --exclude='/content-compose/' --exclude='/build/' "$source_root/" "$stage/"
+run_stage source-copy rsync -a --exclude='/content-src/' --exclude='/content-compose/' --exclude='/native-patches/' --exclude='/build/' "$source_root/" "$stage/"
+run_stage native-patches node "$repo_root/scripts/build-map-mute-native.mjs" build "$build_root/native-patches" "$ANDROID_SDK_ROOT" "$stage"
 
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
 export ANDROID_SDK_ROOT

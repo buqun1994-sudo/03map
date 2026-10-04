@@ -7,7 +7,8 @@ internal fun LyricsResult.timedLines(): List<ParsedLyricLine> {
     if (ttmlLyrics.isNotBlank()) {
         val structured = runCatching { TtmlLyricsParser.parse(ttmlLyrics) }.getOrNull()
         if (structured != null && structured.lines.isNotEmpty()) {
-            return structured.lines.map { line ->
+            val sides = TtmlSpeakerLayout.sides(structured)
+            return structured.lines.mapIndexed { index, line ->
                 ParsedLyricLine(line.timeMs, line.text, line.translation,
                     words = line.words.takeIf { words ->
                         words.joinToString("") { it.text }.filterNot(Char::isWhitespace) ==
@@ -15,12 +16,12 @@ internal fun LyricsResult.timedLines(): List<ParsedLyricLine> {
                     }.orEmpty().map { ParsedLyricWord(it.startTimeMs, it.endTimeMs, it.text) },
                     romanization = line.romanization, endTimeMs = line.endTimeMs,
                     backgroundWords = line.backgroundWords.map { ParsedLyricWord(it.startTimeMs, it.endTimeMs, it.text) },
-                    speaker = line.agent)
+                    speaker = line.agent, speakerSide = sides[index])
             }
         }
     }
-    return LrcParser.align(lyrics, translatedLyrics, wordRaw = wordLyrics,
-        romanizedRaw = romanizedLyrics, durationMs = durationMs)
+    return LrcSpeakerLayout.project(LrcParser.align(lyrics, translatedLyrics, wordRaw = wordLyrics,
+        romanizedRaw = romanizedLyrics, durationMs = durationMs), candidateArtist, candidateTrack)
 }
 
 internal fun LyricsResult.plainText(): String = if (isInstrumentalContent()) "" else cleanLyrics(plainLyrics).ifBlank {

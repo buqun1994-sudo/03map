@@ -12,6 +12,7 @@ class VehicleControlTest {
             VehicleControl.Heating to listOf(0, 3, 2, 1, 4, 0),
             VehicleControl.PassengerHeating to listOf(0, 3, 2, 1, 4, 0),
             VehicleControl.Massage to listOf(0, 3, 2, 1, 0),
+            VehicleControl.Wiper to listOf(0, 1, 2, 3, 4, 5, 0),
         )
         assertEquals(VehicleControl.entries.toSet(), expected.keys)
         expected.forEach { (control, cycle) ->
@@ -41,6 +42,36 @@ class VehicleControlTest {
         assertEquals("主驾座椅加热", VehicleControl.Heating.label)
         assertEquals("副驾座椅加热", control.label)
         assertEquals("座椅按摩", VehicleControl.Massage.label)
+    }
+
+    @Test fun manualMemoryAndAutomaticTargetsAreSharedAcrossControlFamilies() {
+        for (control in VehicleControl.entries.filter { it != VehicleControl.Lock }) {
+            assertEquals(1, control.defaultManualLevel)
+            assertEquals(1, control.rememberedManualLevel(0))
+            assertEquals(1, control.rememberedManualLevel(-1))
+            assertEquals(1, control.rememberedManualLevel(control.maxLevel + 1))
+            for (manual in 1..control.maxManualLevel) {
+                assertTrue(control.isManualLevel(manual))
+                assertEquals(manual, control.rememberedManualLevel(manual))
+                assertEquals(manual, control.powerToggleLevel(0, manual))
+                assertEquals(0, control.powerToggleLevel(manual, manual))
+                assertEquals(control.automaticLevel, control.automaticToggleLevel(manual))
+            }
+            assertFalse(control.isManualLevel(0))
+            assertEquals(-1, control.powerToggleLevel(-1, 1))
+            assertEquals(-1, control.automaticToggleLevel(-1))
+            if (control.automaticLevel >= 0) {
+                assertFalse(control.isManualLevel(control.automaticLevel))
+                assertEquals(1, control.rememberedManualLevel(control.automaticLevel))
+                assertEquals(0, control.powerToggleLevel(control.automaticLevel, 1))
+                assertEquals(0, control.automaticToggleLevel(control.automaticLevel))
+                assertEquals(control.automaticLevel, control.automaticToggleLevel(0))
+            } else assertEquals(-1, control.automaticToggleLevel(0))
+        }
+        assertSame(VehicleControl.Wiper, VehicleControl.fromId("front_wiper"))
+        assertEquals("雨刮器", VehicleControl.Wiper.label)
+        assertEquals(4, VehicleControl.Wiper.maxManualLevel)
+        assertEquals(5, VehicleControl.Wiper.automaticLevel)
     }
 
     @Test fun unknownAndForeignModesNeverFabricateAnAction() {

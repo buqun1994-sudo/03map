@@ -227,6 +227,29 @@ class LyricsCacheRefreshTest {
         }
     }
 
+    @Test fun vocalMetadataAloneUpgradesTheSameBodyAndPersistsAcrossRestart() {
+        val name = databaseName()
+        val raw = """<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><head><metadata><ttm:agent xml:id="a" type="person"/><ttm:agent xml:id="b" type="person"/><ttm:agent xml:id="all" type="group"/></metadata></head><body><div><p begin="1" end="2" ttm:agent="a">Testalpha zero</p><p begin="80" end="81" ttm:agent="b">Testbeta one</p><p begin="190" end="191" ttm:agent="all">Testgamma two</p></div></body></tt>"""
+        val duet = result().copy(ttmlLyrics = raw)
+        withCache(name) { cache ->
+            assertTrue(put(cache, result()))
+            assertTrue(put(cache, duet))
+            assertFalse(put(cache, result()))
+            assertEquals(1, cache.snapshot(identity, null).stats.automaticEntries)
+            assertAccounting(name, cache)
+        }
+        withCache(name) { cache ->
+            val restored = cache.read(identity, false)!!.result
+            assertEquals(raw, restored.ttmlLyrics)
+            assertEquals(listOf(1, 2, 3), restored.timedLines().map { it.speakerSide })
+            assertTrue(restored.timedLines().all { it.words.isEmpty() })
+            assertTrue(cache.writeManual(identity, result()))
+            assertFalse(put(cache, duet))
+            assertEquals(LINES, cache.read(identity, false)!!.result.lyrics)
+            assertEquals("", cache.read(identity, false)!!.result.ttmlLyrics)
+        }
+    }
+
     @Test fun allBodyTracksTtmlTypesIdentitySourceAndProofRoundTripAfterRestart() {
         val name = databaseName()
         val cases = listOf(

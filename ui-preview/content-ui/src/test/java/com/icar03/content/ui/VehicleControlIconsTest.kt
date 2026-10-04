@@ -18,6 +18,37 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 class VehicleControlIconsTest {
+    @Test fun wiperRecipesKeepMatteWhiteAndUseIndependentManualAutoAndOffProjection() {
+        for (dark in listOf(false, true)) for (level in 0..5) {
+            val base = if (dark) Color.White else Color.Black
+            val recipe = vehicleControlIconRecipe(ControlId.Wiper, level, dark, base)
+            assertEquals(0..29, recipe.frames)
+            assertEquals(1f, recipe.playbackSpeed)
+            if (level == 5) {
+                assertEquals("", recipe.asset)
+                assertTrue(recipe.animationColors.isEmpty()); assertTrue(recipe.animationStrokePathColors.isEmpty())
+            } else {
+                assertEquals("ico_wiper_${level.coerceIn(1, 4)}.json", recipe.asset)
+                assertTrue(recipe.animationColors.keys.all { it.first() == "color1" })
+                assertTrue(recipe.animationStrokePathColors.keys.all { it.first() == "color1" })
+                assertTrue(recipe.animationStrokePathColors.values.all { it == if (level == 0) base else Color(0xFF3FA9FF) })
+                assertEquals(if (level == 0) mapOf(listOf("color1", "**", "Lv1", "描边 1") to 0) else emptyMap<List<String>, Int>(), recipe.animationPathOpacities)
+            }
+        }
+    }
+
+    @Test fun rearRecipesColorOnlyVisibleLayersAndUseTheirOwnCompleteCycle() {
+        for (selected in listOf(false, true)) for (dark in listOf(false, true)) {
+            val rear = rearWiperIconRecipe(selected, dark)
+            assertEquals("ico_rear_wiper.json", rear.asset); assertEquals(0..29, rear.frames)
+            val wash = rearWashIconRecipe(selected, dark)
+            assertEquals("ico_wash_rear_derived.json", wash.asset); assertEquals(0..59, wash.frames)
+            assertEquals(2f, wash.playbackSpeed)
+            assertEquals(setOf(listOf("color1", "**", "填充 1")), wash.animationColors.keys)
+            assertTrue(wash.animationStrokePathColors.isEmpty()); assertTrue(wash.animationPathOpacities.isEmpty())
+        }
+    }
+
     @Test fun originalConsumerFramesCoverBothSeatSidesAndAllWheelModes() {
         for (dark in listOf(false, true)) {
             val suffix = if (dark) "wh" else "bk"
@@ -77,8 +108,9 @@ class VehicleControlIconsTest {
     }
 
     @Test fun sevenNamesComeFromTheSharedOwnerAndPreviewUnknownStaysUnknown() {
-        assertEquals(listOf("车锁", "方向盘加热", "座椅通风", "主驾座椅加热", "副驾座椅加热", "座椅按摩", "设置"), ShortcutId.entries.map { it.label })
-        ShortcutId.entries.filter { it.control != null }.forEach { assertEquals(it.control!!.label, it.label) }
+        assertEquals(listOf("车锁", "方向盘加热", "座椅通风", "主驾座椅加热", "副驾座椅加热", "座椅按摩", "设置",
+            "自动雨刮器", "后窗雨刮器", "后窗洗涤", "雨刮器"), ShortcutId.entries.map { it.label })
+        ShortcutId.entries.filter { it.control != null && it != ShortcutId.AutoWiper }.forEach { assertEquals(it.control!!.label, it.label) }
         val passenger = previewState(PreviewScenario.NoData).controls.getValue(ControlId.PassengerHeating)
         assertFalse(passenger.known); assertFalse(passenger.available); assertEquals(-1, passenger.displayed)
     }

@@ -653,23 +653,11 @@ class ContentLyricsEngine internal constructor(
         selected = proof
         val parsed = result.timedLines()
         timed = parsed.isNotEmpty()
-        val document = result.ttmlLyrics.takeIf(String::isNotBlank)?.let {
-            runCatching { TtmlLyricsParser.parse(it) }.getOrNull()
-        }
-        val speakers = parsed.map { it.speaker }.filter {
-            it.isNotBlank() && document?.agentTypes?.get(it) != "group"
-        }.distinct()
         lines = Collections.unmodifiableList(if (timed) parsed.map { line ->
-            val side = when {
-                document?.agentTypes?.get(line.speaker) == "group" -> 3
-                speakers.size < 2 || line.speaker.isBlank() -> 0
-                speakers.indexOf(line.speaker) % 2 == 0 -> 1
-                else -> 2
-            }
             ContentPorts.LyricsLine(line.timeMs, line.text, line.translation, line.romanization,
                 line.words.map { ContentPorts.LyricsWord(it.startTimeMs, it.endTimeMs, it.text) },
                 line.endTimeMs ?: -1L,
-                line.backgroundWords.map { ContentPorts.LyricsWord(it.startTimeMs, it.endTimeMs, it.text) }, side)
+                line.backgroundWords.map { ContentPorts.LyricsWord(it.startTimeMs, it.endTimeMs, it.text) }, line.speakerSide)
         } else result.plainText().lineSequence().map(String::trim).filter(String::isNotBlank)
             .take(4_096).map { ContentPorts.LyricsLine(0L, it, "") }.toList())
         status = if (lines.isEmpty()) UNAVAILABLE else READY

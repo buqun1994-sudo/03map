@@ -28,13 +28,15 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             ContentEvent.SettingsTapped -> update { it.copy(message = "设置暂不可用") }
             ContentEvent.OpenScenarios -> update { it.copy(scenariosOpen = true, sourcesOpen = false) }
             ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false) }
-            is ContentEvent.ControlTapped -> {
-                val control = state.value.controls.getValue(event.id)
-                if (!control.available || !control.known || !event.id.isLevel(control.actual) || control.pending || !active) return
-                val next = event.id.nextLevel(control.actual)
-                update { it.copy(controls = it.controls + (event.id to control.copy(target = next)), message = null) }
-                simulate("control-${event.id}") { success ->
-                    update { s -> s.copy(controls = s.controls + (event.id to control.copy(actual = if (success) next else control.actual))) }
+            is ContentEvent.ControlTapped -> requestControl(event.id) { control -> event.id.nextLevel(control.actual) }
+            is ContentEvent.ControlPowerTapped -> requestControl(event.id) { control -> event.id.powerToggleLevel(control.actual, control.rememberedLevel) }
+            is ContentEvent.ControlAutomaticTapped -> requestControl(event.id) { control -> event.id.automaticToggleLevel(control.actual) }
+            is ContentEvent.ControlLevelChanged -> {
+                if (event.level in 0..event.id.maxManualLevel) requestControl(event.id) { event.level }
+            }
+            is ContentEvent.PlaceholderToggled -> {
+                if (active && event.id in listOf(ShortcutId.RearWiper, ShortcutId.RearWash)) update {
+                    it.copy(placeholderSwitches = it.placeholderSwitches + (event.id to (it.placeholderSwitches[event.id] != true)))
                 }
             }
             is ContentEvent.BrightnessChanged -> changeLevel(true, event.value)
@@ -58,6 +60,19 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                 update { it.copy(media = media.copy(targetPlaying = media.playing), message = null) }
                 simulate("media") { success -> update { it.copy(media = media.copy(title = if (success) if (media.title == "沿途的风") "下一段旅程" else "沿途的风" else media.title)) } }
             }
+        }
+    }
+
+    private fun requestControl(id: ControlId, target: (ControlState) -> Int) {
+        val control = state.value.controls.getValue(id)
+        if (!active || !control.available || !control.known || control.pending || !id.isLevel(control.actual)) return
+        val next = target(control)
+        if (!id.isLevel(next) || next == control.actual) return
+        update { it.copy(controls = it.controls + (id to control.copy(target = next)), message = null) }
+        simulate("control-$id") { success ->
+            val actual = if (success) next else control.actual
+            val remembered = if (success && id.isManualLevel(actual)) actual else control.rememberedLevel
+            update { s -> s.copy(controls = s.controls + (id to control.copy(actual = actual, rememberedLevel = remembered))) }
         }
     }
 

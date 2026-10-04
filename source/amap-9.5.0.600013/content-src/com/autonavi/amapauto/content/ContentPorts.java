@@ -110,6 +110,23 @@ public final class ContentPorts {
             return isSeatLevelAvailable(seatId, targetLevel);
         }
 
+        /** Generic level contract. Defaults bridge existing injected seat ports. */
+        default boolean isControlAvailable(String controlId) {
+            return isSeatControlAvailable(controlId);
+        }
+
+        default boolean isControlLevelAvailable(String controlId, int level) {
+            return isSeatLevelAvailable(controlId, level);
+        }
+
+        default boolean isControlLevelAvailable(String controlId, int currentLevel, int targetLevel) {
+            return isSeatLevelAvailable(controlId, currentLevel, targetLevel);
+        }
+
+        default boolean requestControlLevel(String controlId, int level, long requestId) {
+            return requestSeatLevel(controlId, level, requestId);
+        }
+
         boolean requestLock(boolean locked, long requestId);
 
         boolean requestSeatLevel(String seatId, int level, long requestId);
@@ -168,6 +185,8 @@ public final class ContentPorts {
         public final boolean seatControlsKnown;
         public final boolean lockKnown;
         public final boolean locked;
+        public final int wiperLevel;
+        public final boolean wiperKnown;
 
         /**
          * Legacy 20-argument contract: levels are already normalized OFF/1/2/3 (0..3),
@@ -211,6 +230,24 @@ public final class ContentPorts {
                 int passengerHeatingLevel, boolean passengerHeatingAutoKnown, boolean passengerHeatingAutoActive,
                 int steeringHeatLevel, int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
                 boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked) {
+            this(dataAvailable, preview, temperatureC, batteryPercent, rangeRaw, chargeState,
+                    chargeConnectionRaw, chargeBmsRaw, chargeScheduleRaw, chargePowerKw,
+                    chargeRemainingMinutes, ventilationLevel, heatingLevel, heatingAutoKnown, heatingAutoActive,
+                    passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive,
+                    steeringHeatLevel, massageLevel, massageModeRaw, massageSwitchKnown,
+                    massageActive, seatControlsKnown, lockKnown, locked, -1, false);
+        }
+
+        /** Tail-compatible extension; wiper is a normalized0..5 domain mode, not OEM RX. */
+        public VehicleSnapshot(boolean dataAvailable, boolean preview, float temperatureC,
+                int batteryPercent, int rangeRaw, int chargeState, int chargeConnectionRaw,
+                int chargeBmsRaw, int chargeScheduleRaw, float chargePowerKw,
+                int chargeRemainingMinutes, int ventilationLevel, int heatingLevel,
+                boolean heatingAutoKnown, boolean heatingAutoActive,
+                int passengerHeatingLevel, boolean passengerHeatingAutoKnown, boolean passengerHeatingAutoActive,
+                int steeringHeatLevel, int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
+                boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked,
+                int wiperLevel, boolean wiperKnown) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.temperatureC = temperatureC;
@@ -238,6 +275,8 @@ public final class ContentPorts {
             this.seatControlsKnown = seatControlsKnown;
             this.lockKnown = lockKnown;
             this.locked = locked;
+            this.wiperLevel = wiperKnown ? VehicleControl.Wiper.normalizeLevel(wiperLevel) : -1;
+            this.wiperKnown = this.wiperLevel >= 0;
         }
 
         /** Normalized-mode invariant, shared by Snapshot, Store, State copies and Mapper. */

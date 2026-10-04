@@ -1,5 +1,7 @@
 package com.autonavi.amapauto.content;
 
+import com.icar03.content.model.VehicleControl;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -10,6 +12,7 @@ public final class ContentPreferenceStore {
     private static final String KEY_PAGE_ID = "current_page_id";
     private static final String KEY_CONTROL_ID = "current_control_id";
     private static final String KEY_DOCK_SLOT_PREFIX = "dock_slot_";
+    private static final String KEY_MANUAL_LEVEL_PREFIX = "control_manual_level_";
 
     private final SharedPreferences preferences;
 
@@ -24,6 +27,7 @@ public final class ContentPreferenceStore {
         state.pageIndex = indexOf(ContentRegistry.visiblePageIds(), savedPageId, 1);
         String savedControlId = preferences.getString(KEY_CONTROL_ID, ContentRegistry.Controls.MEDIA);
         state.controlIndex = indexOf(ContentRegistry.controlIds(), savedControlId, 0);
+        state.setRememberedControlLevels(loadManualLevels());
         for (int slot = 0; slot < state.dockItems.length; slot++) {
             String savedItem = preferences.getString(KEY_DOCK_SLOT_PREFIX + slot, state.dockItems[slot]);
             state.dockItems[slot] = isValidDockItem(savedItem) ? savedItem : state.dockItems[slot];
@@ -46,6 +50,28 @@ public final class ContentPreferenceStore {
             editor.putString(KEY_DOCK_SLOT_PREFIX + slot, state.dockItems[slot]);
         }
         editor.apply();
+    }
+
+    private java.util.Map<String, Integer> loadManualLevels() {
+        java.util.Map<String, Integer> levels = new java.util.HashMap<>();
+        for (VehicleControl control : VehicleControl.values()) {
+            if (control == VehicleControl.Lock) continue;
+            int saved = control.getDefaultManualLevel();
+            try {
+                saved = preferences.getInt(KEY_MANUAL_LEVEL_PREFIX + control.getId(), saved);
+            } catch (ClassCastException invalidStoredValue) {
+                // A malformed old value never becomes an executable vehicle target.
+            }
+            levels.put(control.getId(), control.rememberedManualLevel(saved));
+        }
+        return levels;
+    }
+
+    /** Called only after the Store has accepted real, valid manual readback. */
+    public void saveManualLevel(VehicleControl control, int level) {
+        if (control != VehicleControl.Lock && control.isManualLevel(level)) {
+            preferences.edit().putInt(KEY_MANUAL_LEVEL_PREFIX + control.getId(), level).apply();
+        }
     }
 
     public boolean isValidDockItem(String itemId) {

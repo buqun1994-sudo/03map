@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "version": "9.5.0.600013",
+  "alignment": 16384,
+  "payloadOffset": 1024,
+  "targets": [
+    {
+      "name": "libhsl.so",
+      "baseSha256": "cff6ed0c9c95ecc6b48502854ffcd65be1746c23a1e448a7f085542fb9926a83",
+      "assembly": "map-mute.S",
+      "sourceSha256": "d17b1711d94f2eadd6c325087bd90d144eacffc88f1886a98541c5fb39888992",
+      "payloadSha256": "baf901cbcc92b6382209e2a83f745427489fde6ad283c043130f712897829108",
+      "payloadSize": 924,
+      "outputSha256": "cc4baa11f2ef5a16d2f3bbca737f4329394a281e732dee5bc1e1a9c2b6d7a4f4",
+      "symbols": {
+        "map_mute_busy_format": 799,
+        "map_mute_init": 264,
+        "map_mute_io_failed": 910,
+        "map_mute_key": 720,
+        "map_mute_log_tag": 737,
+        "map_mute_original_init": 712,
+        "map_mute_original_set": 704,
+        "map_mute_read_user": 352,
+        "map_mute_rejected": 890,
+        "map_mute_restore_format": 777,
+        "map_mute_save_format": 749,
+        "map_mute_save_user": 456,
+        "map_mute_saved": 854,
+        "map_mute_set": 0,
+        "map_mute_superseded": 860,
+        "map_mute_unavailable": 871
+      },
+      "externals": {
+        "hsl_get_config": "0xbce3c4",
+        "char_to_string16": "0xd2bcb0",
+        "config_get_user_bool": "0x60028c",
+        "config_set_bool": "0x6008dc",
+        "config_save_data": "0x60e768",
+        "delete_array": "0xd2b040",
+        "android_log_print": "0xd2eec0",
+        "original_set_resume": "0xcd84d8",
+        "original_init_resume": "0xcdd978"
+      },
+      "patches": [
+        {
+          "va": "0xcd84d4",
+          "expected": "ff4301d1",
+          "kind": "b",
+          "symbol": "map_mute_set"
+        },
+        {
+          "va": "0xcdd974",
+          "expected": "ff0305d1",
+          "kind": "b",
+          "symbol": "map_mute_init"
+        }
+      ]
+    },
+    {
+      "name": "libautonavi.so",
+      "baseSha256": "c1fc13ae70672f750f215ec7434b5bb657cc0c42a4e347bfa8655613db634647",
+      "assembly": "map-mute-menu.S",
+      "sourceSha256": "0388d3b406fbdd9c625b56d19c8c49fcc6db4a3f0949b7b99cd79852397cfdad",
+      "payloadSha256": "b5acfd64fdf88b3e422939501dc76c545ca7d3224f60c7b0bf13a25918aa3263",
+      "payloadSize": 56,
+      "outputSha256": "cac8d73870fb60c8092f0bd4fefd36596de85bbf3eb14233cbec9aba64f9752d",
+      "symbols": {
+        "map_mute_select_style": 0
+      },
+      "externals": {
+        "original_set_style": "0xd9ddd0",
+        "hsl_get_volume": "0xd9e320",
+        "hsl_set_mute": "0xd9e3d0"
+      },
+      "patches": [
+        {
+          "va": "0xa0cd64",
+          "expected": "e2031f2a",
+          "kind": "bytes",
+          "replacement": "62608052"
+        },
+        {
+          "va": "0xa08458",
+          "expected": "5e560e94",
+          "kind": "bl",
+          "symbol": "map_mute_select_style"
+        },
+        {
+          "va": "0xa0a3d4",
+          "expected": "7f4e0e94",
+          "kind": "bl",
+          "symbol": "map_mute_select_style"
+        },
+        {
+          "va": "0xa09e9c",
+          "expected": "cd4f0e94",
+          "kind": "bl",
+          "symbol": "map_mute_select_style"
+        },
+        {
+          "va": "0xa0996c",
+          "expected": "19510e94",
+          "kind": "bl",
+          "symbol": "map_mute_select_style"
+        }
+      ]
+    }
+  ]
+}

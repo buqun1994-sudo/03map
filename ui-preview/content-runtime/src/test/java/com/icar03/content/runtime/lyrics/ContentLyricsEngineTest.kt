@@ -346,6 +346,35 @@ class ContentLyricsEngineTest {
         assertEquals(4_500L, rows.first().backgroundWords.single().endTimeMs)
     }
 
+    @Test fun progressiveDuetMetadataUpgradesAndSurvivesACacheRestart() {
+        val runtime = Runtime()
+        val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, snapshots)
+        engine.update(media())
+        drain()
+        val query = runtime.lookups.single()
+        val plain = found(query).resolved.result.copy(lyrics = "[00:01]First voice\n[00:03]Second voice\n[00:05]Shared voice")
+        runtime.provisional.getValue("Song")(found(query, plain))
+        drain()
+        assertEquals(listOf(0, 0, 0), snapshots.last().lines.map { it.speakerSide })
+        val raw = """<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><head><metadata><ttm:agent xml:id="a" type="person"/><ttm:agent xml:id="b" type="person"/><ttm:agent xml:id="all" type="group"/></metadata></head><body><div><p begin="1" end="2" ttm:agent="a">First voice</p><p begin="3" end="4" ttm:agent="b">Second voice</p><p begin="5" end="6" ttm:agent="all">Shared voice</p></div></body></tt>"""
+        runtime.pendingLyrics.remove("Song")!!.resume(found(query, plain.copy(ttmlLyrics = raw)))
+        drain()
+        assertEquals(listOf(1, 2, 3), snapshots.last().lines.map { it.speakerSide })
+        assertEquals(listOf(1_000L, 3_000L, 5_000L), snapshots.last().lines.map { it.timeMs })
+        assertTrue(snapshots.last().lines.all { it.words.isEmpty() })
+        val identity = LyricsPlaybackIdentity(query.track, query.artist, query.album, query.durationMs)
+        assertEquals(raw, runtime.cache.entries.getValue(identity).result.ttmlLyrics)
+        engine.stop()
+        val restartedRuntime = Runtime(runtime.cache)
+        val restartedFrames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val restarted = engine(restartedRuntime, restartedFrames)
+        restarted.update(media(generation = 2))
+        drain()
+        assertEquals(listOf(1, 2, 3), restartedFrames.last().lines.map { it.speakerSide })
+        assertTrue(restartedRuntime.lookups.isEmpty())
+    }
+
     @Test fun coverRetryDecodesTheSecondImageAndRestartUsesThePersistedBitmap() {
         val runtime = Runtime()
         val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()

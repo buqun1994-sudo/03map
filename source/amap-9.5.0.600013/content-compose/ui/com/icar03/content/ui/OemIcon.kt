@@ -130,6 +130,8 @@ private data class OemFrame(
     val colors: Map<List<String>, Color>,
     val strokeColors: Map<Int, Color>,
     val strokePathColors: Map<List<String>, Color>,
+    val pathOpacities: Map<List<String>, Int>,
+    val playbackSpeed: Float,
     val mediaGlyph: Boolean,
     val composition: LottieComposition? = null,
 ) {
@@ -137,12 +139,13 @@ private data class OemFrame(
     fun hasSameRecipe(other: OemFrame): Boolean =
         resource == other.resource && tint == other.tint && pathColors == other.pathColors &&
             asset == other.asset && frames == other.frames && colors == other.colors &&
-            strokeColors == other.strokeColors && strokePathColors == other.strokePathColors && mediaGlyph == other.mediaGlyph
+            strokeColors == other.strokeColors && strokePathColors == other.strokePathColors &&
+            pathOpacities == other.pathOpacities && playbackSpeed == other.playbackSpeed && mediaGlyph == other.mediaGlyph
 
     // Recoloring an in-flight glyph is not a new playback recipe. Keeping these
     // keys separate prevents pending -> known readback/theme color interpolation
     // from canceling the one-shot at an intermediate frame (notably the lock).
-    val playbackRecipe: List<Any?> get() = listOf(asset, frames, mediaGlyph)
+    val playbackRecipe: List<Any?> get() = listOf(asset, frames, playbackSpeed, mediaGlyph)
     fun hasSamePlaybackRecipe(other: OemFrame): Boolean = playbackRecipe == other.playbackRecipe
 }
 
@@ -155,6 +158,8 @@ internal fun OemIcon(
     animationColors: Map<List<String>, Color> = emptyMap(), animationFrames: IntRange? = null,
     animationStrokeColors: Map<Int, Color> = emptyMap(),
     animationStrokePathColors: Map<List<String>, Color> = emptyMap(),
+    animationPathOpacities: Map<List<String>, Int> = emptyMap(),
+    playbackSpeed: Float = 1f,
     animateOnPress: Boolean = false, animateOnAction: Boolean = true,
 ) {
     val mediaGlyph = resource == R.drawable.content_oem_ico_media_play_f || resource == R.drawable.content_oem_ico_media_pause_f
@@ -162,13 +167,13 @@ internal fun OemIcon(
     val transition = remember { Animatable(1f) }
     val owner = LocalLifecycleOwner.current
     val view = LocalView.current
-    var started by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+    var started by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
     val visible = started && focused && LocalIconVisible.current
     val pressed = LocalIconPressed.current && visible
     val scale by pressScale(pressed)
     DisposableEffect(owner, view) {
-        val observer = LifecycleEventObserver { _, _ -> started = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) }
+        val observer = LifecycleEventObserver { _, _ -> started = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
         val tree = view.viewTreeObserver
         val focus = android.view.ViewTreeObserver.OnWindowFocusChangeListener { focused = it }
         owner.lifecycle.addObserver(observer)
@@ -213,7 +218,8 @@ internal fun OemIcon(
     val progress = remember { Animatable(1f) }
     var drawing by remember { mutableStateOf(false) }
     val targetFrame = OemFrame(resource, tint, pathColors, animationAsset, animationFrames,
-        animationColors, animationStrokeColors, animationStrokePathColors, mediaGlyph)
+        animationColors, animationStrokeColors, animationStrokePathColors, animationPathOpacities,
+        if (playbackSpeed.isFinite() && playbackSpeed > 0f) playbackSpeed else 1f, mediaGlyph)
     var renderedFrame by remember { mutableStateOf(targetFrame) }
     // Empty means that no business trigger has been consumed yet. This is
     // distinct from a trigger that has been consumed while its asset was later
@@ -298,7 +304,7 @@ internal fun OemIcon(
         drawing = true
         try {
             val duration = animationFrames?.let { (it.last - it.first) * 1000f / loaded.frameRate } ?: loaded.duration
-            progress.animateTo(1f, tween(duration.toInt().coerceAtLeast(200),
+            progress.animateTo(1f, tween((duration / targetFrame.playbackSpeed).toInt().coerceAtLeast(200),
                 easing = androidx.compose.animation.core.LinearEasing))
         } finally {
             if (playing == playedKey) drawing = false
@@ -353,6 +359,10 @@ internal fun OemIcon(
                 frame.strokePathColors.forEach { (path, color) ->
                     addValueCallback(KeyPath(*path.toTypedArray()), LottieProperty.STROKE_COLOR,
                         LottieValueCallback(color.toArgb()))
+                }
+                frame.pathOpacities.forEach { (path, opacity) ->
+                    addValueCallback(KeyPath(*path.toTypedArray()), LottieProperty.OPACITY,
+                        LottieValueCallback(opacity.coerceIn(0, 100)))
                 }
             }
         }

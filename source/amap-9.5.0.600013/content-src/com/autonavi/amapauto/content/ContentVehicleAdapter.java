@@ -153,16 +153,16 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     @Override
-    public synchronized boolean isSeatControlAvailable(String seatId) {
+    public synchronized boolean isControlAvailable(String controlId) {
         return running && binder != null && workerHandler != null
-                && ContentVehicleProtocol.supportsSeatControl(seatId);
+                && ContentVehicleProtocol.supportsLevelControl(controlId);
     }
 
     @Override
-    public synchronized boolean isSeatLevelAvailable(String seatId, int level) {
-        if (!isSeatControlAvailable(seatId)
-                || ContentVehicleProtocol.seatLevelWrite(seatId, level) == null) return false;
-        VehicleControl control = VehicleControl.fromId(seatId);
+    public synchronized boolean isControlLevelAvailable(String controlId, int level) {
+        if (!isControlAvailable(controlId)
+                || ContentVehicleProtocol.controlLevelWrite(controlId, level) == null) return false;
+        VehicleControl control = VehicleControl.fromId(controlId);
         switch (control) {
             case Ventilation:
                 return latestSnapshot.ventilationLevel >= 0;
@@ -172,6 +172,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 return latestSnapshot.passengerHeatingLevel >= 0;
             case SteeringHeat:
                 return latestSnapshot.steeringHeatLevel >= 0;
+            case Wiper:
+                return latestSnapshot.wiperKnown && latestSnapshot.wiperLevel >= 0;
             case Massage:
                 return latestSnapshot.massageLevel >= 0
                         || level == 0 && latestSnapshot.massageSwitchKnown && latestSnapshot.massageActive;
@@ -186,9 +188,34 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     @Override
+    public synchronized boolean isControlLevelAvailable(String controlId, int currentLevel, int targetLevel) {
+        return isControlLevelAvailable(controlId, targetLevel);
+    }
+
+    @Override
+    public boolean requestControlLevel(String controlId, int level, long requestId) {
+        if (!isControlLevelAvailable(controlId, level)) return false;
+        return queueCommand(ContentVehicleProtocol.controlLevelWrite(controlId, level), requestId);
+    }
+
+    @Override
+    public boolean isSeatControlAvailable(String seatId) {
+        return isControlAvailable(seatId);
+    }
+
+    @Override
+    public boolean isSeatLevelAvailable(String seatId, int level) {
+        return isControlLevelAvailable(seatId, level);
+    }
+
+    @Override
+    public boolean isSeatLevelAvailable(String seatId, int currentLevel, int targetLevel) {
+        return isControlLevelAvailable(seatId, currentLevel, targetLevel);
+    }
+
+    @Override
     public boolean requestSeatLevel(String seatId, int level, long requestId) {
-        if (!isSeatLevelAvailable(seatId, level)) return false;
-        return queueCommand(ContentVehicleProtocol.seatLevelWrite(seatId, level), requestId);
+        return requestControlLevel(seatId, level, requestId);
     }
 
     @Override
@@ -419,6 +446,9 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int massageStrengthRaw = readInt(currentBinder, MASSAGE_STRENGTH, AREA_DRIVER);
         int massageModeRaw = readInt(currentBinder, MASSAGE_MODE, AREA_DRIVER);
         int lockRaw = readInt(currentBinder, LOCK_STATE, AREA_DRIVER);
+        int wiperRaw = readInt(currentBinder, FRONT_WIPER, AREA_DRIVER);
+        int wiper = ContentVehicleProtocol.normalizeWiperLevel(wiperRaw);
+        boolean wiperKnown = wiper >= 0;
         int chargeState = resolveChargeState(connection, bms, schedule);
         // Completion is a product projection of exact full SOC + connected +
         // known idle BMS, not a newly guessed vendor enum or rounded battery value.
@@ -445,13 +475,13 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         boolean available = !Float.isNaN(temperature) || battery >= 0 || range >= 0
                 || connection >= 0 || bms >= 0 || schedule >= 0
                 || !Float.isNaN(chargePowerKw) || remainingMinutes >= 0
-                || seatKnown || lockKnown;
+                || seatKnown || lockKnown || wiperKnown;
         ContentPorts.VehicleSnapshot snapshot = new ContentPorts.VehicleSnapshot(available, false,
                 temperature, battery, range, chargeState, connection, bms, schedule, chargePowerKw,
                 remainingMinutes, ventilation, heating, heatingAutoKnown, heatingAutoActive,
                 passengerHeating, passengerHeatingAutoKnown, passengerHeatingAutoActive, steering,
                 massage, massageModeRaw, massageSwitchKnown,
-                massageActive, seatKnown, lockKnown, ContentVehicleProtocol.isLocked(lockRaw));
+                massageActive, seatKnown, lockKnown, ContentVehicleProtocol.isLocked(lockRaw), wiper, wiperKnown);
         synchronized (this) {
             if (running && binder == currentBinder) latestSnapshot = snapshot;
         }

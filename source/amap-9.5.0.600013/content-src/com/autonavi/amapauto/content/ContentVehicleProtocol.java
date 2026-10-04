@@ -39,6 +39,9 @@ public final class ContentVehicleProtocol {
     public static final int MASSAGE_SWITCH = 0x241;
     public static final int MASSAGE_STRENGTH = 0x243;
     public static final int MASSAGE_MODE = 0x245;
+    public static final int FRONT_WIPER = 608;
+    private static final int WRITE_WIPER_OFF = 1;
+    private static final int WRITE_WIPER_AUTO = 2;
     public static final int SWITCH_OFF = 1;
     public static final int SWITCH_ON = 2;
     private static final int READ_AUTO_INACTIVE = 1;
@@ -66,8 +69,16 @@ public final class ContentVehicleProtocol {
         return new Write(LOCK_REQUEST, locked ? 1 : 2, false);
     }
 
+    public static boolean supportsLevelControl(String controlId) {
+        return controlLevelWrite(controlId, 0) != null;
+    }
+
     public static boolean supportsSeatControl(String controlId) {
-        return seatLevelWrite(controlId, 0) != null;
+        return supportsLevelControl(controlId);
+    }
+
+    public static Write seatLevelWrite(String controlId, int level) {
+        return controlLevelWrite(controlId, level);
     }
 
     /**
@@ -79,7 +90,7 @@ public final class ContentVehicleProtocol {
      * OFF/L2/L1/AUTO through 0x21c/area0. Neither route writes its companion.
      * The CSV does not list seat command 8; CsvUtils passes unmatched values through.
      */
-    public static Write seatLevelWrite(String controlId, int level) {
+    public static Write controlLevelWrite(String controlId, int level) {
         VehicleControl control = VehicleControl.fromId(controlId);
         if (control == null || control == VehicleControl.Lock || !control.isLevel(level)) return null;
         switch (control) {
@@ -92,12 +103,24 @@ public final class ContentVehicleProtocol {
             case SteeringHeat:
                 return new Write(STEERING_HEAT,
                         control.isAutomatic(level) ? WRITE_STEERING_AUTO : level + 1, false);
+            case Wiper:
+                return new Write(FRONT_WIPER, level == 0 ? WRITE_WIPER_OFF
+                        : control.isAutomatic(level) ? WRITE_WIPER_AUTO : level + 2, false);
             case Massage:
                 return level == 0 ? new Write(MASSAGE_SWITCH, SWITCH_OFF, false)
                         : new Write(MASSAGE_STRENGTH, level, true);
             default:
                 return null;
         }
+    }
+
+    /** Research section19: RX0=OFF, RX1=AUTO, RX2..5=manual1..4.
+     * The first OFF sample returning1 remains a runtime verification boundary;
+     * it is never reinterpreted as a different encoding or a successful request. */
+    public static int normalizeWiperLevel(int raw) {
+        if (raw == 0) return 0;
+        if (raw == 1) return VehicleControl.Wiper.getAutomaticLevel();
+        return raw >= 2 && raw <= 5 ? raw - 1 : -1;
     }
 
     public static boolean isKnownHeatingAuto(int raw) {

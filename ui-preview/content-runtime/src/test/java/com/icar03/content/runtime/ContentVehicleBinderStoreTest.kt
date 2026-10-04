@@ -427,6 +427,105 @@ class ContentVehicleBinderStoreTest {
         assertTrue("seat_heating" in store.snapshot().writableSeatControls)
     }
 
+    @Test fun frontWiperAloneEnablesItsPowerAutomaticAndManualTargetsThroughTheFormalAdapter() {
+        val service = VehicleCommandBinder().apply {
+            cabinTemperature = Float.NaN; batterySoc = Float.NaN
+            values.clear(); values[608] = 3
+        }
+        val (store, adapter, _) = connectedStore(service)
+        val binding = ContentBinding(store).also(bindings::add).also { it.start() }
+        val wiper = VehicleControl.Wiper
+        val ready = store.snapshot()
+        assertTrue(ready.vehicleDataAvailable)
+        assertFalse(ready.seatControlsKnown)
+        assertEquals(setOf(wiper.id), ready.writableSeatControls)
+        assertEquals(2, binding.state.value.controls.getValue(wiper).actual)
+        assertEquals(2, binding.state.value.controls.getValue(wiper).rememberedLevel)
+        assertTrue(binding.state.value.controls.getValue(wiper).available)
+        for ((event, target, packet) in listOf(
+            Triple(ContentEvent.ControlPowerTapped(wiper), 0, 1),
+            Triple(ContentEvent.ControlPowerTapped(wiper), 2, 4),
+            Triple(ContentEvent.ControlAutomaticTapped(wiper), 5, 2),
+            Triple(ContentEvent.ControlAutomaticTapped(wiper), 0, 1),
+            Triple(ContentEvent.ControlLevelChanged(wiper, 4), 4, 6),
+            Triple(ContentEvent.ControlLevelChanged(wiper, 0), 0, 1))) {
+            val before = service.writes.size
+            val actual = store.snapshot().wiperLevel
+            binding.dispatch(event)
+            assertEquals(actual, binding.state.value.controls.getValue(wiper).actual)
+            assertEquals(target, binding.state.value.controls.getValue(wiper).target)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(listOf(VehiclePacket(5, 608, 0, packet)), service.writes.drop(before))
+            assertEquals(target, binding.state.value.controls.getValue(wiper).actual)
+            assertNull(binding.state.value.controls.getValue(wiper).target)
+            assertFalse(store.snapshot().seatControlsKnown)
+            assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+        }
+        assertFalse(service.calls.any { it.functionId in listOf(561, 609, 610, 671) })
+        service.failReadFunction = 608
+        pollVehicleCommandAdapter(adapter)
+        assertFalse(store.snapshot().wiperKnown)
+        assertFalse(store.snapshot().vehicleDataAvailable)
+        assertFalse(binding.state.value.controls.getValue(wiper).available)
+    }
+
+    @Test fun aReadOfOneNeverAcknowledgesAnOffRequestAndItsTimeoutRollsBackToActualAuto() {
+        val service = VehicleCommandBinder().apply { values[608] = 1; holdReadback = true }
+        val (store, adapter, _) = connectedStore(service)
+        val binding = ContentBinding(store).also(bindings::add).also { it.start() }
+        val wiper = VehicleControl.Wiper
+        assertEquals(5, store.snapshot().wiperLevel)
+        binding.dispatch(ContentEvent.ControlAutomaticTapped(wiper))
+        val firstId = pendingRequestId(store)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf(VehiclePacket(5, 608, 0, 1)), service.writes)
+        assertEquals(5, binding.state.value.controls.getValue(wiper).actual)
+        assertEquals(0, binding.state.value.controls.getValue(wiper).target)
+        store.toggleControlPower(wiper.id)
+        store.toggleControlAutomatic(wiper.id)
+        store.setControlLevel(wiper.id, 3)
+        store.cycleSeatLevel("seat_heating")
+        store.toggleLock()
+        assertEquals(firstId, pendingRequestId(store))
+        assertEquals(1, service.writes.size)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5999))
+        assertEquals(ContentState.COMMAND_PENDING, store.snapshot().commandStatus)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1))
+        assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
+        assertEquals(5, binding.state.value.controls.getValue(wiper).actual)
+        assertNull(binding.state.value.controls.getValue(wiper).target)
+        service.releaseReadback()
+        pollVehicleCommandAdapter(adapter)
+        assertEquals(0, store.snapshot().wiperLevel)
+        assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
+        assertEquals(1, binding.state.value.controls.getValue(wiper).rememberedLevel)
+    }
+
+    @Test fun frontWiperDisconnectAndFailedPacketsClearOnlyPendingAndKeepConfirmedManualMemory() {
+        for (disconnect in listOf(false, true)) {
+            val service = VehicleCommandBinder().apply { values[608] = 4; holdReadback = true }
+            val (store, adapter, _) = connectedStore(service)
+            val binding = ContentBinding(store).also(bindings::add).also { it.start() }
+            val wiper = VehicleControl.Wiper
+            assertEquals(3, binding.state.value.controls.getValue(wiper).rememberedLevel)
+            if (!disconnect) service.failWriteFunction = 608
+            store.setControlLevel(wiper.id, 4)
+            shadowOf(Looper.getMainLooper()).idle()
+            if (disconnect) {
+                val connection = vehicleAdapterField(adapter, "serviceConnection") as ServiceConnection
+                connection.onServiceDisconnected(ComponentName("com.chery.virtualcarservice", "com.chery.virtualcarservice.virtualcar.VirtualCarService"))
+                shadowOf(Looper.getMainLooper()).idle()
+            }
+            val failed = binding.state.value.controls.getValue(wiper)
+            assertEquals(if (disconnect) -1 else 3, failed.actual)
+            assertEquals(3, failed.rememberedLevel)
+            assertNull(failed.target)
+            assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
+            assertEquals(listOf(VehiclePacket(5, 608, 0, 6)), service.writes)
+            assertFalse(service.calls.any { it.functionId in listOf(561, 609, 610, 671) })
+        }
+    }
+
     private fun connectedStore(service: VehicleCommandBinder = VehicleCommandBinder()): Fixture {
         val app = RuntimeEnvironment.getApplication()
         val adapter = attachedVehicleCommandAdapter(service)

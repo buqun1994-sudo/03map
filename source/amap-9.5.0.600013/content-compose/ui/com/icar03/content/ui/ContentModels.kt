@@ -3,20 +3,43 @@ package com.icar03.content.ui
 /** Pure presentation contract: no Android, vendor IDs, permissions or business ports. */
 /** The shared domain definition also supplies stable presentation labels. */
 typealias ControlId = com.icar03.content.model.VehicleControl
-enum class ShortcutId(val control: ControlId? = null) {
+/** Four reusable presentations. State and commands are supplied by the owner. */
+enum class QuickControlType { DynamicIconSwitch, ContinuousVertical, OrdinaryToggle, SteppedVertical }
+enum class QuickControlPlacement { ButtonRows, LowerToggles, Vertical }
+enum class ShortcutId(
+    val control: ControlId? = null,
+    val type: QuickControlType = QuickControlType.DynamicIconSwitch,
+    val placement: QuickControlPlacement = QuickControlPlacement.ButtonRows,
+    private val title: String? = null,
+) {
     Lock(ControlId.Lock), SteeringHeat(ControlId.SteeringHeat),
     Ventilation(ControlId.Ventilation), Heating(ControlId.Heating),
-    PassengerHeating(ControlId.PassengerHeating), Massage(ControlId.Massage), Settings;
-    val label: String get() = control?.label ?: "设置"
+    PassengerHeating(ControlId.PassengerHeating), Massage(ControlId.Massage),
+    Settings(type = QuickControlType.OrdinaryToggle, title = "设置"),
+    AutoWiper(ControlId.Wiper, QuickControlType.OrdinaryToggle, title = "自动雨刮器"),
+    RearWiper(type = QuickControlType.OrdinaryToggle, placement = QuickControlPlacement.LowerToggles, title = "后窗雨刮器"),
+    RearWash(type = QuickControlType.OrdinaryToggle, placement = QuickControlPlacement.LowerToggles, title = "后窗洗涤"),
+    Wiper(ControlId.Wiper, QuickControlType.SteppedVertical, QuickControlPlacement.Vertical);
+    val label: String get() = title ?: requireNotNull(control).label
+}
+enum class SystemQuickControl(val label: String) {
+    Brightness("屏幕亮度"), Volume("媒体音量");
+    val type: QuickControlType get() = QuickControlType.ContinuousVertical
+}
+
+/** Grid placement is metadata, independent of Dock membership. */
+object ShortcutGrid {
+    val buttons = ShortcutId.entries.filter { it.placement == QuickControlPlacement.ButtonRows }
+    val lowerToggles = ShortcutId.entries.filter { it.placement == QuickControlPlacement.LowerToggles }
+    val verticals = ShortcutId.entries.filter { it.placement == QuickControlPlacement.Vertical }
 }
 
 /** Dock membership is explicit; new shortcut-page entries never add Dock buttons. */
 object DockShortcuts {
-    const val MAX_BUTTONS = 7
+    const val MAX_BUTTONS = 6
     val items: List<ShortcutId> = checkedItems(listOf(
-        ShortcutId.Lock, ShortcutId.SteeringHeat, ShortcutId.Ventilation,
-        ShortcutId.Heating, ShortcutId.PassengerHeating, ShortcutId.Massage,
-        ShortcutId.Settings,
+        ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation,
+        ShortcutId.Heating, ShortcutId.Massage, ShortcutId.Settings,
     ))
 
     internal fun checkedItems(items: List<ShortcutId>): List<ShortcutId> {
@@ -37,7 +60,7 @@ enum class PreviewScenario(val label: String) {
 enum class MediaSource(val label: String) {
     Bluetooth("蓝牙音乐"), AiMusic("爱趣听"), CloudMusic("网易云音乐"), Usb("USB音乐"), Local("本机音乐")
 }
-data class ControlState(val actual: Int = 0, val target: Int? = null, val available: Boolean = true, val known: Boolean = true) {
+data class ControlState(val actual: Int = 0, val target: Int? = null, val available: Boolean = true, val known: Boolean = true, val rememberedLevel: Int = 1) {
     val displayed: Int get() = target ?: if (known) actual else -1
     val pending: Boolean get() = target != null
 }
@@ -88,9 +111,14 @@ data class ContentUiState(
     val scenariosOpen: Boolean = false, val message: String? = null,
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,
+    val placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap(),
 )
 sealed interface ContentEvent {
     data class ControlTapped(val id: ControlId) : ContentEvent
+    data class ControlPowerTapped(val id: ControlId) : ContentEvent
+    data class ControlAutomaticTapped(val id: ControlId) : ContentEvent
+    data class ControlLevelChanged(val id: ControlId, val level: Int) : ContentEvent
+    data class PlaceholderToggled(val id: ShortcutId) : ContentEvent
     data class BrightnessChanged(val value: Float) : ContentEvent
     data class VolumeChanged(val value: Float) : ContentEvent
     data object PlayPause : ContentEvent

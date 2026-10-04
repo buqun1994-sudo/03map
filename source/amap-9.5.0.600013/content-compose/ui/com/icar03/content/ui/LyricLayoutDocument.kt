@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 /** Immutable layout facts, deliberately independent of position, current row and playback speed. */
 internal data class LyricLayoutRequest(
     val lines: List<LyricLine>, val width: Int, val metrics: LyricMetrics,
-    val face: Typeface, val cjk: Typeface,
+    val face: Typeface, val cjk: Typeface, val baseInset: Int = 0,
 )
 internal data class LyricLayoutDocument(val request: LyricLayoutRequest, val rows: List<NativeLyricRow>)
 
@@ -23,7 +23,7 @@ internal suspend fun prepareLyricDocument(request: LyricLayoutRequest,
     val context = currentCoroutineContext()
     val rows = request.lines.map { line ->
         context.ensureActive()
-        prepareLyricRow(line, request.width, request.metrics, request.face, request.cjk)
+        prepareLyricRow(line, request.width, request.metrics, request.face, request.cjk, request.baseInset)
     }
     context.ensureActive()
     LyricLayoutDocument(request, rows)

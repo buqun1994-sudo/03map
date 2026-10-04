@@ -8,6 +8,50 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PreviewControllerTest {
+    @Test fun wiperManualMemoryUpdatesOnlyAfterConfirmationAndSurvivesOffAndAuto() = runTest {
+        val controller = PreviewController(this)
+        controller.dispatch(ContentEvent.ControlLevelChanged(ControlId.Wiper, 3))
+        assertEquals(1, controller.state.value.controls.getValue(ControlId.Wiper).rememberedLevel)
+        assertEquals(3, controller.state.value.controls.getValue(ControlId.Wiper).target)
+        controller.dispatch(ContentEvent.ControlLevelChanged(ControlId.Wiper, 4))
+        assertEquals(3, controller.state.value.controls.getValue(ControlId.Wiper).target)
+        advanceUntilIdle()
+        assertEquals(3, controller.state.value.controls.getValue(ControlId.Wiper).rememberedLevel)
+        controller.dispatch(ContentEvent.ControlAutomaticTapped(ControlId.Wiper)); advanceUntilIdle()
+        assertEquals(5, controller.state.value.controls.getValue(ControlId.Wiper).actual)
+        assertEquals(3, controller.state.value.controls.getValue(ControlId.Wiper).rememberedLevel)
+        controller.dispatch(ContentEvent.ControlPowerTapped(ControlId.Wiper)); advanceUntilIdle()
+        assertEquals(0, controller.state.value.controls.getValue(ControlId.Wiper).actual)
+        controller.dispatch(ContentEvent.ControlPowerTapped(ControlId.Wiper)); advanceUntilIdle()
+        assertEquals(3, controller.state.value.controls.getValue(ControlId.Wiper).actual)
+        controller.dispatch(ContentEvent.ControlLevelChanged(ControlId.Wiper, 5))
+        assertNull(controller.state.value.controls.getValue(ControlId.Wiper).target)
+    }
+
+    @Test fun failedOrCancelledWiperDraftNeverReplacesConfirmedMemory() = runTest {
+        val initial = previewState(PreviewScenario.Failure).let { it.copy(controls = it.controls +
+            (ControlId.Wiper to ControlState(actual = 2, rememberedLevel = 2))) }
+        val controller = PreviewController(this, initial)
+        controller.dispatch(ContentEvent.ControlLevelChanged(ControlId.Wiper, 4)); advanceUntilIdle()
+        assertEquals(2, controller.state.value.controls.getValue(ControlId.Wiper).rememberedLevel)
+        controller.dispatch(ContentEvent.ControlLevelChanged(ControlId.Wiper, 3)); controller.pause(); advanceUntilIdle()
+        assertEquals(2, controller.state.value.controls.getValue(ControlId.Wiper).actual)
+        assertNull(controller.state.value.controls.getValue(ControlId.Wiper).target)
+    }
+
+    @Test fun rearSwitchesGiveOnlyLocalFeedbackAndDoNotAlterAnyVehicleControl() = runTest {
+        val controller = PreviewController(this)
+        val controls = controller.state.value.controls
+        controller.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.RearWiper))
+        controller.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.RearWash))
+        assertEquals(mapOf(ShortcutId.RearWiper to true, ShortcutId.RearWash to true), controller.state.value.placeholderSwitches)
+        assertEquals(controls, controller.state.value.controls)
+        controller.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.Heating))
+        assertFalse(controller.state.value.placeholderSwitches.containsKey(ShortcutId.Heating))
+        advanceUntilIdle()
+        assertEquals(controls, controller.state.value.controls)
+    }
+
     @Test fun successCommitsOnlyAfterConfirmation() = runTest {
         val controller = PreviewController(this)
         controller.dispatch(ContentEvent.ControlTapped(ControlId.Ventilation))
@@ -27,7 +71,7 @@ class PreviewControllerTest {
         val cycles = mapOf(ControlId.Lock to listOf(0, 1, 0), ControlId.Ventilation to listOf(0, 3, 2, 1, 0),
             ControlId.Massage to listOf(0, 3, 2, 1, 0), ControlId.Heating to listOf(0, 3, 2, 1, 4, 0),
             ControlId.PassengerHeating to listOf(0, 3, 2, 1, 4, 0),
-            ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0))
+            ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0), ControlId.Wiper to listOf(0, 1, 2, 3, 4, 5, 0))
         assertEquals(ControlId.entries.toSet(), cycles.keys)
         cycles.forEach { (id, levels) ->
             val initial = previewState()

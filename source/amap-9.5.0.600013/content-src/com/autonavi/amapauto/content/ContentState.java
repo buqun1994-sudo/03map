@@ -95,6 +95,28 @@ public final class ContentState {
     public int pendingSeatLevel = -1;
     public boolean pendingLocked;
     public String[] dockItems = ContentRegistry.defaultDockItems();
+    // Tail extensions: normalized domain modes, independent of seat readback.
+    public int wiperLevel = -1;
+    public boolean wiperKnown;
+    private java.util.Map<String, Integer> rememberedControlLevels = java.util.Collections.emptyMap();
+
+    public java.util.Map<String, Integer> getRememberedControlLevels() {
+        return rememberedControlLevels;
+    }
+
+    /** Freeze only on assignment; all snapshots can safely share this immutable value. */
+    public void setRememberedControlLevels(java.util.Map<String, Integer> levels) {
+        if (levels == null || levels.isEmpty()) {
+            rememberedControlLevels = java.util.Collections.emptyMap();
+        } else if (!rememberedControlLevels.equals(levels)) {
+            rememberedControlLevels = java.util.Collections.unmodifiableMap(new java.util.HashMap<>(levels));
+        }
+    }
+
+    public int rememberedLevel(VehicleControl control) {
+        Integer level = rememberedControlLevels.get(control.getId());
+        return control.rememberedManualLevel(level == null ? -1 : level);
+    }
 
     /** Canonical actual mode; raw companion evidence stays in this snapshot only. */
     public int controlLevel(VehicleControl control) {
@@ -106,6 +128,7 @@ public final class ContentState {
             case PassengerHeating: return ContentPorts.VehicleSnapshot.consistentHeatingLevel(
                     control, passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive);
             case SteeringHeat: return control.normalizeLevel(steeringHeatLevel);
+            case Wiper: return wiperKnown ? control.normalizeLevel(wiperLevel) : -1;
             case Massage: return ContentPorts.VehicleSnapshot.consistentMassageLevel(
                     massageLevel, massageSwitchKnown, massageActive);
             default: return -1;
@@ -192,6 +215,9 @@ public final class ContentState {
         copy.pendingSeatLevel = pendingSeatLevel;
         copy.pendingLocked = pendingLocked;
         copy.dockItems = dockItems.clone();
+        copy.wiperLevel = wiperKnown ? VehicleControl.Wiper.normalizeLevel(wiperLevel) : -1;
+        copy.wiperKnown = copy.wiperLevel >= 0;
+        copy.rememberedControlLevels = rememberedControlLevels;
         return copy;
     }
 }

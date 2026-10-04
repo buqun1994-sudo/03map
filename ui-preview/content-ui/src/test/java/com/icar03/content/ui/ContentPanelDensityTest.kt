@@ -88,17 +88,17 @@ open class ContentPanelSystem141Test {
 
     @Test fun systemDensityKeepsControlsMediaDockAndSourcesReachable() {
         mount()
-        ControlId.entries.forEach { touch("control-${it.name}") }
-        touch("shortcut-Settings")
+        ControlId.entries.forEach { compose.onNodeWithTag("control-${it.name}").performScrollTo(); touch("control-${it.name}") }
+        compose.onNodeWithTag("shortcut-Settings").performScrollTo(); touch("shortcut-Settings")
         // At 320dpi the page scrolls; controls below the fold remain reachable.
-        compose.onNodeWithTag("brightness-card").performScrollTo()
-        touch("brightness-card"); touch("volume-card"); touch("source-button")
+        compose.onNodeWithTag("brightness-card").performScrollTo(); touch("brightness-card")
+        compose.onNodeWithTag("volume-card").performScrollTo(); touch("volume-card"); touch("source-button")
         DockShortcuts.items.forEach {
             compose.onNodeWithTag("dock-${it.name}").performScrollTo()
             touch("dock-${it.name}")
         }
         assertTopBar()
-        compose.onNodeWithTag("dock-SteeringHeat").assertHasClickAction()
+        compose.onNodeWithTag("dock-Wiper").assertHasClickAction()
         compose.onNodeWithTag("dock-Settings").performClick()
         assertEquals(ContentEvent.SettingsTapped, events.last())
         val media = compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot
