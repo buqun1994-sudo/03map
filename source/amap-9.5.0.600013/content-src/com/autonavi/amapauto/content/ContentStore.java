@@ -46,6 +46,9 @@ public final class ContentStore {
     private long pendingVehicleRequestId;
     private long nextMediaRequestId;
     private long pendingMediaRequestId;
+    private long nextTrackRequestId;
+    private long pendingNextTrackRequestId;
+    private Runnable nextTrackTimeout;
     private long nextSourceRequestId;
     private long pendingSourceRequestId;
     private Runnable sourceTimeout;
@@ -172,6 +175,7 @@ public final class ContentStore {
     public void destroy() {
         synchronized (this) {
             destroyed = true;
+            clearNextTrackPendingLocked();
         }
         commandHandler.removeCallbacks(advanceLyrics);
         if (lyricsPort != null) lyricsPort.stop();
@@ -321,6 +325,12 @@ public final class ContentStore {
             state.mediaDurationMs = snapshot.durationMs;
             if (snapshot.dataAvailable && !snapshot.preview) lyricsTimeline.update(snapshot);
             else lyricsTimeline.reset();
+            state.mediaRecordingGeneration = lyricsTimeline.recordingGeneration();
+            if (state.mediaNextPending && (!snapshot.dataAvailable || snapshot.preview
+                    || !snapshot.hasSongMetadata()
+                    || state.mediaRecordingGeneration != previous.mediaRecordingGeneration)) {
+                clearNextTrackPendingLocked();
+            }
             state.mediaDataAvailable = snapshot.dataAvailable;
             state.mediaPreview = snapshot.preview;
             String mediaSource = snapshot.source == null || snapshot.source.isEmpty()
@@ -430,8 +440,10 @@ public final class ContentStore {
                 || !java.util.Objects.equals(previous.mediaArtist, state.mediaArtist)
                 || previous.mediaPlaybackAvailable != state.mediaPlaybackAvailable
                 || previous.mediaNextAvailable != state.mediaNextAvailable
+                || previous.mediaNextPending != state.mediaNextPending
                 || previous.mediaArtwork != state.mediaArtwork
                 || !java.util.Objects.equals(previous.mediaRecordingKey, state.mediaRecordingKey)
+                || previous.mediaRecordingGeneration != state.mediaRecordingGeneration
                 || !java.util.Objects.equals(previous.mediaId, state.mediaId)
                 || !java.util.Objects.equals(previous.mediaAlbum, state.mediaAlbum)
                 || previous.mediaDurationMs != state.mediaDurationMs
@@ -665,17 +677,41 @@ public final class ContentStore {
     }
 
     public void nextMediaTrack() {
+        final long requestId;
         synchronized (this) {
-            if (!state.mediaNextAvailable) {
+            if (destroyed || !state.mediaNextAvailable) {
                 return;
             }
+            requestId = ++nextTrackRequestId;
+            pendingNextTrackRequestId = requestId;
+            state.mediaNextPending = true;
+            if (nextTrackTimeout != null) commandHandler.removeCallbacks(nextTrackTimeout);
+            nextTrackTimeout = new Runnable() {
+                @Override public void run() {
+                    synchronized (ContentStore.this) {
+                        if (destroyed || pendingNextTrackRequestId != requestId) return;
+                        clearNextTrackPendingLocked();
+                        recordCommandResultLocked(false, "下一首状态未确认，请检查媒体会话");
+                    }
+                    publish();
+                }
+            };
+            commandHandler.postDelayed(nextTrackTimeout, MEDIA_FEEDBACK_TIMEOUT_MS);
         }
+        publish();
         queueMediaCommand(new Callable<Boolean>() {
             @Override
             public Boolean call() {
                 return mediaPort.requestNext();
             }
-        }, "下一首命令未发送，请检查媒体会话");
+        }, "下一首命令未发送，请检查媒体会话", requestId);
+    }
+
+    private void clearNextTrackPendingLocked() {
+        if (nextTrackTimeout != null) commandHandler.removeCallbacks(nextTrackTimeout);
+        nextTrackTimeout = null;
+        state.mediaNextPending = false;
+        pendingNextTrackRequestId = 0L;
     }
 
     public void selectMediaSource(String source) {
@@ -757,31 +793,43 @@ public final class ContentStore {
                 ? chargeState : ContentState.CHARGE_UNKNOWN;
     }
 
-    private void queueMediaCommand(final Callable<Boolean> command, final String failureMessage) {
-        mediaCommandExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                boolean accepted;
-                try {
-                    accepted = command.call();
-                } catch (Exception error) {
-                    accepted = false;
-                }
-                final boolean result = accepted;
-                commandHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        synchronized (ContentStore.this) {
-                            if (destroyed) {
-                                return;
-                            }
-                            recordCommandResultLocked(result, failureMessage);
-                        }
-                        publish();
+    private void queueMediaCommand(final Callable<Boolean> command, final String failureMessage,
+            final long requestId) {
+        try {
+            mediaCommandExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    synchronized (ContentStore.this) {
+                        if (destroyed) return;
                     }
-                });
-            }
-        });
+                    boolean accepted;
+                    try {
+                        accepted = command.call();
+                    } catch (Exception error) {
+                        accepted = false;
+                    }
+                    final boolean result = accepted;
+                    commandHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            completeNextTrackCommand(requestId, result, failureMessage);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            completeNextTrackCommand(requestId, false, failureMessage);
+        }
+    }
+
+    private void completeNextTrackCommand(long requestId, boolean accepted, String failureMessage) {
+        synchronized (this) {
+            if (destroyed || pendingNextTrackRequestId != requestId) return;
+            // Sending is not recording confirmation; retain the intent until actual readback.
+            if (!accepted) clearNextTrackPendingLocked();
+            recordCommandResultLocked(accepted, failureMessage);
+        }
+        publish();
     }
 
     private void recordCommandResultLocked(boolean accepted, String failureMessage) {

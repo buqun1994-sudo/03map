@@ -485,18 +485,19 @@ private fun PrototypeMediaCard(media: MediaState, onEvent: (ContentEvent) -> Uni
 @Composable
 private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit, compact: Boolean) {
      val colors = LocalContentColors.current
+    val items = DockShortcuts.items
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
         Surface(
             Modifier.fillMaxSize().testTag("floating-dock").downwardSoftShadow(colors.dockBase, state.dark), shape = RoundedCornerShape(12.dp),
             color = colors.dockBase, shadowElevation = 0.dp,
         ) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val minDockWidth = if (compact) 48.dp * ShortcutId.entries.size
-                    else 114.dp + 72.dp * (ShortcutId.entries.size - 1)
+                val minDockWidth = if (compact) 48.dp * items.size
+                    else 114.dp + 72.dp * (items.size - 1)
                 val dockWidth = maxWidth.coerceAtLeast(minDockWidth)
                 Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
                     Row(Modifier.width(dockWidth).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
-                        ShortcutId.entries.forEach { id ->
+                        items.forEach { id ->
                             val control = id.control?.let { state.controls.getValue(it) }
                             val selected = shortcutSelected(id, state)
                             val enabled = control == null || control.available && !control.pending
@@ -636,12 +637,13 @@ private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) 
 @Composable
 private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyricsState: @Composable () -> LyricsState) {
     val lyrics = lyricsState()
-    if (lyrics.lines.isNotEmpty()) {
-        androidx.compose.runtime.key(lyrics.recordingKey) {
-            WallpaperLyrics(lyrics, state.dark)
-        }
-        return
+    LyricsBodyTransition(lyrics, state.dark) {
+        if (lyrics.lines.isEmpty()) LyricsEmptyContent(state, onEvent, lyrics)
     }
+}
+
+@Composable
+private fun LyricsEmptyContent(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyrics: LyricsState) {
     // A song change can briefly have no lines. Keep the ambient canvas uninterrupted;
     // show the existing empty/source affordance only after lookup actually finishes.
     val showLoading = state.media.isSong && lyrics.loading

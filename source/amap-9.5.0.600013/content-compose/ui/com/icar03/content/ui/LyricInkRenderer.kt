@@ -527,8 +527,10 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
     }
     fun draw(canvas: Canvas, slices: List<PreparedLyricSlice>, rows: List<NativeLyricRow>, tops: FloatArray,
         cache: LyricInkCache, offset: Float, current: Set<Int>, focus: Int, lyrics: LyricsState, position: Long, dark: Boolean,
-        fallback: List<LyricSliceAddress> = emptyList()) {
+        fallback: List<LyricSliceAddress> = emptyList(), contentAlpha: Float = 1f) {
         drawBatches = 0; sampledCells = 0; motionTranslations = 0
+        val bodyAlpha = contentAlpha.coerceIn(0f, 1f)
+        if (bodyAlpha <= 0f) return
         val tint = if (dark) this.dark else light
         paint.colorFilter = tint
         for (slice in slices) {
@@ -554,7 +556,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
             val sharp = ink === slice.sharp
             val timed = sharp && lyrics.timed && emphasized && track.words.isNotEmpty()
             if (!timed && !ink.hasColour) {
-                paint.shader = ink.shader; paint.alpha = (opacity * track.alpha * 255).roundToInt()
+                paint.shader = ink.shader; paint.alpha = (opacity * track.alpha * bodyAlpha * 255).roundToInt()
                 canvas.drawRect(ink.bounds, paint)
                 drawBatches++
             } else {
@@ -569,7 +571,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
                     val fraction = reveal?.fraction ?: 0f
                     val shader = if (fraction > 0f && fraction < 1f) ink.highlight[cell.revealIndex] else ink.shader
                     val alpha = (track.alpha * if (!timed) opacity else if (fraction >= 1f) 1f else
-                        if (fraction > 0f) 1f else if (track.isMain) LyricVisuals.UNSUNG_ALPHA else .34f) * 255f
+                        if (fraction > 0f) 1f else if (track.isMain) LyricVisuals.UNSUNG_ALPHA else .34f) * bodyAlpha * 255f
                     val lift = if (timed && lyrics.timelineReady) -metrics.lift * lyricCharacterRiseAt(cell.onsetMs, position) else 0f
                     appendBatch(canvas, cell.bounds, shader, if (cell.coloured) null else tint, alpha.roundToInt(), lift)
                 }
@@ -607,7 +609,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
             val textPaint = track.layout.paint
             val oldColor = textPaint.color; val oldAlpha = textPaint.alpha
             textPaint.color = if (dark) Color.WHITE else Color.rgb(39, 48, 59)
-            textPaint.alpha = (opacity * track.alpha * singingOpacity * fade * 255).roundToInt()
+            textPaint.alpha = (opacity * track.alpha * singingOpacity * fade * bodyAlpha * 255).roundToInt()
             track.layout.draw(canvas)
             textPaint.color = oldColor; textPaint.alpha = oldAlpha
             canvas.restoreToCount(saved)

@@ -11,6 +11,7 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
 
     private val recording = MediaRecordingStateTracker()
     private val timeline = MediaSessionTimelineTracker(elapsedRealtime)
+    private var currentRecordingGeneration = 0L
     private var durationMs = 0L
     private var publisherGeneration: Int? = null
     private var lastAvrcpEventSequence = 0L
@@ -23,6 +24,7 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
             return
         }
         val state = recording.update(snapshot.source, metadata) ?: return
+        currentRecordingGeneration = state.recordingGeneration
         if (publisherGeneration != snapshot.generation) {
             timeline.clearPublisherOrdering()
             publisherGeneration = snapshot.generation
@@ -60,6 +62,9 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
         )
     }
 
+    /** Stable recording identity from the existing tracker, independent of publisher revisions. */
+    @Synchronized fun recordingGeneration(): Long = currentRecordingGeneration
+
     @Synchronized fun anchor(): ContentPorts.LyricsPlaybackAnchor = timeline.anchor()
 
     @Synchronized fun positionMs(): Long = timeline.anchor().sampleAt(elapsedRealtime())
@@ -72,6 +77,7 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
 
     @Synchronized fun reset() {
         recording.clear()
+        currentRecordingGeneration = 0L
         timeline.reset()
         publisherGeneration = null
         avrcpPlaybackState = null

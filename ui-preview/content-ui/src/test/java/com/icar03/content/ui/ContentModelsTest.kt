@@ -44,11 +44,47 @@ class ContentModelsTest {
         }
     }
 
-    @Test fun sevenShortcutsShareSixVehicleControlsInProductOrder() {
-        assertEquals(listOf("Lock", "SteeringHeat", "Ventilation", "Heating", "PassengerHeating", "Massage", "Settings"), ShortcutId.entries.map { it.name })
-        assertEquals(ControlId.entries.toSet(), ShortcutId.entries.mapNotNull { it.control }.toSet())
+    @Test fun dockKeepsSevenExplicitShortcutsSharingExistingVehicleControls() {
+        assertEquals(7, DockShortcuts.MAX_BUTTONS)
+        assertEquals(listOf("Lock", "SteeringHeat", "Ventilation", "Heating", "PassengerHeating", "Massage", "Settings"), DockShortcuts.items.map { it.name })
+        assertNotSame(ShortcutId.entries, DockShortcuts.items)
+        assertTrue(ShortcutId.entries.containsAll(DockShortcuts.items))
+        assertEquals(listOf(ControlId.Lock, ControlId.SteeringHeat, ControlId.Ventilation, ControlId.Heating,
+            ControlId.PassengerHeating, ControlId.Massage), DockShortcuts.items.mapNotNull { it.control })
         assertEquals(ControlId.SteeringHeat, ShortcutId.SteeringHeat.control)
         assertNull(ShortcutId.Settings.control)
+    }
+
+    @Test fun dockRejectsOverflowDuplicatesAndMissingOrMovedLock() {
+        val overflow = assertThrows(IllegalArgumentException::class.java) {
+            DockShortcuts.checkedItems(DockShortcuts.items + ShortcutId.Settings)
+        }
+        assertTrue("overflow must fail at the seven-button limit", overflow.message?.contains("at most 7 buttons") == true)
+        val invalid = listOf(
+            emptyList(),
+            listOf(ShortcutId.Lock, ShortcutId.Heating, ShortcutId.Heating),
+            DockShortcuts.items.drop(1),
+            DockShortcuts.items.drop(1) + ShortcutId.Lock,
+        )
+        invalid.forEach { items ->
+            assertThrows("invalid Dock: $items", IllegalArgumentException::class.java) {
+                DockShortcuts.checkedItems(items)
+            }
+        }
+    }
+
+    @Test fun dockDefinitionsCopyTheirInputAndCannotBeMutated() {
+        val source = mutableListOf(ShortcutId.Lock, ShortcutId.Settings)
+        val checked = DockShortcuts.checkedItems(source)
+        source.clear()
+        assertEquals(listOf(ShortcutId.Lock, ShortcutId.Settings), checked)
+        assertThrows(UnsupportedOperationException::class.java) {
+            (checked as MutableList<ShortcutId>).add(ShortcutId.Heating)
+        }
+        assertThrows(UnsupportedOperationException::class.java) {
+            (DockShortcuts.items as MutableList<ShortcutId>).clear()
+        }
+        assertEquals(7, DockShortcuts.items.size)
     }
 
     @Test fun lyricsEmptyReasonsDefaultToNoLyricsAndDoNotPretendToHaveATimeline() {

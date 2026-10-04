@@ -36,14 +36,14 @@ unzip -l "$INPUT_APK" | rg 'AndroidManifest|classes|lib/|resources.arsc'
 
 即使 `-o` 输出到忽略目录，也**不能直接对正式 `source/amap-9.5.0.600013/` 执行 `apktool b`**：APKTool 会在输入目录下生成 `build/`、DEX 和资源中间文件。资源最小回编只对被忽略的全新施工副本执行；误生成时先确认没有 Git 跟踪文件，再将整个生成目录移至忽略区，运行 `node scripts/check-code-map.mjs` 复核正式源码边界。
 
-每个结构性动作后立即检查命名空间、类型归属、项目包含关系、Smali 语法和资源引用，不把多轮错误堆到最后处理。
+每个结构性动作后立即检查命名空间、类型归属、项目包含关系、Smali 语法和资源引用，不把多轮错误堆到最后处理。源码验证按[构建与验证入口](<构建与验证入口.md>)先规划、先编译所选测试，再跑相关用例／Lint；稳定整合才执行适用全量。APK包级核验不隐式触发源码全量测试。
 
 施工副本和正式源码的 `apktool.yml` 均不得保留 `doNotCompress: - so`；最终 `lib/**/*.so` 必须使用 Deflate。
 
 ### 正式源码回写与可重建门禁
 
 1. 对照当前 Git 正式源码与实验副本，只迁入本轮确认为有效的 Java、Smali、Manifest、资源及构建配置；将 `build/`、class、DEX、签名、旧轮次和设备证据排除。迁入后逐项核对文件哈希、命名空间、方法入口和资源引用。
-2. 在被忽略的 `.codex/local-context.properties` 配置指向仓库外的 `AMAP_SIGNING_PK8` 和 `AMAP_SIGNING_CERT`，从正式源码运行 `bash scripts/build-content-apk.sh`。第三层主链先核对正式OEM资产，Gradle全量编译正式 `content-compose/` 和Java白名单，导出`:map-host`生产release图；`scripts/check-compose-deps.mjs`按明确版本与SHA锁验证依赖及构建ASM工具。在被忽略的 `apk-work/9.5.0.600013/source-build.*` 从正式Smali／资源回编APKTool，`scripts/build-compose-content.mjs`把受控AAR资源重链接到同包资源表、保持原public IDs并生成真实R，ASM隔离现代AndroidX及support避免旧混淆空壳的ABI冲突，R8生成新增多DEX；`scripts/check-content-dex.mjs`联合验证重复、类型闭包与静态入口和通知Service构造。原63地图库逐SHA保持，只加入锁定graphics-path arm64 JNI，全部Deflate；协程dispatcher服务元数据进入最终包。随后对齐和原身份签名。不从旧DEX借产物，不把AAR／JAR／APK／DEX加入Git。缺网络缓存、版本或SHA不匹配时预检失败，不绕过完整性或降级为不完整包。旧 `resolve-content-deps.sh`／Lottie路线仅适用于历史Java Renderer，不是第三层正式呈现构建入口。
+2. 在被忽略的 `.codex/local-context.properties` 配置指向仓库外的 `AMAP_SIGNING_PK8` 和 `AMAP_SIGNING_CERT`，从正式源码运行 `bash scripts/build-content-apk.sh`。第三层主链先检查模块与正式Java白名单、核对正式OEM资产，Gradle按当前输入编译正式 `content-compose/` 和Java白名单（保留增量与有效UP-TO-DATE），导出`:map-host`生产release图；`scripts/check-compose-deps.mjs`按明确版本与SHA锁验证依赖及构建ASM工具。在被忽略的 `apk-work/9.5.0.600013/source-build.*` 从正式Smali／资源回编APKTool，`scripts/build-compose-content.mjs`把受控AAR资源重链接到同包资源表、保持原public IDs并生成真实R，ASM隔离现代AndroidX及support避免旧混淆空壳的ABI冲突，R8生成新增多DEX；`scripts/check-content-dex.mjs`联合验证重复、类型闭包与静态入口和通知Service构造。原63地图库逐SHA保持，只加入锁定graphics-path arm64 JNI，全部Deflate；协程dispatcher服务元数据进入最终包。随后对齐和原身份签名。不从旧DEX借产物，不把AAR／JAR／APK／DEX加入Git。缺网络缓存、版本或SHA不匹配时预检失败，不绕过完整性或降级为不完整包。旧 `resolve-content-deps.sh`／Lottie路线仅适用于历史Java Renderer，不是第三层正式呈现构建入口。
 3. 缺少签名材料、证书不等于已测试候选包身份或签名 / 包身份验证不通过时，脚本在交付前失败；不输出可交付的未签名包，也不回退到任意 Debug 证书。可显式传入仓库外 PK8、PEM 路径覆盖本机配置：`bash scripts/build-content-apk.sh "$EXTERNAL_KEY" "$EXTERNAL_CERT"`。输出 `signed.apk` 才是候选包；脚本自动验证单 signer、v2、证书 SHA-256、包身份、对齐、DEX 与 `.so` Deflate，并清理未签名中间包。不得从旧签名包复制签名块。
 4. 构建完成后运行 `node scripts/check-code-map.mjs`、`git diff --check`，检查 `git status` 与暂存清单。提交正式源码、构建入口和追踪文档；APK、DEX、class 按现有生成物忽略规则管理；非公开凭据及含隐私原始日志按 [个人风险口径](../security/安全与密钥边界.md) 处理，脱敏证据可按需入库。若正式源码不能独立重建，禁止宣称代码已归档。
 

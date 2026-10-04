@@ -50,9 +50,12 @@ public final class ContentState {
     public String mediaArtist = "未连接";
     public boolean mediaPlaybackAvailable;
     public boolean mediaNextAvailable;
+    public boolean mediaNextPending;
     public int mediaPlaybackTarget = -1;
     public Bitmap mediaArtwork;
     public String mediaRecordingKey = "";
+    // Stable identity projected from the sole lyrics timeline recording tracker.
+    public long mediaRecordingGeneration;
     public String mediaId = "";
     public String mediaAlbum = "";
     public long mediaDurationMs;
@@ -143,9 +146,11 @@ public final class ContentState {
         copy.mediaArtist = mediaArtist;
         copy.mediaPlaybackAvailable = mediaPlaybackAvailable;
         copy.mediaNextAvailable = mediaNextAvailable;
+        copy.mediaNextPending = mediaNextPending;
         copy.mediaPlaybackTarget = mediaPlaybackTarget;
         copy.mediaArtwork = mediaArtwork;
         copy.mediaRecordingKey = mediaRecordingKey;
+        copy.mediaRecordingGeneration = mediaRecordingGeneration;
         copy.mediaId = mediaId;
         copy.mediaAlbum = mediaAlbum;
         copy.mediaDurationMs = mediaDurationMs;

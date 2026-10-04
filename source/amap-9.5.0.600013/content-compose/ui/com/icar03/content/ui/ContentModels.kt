@@ -9,6 +9,27 @@ enum class ShortcutId(val control: ControlId? = null) {
     PassengerHeating(ControlId.PassengerHeating), Massage(ControlId.Massage), Settings;
     val label: String get() = control?.label ?: "设置"
 }
+
+/** Dock membership is explicit; new shortcut-page entries never add Dock buttons. */
+object DockShortcuts {
+    const val MAX_BUTTONS = 7
+    val items: List<ShortcutId> = checkedItems(listOf(
+        ShortcutId.Lock, ShortcutId.SteeringHeat, ShortcutId.Ventilation,
+        ShortcutId.Heating, ShortcutId.PassengerHeating, ShortcutId.Massage,
+        ShortcutId.Settings,
+    ))
+
+    internal fun checkedItems(items: List<ShortcutId>): List<ShortcutId> {
+        val copy = items.toList()
+        require(copy.size in 1..MAX_BUTTONS) { "Dock must contain at most $MAX_BUTTONS buttons including the lock" }
+        require(copy.distinct().size == copy.size) { "Dock buttons must be unique" }
+        require(copy.first() == ShortcutId.Lock && copy.count { it.control == ControlId.Lock } == 1) {
+            "Dock must start with its only lock button"
+        }
+        return java.util.Collections.unmodifiableList(copy)
+    }
+}
+
 enum class PanelPage { Shortcuts, Lyrics }
 enum class PreviewScenario(val label: String) {
     Ready("日常预览"), NoData("无数据"), Unavailable("能力不可用"), Failure("失败回弹"), Pending("待确认"), Playing("正在播放"), SourceMenu("来源菜单")
@@ -51,6 +72,9 @@ data class LyricsState(
     val anchorRevision: Long = 0L,
     // Semantic endpoint owned by Store; the stable anchor's base can predate it.
     val atEnd: Boolean = false,
+    // Stable identity from the existing recording tracker; transport metadata enrichment is not a new song.
+    val recordingGeneration: Long = 0L,
+    val changingTrack: Boolean = false,
 )
 /** Clock text is a separate presentation domain, not a media progress projection. */
 data class ClockText(val time: String = "--:--", val weekday: String = "")

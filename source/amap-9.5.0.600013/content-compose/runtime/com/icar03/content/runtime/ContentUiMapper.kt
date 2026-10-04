@@ -179,6 +179,8 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             },
             anchorRevision = anchor.revision,
             atEnd = duration > 0L && state.lyricsPositionMs >= duration,
+            recordingGeneration = state.mediaRecordingGeneration,
+            changingTrack = state.mediaNextPending,
         ) else LyricsState()
         return lyrics
     }
@@ -188,6 +190,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
 
     private fun sameLyricsFacts(a: ContentState, b: ContentState): Boolean =
         metadataReady(a) == metadataReady(b) && a.mediaRecordingKey == b.mediaRecordingKey &&
+            a.mediaRecordingGeneration == b.mediaRecordingGeneration && a.mediaNextPending == b.mediaNextPending &&
             a.lyricsLines === b.lyricsLines && a.lyricsStatus == b.lyricsStatus && a.lyricsTimed == b.lyricsTimed &&
             a.lyricsTimelineReady == b.lyricsTimelineReady && a.lyricsAnchor === b.lyricsAnchor &&
             a.lyricsActiveIndex == b.lyricsActiveIndex && a.lyricsScrollIndex == b.lyricsScrollIndex &&

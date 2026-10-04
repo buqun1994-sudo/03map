@@ -210,6 +210,58 @@ class ContentLyricsTimelineTest {
         assertEquals(22_000L, timeline.positionMs())
     }
 
+    @Test fun transportEnrichmentAndPublisherChangesKeepTheSameRecordingGeneration() {
+        var now = 1_000L
+        val timeline = ContentLyricsTimeline { now }
+        assertEquals(0L, timeline.recordingGeneration())
+        val partial = media(artist = "", album = "", duration = 0L)
+        timeline.update(partial)
+        val generation = timeline.recordingGeneration()
+        val unknownAnchor = timeline.anchor()
+        assertTrue(generation > 0L)
+        assertFalse(timeline.ready())
+        val enriched = media(mediaId = "item/A")
+        assertNotEquals(partial.recordingKey(), enriched.recordingKey())
+        timeline.update(enriched)
+        assertEquals(generation, timeline.recordingGeneration())
+        now += 1_000L
+        for (incoming in listOf(
+            media(mediaId = "item/A", duration = 201_000L, generation = 2),
+            media(mediaId = "item/A", title = "ＳＯＮＧ", artist = "Ａｒｔｉｓｔ", duration = 204_001L, generation = 3),
+            media(duration = 0L, generation = 4),
+        )) {
+            timeline.update(incoming)
+            assertEquals(generation, timeline.recordingGeneration())
+            assertSame("identity projection never creates a provisional clock", unknownAnchor, timeline.anchor())
+            assertFalse(timeline.ready())
+        }
+    }
+
+    @Test fun realRecordingChangesAndResetNeverReuseAnEarlierGeneration() {
+        val timeline = ContentLyricsTimeline { 1_000L }
+        timeline.update(media(mediaId = "item/A"))
+        var generation = timeline.recordingGeneration()
+        for (incoming in listOf(
+            media(mediaId = "item/B"),
+            media(mediaId = "item/B", artist = "Other Artist"),
+            media(mediaId = "item/B", artist = "Other Artist", album = "Other Album"),
+            media(title = "Next Song"),
+            media(source = "USB音乐", title = "Next Song"),
+        )) {
+            timeline.update(incoming)
+            assertEquals(++generation, timeline.recordingGeneration())
+        }
+        val latest = media(source = "USB音乐", title = "Next Song")
+        timeline.reset()
+        assertEquals(0L, timeline.recordingGeneration())
+        timeline.update(latest)
+        assertEquals(++generation, timeline.recordingGeneration())
+        timeline.update(ContentPorts.MediaSnapshot.unavailable())
+        assertEquals(0L, timeline.recordingGeneration())
+        timeline.update(latest)
+        assertEquals(++generation, timeline.recordingGeneration())
+    }
+
     private fun avrcp(position: Long = -1L, sequence: Long, capturedAt: Long,
         eventState: Int = -1, playing: Boolean = true, title: String = "Song", publisherTime: Long = 0L) =
         ContentPorts.MediaSnapshot(true, false, "蓝牙音乐", playing, 1, title, "Artist", true, true,
@@ -217,8 +269,9 @@ class ContentLyricsTimelineTest {
             android.media.session.PlaybackState.STATE_PLAYING, sequence, position, eventState, capturedAt)
 
     private fun media(source: String = "本机音乐", title: String = "Song", position: Long = -1L,
-        duration: Long = 200_000L, publisherTime: Long = 0L, playing: Boolean = true, generation: Int = 1) =
-        ContentPorts.MediaSnapshot(true, false, source, playing, generation, title, "Artist", true, true,
-            null, "", "Album", duration, position, publisherTime, if (playing) 1f else 0f,
+        duration: Long = 200_000L, publisherTime: Long = 0L, playing: Boolean = true, generation: Int = 1,
+        artist: String = "Artist", album: String = "Album", mediaId: String = "") =
+        ContentPorts.MediaSnapshot(true, false, source, playing, generation, title, artist, true, true,
+            null, mediaId, album, duration, position, publisherTime, if (playing) 1f else 0f,
             ContentPorts.MediaSongIdentity.SONG)
 }

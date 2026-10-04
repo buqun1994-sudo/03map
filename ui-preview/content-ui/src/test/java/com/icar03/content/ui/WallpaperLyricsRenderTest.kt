@@ -397,7 +397,8 @@ class WallpaperLyricsRenderTest {
             val top = waitTops[slot] + value(LyricScrollOffset)
             val dots = inkBounds(frame, kotlin.math.floor(top).toInt(), ceil(top + slotHeight).toInt())
             assertNotNull("waiting slot has its own dot ink", dots)
-            assertTrue("only compact dots, never lyric/subrow text, occupy waiting row", dots!!.height() <= 10 && dots.width() <= 36)
+            assertEquals("waiting dots are 12dp tall", 12f, dots!!.height().toFloat(), 2f)
+            assertEquals("three dots retain a 22dp centre step", 56f, dots.width().toFloat(), 2f)
             assertEquals("dots follow the slot, never a viewport overlay", top + slotHeight / 2f, dots.exactCenterY(), 2f)
             assertEquals(1080f * .41f, dots.exactCenterY(), 2f)
         }

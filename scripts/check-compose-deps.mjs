@@ -5,7 +5,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const exported = JSON.parse(fs.readFileSync(path.join(root, 'ui-preview/map-host/build/compose-export.json'), 'utf8'));
+const exportPath = path.join(root, 'ui-preview/map-host/build/compose-export.json');
+const exportedText = fs.readFileSync(exportPath, 'utf8');
+const exported = JSON.parse(exportedText);
 const key = (r) => `${r.group}:${r.name}:${r.version}:${r.type}`;
 const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const normalize = (items) => [...new Map(items.map((r) => [key(r), r])).values()].sort((a,b) => key(a).localeCompare(key(b)));
@@ -34,4 +36,13 @@ if (process.argv.includes('--write-lock')) {
   const lock = JSON.parse(fs.readFileSync(lockPath,'utf8'));
   if (JSON.stringify(lock) !== JSON.stringify(generated)) throw new Error('Compose dependency graph/version/SHA mismatch; review and explicitly regenerate lock');
   console.log(`Compose dependency lock verified: ${lock.dependencies.length} runtime artifacts, ${lock.tools.length} build tools`);
+  const receiptIndex = process.argv.indexOf('--receipt');
+  if (receiptIndex !== -1) {
+    const destination = process.argv[receiptIndex + 1];
+    if (!destination) throw new Error('--receipt requires a destination');
+    const receipt = { schema: 1, lockSha256: sha(lockPath), exportSha256: crypto.createHash('sha256').update(exportedText).digest('hex'),
+      dependencies: normalize(exported.dependencies).map(r => ({ file: r.file, sha256: generated.dependencies.find(item => key(item) === key(r)).sha256 })),
+      tools: normalize(exported.tools).map(r => ({ file: r.file, sha256: generated.tools.find(item => key(item) === key(r)).sha256 })) };
+    fs.writeFileSync(destination, JSON.stringify(receipt, null, 2) + '\n');
+  }
 }

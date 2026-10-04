@@ -77,7 +77,8 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithContentDescription("播放").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithContentDescription("下一首").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithContentDescription("选择来源").assertIsDisplayed().assertIsEnabled()
-        ShortcutId.entries.forEach { id ->
+        compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(7)
+        DockShortcuts.items.forEach { id ->
             val node = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed()
             node.assertHasClickAction()
         }
@@ -1442,9 +1443,13 @@ open class ContentPanelLightPrototypeRenderTest {
         assertTrue("sliders retain the original 290dp lower region", brightness.bottom - brightness.top == 290.dp && volume.bottom - volume.top == 290.dp)
         assertTrue("passenger/massage occupy lower left row", bounds.getValue(ShortcutId.PassengerHeating).top == bounds.getValue(ShortcutId.Massage).top &&
             bounds.getValue(ShortcutId.Massage).right < brightness.left)
-        catalog.forEach { id ->
+        val dockBounds = DockShortcuts.items.associateWith { id ->
             val dock = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed().assertHasClickAction().getUnclippedBoundsInRoot()
             assertTrue("each of seven Dock slots retains a 48dp touch region", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
+            dock
+        }
+        assertTrue("Dock preserves its explicit product order", dockBounds.entries.sortedBy { it.value.left.value }.map { it.key } == DockShortcuts.items)
+        catalog.forEach { id ->
             val label = compose.onNodeWithTag("shortcut-label-${id.name}", useUnmergedTree = true)
             label.assertTextEquals(id.label)
             val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
@@ -1472,6 +1477,9 @@ open class ContentPanelLightPrototypeRenderTest {
                 val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
                 label.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
                 assertTrue("narrow full name is fully visible: ${id.label} at $value / tile=$region / text=${layouts.single().size} / lines=${layouts.single().lineCount} / widthOverflow=${layouts.single().didOverflowWidth} / heightOverflow=${layouts.single().didOverflowHeight}", layouts.single().lineCount <= 2 && !layouts.single().hasVisualOverflow)
+            }
+            compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(7)
+            DockShortcuts.items.forEach { id ->
                 val dock = compose.onNodeWithTag("dock-${id.name}").performScrollTo().assertIsDisplayed().getUnclippedBoundsInRoot()
                 assertTrue("seven-slot minimum width is scrollable, not squeezed below 48dp", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
             }

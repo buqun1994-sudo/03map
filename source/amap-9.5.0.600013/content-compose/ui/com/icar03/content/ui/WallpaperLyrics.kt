@@ -17,24 +17,18 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -69,9 +63,29 @@ internal val LyricLayoutReady = SemanticsPropertyKey<Boolean>("LyricLayoutReady"
 internal val LocalLyricGeometryDispatcher = staticCompositionLocalOf<CoroutineDispatcher> { Dispatchers.Default }
 internal val LocalLyricPreparationDispatcher = staticCompositionLocalOf<CoroutineDispatcher> { Dispatchers.Default }
 
+internal val LyricOpacity = SemanticsPropertyKey<Float>("LyricOpacity")
+internal val LyricPresentationFrozen = SemanticsPropertyKey<Boolean>("LyricPresentationFrozen")
+internal val LyricEntryHolding = SemanticsPropertyKey<Boolean>("LyricEntryHolding")
+internal val LyricRecordingKey = SemanticsPropertyKey<String>("LyricRecordingKey")
+
+/** Last painted facts, without Snapshot writes, screenshots or a second media clock. */
+private class LyricPaintedFrame {
+    var document: LyricLayoutDocument? = null
+    var source: LyricsState? = null
+    var positionMs = -1L
+    var offset = 0f
+    var focus = 0
+    var emphasized: Set<Int> = emptySet()
+    var cache: LyricInkCache? = null
+    var slices: List<PreparedLyricSlice> = emptyList()
+    var fallback: List<LyricSliceAddress> = emptyList()
+}
+
 /** Stable geometry and a byte-bounded ink cache; frame clocks are observed only in draw/semantics. */
 @Composable
-internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modifier = Modifier) {
+internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modifier = Modifier,
+    opacity: () -> Float = { 1f }, freezeMotion: Boolean = false, holdFollow: Boolean = false,
+    startAtFirstRow: Boolean = false, visibility: Boolean? = null, onLayoutReady: () -> Unit = {}) {
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().testTag("wallpaper-lyrics")) {
         val density = LocalDensity.current
         val assets = LocalContext.current.assets
@@ -86,37 +100,33 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
                 LyricVisuals.LIFT_DP.dp.toPx())
         }
         val incoming = lyrics
-        val owner = LocalLifecycleOwner.current
-        val view = LocalView.current
-        var started by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
-        var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
-        val visible = started && focused && LocalIconVisible.current
-        DisposableEffect(owner, view) {
-            val observer = LifecycleEventObserver { _, _ -> started = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) }
-            val tree = view.viewTreeObserver
-            val listener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { focused = it }
-            owner.lifecycle.addObserver(observer); tree.addOnWindowFocusChangeListener(listener)
-            onDispose {
-                owner.lifecycle.removeObserver(observer)
-                if (tree.isAlive) tree.removeOnWindowFocusChangeListener(listener)
-            }
-        }
+        val presentationKey = lyricPresentationKey(incoming)
+        val visible = visibility ?: rememberLyricVisibility()
+        val workEnabled = visible && !freezeMotion
         val request = remember(incoming.lines, width, requestedMetrics, face, cjk) {
             LyricLayoutRequest(incoming.lines, width, requestedMetrics, face, cjk)
         }
-        var candidate by remember(incoming.recordingKey) { mutableStateOf<LyricLayoutDocument?>(null) }
-        val admitted = remember(incoming.recordingKey) { LyricPresentationHolder() }
+        var candidate by remember(presentationKey) { mutableStateOf<LyricLayoutDocument?>(null) }
+        val admitted = remember(presentationKey) { LyricPresentationHolder() }
+        val painted = remember(presentationKey) { LyricPaintedFrame() }
         val matching = candidate?.takeIf { it.request === request }
-        val layoutReady = matching != null
+        val presentation = if (freezeMotion && painted.document != null && painted.source != null)
+            LyricPresentation(painted.document!!, painted.source!!)
+            else if (!freezeMotion && matching != null) LyricPresentation(matching, incoming) else admitted.value
+        val layoutReady = matching != null && presentation?.document === matching
         val geometryDispatcher = LocalLyricGeometryDispatcher.current
-        LaunchedEffect(incoming.recordingKey, request, visible, geometryDispatcher) {
-            if (!visible || layoutReady) return@LaunchedEffect
+        LaunchedEffect(presentationKey, request, workEnabled, geometryDispatcher) {
+            if (!workEnabled || layoutReady) return@LaunchedEffect
             val result = prepareLyricDocument(request, geometryDispatcher)
             currentCoroutineContext().ensureActive()
             candidate = result
         }
-        SideEffect { if (matching != null) admitted.value = LyricPresentation(matching, incoming) }
-        val presentation = if (matching != null) LyricPresentation(matching, incoming) else admitted.value
+        SideEffect {
+            if (!freezeMotion && matching != null) {
+                admitted.value = LyricPresentation(matching, incoming)
+                onLayoutReady()
+            }
+        }
         if (presentation == null) {
             Box(Modifier.fillMaxSize().semantics {
                 this[LyricLayoutReady] = false
@@ -127,11 +137,12 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         // A completed candidate can be superseded before composition admits it. Hold the
         // entire previous document/source pair, never A's cursor with unadmitted B's rows.
         val ready = presentation.document
-        val heldSource = remember(request, ready) {
+        val heldSource = remember(request, ready, freezeMotion) {
             val source = presentation.source
-            source.copy(positionMs = lyricPositionAt(source, SystemClock.elapsedRealtime()), playbackSpeed = 0f)
+            source.copy(positionMs = if (freezeMotion && painted.document === ready) painted.positionMs
+                else lyricPositionAt(source, SystemClock.elapsedRealtime()), playbackSpeed = 0f)
         }
-        val lyrics = if (layoutReady) incoming else heldSource
+        val lyrics = if (layoutReady && !freezeMotion) incoming else heldSource
         val metrics = ready.request.metrics
         val measured = ready.rows
         val active = lyrics.activeIndex.coerceIn(-1, lyrics.lines.lastIndex)
@@ -139,8 +150,9 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             lyrics.activeIndices.ifEmpty { listOfNotNull(active.takeIf { it >= 0 }) }
                 .filter { it in lyrics.lines.indices }.toSet()
         }
-        val focus = max(0, if (lyrics.scrollIndex >= 0) lyrics.scrollIndex else active)
-            .coerceAtMost(max(0, lyrics.lines.lastIndex))
+        val focus = if (freezeMotion && painted.document === ready) painted.focus
+            else max(0, if (lyrics.scrollIndex >= 0) lyrics.scrollIndex else active)
+                .coerceAtMost(max(0, lyrics.lines.lastIndex))
         val heights = remember(measured) { measured.map { it.height } }
         val waitHeight = with(density) { 64.dp.toPx() }
         val flow = remember(heights, lyrics.waitRows, lyrics.timed, waitHeight) {
@@ -153,37 +165,55 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val gap = gapSlot >= 0 && lyrics.timelineReady && lyrics.timed
         // Presentation emphasis is the current follow row, not the first-word singing gate.
         // Keep overlapping actual voices emphasized too; waiting rows and song end have no new current line.
-        val emphasized = remember(singing, lyrics.scrollIndex, lyrics.timelineReady, lyrics.timed, gap,
+        val projectedEmphasis = remember(singing, lyrics.scrollIndex, lyrics.timelineReady, lyrics.timed, gap,
             lyrics.atEnd || lyrics.durationMs > 0L && lyrics.positionMs >= lyrics.durationMs, lyrics.lines.size) {
             lyricEmphasizedRows(lyrics, singing, gap)
         }
+        val emphasized = if (freezeMotion && painted.document === ready) painted.emphasized else projectedEmphasis
         val followTarget = if (!lyrics.timed) metrics.padding
             else if (gapSlot >= 0) height * .41f - flow.waitTops[gapSlot] - waitHeight / 2f
             else if (measured.isEmpty()) 0f else height * .41f - tops[focus] - heights[focus] / 2f
         val geometry = remember(lyrics.lines, tops, heights, height) { LyricGeometry(lyrics.lines, tops, heights, height) }
-        val travel = remember(lyrics.recordingKey) { Animatable(followTarget) }
-        var committedCoordinates by remember(lyrics.recordingKey) { mutableStateOf(LyricCoordinates(geometry, 0f)) }
-        val coordinates = remember(geometry, lyrics.recordingKey) {
+        val firstTarget = if (!lyrics.timed) metrics.padding
+            else if (gapSlot >= 0 && flow.waitRows[gapSlot].afterIndex == -1) followTarget
+            else if (measured.isEmpty()) 0f else height * .41f - tops[0] - heights[0] / 2f
+        val travel = remember(presentationKey) { Animatable(if (startAtFirstRow) firstTarget else followTarget) }
+        var committedCoordinates by remember(presentationKey) { mutableStateOf(LyricCoordinates(geometry, 0f)) }
+        val coordinates = remember(geometry, presentationKey) {
             val previous = committedCoordinates
             LyricCoordinates(geometry, previous.origin + lyricGeometryShift(previous.geometry, geometry, previous.origin + travel.value))
         }
         SideEffect { committedCoordinates = coordinates }
-        val hasFollowAnchor = !lyrics.timed || lyrics.timelineReady
-        var browsingTravel by remember(lyrics.recordingKey) { mutableStateOf<Float?>(null) }
-        val scope = rememberCoroutineScope()
-        var returnToSong by remember { mutableStateOf<Job?>(null) }
+        val hasFollowAnchor = workEnabled && !lyricBodyAtEnd(lyrics) &&
+            (!lyrics.timed || lyrics.timelineReady) && !holdFollow
+        var browsingTravel by remember(presentationKey) { mutableStateOf<Float?>(null) }
+        var dragging by remember(presentationKey) { mutableStateOf(false) }
+        // One delayed return, cancelled while hidden/frozen and restarted on resuming a timed viewport.
+        LaunchedEffect(workEnabled, holdFollow, lyrics.timed, browsingTravel, dragging) {
+            if (workEnabled && !holdFollow && lyrics.timed && browsingTravel != null && !dragging) {
+                delay(4_000L)
+                browsingTravel = null
+            }
+        }
         // Unknown progress does not observe travel in composition or invent a first-row destination.
-        LaunchedEffect(followTarget, coordinates.origin, hasFollowAnchor, browsingTravel) {
+        LaunchedEffect(followTarget, coordinates.origin, hasFollowAnchor, browsingTravel, workEnabled, holdFollow) {
+            if (!workEnabled || holdFollow) return@LaunchedEffect
             if (browsingTravel == null && !hasFollowAnchor) return@LaunchedEffect
             val target = browsingTravel ?: (followTarget - coordinates.origin)
             travel.animateTo(target, tween(if (browsingTravel == null) 450 else 0,
                 easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
         }
         val origin = coordinates.origin
+        val visualTravel = remember(travel, freezeMotion) {
+            if (freezeMotion) {
+                val stopped = if (painted.document === ready) painted.offset - origin else travel.value
+                { stopped }
+            } else { { travel.value } }
+        }
         // This derived state changes only when a visual line enters/leaves the overscan window.
         // Cache hits survive active-row changes, theme changes and interrupted seeks.
-        val window by remember(measured, tops, height, origin, travel) {
-            derivedStateOf(structuralEqualityPolicy()) { lyricSliceWindow(measured, tops, origin + travel.value, height) }
+        val window by remember(measured, tops, height, origin, visualTravel) {
+            derivedStateOf(structuralEqualityPolicy()) { lyricSliceWindow(measured, tops, origin + visualTravel(), height) }
         }
         val targetWindow = remember(measured, tops, height, origin, browsingTravel, followTarget, hasFollowAnchor) {
             val destination = browsingTravel?.let { origin + it } ?: followTarget
@@ -191,22 +221,29 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }
         // Two disjoint bounded windows, never the unbounded corridor of an interrupted seek.
         val preparationWindow = remember(window, targetWindow) { (window + targetWindow).distinct() }
-        val cache = remember(measured, metrics, height) { LyricInkCache(measured, metrics, height) }
+        val cache = remember(measured, metrics, height, freezeMotion) {
+            painted.cache?.takeIf { painted.document === ready && it.viewportHeight == height }
+                ?: LyricInkCache(measured, metrics, height)
+        }
         val preparationMutex = remember(cache) { Mutex() }
         val preparationDispatcher = LocalLyricPreparationDispatcher.current
-        var preparedSlices by remember(cache) { mutableStateOf<List<PreparedLyricSlice>>(emptyList()) }
-        val slices = remember(preparedSlices, window, emphasized, lyrics.timed) {
+        var preparedSlices by remember(cache) {
+            mutableStateOf(if (painted.cache === cache) painted.slices else emptyList())
+        }
+        val liveSlices = remember(preparedSlices, window, emphasized, lyrics.timed) {
             val wanted = window.toHashSet()
             preparedSlices.filter { it.address in wanted &&
                 ((lyrics.timed && it.row !in emphasized) || it.sharp != null) }
         }
-        val missing = remember(window, slices) {
+        val slices = if (freezeMotion && painted.document === ready) painted.slices else liveSlices
+        val liveMissing = remember(window, slices) {
             val ready = slices.mapTo(HashSet()) { it.address }
             window.filter { it !in ready }
         }
+        val missing = if (freezeMotion && painted.document === ready) painted.fallback else liveMissing
         val painter = remember(metrics) { LyricInkPainter(metrics) }
-        LaunchedEffect(cache, preparationWindow, emphasized, focus, lyrics.timed, visible, preparationDispatcher) {
-            if (!visible) return@LaunchedEffect
+        LaunchedEffect(cache, preparationWindow, emphasized, focus, lyrics.timed, workEnabled, preparationDispatcher) {
+            if (!workEnabled) return@LaunchedEffect
             val prepared = withContext(preparationDispatcher) {
                 val ctx = currentCoroutineContext()
                 preparationMutex.withLock {
@@ -219,25 +256,22 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             currentCoroutineContext().ensureActive()
             preparedSlices = prepared
         }
-        DisposableEffect(Unit) {
-            onDispose { returnToSong?.cancel() }
-        }
         val latest = rememberUpdatedState(lyrics)
         val frameElapsed = remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
         val words = remember(emphasized, lyrics.lines) {
             emphasized.sorted().flatMap { index -> lyrics.lines[index].let { it.words + it.backgroundWords } }
         }
-        val radius = with(density) { 3.dp.toPx() }
+        val radius = with(density) { LyricBodyVisuals.WAIT_RADIUS_DP.dp.toPx() }
         // Travel can change which ink is visible; playback frames never observe this in composition.
-        val frameWindow by remember(measured, tops, height, origin, travel, metrics.lift) {
+        val frameWindow by remember(measured, tops, height, origin, visualTravel, metrics.lift) {
             derivedStateOf(structuralEqualityPolicy()) {
-                lyricFrameWindow(measured, tops, origin + travel.value, height, metrics.lift)
+                lyricFrameWindow(measured, tops, origin + visualTravel(), height, metrics.lift)
             }
         }
-        val frameGap by remember(gap, gapSlot, flow, waitHeight, height, origin, travel, radius) {
+        val frameGap by remember(gap, gapSlot, flow, waitHeight, height, origin, visualTravel, radius) {
             derivedStateOf(structuralEqualityPolicy()) {
                 if (!gap) null else flow.waitRows[gapSlot].takeIf {
-                    val y = flow.waitTops[gapSlot] + origin + travel.value + waitHeight / 2f
+                    val y = flow.waitTops[gapSlot] + origin + visualTravel() + waitHeight / 2f
                     y + radius > 0f && y - radius < height
                 }
             }
@@ -246,7 +280,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             lyricFrameSchedule(measured, emphasized, frameWindow, frameGap)
         }
         val latestSchedule = rememberUpdatedState(frameSchedule)
-        val latestVisible = rememberUpdatedState(visible)
+        val latestVisible = rememberUpdatedState(workEnabled)
         val frameRequests = remember { Channel<Unit>(Channel.CONFLATED) }
         val moving by remember(latest, frameElapsed, latestVisible, latestSchedule) {
             derivedStateOf(structuralEqualityPolicy()) {
@@ -258,7 +292,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }
         // Only an admitted anchor/body/cursor/visibility change invalidates the sleep.
         // Resource publication never changes the trusted clock or follow destination.
-        LaunchedEffect(lyrics.recordingKey, measured, emphasized, frameSchedule, visible,
+        LaunchedEffect(presentationKey, measured, emphasized, frameSchedule, workEnabled,
             lyrics.anchorRevision, lyrics.positionMs, lyrics.capturedAtMs, lyrics.playbackSpeed, lyrics.timelineReady,
             lyrics.timed, lyrics.durationMs, lyrics.gapStartMs, lyrics.gapEndMs) {
             frameElapsed.longValue = SystemClock.elapsedRealtime()
@@ -287,17 +321,14 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             }
         }
         val dotPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
-        val step = with(density) { 14.dp.toPx() }
+        val step = with(density) { LyricBodyVisuals.WAIT_STEP_DP.dp.toPx() }
         val rowTopList = remember(tops, measured.size) { tops.take(measured.size) }
         val waitTopList = remember(flow) { flow.waitTops.toList() }
-        Canvas(Modifier.fillMaxSize().pointerInput(lyrics.recordingKey, tops, height, origin) {
-            fun resumeLater() {
-                returnToSong?.cancel()
-                if (lyrics.timed) returnToSong = scope.launch { delay(4_000L); browsingTravel = null }
-            }
+        Canvas(Modifier.fillMaxSize().pointerInput(presentationKey, tops, height, origin, freezeMotion, holdFollow) {
+            if (freezeMotion || holdFollow) return@pointerInput
             detectVerticalDragGestures(
-                onDragStart = { returnToSong?.cancel(); browsingTravel = travel.value },
-                onDragEnd = { resumeLater() }, onDragCancel = { resumeLater() },
+                onDragStart = { dragging = true; browsingTravel = travel.value },
+                onDragEnd = { dragging = false }, onDragCancel = { dragging = false },
             ) { change, amount ->
                 change.consume()
                 val minimum = minOf(height * .41f - tops.last(), height * .41f)
@@ -307,6 +338,10 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }.semantics {
             val now = latest.value
             val position = lyricPositionAt(now, frameElapsed.longValue)
+            this[LyricOpacity] = opacity()
+            this[LyricPresentationFrozen] = freezeMotion
+            this[LyricEntryHolding] = holdFollow
+            this[LyricRecordingKey] = lyrics.recordingKey
             this[ActiveLyric] = active
             this[LyricTextInset] = inset
             this[LyricFontPixels] = metrics.main
@@ -314,7 +349,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             this[LyricRowHeights] = heights
             this[LyricWordProgress] = words.firstOrNull()?.let { lyricWordFraction(it, position) } ?: 0f
             this[LyricScrollAnchor] = lyrics.scrollIndex
-            this[LyricScrollOffset] = origin + travel.value
+            this[LyricScrollOffset] = origin + visualTravel()
             this[LyricActiveRows] = singing.sorted()
             this[LyricEmphasizedRows] = emphasized.sorted()
             this[LyricRowTops] = rowTopList
@@ -335,21 +370,32 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }) {
             val now = latest.value
             val position = lyricPositionAt(now, frameElapsed.longValue)
-            val offset = origin + travel.value
+            val offset = origin + visualTravel()
+            if (!freezeMotion) {
+                painted.document = ready
+                painted.source = now
+                painted.positionMs = position
+                painted.offset = offset
+                painted.focus = focus
+                painted.emphasized = emphasized
+                painted.cache = cache
+                painted.slices = slices
+                painted.fallback = missing
+            }
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
                 val saved = native.save()
                 // Ink shaders carry the vertical edge fade: no viewport-sized offscreen DST_IN layer.
                 native.clipRect(inset, 0f, size.width - inset, size.height)
                 native.translate(inset, 0f)
-                painter.draw(native, slices, measured, tops, cache, offset, emphasized, focus, now, position, dark, fallback = missing)
+                painter.draw(native, slices, measured, tops, cache, offset, emphasized, focus, now, position, dark, fallback = missing, contentAlpha = opacity())
                 native.restoreToCount(saved)
                 if (gap && position in lyrics.gapStartMs until lyrics.gapEndMs) {
                     val progress = lyricGapFraction(now, position)
                     val y = flow.waitTops[gapSlot] + offset + waitHeight / 2f
                     dotPaint.color = if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
                     repeat(3) { index ->
-                        dotPaint.alpha = ((.35f + .55f * (progress * 3f - index).coerceIn(0f, 1f)) * 255).roundToInt()
+                        dotPaint.alpha = ((.35f + .55f * (progress * 3f - index).coerceIn(0f, 1f)) * opacity() * 255).roundToInt()
                         native.drawCircle(inset + radius + step * index, y, radius, dotPaint)
                     }
                 }

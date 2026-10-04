@@ -89,6 +89,51 @@ class ContentDomainProjectionTest {
         assertEquals(LyricsEmptyState.NoLyrics, withdrawn.emptyState)
     }
 
+    @Test fun recordingGenerationChangesOnlyReprojectLyricsAndCopiesKeepTheirIdentity() {
+        val mapper = ContentUiMapper()
+        val snapshot = song().apply { mediaRecordingGeneration = 7L }
+        val copy = snapshot.copy()
+        val shell = mapper.mapShell(snapshot, off, off, caps)
+        val first = mapper.mapLyrics(snapshot)
+        assertEquals(7L, first.recordingGeneration)
+        assertSame(first, mapper.mapLyrics(copy))
+        snapshot.mediaRecordingGeneration = 8L
+        val next = mapper.mapLyrics(snapshot)
+        assertNotSame(first, next)
+        assertEquals(8L, next.recordingGeneration)
+        assertEquals(7L, first.recordingGeneration)
+        assertEquals(7L, copy.mediaRecordingGeneration)
+        assertSame(first.lines, next.lines)
+        assertEquals(first.anchorRevision, next.anchorRevision)
+        assertSame(shell, mapper.mapShell(snapshot, off, off, caps))
+        assertSame(next, mapper.mapLyrics(snapshot.copy()))
+        assertEquals(1L, mapper.shellProjectionCount)
+        assertEquals(2L, mapper.lyricsProjectionCount)
+        assertEquals(0L, mapper.mapLyrics(song()).recordingGeneration)
+    }
+
+    @Test fun nextIntentChangesOnlyTheLyricsDomainAndCopiesRetainTheFlag() {
+        val mapper = ContentUiMapper()
+        val snapshot = song().apply { mediaRecordingGeneration = 7L }
+        val shell = mapper.mapShell(snapshot, off, off, caps)
+        val first = mapper.mapLyrics(snapshot)
+        val pending = snapshot.copy().apply { mediaNextPending = true }
+        val next = mapper.mapLyrics(pending)
+        assertNotSame(first, next)
+        assertFalse(first.changingTrack)
+        assertTrue(next.changingTrack)
+        assertTrue(pending.copy().mediaNextPending)
+        assertSame(first.lines, next.lines)
+        assertEquals(first.positionMs, next.positionMs)
+        assertEquals(first.anchorRevision, next.anchorRevision)
+        assertEquals(first.recordingGeneration, next.recordingGeneration)
+        assertSame(shell, mapper.mapShell(pending, off, off, caps))
+        assertSame(next, mapper.mapLyrics(pending.copy()))
+        assertFalse(mapper.mapLyrics(snapshot).changingTrack)
+        assertEquals(1L, mapper.shellProjectionCount)
+        assertEquals(3L, mapper.lyricsProjectionCount)
+    }
+
     @Test fun mutableSnapshotCallersCannotMutateCachedProjectionFacts() {
         val mapper = ContentUiMapper()
         val snapshot = song()

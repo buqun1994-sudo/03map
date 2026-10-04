@@ -134,7 +134,10 @@ class WallpaperLayoutWorkerTest {
         val root = compose.onNodeWithTag(host).fetchSemanticsNode().root as ViewRootForTest
         val dispatch = ViewTreeObserver::class.java.getDeclaredMethod("dispatchOnWindowFocusChange", java.lang.Boolean.TYPE)
             .apply { isAccessible = true }
-        compose.runOnIdle { dispatch.invoke(root.view.viewTreeObserver, focused) }
+        compose.runOnIdle {
+            dispatch.invoke(root.view.viewTreeObserver, focused)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
     }
     private class HeldDispatcher : CoroutineDispatcher() {
         val tasks = ArrayList<Runnable>()

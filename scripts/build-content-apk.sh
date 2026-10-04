@@ -2,6 +2,11 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+# The parent Node runner owns the lock until this shell and all its children finish.
+if [[ -z "${CONTENT_WORKFLOW_LOCK_TOKEN:-}" ]]; then
+    exec node "$repo_root/scripts/content-workflow.mjs" locked-build bash "$0" "$@"
+fi
+node "$repo_root/scripts/content-workflow.mjs" assert-lock
 if [[ ! -f "$repo_root/.codex/local-context.properties" ]]; then
     printf '缺少本机配置：.codex/local-context.properties\n' >&2
     exit 1
@@ -43,7 +48,7 @@ if grep -E -q '^[[:space:]]*- so[[:space:]]*$' "$source_root/apktool.yml"; then
     printf 'apktool.yml 禁止配置 doNotCompress: - so\n' >&2
     exit 1
 fi
-node "$repo_root/scripts/check-content-assets.mjs"
+node "$repo_root/scripts/content-workflow.mjs" preflight
 
 mkdir -p "$work_root"
 build_root="$(mktemp -d "$work_root/source-build.XXXXXX")"
@@ -55,21 +60,31 @@ unsigned="$build_root/unsigned.apk"
 aligned="$build_root/aligned-unsigned.apk"
 signed_candidate="$build_root/signed.apk.tmp"
 signed="$build_root/signed.apk"
-trap 'rm -f -- "${unsigned:?}" "${aligned:?}" "${signed_candidate:?}"' EXIT
+timings="$build_root/timings.jsonl"
+run_stage() {
+    local label="$1"
+    shift
+    node "$repo_root/scripts/content-workflow.mjs" stage "$timings" "$label" "$@"
+}
+trap 'node "$repo_root/scripts/content-workflow.mjs" cleanup "$build_root" "${unsigned:?}" "${aligned:?}" "${signed_candidate:?}"' EXIT
+run_stage source-fingerprint node "$repo_root/scripts/content-workflow.mjs" fingerprint "$build_root/source-before.json"
+run_stage toolchain-fingerprint node "$repo_root/scripts/content-workflow.mjs" toolchain "$build_root/toolchain-before.json" "$JAVA_HOME" "$ANDROID_SDK_ROOT" "$APKTOOL_JAR" "$aapt2" "$r8_jar" "$ZIPALIGN" "$APKSIGNER"
+run_stage assets node "$repo_root/scripts/check-content-assets.mjs"
 mkdir -p "$stage" "$classes" "$dex"
-rsync -a --exclude='/content-src/' --exclude='/content-compose/' --exclude='/build/' "$source_root/" "$stage/"
+run_stage source-copy rsync -a --exclude='/content-src/' --exclude='/content-compose/' --exclude='/build/' "$source_root/" "$stage/"
 
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
 export ANDROID_SDK_ROOT
 export AAPT2="$aapt2"
 export CONTENT_R8_JAR="$r8_jar"
-(cd "$repo_root/ui-preview" && ./gradlew --offline -Pkotlin.incremental=false :map-host:exportComposeRuntime --console=plain)
-node "$repo_root/scripts/check-compose-deps.mjs"
-"$JAVA_HOME/bin/java" -jar "$APKTOOL_JAR" b "$stage" -o "$unsigned"
-node "$repo_root/scripts/build-compose-content.mjs" "$build_root"
-"$ZIPALIGN" -p -f 4 "$unsigned" "$aligned"
-"$APKSIGNER" sign --key "$signing_key" --cert "$signing_cert" --out "$signed_candidate" "$aligned"
-verification="$("$APKSIGNER" verify --verbose --print-certs "$signed_candidate")"
+# Gradle still verifies all release inputs; unchanged tasks and Kotlin work may be reused.
+(cd "$repo_root/ui-preview" && run_stage gradle-release ./gradlew --offline :map-host:exportComposeRuntime --console=plain)
+run_stage dependencies node "$repo_root/scripts/check-compose-deps.mjs" --receipt "$build_root/compose-deps-verified.json"
+run_stage apktool "$JAVA_HOME/bin/java" -jar "$APKTOOL_JAR" b "$stage" -o "$unsigned"
+run_stage compose node "$repo_root/scripts/build-compose-content.mjs" "$build_root"
+run_stage alignment "$ZIPALIGN" -p -f 4 "$unsigned" "$aligned"
+run_stage signing "$APKSIGNER" sign --key "$signing_key" --cert "$signing_cert" --out "$signed_candidate" "$aligned"
+verification="$(run_stage signature-verify "$APKSIGNER" verify --verbose --print-certs "$signed_candidate")"
 if ! printf '%s\n' "$verification" | grep -E -q '^Verifies$' ||
    ! printf '%s\n' "$verification" | grep -E -q '^Verified using v2 scheme .*: true$' ||
    ! printf '%s\n' "$verification" | grep -E -q '^Number of signers: 1$' ||
@@ -78,12 +93,12 @@ if ! printf '%s\n' "$verification" | grep -E -q '^Verifies$' ||
     exit 1
 fi
 printf '%s\n' "$verification" | grep -E '^Verifies$|^Verified using v[123] scheme|^Number of signers:|^Signer #1 certificate SHA-256 digest:'
-"$ZIPALIGN" -c -v 4 "$signed_candidate" >/dev/null
-unzip -t "$signed_candidate" >/dev/null
+run_stage alignment-verify "$ZIPALIGN" -c -v 4 "$signed_candidate" >/dev/null
+run_stage zip-integrity unzip -t "$signed_candidate" >/dev/null
 unzip -v "$signed_candidate" | awk '$8 ~ /^lib\/.*\.so$/ { count++; if ($2 !~ /^Defl/) bad++ } END { if (!count || bad) exit 1; printf "Deflate 原生库：%d\n", count }'
-node "$repo_root/scripts/check-compose-package.mjs" "$signed_candidate"
+run_stage package-verify node "$repo_root/scripts/check-compose-package.mjs" "$signed_candidate"
 unzip -l "$signed_candidate" | grep -E 'classes([0-9]+)?\.dex'
-badging="$("$aapt2" dump badging "$signed_candidate")"
+badging="$(run_stage package-identity "$aapt2" dump badging "$signed_candidate")"
 package_line="$(printf '%s\n' "$badging" | grep -E '^package:')"
 if [[ "$package_line" != *"name='com.autonavi.amapautolite'"* ||
       "$package_line" != *"versionCode='26000001'"* ||
@@ -97,7 +112,12 @@ if ! printf '%s\n' "$badging" | grep -E -q "^(minSdkVersion|sdkVersion):'21'$" |
     exit 1
 fi
 printf '%s\n' "$badging" | grep -E '^package:|^minSdkVersion:|^sdkVersion:|^targetSdkVersion:'
-mv "$signed_candidate" "$signed"
+run_stage source-stability node "$repo_root/scripts/content-workflow.mjs" verify-source "$build_root/source-before.json" "$build_root/source-after.json"
+run_stage toolchain-after node "$repo_root/scripts/content-workflow.mjs" toolchain "$build_root/toolchain-after.json" "$JAVA_HOME" "$ANDROID_SDK_ROOT" "$APKTOOL_JAR" "$aapt2" "$r8_jar" "$ZIPALIGN" "$APKSIGNER"
+node "$repo_root/scripts/content-workflow.mjs" verify-toolchain "$build_root/toolchain-before.json" "$build_root/toolchain-after.json"
+node "$repo_root/scripts/content-workflow.mjs" publish "$build_root" "$signed_candidate" "$signed"
+node "$repo_root/scripts/content-workflow.mjs" build-report "$build_root"
 shasum -a 256 "$signed"
 printf '输出目录：%s\n' "$build_root"
+printf '阶段计时：%s\n' "$timings"
 printf '已签名交付包：%s\n' "$signed"
