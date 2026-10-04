@@ -12,34 +12,12 @@ import android.os.Parcel;
 import android.os.RemoteException;
 import android.util.Log;
 
+import com.icar03.content.model.VehicleControl;
+
+import static com.autonavi.amapauto.content.ContentVehicleProtocol.*;
+
 public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private static final String TAG = "ContentVehicleAdapter";
-    private static final String VEHICLE_SERVICE_PACKAGE = "com.chery.virtualcarservice";
-    private static final String VEHICLE_SERVICE_CLASS = "com.chery.virtualcarservice.virtualcar.VirtualCarService";
-    private static final String VEHICLE_DESCRIPTOR = "com.chery.canmanager.interfaces.IVirturalCarProperty";
-    private static final int TRANSACTION_SEND_DATA = 5;
-    private static final int TRANSACTION_GET_DATA = 7;
-    private static final int TRANSACTION_GET_DATA_FLOAT = 13;
-    private static final int LOCK_REQUEST = 1045;
-    private static final int LOCK_STATE = 1047;
-    private static final int CABIN_TEMPERATURE = 0x110;
-    private static final int BATTERY_SOC = 0x306;
-    private static final int RANGE_REMAINING = 0x303;
-    private static final int CHARGE_CONNECTION = 0x305;
-    private static final int CHARGE_BMS = 0x29d;
-    private static final int CHARGE_SCHEDULE = 0x308;
-    private static final int CHARGE_HV_VOLTAGE = 0x344;
-    private static final int CHARGE_HV_CURRENT = 0x345;
-    private static final int CHARGE_REMAINING_TIME = 0x43d;
-    private static final int CHARGE_REMAINING_TIME_INVALID = 2047;
-    private static final int SEAT_HEAT_VENT = 0x212;
-    private static final int SEAT_DRIVER_AUTO_HEAT = 0x282;
-    private static final int STEERING_HEAT = 0x21c;
-    private static final int STEERING_HEAT_ACTIVE = 0x2a5;
-    private static final int MASSAGE_SWITCH = 0x241;
-    private static final int MASSAGE_STRENGTH = 0x243;
-    private static final int MASSAGE_MODE = 0x245;
-    private static final int AREA_DRIVER = 0;
     private static final long POLL_INTERVAL_MS = 1500L;
     private static final long REBIND_INTERVAL_MS = 3000L;
     private static final long BIND_TIMEOUT_MS = 5000L;
@@ -175,49 +153,42 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     @Override
+    public synchronized boolean isSeatControlAvailable(String seatId) {
+        return running && binder != null && workerHandler != null
+                && ContentVehicleProtocol.supportsSeatControl(seatId);
+    }
+
+    @Override
     public synchronized boolean isSeatLevelAvailable(String seatId, int level) {
-        if (!ContentPorts.VehiclePort.super.isSeatLevelAvailable(seatId, level)) return false;
-        // A manual 0x212 single write is established. Do not silently disable AUTO via
-        // candidate 0x282 writes, and do not accept a manual write with unknown AUTO state.
-        return !ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId)
-                || latestSnapshot.heatingLevel >= 0 && latestSnapshot.heatingAutoKnown
-                        && !latestSnapshot.heatingAutoActive;
+        if (!isSeatControlAvailable(seatId)
+                || ContentVehicleProtocol.seatLevelWrite(seatId, level) == null) return false;
+        VehicleControl control = VehicleControl.fromId(seatId);
+        switch (control) {
+            case Ventilation:
+                return latestSnapshot.ventilationLevel >= 0;
+            case Heating:
+                return latestSnapshot.heatingLevel >= 0;
+            case PassengerHeating:
+                return latestSnapshot.passengerHeatingLevel >= 0;
+            case SteeringHeat:
+                return latestSnapshot.steeringHeatLevel >= 0;
+            case Massage:
+                return latestSnapshot.massageLevel >= 0
+                        || level == 0 && latestSnapshot.massageSwitchKnown && latestSnapshot.massageActive;
+            default:
+                return false;
+        }
     }
 
     @Override
     public boolean requestLock(boolean locked, long requestId) {
-        return queueCommand(LOCK_REQUEST, locked ? 1 : 2, requestId);
+        return queueCommand(ContentVehicleProtocol.lockWrite(locked), requestId);
     }
 
     @Override
     public boolean requestSeatLevel(String seatId, int level, long requestId) {
         if (!isSeatLevelAvailable(seatId, level)) return false;
-        if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(seatId) && level >= 0 && level <= 3) {
-            return queueCommand(SEAT_HEAT_VENT, level == 0 ? 1 : level + 4, requestId);
-        }
-        if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId) && level >= 0 && level <= 3) {
-            return queueHeatingLevel(level, requestId, false);
-        }
-        if (ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId) && level >= 0 && level <= 3) {
-            return level == 0 ? queueCommand(MASSAGE_SWITCH, 1, requestId)
-                    : queueCommand(MASSAGE_STRENGTH, level, requestId, true);
-        }
-        return false;
-    }
-
-    /**
-     * Explicit research-only route for substitutes / a separately authorized probe.
-     * Never called by VehiclePort, ContentStore or the formal ContentBinding. These
-     * packet candidates have no ordinary-UID target read/write/restore evidence yet.
-     */
-    public boolean requestResearchSeatLevelCandidate(String seatId, int level, long requestId) {
-        if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId) && level >= 0 && level <= 4) {
-            return queueHeatingLevel(level, requestId, true);
-        }
-        if (ContentRegistry.Shortcuts.STEERING_HEATING.equals(seatId) && level >= 0 && level <= 3) {
-            return queueCommand(STEERING_HEAT, level == 3 ? 4 : level + 1, requestId);
-        }
-        return false;
+        return queueCommand(ContentVehicleProtocol.seatLevelWrite(seatId, level), requestId);
     }
 
     @Override
@@ -312,48 +283,6 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         mainHandler.postDelayed(retryBind, REBIND_INTERVAL_MS);
     }
 
-    private boolean queueHeatingLevel(final int level, final long requestId,
-            final boolean researchCandidate) {
-        final int mainValue = level == 0 || level == 4 ? 1 : level + 1;
-        final IBinder currentBinder;
-        final Handler worker;
-        synchronized (this) {
-            if (!running || binder == null || workerHandler == null) {
-                return false;
-            }
-            currentBinder = binder;
-            worker = workerHandler;
-        }
-        return worker.post(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    synchronized (ContentVehicleAdapter.this) {
-                        if (!running || binder != currentBinder) {
-                            reportCommandFailure(requestId, "车控连接中断，请稍后重试");
-                            return;
-                        }
-                    }
-                    if (researchCandidate) {
-                        // Two independent transactions, not an atomic / verified AUTO command.
-                        sendData(currentBinder, SEAT_DRIVER_AUTO_HEAT, AREA_DRIVER, level == 4 ? 2 : 1);
-                    } else if (getData(currentBinder, SEAT_DRIVER_AUTO_HEAT, AREA_DRIVER) != 1) {
-                        // Recheck the companion immediately before the established single write.
-                        throw new RemoteException("manual heating cannot clear unknown or active AUTO");
-                    }
-                    sendData(currentBinder, SEAT_HEAT_VENT, AREA_DRIVER, mainValue);
-                } catch (RemoteException | RuntimeException error) {
-                    Log.w(TAG, "seat heating command failed", error);
-                    reportCommandFailure(requestId, "座椅加热请求失败，请查看车机状态");
-                } finally {
-                    // A failed second candidate write may have changed the first field. Read it,
-                    // never compensate with another guessed write or declare the pair successful.
-                    requestReadback(worker, currentBinder);
-                }
-            }
-        });
-    }
-
     private synchronized void requestReadback(Handler worker, IBinder sourceBinder) {
         if (running && binder == sourceBinder && workerHandler == worker) {
             worker.removeCallbacks(pollRunnable);
@@ -361,12 +290,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         }
     }
 
-    private boolean queueCommand(final int functionId, final int value, final long requestId) {
-        return queueCommand(functionId, value, requestId, false);
-    }
-
-    private boolean queueCommand(final int functionId, final int value, final long requestId,
-            final boolean ensureMassageOn) {
+    private boolean queueCommand(final ContentVehicleProtocol.Write write, final long requestId) {
+        if (write == null) return false;
         final IBinder currentBinder;
         final Handler worker;
         synchronized (this) {
@@ -381,21 +306,23 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
             public void run() {
                 try {
                     synchronized (ContentVehicleAdapter.this) {
-                        if (!running || binder != currentBinder) {
+                        if (!running || binder != currentBinder || worker != workerHandler) {
                             reportCommandFailure(requestId, "车控连接中断，请稍后重试");
                             return;
                         }
                     }
-                    if (ensureMassageOn) {
-                        sendMassageStrength(currentBinder, value);
+                    if (write.ensureMassageOn) {
+                        sendMassageStrength(currentBinder, write.value);
                     } else {
-                        sendData(currentBinder, functionId, AREA_DRIVER, value);
+                        sendData(currentBinder, write.functionId, AREA_DRIVER, write.value);
                     }
-                    worker.removeCallbacks(pollRunnable);
-                    worker.post(pollRunnable);
                 } catch (RemoteException | RuntimeException error) {
                     Log.w(TAG, "vehicle command failed", error);
                     reportCommandFailure(requestId, "车辆控制请求失败，请查看车机状态");
+                } finally {
+                    // Even a rejected transaction can follow an external state change.
+                    // Read actual state; queue acceptance and packet values never confirm it.
+                    requestReadback(worker, currentBinder);
                 }
             }
         });
@@ -403,9 +330,9 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
 
     static void ensureMassageReady(IBinder currentBinder) throws RemoteException {
         int switchState = getData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
-        if (switchState == 1) {
-            sendData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER, 2);
-        } else if (switchState != 2) {
+        if (switchState == SWITCH_OFF) {
+            sendData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER, SWITCH_ON);
+        } else if (switchState != SWITCH_ON) {
             throw new RemoteException("massage switch unavailable");
         }
         long deadline = android.os.SystemClock.uptimeMillis() + MASSAGE_START_TIMEOUT_MS;
@@ -413,11 +340,11 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
             switchState = getData(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
             int mode = getData(currentBinder, MASSAGE_MODE, AREA_DRIVER);
             int strength = getData(currentBinder, MASSAGE_STRENGTH, AREA_DRIVER);
-            if (switchState == 2 && mode >= 1 && mode <= 5
+            if (switchState == SWITCH_ON && mode >= 1 && mode <= 5
                     && strength >= 1 && strength <= 3) {
                 return;
             }
-            if (switchState != 1 && switchState != 2
+            if (switchState != SWITCH_OFF && switchState != SWITCH_ON
                     || android.os.SystemClock.uptimeMillis() >= deadline) {
                 throw new RemoteException("massage did not initialize");
             }
@@ -483,6 +410,9 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         }
         int seatRaw = readInt(currentBinder, SEAT_HEAT_VENT, AREA_DRIVER);
         int heatingAutoRaw = readInt(currentBinder, SEAT_DRIVER_AUTO_HEAT, AREA_DRIVER);
+        // Passenger is a dedicated function pair at area0, not the driver function at another seat area.
+        int passengerSeatRaw = readInt(currentBinder, SEAT_PASSENGER_HEAT_VENT, AREA_DRIVER);
+        int passengerHeatingAutoRaw = readInt(currentBinder, SEAT_PASSENGER_AUTO_HEAT, AREA_DRIVER);
         int steeringRaw = readInt(currentBinder, STEERING_HEAT, AREA_DRIVER);
         int steeringActiveRaw = readInt(currentBinder, STEERING_HEAT_ACTIVE, AREA_DRIVER);
         int massageSwitchRaw = readInt(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
@@ -497,27 +427,31 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         }
         int remainingMinutes = normalizeChargeRemainingMinutes(remainingRaw);
         float chargePowerKw = computeChargePowerKw(chargeState, hvVoltage, hvCurrent);
-        boolean heatingAutoKnown = isKnownHeatingAuto(heatingAutoRaw);
-        boolean heatingAutoActive = heatingAutoRaw == 2;
-        int ventilation = seatRaw == 1 ? 0 : seatRaw >= 5 && seatRaw <= 7
-                ? seatRaw - 4 : seatRaw >= 2 && seatRaw <= 4 ? 0 : -1;
-        int heating = normalizeHeatingLevel(seatRaw, heatingAutoRaw);
-        int steering = normalizeSteeringLevel(steeringRaw, steeringActiveRaw);
-        boolean massageSwitchKnown = massageSwitchRaw == 1 || massageSwitchRaw == 2;
-        boolean massageActive = massageSwitchRaw == 2;
-        int massage = massageSwitchRaw == 1 ? 0 : massageActive
-                && massageStrengthRaw >= 1 && massageStrengthRaw <= 3 ? massageStrengthRaw : -1;
-        boolean seatKnown = ventilation >= 0 || heating >= 0 || steering >= 0 || massageSwitchKnown;
-        boolean lockKnown = lockRaw == 1 || lockRaw == 2;
+        boolean heatingAutoKnown = ContentVehicleProtocol.isKnownHeatingAuto(heatingAutoRaw);
+        boolean heatingAutoActive = ContentVehicleProtocol.isHeatingAutoActive(heatingAutoRaw);
+        int ventilation = ContentVehicleProtocol.normalizeVentilationLevel(seatRaw);
+        int heating = ContentVehicleProtocol.normalizeHeatingLevel(seatRaw, heatingAutoRaw);
+        boolean passengerHeatingAutoKnown = ContentVehicleProtocol.isKnownHeatingAuto(passengerHeatingAutoRaw);
+        boolean passengerHeatingAutoActive = ContentVehicleProtocol.isHeatingAutoActive(passengerHeatingAutoRaw);
+        int passengerHeating = ContentVehicleProtocol.normalizeHeatingLevel(VehicleControl.PassengerHeating,
+                passengerSeatRaw, passengerHeatingAutoRaw);
+        int steering = ContentVehicleProtocol.normalizeSteeringLevel(steeringRaw, steeringActiveRaw);
+        boolean massageSwitchKnown = ContentVehicleProtocol.isKnownMassageSwitch(massageSwitchRaw);
+        boolean massageActive = ContentVehicleProtocol.isMassageActive(massageSwitchRaw);
+        int massage = ContentVehicleProtocol.normalizeMassageLevel(massageSwitchRaw, massageStrengthRaw);
+        boolean seatKnown = ventilation >= 0 || heating >= 0 || passengerHeating >= 0
+                || steering >= 0 || massageSwitchKnown;
+        boolean lockKnown = ContentVehicleProtocol.isKnownLockState(lockRaw);
         boolean available = !Float.isNaN(temperature) || battery >= 0 || range >= 0
                 || connection >= 0 || bms >= 0 || schedule >= 0
                 || !Float.isNaN(chargePowerKw) || remainingMinutes >= 0
                 || seatKnown || lockKnown;
         ContentPorts.VehicleSnapshot snapshot = new ContentPorts.VehicleSnapshot(available, false,
                 temperature, battery, range, chargeState, connection, bms, schedule, chargePowerKw,
-                remainingMinutes, ventilation, heating, heatingAutoKnown, heatingAutoActive, steering,
+                remainingMinutes, ventilation, heating, heatingAutoKnown, heatingAutoActive,
+                passengerHeating, passengerHeatingAutoKnown, passengerHeatingAutoActive, steering,
                 massage, massageModeRaw, massageSwitchKnown,
-                massageActive, seatKnown, lockKnown, lockRaw == 1);
+                massageActive, seatKnown, lockKnown, ContentVehicleProtocol.isLocked(lockRaw));
         synchronized (this) {
             if (running && binder == currentBinder) latestSnapshot = snapshot;
         }
@@ -525,25 +459,15 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     public static boolean isKnownHeatingAuto(int raw) {
-        return raw == 1 || raw == 2;
+        return ContentVehicleProtocol.isKnownHeatingAuto(raw);
     }
 
     public static int normalizeHeatingLevel(int seatRaw, int heatingAutoRaw) {
-        if (seatRaw == 1) {
-            if (heatingAutoRaw == 1) return 0;
-            if (heatingAutoRaw == 2) return 4;
-            return -1;
-        }
-        if (seatRaw >= 2 && seatRaw <= 4 && heatingAutoRaw == 1) return seatRaw - 1;
-        return -1;
+        return ContentVehicleProtocol.normalizeHeatingLevel(seatRaw, heatingAutoRaw);
     }
 
     public static int normalizeSteeringLevel(int steeringRaw, int activeRaw) {
-        if (activeRaw == 2 && steeringRaw == 1) return 3;
-        if (activeRaw == 1 && steeringRaw >= 1 && steeringRaw <= 3) {
-            return steeringRaw - 1;
-        }
-        return -1;
+        return ContentVehicleProtocol.normalizeSteeringLevel(steeringRaw, activeRaw);
     }
 
     static int normalizeChargeRemainingMinutes(int raw) {

@@ -125,13 +125,7 @@ class ContentBinding(
             is ContentEvent.ControlTapped -> {
                 if (state.value.controls[event.id]?.available != true) return
                 if (event.id == ControlId.Lock) store.toggleLock()
-                else store.cycleSeatLevel(when (event.id) {
-                    ControlId.Ventilation -> ContentRegistry.Shortcuts.SEAT_VENTILATION
-                    ControlId.Heating -> ContentRegistry.Shortcuts.SEAT_HEATING
-                    ControlId.SteeringHeat -> ContentRegistry.Shortcuts.STEERING_HEATING
-                    ControlId.Massage -> ContentRegistry.Shortcuts.SEAT_MASSAGE
-                    else -> return
-                })
+                else store.cycleSeatLevel(event.id.id)
             }
             is ContentEvent.BrightnessChanged -> writeSystem(0, event.value)
             is ContentEvent.VolumeChanged -> writeSystem(1, event.value)
@@ -186,12 +180,9 @@ class ContentBinding(
 
     private fun project(snapshot: ContentState) {
         if (snapshot.commandSequence != commandSequence) { commandSequence = snapshot.commandSequence; feedback = null }
-        val writableSeatControls = listOf(ContentRegistry.Shortcuts.SEAT_VENTILATION,
-            ContentRegistry.Shortcuts.SEAT_HEATING, ContentRegistry.Shortcuts.STEERING_HEATING,
-            ContentRegistry.Shortcuts.SEAT_MASSAGE).filter(store::isSeatCycleControlAvailable).toSet()
         val projected = mapper.map(snapshot, brightness, volume, RuntimeCapabilities(
-            store.isVehicleControlAvailable, store.isLockControlAvailable, store.isMediaSourceAvailable,
-            writableSeatControls))
+            snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, store.isMediaSourceAvailable,
+            snapshot.writableSeatControls))
         mutableState.value = projected.copy(sourcesOpen = sourcesOpen, message = feedback ?: projected.message)
         mutableArtwork.value = snapshot.mediaArtwork?.takeIf {
             projected.media.isSong && snapshot.pendingSource.isEmpty() && !it.isRecycled

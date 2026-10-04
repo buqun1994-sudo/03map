@@ -1,5 +1,7 @@
 package com.autonavi.amapauto.content;
 
+import com.icar03.content.model.VehicleControl;
+
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
@@ -111,7 +113,21 @@ public final class ContentStore {
     }
 
     public synchronized ContentState snapshot() {
-        return state.copy();
+        return snapshotLocked();
+    }
+
+    private ContentState snapshotLocked() {
+        ContentState snapshot = state.copy();
+        snapshot.vehicleWriteAvailable = !destroyed && vehiclePort.isAvailable();
+        snapshot.lockWriteAvailable = !destroyed && vehiclePort.isLockAvailable();
+        java.util.Set<String> writable = new java.util.HashSet<>();
+        for (VehicleControl control : VehicleControl.values()) {
+            if (control != VehicleControl.Lock && isSeatCycleControlAvailable(control.getId())) {
+                writable.add(control.getId());
+            }
+        }
+        snapshot.writableSeatControls = java.util.Collections.unmodifiableSet(writable);
+        return snapshot;
     }
 
     public ContentPorts.SystemPort systemPort() {
@@ -140,7 +156,7 @@ public final class ContentStore {
                 return;
             }
             listeners.add(listener);
-            stateSnapshot = state.copy();
+            stateSnapshot = snapshotLocked();
         }
         listener.onContentStateChanged(stateSnapshot);
     }
@@ -242,13 +258,18 @@ public final class ContentStore {
             state.chargeScheduleRaw = snapshot.chargeScheduleRaw;
             state.chargePowerKw = snapshot.chargePowerKw;
             state.chargeRemainingMinutes = snapshot.chargeRemainingMinutes;
-            state.ventilationLevel = ContentPorts.VehicleSnapshot.normalizedLevel(snapshot.ventilationLevel, 3);
+            state.ventilationLevel = snapshot.ventilationLevel;
             state.heatingLevel = ContentPorts.VehicleSnapshot.consistentHeatingLevel(
                     snapshot.heatingLevel, snapshot.heatingAutoKnown, snapshot.heatingAutoActive);
             state.heatingAutoKnown = snapshot.heatingAutoKnown;
             state.heatingAutoActive = snapshot.heatingAutoKnown && snapshot.heatingAutoActive;
-            state.steeringHeatLevel = ContentPorts.VehicleSnapshot.normalizedLevel(snapshot.steeringHeatLevel, 3);
-            state.massageLevel = ContentPorts.VehicleSnapshot.normalizedLevel(snapshot.massageLevel, 3);
+            state.passengerHeatingLevel = ContentPorts.VehicleSnapshot.consistentHeatingLevel(VehicleControl.PassengerHeating,
+                    snapshot.passengerHeatingLevel, snapshot.passengerHeatingAutoKnown, snapshot.passengerHeatingAutoActive);
+            state.passengerHeatingAutoKnown = snapshot.passengerHeatingAutoKnown;
+            state.passengerHeatingAutoActive = snapshot.passengerHeatingAutoKnown && snapshot.passengerHeatingAutoActive;
+            state.steeringHeatLevel = snapshot.steeringHeatLevel;
+            state.massageLevel = ContentPorts.VehicleSnapshot.consistentMassageLevel(
+                    snapshot.massageLevel, snapshot.massageSwitchKnown, snapshot.massageActive);
             state.massageModeRaw = snapshot.massageModeRaw;
             state.massageSwitchKnown = snapshot.massageSwitchKnown;
             state.massageActive = snapshot.massageActive;
@@ -424,63 +445,54 @@ public final class ContentStore {
                 || previousPosition != position || Float.compare(previousSpeed, speed) != 0;
     }
 
-    /** Exact next-cycle write gate; connection, readable state and writable target are separate. */
+    /** The same admission rule serves rendering, cyclic taps and explicit targets. */
     public synchronized boolean isSeatCycleControlAvailable(String seatId) {
         return canSetSeatLevelLocked(seatId, nextSeatLevelLocked(seatId));
     }
 
     public void cycleSeatLevel(String seatId) {
-        int targetLevel;
-        synchronized (this) {
-            if (state.pendingVehicleCommand.length() != 0) return;
-            targetLevel = nextSeatLevelLocked(seatId);
-            if (!canSetSeatLevelLocked(seatId, targetLevel)) return;
-        }
-        setSeatLevel(seatId, targetLevel);
+        dispatchSeatLevel(seatId, null);
     }
 
     private int actualSeatLevelLocked(String seatId) {
-        if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(seatId)) {
-            return ContentPorts.VehicleSnapshot.normalizedLevel(state.ventilationLevel, 3);
-        }
-        if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId)) {
-            return ContentPorts.VehicleSnapshot.consistentHeatingLevel(
-                    state.heatingLevel, state.heatingAutoKnown, state.heatingAutoActive);
-        }
-        if (ContentRegistry.Shortcuts.STEERING_HEATING.equals(seatId)) {
-            return ContentPorts.VehicleSnapshot.normalizedLevel(state.steeringHeatLevel, 3);
-        }
-        if (ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId) && state.massageSwitchKnown) {
-            return state.massageActive ? ContentPorts.VehicleSnapshot.normalizedLevel(state.massageLevel, 3) : 0;
-        }
-        return -1;
+        VehicleControl control = VehicleControl.fromId(seatId);
+        return control == null ? -1 : state.controlLevel(control);
     }
 
     private int nextSeatLevelLocked(String seatId) {
-        int actualLevel = actualSeatLevelLocked(seatId);
-        if (actualLevel >= 0) return nextLevel(seatId, actualLevel);
-        // The switch can be known ON while strength is unknown: only turning OFF is permitted.
-        return ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId)
+        VehicleControl control = VehicleControl.fromId(seatId);
+        if (control == null || control == VehicleControl.Lock) return -1;
+        int actualLevel = state.controlLevel(control);
+        if (control.isLevel(actualLevel)) return control.nextLevel(actualLevel);
+        // Known ON with unknown massage strength still permits the explicit OFF intent.
+        return control == VehicleControl.Massage
                 && state.massageSwitchKnown && state.massageActive ? 0 : -1;
     }
 
     private boolean canSetSeatLevelLocked(String seatId, int targetLevel) {
-        int maxLevel = ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId) ? 4 : 3;
-        if (destroyed || state.pendingVehicleCommand.length() != 0
-                || targetLevel < 0 || targetLevel > maxLevel
+        VehicleControl control = VehicleControl.fromId(seatId);
+        if (control == null || control == VehicleControl.Lock
+                || destroyed || state.pendingVehicleCommand.length() != 0
+                || !control.isLevel(targetLevel)
                 || !state.vehicleDataAvailable || state.vehiclePreview || !state.seatControlsKnown
                 || !vehiclePort.isAvailable() || !vehiclePort.isSeatControlAvailable(seatId)) return false;
-        int actualLevel = actualSeatLevelLocked(seatId);
+        int actualLevel = state.controlLevel(control);
         if (actualLevel == targetLevel) return false;
-        if (actualLevel < 0 && !(ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId)
+        if (actualLevel < 0 && !(control == VehicleControl.Massage
                 && state.massageSwitchKnown && state.massageActive && targetLevel == 0)) return false;
         return vehiclePort.isSeatLevelAvailable(seatId, actualLevel, targetLevel);
     }
 
     public void setSeatLevel(String seatId, int targetLevel) {
+        dispatchSeatLevel(seatId, targetLevel);
+    }
+
+    private void dispatchSeatLevel(String seatId, Integer explicitTarget) {
         long requestId;
+        int targetLevel;
         synchronized (this) {
-            // Hard reject at the Store boundary, including direct calls and listener reentry.
+            // Resolve the next mode and reserve the sole request in one state transaction.
+            targetLevel = explicitTarget == null ? nextSeatLevelLocked(seatId) : explicitTarget;
             if (!canSetSeatLevelLocked(seatId, targetLevel)) return;
             requestId = ++nextVehicleRequestId;
             beginVehicleCommandLocked(seatId, targetLevel, false, requestId);
@@ -497,10 +509,8 @@ public final class ContentStore {
         }
         if (!accepted) {
             synchronized (this) {
-                if (pendingVehicleRequestId != requestId) {
-                    return;
-                }
-                finishVehicleCommandLocked(false, "座椅车控命令未发送，请检查车机状态");
+                if (pendingVehicleRequestId != requestId) return;
+                finishVehicleCommandLocked(false, "车控命令未发送，请检查车机状态");
             }
             publish();
         }
@@ -673,21 +683,6 @@ public final class ContentStore {
         publish();
     }
 
-    private int nextLevel(String seatId, int currentLevel) {
-        if (currentLevel < 0) {
-            return 0;
-        }
-        if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId)) {
-            return currentLevel == 0 ? 3 : currentLevel == 3 ? 2
-                    : currentLevel == 2 ? 1 : currentLevel == 1 ? 4 : 0;
-        }
-        if (ContentRegistry.Shortcuts.STEERING_HEATING.equals(seatId)) {
-            return currentLevel == 0 ? 2 : currentLevel == 2 ? 1
-                    : currentLevel == 1 ? 3 : 0;
-        }
-        return currentLevel == 0 ? 3 : currentLevel == 3 ? 2 : currentLevel == 2 ? 1 : 0;
-    }
-
     private int normalizeChargeState(int chargeState) {
         return chargeState == ContentState.CHARGE_COMPLETE
                 || (chargeState >= ContentState.CHARGE_UNKNOWN
@@ -755,20 +750,10 @@ public final class ContentStore {
             return snapshot.lockKnown && snapshot.locked == state.pendingLocked;
         }
         if (!snapshot.seatControlsKnown) return false;
-        if (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(state.pendingVehicleCommand)) {
-            return ContentPorts.VehicleSnapshot.normalizedLevel(snapshot.ventilationLevel, 3) == state.pendingSeatLevel;
-        }
-        if (ContentRegistry.Shortcuts.SEAT_HEATING.equals(state.pendingVehicleCommand)) {
-            return ContentPorts.VehicleSnapshot.consistentHeatingLevel(snapshot.heatingLevel,
-                    snapshot.heatingAutoKnown, snapshot.heatingAutoActive) == state.pendingSeatLevel;
-        }
-        if (ContentRegistry.Shortcuts.STEERING_HEATING.equals(state.pendingVehicleCommand)) {
-            return ContentPorts.VehicleSnapshot.normalizedLevel(snapshot.steeringHeatLevel, 3) == state.pendingSeatLevel;
-        }
-        return ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(state.pendingVehicleCommand)
-                && snapshot.massageSwitchKnown
-                && snapshot.massageActive == (state.pendingSeatLevel > 0)
-                && snapshot.massageLevel == state.pendingSeatLevel;
+        VehicleControl control = VehicleControl.fromId(state.pendingVehicleCommand);
+        if (control == null || actualSeatLevelLocked(state.pendingVehicleCommand) != state.pendingSeatLevel) return false;
+        return control != VehicleControl.Massage
+                || snapshot.massageSwitchKnown && snapshot.massageActive == (state.pendingSeatLevel > 0);
     }
 
     private void finishVehicleCommandLocked(boolean confirmed, String failureMessage) {
@@ -796,7 +781,7 @@ public final class ContentStore {
         List<Listener> listenerSnapshot;
         ContentState stateSnapshot;
         synchronized (this) {
-            stateSnapshot = state.copy();
+            stateSnapshot = snapshotLocked();
             listenerSnapshot = new ArrayList<>(listeners);
         }
         for (Listener listener : listenerSnapshot) {

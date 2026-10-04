@@ -85,16 +85,76 @@ class ContentVehicleStateContractTest {
         }
     }
 
+    @Test fun legacyAndDriverOnlySnapshotsDoNotInventPassengerReadback() {
+        val driverOnly = ContentPorts.VehicleSnapshot(true, false, 25f, 60, 123, ContentState.CHARGE_DEFAULT,
+            0, 0, 0, Float.NaN, -1, 0, 4, true, true, 3, 0, 0, true, false, true, true, true)
+        for (snapshot in listOf(legacySnapshot(3), driverOnly, ContentPorts.VehicleSnapshot.unavailable())) {
+            assertEquals(-1, snapshot.passengerHeatingLevel)
+            assertFalse(snapshot.passengerHeatingAutoKnown)
+            assertFalse(snapshot.passengerHeatingAutoActive)
+            val store = store()
+            store.acceptVehicleSnapshot(snapshot)
+            val state = store.snapshot()
+            assertEquals(-1, state.copy().controlLevel(ControlId.PassengerHeating))
+            assertFalse(PASSENGER_HEAT in state.writableSeatControls)
+            val control = ContentUiMapper().map(state).controls.getValue(ControlId.PassengerHeating)
+            assertEquals(-1, control.actual)
+            assertFalse(control.known)
+            assertFalse(control.available)
+        }
+        assertEquals(4, driverOnly.heatingLevel)
+        assertEquals(3, driverOnly.steeringHeatLevel)
+    }
+
+    @Test fun passengerCompanionEvidenceRemainsIndependentThroughSnapshotStoreCopyAndMapper() {
+        val store = store()
+        val mapper = ContentUiMapper()
+        val caps = RuntimeCapabilities(vehicle = true, writableSeatControls = setOf(HEAT, PASSENGER_HEAT))
+        for (level in listOf(Int.MIN_VALUE, -1000, -1, 0, 1, 2, 3, 4, 5, Int.MAX_VALUE)) {
+            for (known in listOf(false, true)) for (active in listOf(false, true)) {
+                val expected = if (known && level in 0..4 && (level == 4) == active) level else -1
+                val snapshot = jointSnapshot(heating = 4, passengerHeating = level,
+                    passengerAutoKnown = known, passengerAutoActive = active)
+                assertEquals(expected, snapshot.passengerHeatingLevel)
+                assertEquals(known, snapshot.passengerHeatingAutoKnown)
+                assertEquals(known && active, snapshot.passengerHeatingAutoActive)
+                store.acceptVehicleSnapshot(snapshot)
+                val state = store.snapshot()
+                assertEquals(4, state.controlLevel(ControlId.Heating))
+                assertEquals(expected, state.passengerHeatingLevel)
+                assertEquals(expected, state.copy().controlLevel(ControlId.PassengerHeating))
+                assertEquals(expected >= 0, PASSENGER_HEAT in state.writableSeatControls)
+                val control = mapper.map(state, capabilities = caps).controls.getValue(ControlId.PassengerHeating)
+                assertEquals(expected, control.actual)
+                assertEquals(expected >= 0, control.known)
+                assertEquals(expected >= 0, control.available)
+                val direct = ContentState().apply {
+                    vehicleDataAvailable = true; seatControlsKnown = true
+                    heatingLevel = 4; heatingAutoKnown = true; heatingAutoActive = true
+                    passengerHeatingLevel = level; passengerHeatingAutoKnown = known; passengerHeatingAutoActive = active
+                }
+                assertEquals(expected, direct.copy().passengerHeatingLevel)
+                assertEquals(expected, mapper.map(direct, capabilities = caps).controls.getValue(ControlId.PassengerHeating).actual)
+                assertEquals(level, direct.passengerHeatingLevel)
+                assertEquals(active, direct.passengerHeatingAutoActive)
+            }
+        }
+    }
+
     @Test fun validAutoAndSteeringFieldsAreCopiedAndDockArraysAreIndependent() {
         val state = ContentState().apply {
             vehicleDataAvailable = true; seatControlsKnown = true
             heatingLevel = 4; heatingAutoKnown = true; heatingAutoActive = true
+            passengerHeatingLevel = 3; passengerHeatingAutoKnown = true; passengerHeatingAutoActive = false
             steeringHeatLevel = 3; pendingVehicleCommand = STEER; pendingSeatLevel = 0
         }
         val copy = state.copy()
         assertEquals(4, copy.heatingLevel)
         assertTrue(copy.heatingAutoKnown)
         assertTrue(copy.heatingAutoActive)
+        assertEquals(3, copy.passengerHeatingLevel)
+        assertTrue(copy.passengerHeatingAutoKnown)
+        assertFalse(copy.passengerHeatingAutoActive)
         assertEquals(3, copy.steeringHeatLevel)
         assertEquals(STEER, copy.pendingVehicleCommand)
         assertEquals(0, copy.pendingSeatLevel)
@@ -103,15 +163,32 @@ class ContentVehicleStateContractTest {
         assertEquals(ContentRegistry.Pages.SHORTCUTS, state.dockItems[0])
     }
 
+    @Test fun passengerPreviewReadbackCannotConfirmOrExposeARealVehicleTarget() {
+        val store = store()
+        store.acceptVehicleSnapshot(jointSnapshot())
+        val binding = binding(store)
+        store.setSeatLevel(PASSENGER_HEAT, 4)
+        assertEquals(0, binding.state.value.controls.getValue(ControlId.PassengerHeating).actual)
+        assertEquals(4, binding.state.value.controls.getValue(ControlId.PassengerHeating).target)
+        store.acceptVehicleSnapshot(jointSnapshot(passengerHeating = 4, preview = true))
+        val control = binding.state.value.controls.getValue(ControlId.PassengerHeating)
+        assertEquals(-1, control.actual)
+        assertFalse(control.known)
+        assertFalse(control.available)
+        assertNull(control.target)
+        assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
+    }
+
     @Test fun allControlCyclesFollowReadbackAndKeepActualSeparateFromTarget() {
         val cycles = listOf(
             VENT to listOf(0, 3, 2, 1, 0),
             HEAT to listOf(0, 3, 2, 1, 4, 0),
+            PASSENGER_HEAT to listOf(0, 3, 2, 1, 4, 0),
             STEER to listOf(0, 2, 1, 3, 0),
             MASSAGE to listOf(0, 3, 2, 1, 0),
         )
         for ((id, levels) in cycles) {
-            val vehicle = CandidateVehicle()
+            val vehicle = Vehicle()
             val store = store(vehicle)
             store.acceptVehicleSnapshot(snapshotFor(id, levels.first()))
             val binding = binding(store)
@@ -135,35 +212,29 @@ class ContentVehicleStateContractTest {
         }
     }
 
-    @Test fun ordinaryPortKeepsManualWritesButDoesNotSkipUnverifiedAutoCycle() {
+    @Test fun defaultPortKeepsHeatingExecutableAtOneAndBothSidesOfAuto() {
         val vehicle = Vehicle()
         val store = store(vehicle)
         store.acceptVehicleSnapshot(jointSnapshot())
         val binding = binding(store)
-        for (target in listOf(3, 2, 1)) {
-            assertTrue(binding.state.value.controls.getValue(ControlId.Heating).available)
+        for (target in listOf(3, 2, 1, 4, 0)) {
+            val before = binding.state.value.controls.getValue(ControlId.Heating)
+            assertTrue("heating at ${before.actual} must accept its actual next mode", before.available)
             binding.dispatch(ContentEvent.ControlTapped(ControlId.Heating))
             assertEquals(target, vehicle.commands.last().level)
+            assertEquals(before.actual, binding.state.value.controls.getValue(ControlId.Heating).actual)
+            assertEquals(target, binding.state.value.controls.getValue(ControlId.Heating).target)
             store.acceptVehicleSnapshot(jointSnapshot(heating = target))
         }
-        val manualOne = binding.state.value.controls.getValue(ControlId.Heating)
-        assertEquals(1, manualOne.actual)
-        assertTrue(manualOne.known)
-        assertFalse("L1's next target is candidate AUTO, not an invented OFF shortcut", manualOne.available)
-        binding.dispatch(ContentEvent.ControlTapped(ControlId.Heating))
-        store.cycleSeatLevel(HEAT)
-        store.setSeatLevel(HEAT, 4)
-        assertEquals(listOf(3, 2, 1), vehicle.commands.map { it.level })
-        assertEquals("", store.snapshot().pendingVehicleCommand)
-        // Direct manual setting is still supported; the cycle itself was not silently reordered.
-        store.setSeatLevel(HEAT, 0)
-        assertEquals(0, vehicle.commands.last().level)
-        store.acceptVehicleSnapshot(jointSnapshot())
+        assertEquals(listOf(3, 2, 1, 4, 0), vehicle.commands.map { it.level })
+        assertTrue(binding.state.value.controls.getValue(ControlId.Heating).available)
         assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
     }
 
-    @Test fun readableCandidatesAndConnectedBinderNeverImplyFormalWrites() {
-        val vehicle = Vehicle()
+    @Test fun realCapabilityRestrictionsStillApplyWithoutHistoricalCandidateGates() {
+        val vehicle = object : Vehicle() {
+            override fun isSeatControlAvailable(seatId: String) = connected && seatId == VENT
+        }
         val store = store(vehicle)
         store.acceptVehicleSnapshot(jointSnapshot(heating = 4, steering = 3))
         val binding = binding(store)
@@ -171,13 +242,9 @@ class ContentVehicleStateContractTest {
             assertTrue(binding.state.value.controls.getValue(id).known)
             assertFalse(binding.state.value.controls.getValue(id).available)
             binding.dispatch(ContentEvent.ControlTapped(id))
+            store.setSeatLevel(id.id, 0)
         }
-        store.setSeatLevel(HEAT, 0) // Exiting AUTO needs the candidate companion write too.
-        store.setSeatLevel(STEER, 0)
         assertTrue(vehicle.commands.isEmpty())
-        assertTrue(binding.state.value.controls.getValue(ControlId.Ventilation).available)
-        assertTrue(binding.state.value.controls.getValue(ControlId.Massage).available)
-        assertTrue(binding.state.value.controls.getValue(ControlId.Lock).available)
         val connectedOnly = ContentUiMapper().map(store.snapshot(), capabilities = RuntimeCapabilities(vehicle = true))
         assertTrue(connectedOnly.controls.getValue(ControlId.Heating).known)
         assertTrue(connectedOnly.controls.filterKeys { it != ControlId.Lock }.values.none { it.available })
@@ -186,7 +253,7 @@ class ContentVehicleStateContractTest {
     }
 
     @Test fun autoConfirmationRequiresValidJointModeAndKnownCompanion() {
-        val vehicle = CandidateVehicle()
+        val vehicle = Vehicle()
         val store = store(vehicle)
         store.acceptVehicleSnapshot(jointSnapshot(heating = 1))
         val binding = binding(store)
@@ -198,7 +265,7 @@ class ContentVehicleStateContractTest {
             jointSnapshot(heating = 4, autoKnown = false, autoActive = true),
             jointSnapshot(heating = 4, autoKnown = true, autoActive = false),
             jointSnapshot(heating = 3, autoKnown = true, autoActive = true),
-            jointSnapshot(heating = ContentVehicleAdapter.normalizeHeatingLevel(4, 2), autoActive = true),
+            jointSnapshot(heating = ContentVehicleAdapter.normalizeHeatingLevel(7, 2), autoActive = true),
             legacySnapshot(4),
         )
         for (snapshot in invalid) {
@@ -218,7 +285,7 @@ class ContentVehicleStateContractTest {
     }
 
     @Test fun manualAndSteeringConfirmationRejectUnknownOrConflictingReadback() {
-        val vehicle = CandidateVehicle()
+        val vehicle = Vehicle()
         val store = store(vehicle)
         store.acceptVehicleSnapshot(jointSnapshot())
         store.setSeatLevel(HEAT, 3)
@@ -229,7 +296,7 @@ class ContentVehicleStateContractTest {
         store.acceptVehicleSnapshot(jointSnapshot(heating = 3))
         assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
         store.setSeatLevel(STEER, 3)
-        for ((main, active) in listOf(2 to 2, 3 to 2, 4 to 1, 1 to -1, 1 to 0)) {
+        for ((main, active) in listOf(0 to 2, 4 to 2, 4 to 1, 1 to -1, 1 to 0)) {
             store.acceptVehicleSnapshot(jointSnapshot(steering = ContentVehicleAdapter.normalizeSteeringLevel(main, active)))
             assertEquals(ContentState.COMMAND_PENDING, store.snapshot().commandStatus)
         }
@@ -237,9 +304,29 @@ class ContentVehicleStateContractTest {
         assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
     }
 
+    @Test fun automaticModeSurvivesActualHeatingLevelChanges() {
+        val store = store()
+        val binding = binding(store)
+        for (main in 1..4) {
+            store.acceptVehicleSnapshot(jointSnapshot(
+                heating = ContentVehicleAdapter.normalizeHeatingLevel(main, 2), autoActive = true))
+            val heat = binding.state.value.controls.getValue(ControlId.Heating)
+            assertEquals("selected AUTO stays AUTO while main=$main heats", 4, heat.actual)
+            assertTrue(heat.known)
+            assertTrue(heat.available)
+        }
+        for (main in 1..3) {
+            store.acceptVehicleSnapshot(jointSnapshot(steering = ContentVehicleAdapter.normalizeSteeringLevel(main, 2)))
+            val wheel = binding.state.value.controls.getValue(ControlId.SteeringHeat)
+            assertEquals("wheel AUTO stays AUTO while main=$main heats", 3, wheel.actual)
+            assertTrue(wheel.known)
+            assertTrue(wheel.available)
+        }
+    }
+
     @Test fun everyPendingControlHardRejectsCycleSetAndLockWithoutReplacingIdOrDeadline() {
-        for (first in listOf(VENT, HEAT, STEER, MASSAGE, LOCK)) {
-            val vehicle = CandidateVehicle()
+        for (first in listOf(VENT, HEAT, PASSENGER_HEAT, STEER, MASSAGE, LOCK)) {
+            val vehicle = Vehicle()
             val store = store(vehicle)
             store.acceptVehicleSnapshot(jointSnapshot())
             if (first == LOCK) store.toggleLock() else store.cycleSeatLevel(first)
@@ -247,7 +334,7 @@ class ContentVehicleStateContractTest {
             val firstCommand = vehicle.commands.single()
             val timeout = timeout(store)
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
-            for (id in listOf(VENT, HEAT, STEER, MASSAGE)) {
+            for (id in listOf(VENT, HEAT, PASSENGER_HEAT, STEER, MASSAGE)) {
                 store.cycleSeatLevel(id)
                 store.setSeatLevel(id, 2)
                 store.setSeatLevel(id, 0)
@@ -276,7 +363,7 @@ class ContentVehicleStateContractTest {
     }
 
     @Test fun listenerReentryCannotReplacePendingBeforeTheFirstPortCall() {
-        val vehicle = CandidateVehicle()
+        val vehicle = Vehicle()
         val store = store(vehicle)
         store.acceptVehicleSnapshot(jointSnapshot())
         var entered = false
@@ -349,6 +436,87 @@ class ContentVehicleStateContractTest {
         assertFalse(binding.state.value.controls.getValue(ControlId.Ventilation).known)
     }
 
+    @Test fun canonicalMassageMatrixKeepsOnWithZeroStrengthUnknownButAllowsOnlyOff() {
+        val vehicle = Vehicle()
+        val store = store(vehicle)
+        val mapper = ContentUiMapper()
+        val caps = RuntimeCapabilities(vehicle = true, writableSeatControls = setOf(MASSAGE))
+        for (strength in listOf(Int.MIN_VALUE, -1000, -1, 0, 1, 2, 3, 4, Int.MAX_VALUE)) {
+            for (known in listOf(false, true)) for (active in listOf(false, true)) {
+                val expected = when {
+                    !known -> -1
+                    !active -> 0
+                    strength in 1..3 -> strength
+                    else -> -1
+                }
+                val snapshot = jointSnapshot(massage = strength, massageActive = active, massageSwitchKnown = known)
+                assertEquals("strength=$strength known=$known active=$active", expected, snapshot.massageLevel)
+                store.acceptVehicleSnapshot(snapshot)
+                val state = store.snapshot()
+                assertEquals(expected, state.massageLevel)
+                assertEquals(expected, state.controlLevel(ControlId.Massage))
+                assertEquals(expected, state.copy().massageLevel)
+                val projected = mapper.map(state, capabilities = caps).controls.getValue(ControlId.Massage)
+                assertEquals(expected, projected.actual)
+                assertEquals(expected >= 0, projected.known)
+                assertEquals(known, projected.available)
+
+                val direct = ContentState().apply {
+                    vehicleDataAvailable = true; seatControlsKnown = true
+                    massageLevel = strength; massageSwitchKnown = known; massageActive = active
+                }
+                assertEquals(expected, direct.controlLevel(ControlId.Massage))
+                assertEquals(expected, direct.copy().massageLevel)
+                assertEquals(expected, mapper.map(direct, capabilities = caps).controls.getValue(ControlId.Massage).actual)
+                assertEquals(strength, direct.massageLevel)
+            }
+        }
+        store.acceptVehicleSnapshot(jointSnapshot(massage = 0, massageActive = true))
+        val binding = binding(store)
+        val onWithUnknownStrength = binding.state.value.controls.getValue(ControlId.Massage)
+        assertEquals(-1, onWithUnknownStrength.actual)
+        assertFalse(onWithUnknownStrength.known)
+        assertTrue(onWithUnknownStrength.available)
+        store.setSeatLevel(MASSAGE, 3)
+        assertTrue("unknown ON strength cannot select another strength", vehicle.commands.isEmpty())
+        binding.dispatch(ContentEvent.ControlTapped(ControlId.Massage))
+        assertEquals(MASSAGE, vehicle.commands.single().id)
+        assertEquals(0, vehicle.commands.single().level)
+        assertEquals(-1, store.snapshot().controlLevel(ControlId.Massage))
+        assertEquals(0, store.snapshot().pendingSeatLevel)
+        assertEquals(ContentState.COMMAND_PENDING, store.snapshot().commandStatus)
+    }
+
+    @Test fun pendingMassageOffConfirmsKnownOffWithUnknownOrStaleStrength() {
+        val vehicle = Vehicle()
+        val store = store(vehicle)
+        val binding = binding(store)
+        val staleStrengths = listOf(-1000, -1, 0, 1, 2, 3, 4, Int.MAX_VALUE)
+        for (strength in staleStrengths) {
+            store.acceptVehicleSnapshot(jointSnapshot(massage = -1, massageActive = true))
+            store.setSeatLevel(MASSAGE, 0)
+            assertEquals(ContentState.COMMAND_PENDING, store.snapshot().commandStatus)
+            assertEquals(0, binding.state.value.controls.getValue(ControlId.Massage).target)
+            val oldTimeout = timeout(store)
+            val knownOff = jointSnapshot(massage = strength, massageActive = false)
+            assertEquals("OFF does not depend on strength=$strength", 0, knownOff.massageLevel)
+            store.acceptVehicleSnapshot(knownOff)
+            val confirmed = binding.state.value.controls.getValue(ControlId.Massage)
+            assertEquals(0, confirmed.actual)
+            assertTrue(confirmed.known)
+            assertNull(confirmed.target)
+            assertEquals("", store.snapshot().pendingVehicleCommand)
+            assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+            oldTimeout.run()
+            assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+        }
+        assertEquals(staleStrengths.size, vehicle.commands.size)
+        assertTrue(vehicle.commands.all { it.id == MASSAGE && it.level == 0 })
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+        assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+        assertEquals(0, store.snapshot().controlLevel(ControlId.Massage))
+    }
+
     @Test fun unknownHeatingNeverCrossEnablesButKnownActiveMassageCanBeStopped() {
         val vehicle = Vehicle()
         val store = store(vehicle)
@@ -371,12 +539,34 @@ class ContentVehicleStateContractTest {
         assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
     }
 
+    @Test fun publishedModesAndAdmissionStayInTheSameImmutableSnapshot() {
+        val store = store()
+        store.acceptVehicleSnapshot(jointSnapshot(heating = 1))
+        val before = store.snapshot()
+        assertTrue(HEAT in before.writableSeatControls)
+        store.cycleSeatLevel(HEAT)
+        val pending = store.snapshot()
+        assertEquals(1, pending.heatingLevel)
+        assertEquals(4, pending.pendingSeatLevel)
+        assertTrue(pending.writableSeatControls.isEmpty())
+        assertTrue("old published capability sets must not mutate", HEAT in before.writableSeatControls)
+        assertTrue(HEAT in before.copy().writableSeatControls)
+        store.acceptVehicleSnapshot(jointSnapshot(heating = 4))
+        val confirmed = store.snapshot()
+        assertEquals(4, confirmed.heatingLevel)
+        assertEquals("", confirmed.pendingVehicleCommand)
+        assertTrue("AUTO retains its next OFF admission", HEAT in confirmed.writableSeatControls)
+        assertTrue(pending.writableSeatControls.isEmpty())
+    }
+
     @Test fun registryRetainsFiveRightSlotPreferenceContractWithoutDuplicatingFixedLock() {
         val expected = arrayOf(ContentRegistry.Pages.SHORTCUTS, VENT, HEAT, MASSAGE, ContentRegistry.Shortcuts.SETTINGS)
         assertArrayEquals(expected, ContentRegistry.defaultDockItems())
         assertArrayEquals(expected, ContentRegistry.dockChoices())
         assertFalse(ContentRegistry.isDockItem(LOCK))
         assertFalse(ContentRegistry.isDockItem(STEER))
+        assertFalse(ContentRegistry.isDockItem(PASSENGER_HEAT))
+        assertEquals(PASSENGER_HEAT, ContentRegistry.Shortcuts.PASSENGER_SEAT_HEATING)
         assertTrue(ContentRegistry.isDockItem(ContentRegistry.Pages.SHORTCUTS))
         val preferences = app.getSharedPreferences("content_preferences_v1", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
@@ -407,13 +597,18 @@ class ContentVehicleStateContractTest {
         ventilation: Int = 0, heating: Int = 0, autoKnown: Boolean = true,
         autoActive: Boolean = heating == 4, steering: Int = 0, massage: Int = 0,
         massageActive: Boolean = massage > 0, locked: Boolean = true, preview: Boolean = false,
+        massageSwitchKnown: Boolean = true,
+        passengerHeating: Int = 0, passengerAutoKnown: Boolean = true,
+        passengerAutoActive: Boolean = passengerHeating == 4,
     ) = ContentPorts.VehicleSnapshot(true, preview, 25f, 60, 123, ContentState.CHARGE_DEFAULT,
-        0, 0, 0, Float.NaN, -1, ventilation, heating, autoKnown, autoActive, steering,
-        massage, if (massageActive) 1 else 0, true, massageActive, true, true, locked)
+        0, 0, 0, Float.NaN, -1, ventilation, heating, autoKnown, autoActive,
+        passengerHeating, passengerAutoKnown, passengerAutoActive, steering,
+        massage, if (massageActive) 1 else 0, massageSwitchKnown, massageActive, true, true, locked)
 
     private fun snapshotFor(id: String, level: Int) = when (id) {
         VENT -> jointSnapshot(ventilation = level)
         HEAT -> jointSnapshot(heating = level)
+        PASSENGER_HEAT -> jointSnapshot(passengerHeating = level)
         STEER -> jointSnapshot(steering = level)
         MASSAGE -> jointSnapshot(massage = level)
         else -> error("Unknown substitute control $id")
@@ -422,6 +617,7 @@ class ContentVehicleStateContractTest {
     private fun controlId(id: String) = when (id) {
         VENT -> ControlId.Ventilation
         HEAT -> ControlId.Heating
+        PASSENGER_HEAT -> ControlId.PassengerHeating
         STEER -> ControlId.SteeringHeat
         MASSAGE -> ControlId.Massage
         else -> ControlId.Lock
@@ -452,18 +648,10 @@ class ContentVehicleStateContractTest {
         fun fail(requestId: Long) = listener.onVehicleCommandFailed(requestId, "替身拒绝请求")
     }
 
-    /** Explicit opt-in in this substitute only, not an upgrade of formal adapter evidence. */
-    private class CandidateVehicle : Vehicle() {
-        override fun isSeatControlAvailable(seatId: String) = connected && seatId in setOf(VENT, HEAT, STEER, MASSAGE)
-        override fun isSeatLevelAvailable(seatId: String, level: Int) = isSeatControlAvailable(seatId)
-            && level in 0..(if (seatId == HEAT) 4 else 3)
-        override fun isSeatLevelAvailable(seatId: String, currentLevel: Int, targetLevel: Int) =
-            isSeatLevelAvailable(seatId, targetLevel)
-    }
-
     companion object {
         private const val VENT = "seat_ventilation"
         private const val HEAT = "seat_heating"
+        private const val PASSENGER_HEAT = "passenger_seat_heating"
         private const val STEER = "steering_heating"
         private const val MASSAGE = "seat_massage"
         private const val LOCK = "lock"

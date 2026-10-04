@@ -60,31 +60,22 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         val realVehicle = state.vehicleDataAvailable && !state.vehiclePreview
         val vehicleIdle = state.pendingVehicleCommand.isEmpty()
         val realMedia = state.mediaDataAvailable && !state.mediaPreview
-        fun seat(id: String, actual: Int, maxLevel: Int = 3, known: Boolean = actual in 0..maxLevel): ControlState {
-            return ControlState(actual = if (realVehicle && known) actual else -1,
-                target = state.pendingSeatLevel.takeIf { state.pendingVehicleCommand == id && it in 0..maxLevel },
-                available = vehicleIdle && realVehicle && state.seatControlsKnown
-                    && id in capabilities.writableSeatControls && known,
-                known = realVehicle && known && actual in 0..maxLevel)
+        val controls = ControlId.entries.associateWith { id ->
+            val actual = state.controlLevel(id)
+            val target = if (state.pendingVehicleCommand != id.id) null else {
+                if (id == ControlId.Lock) if (state.pendingLocked) 1 else 0
+                else state.pendingSeatLevel.takeIf(id::isLevel)
+            }
+            ControlState(
+                actual = if (realVehicle) actual else -1,
+                target = target,
+                available = vehicleIdle && realVehicle && if (id == ControlId.Lock) {
+                    state.lockKnown && capabilities.lock
+                } else state.seatControlsKnown && id.id in capabilities.writableSeatControls
+                    && (id.isLevel(actual) || id == ControlId.Massage && state.massageSwitchKnown && state.massageActive),
+                known = realVehicle && id.isLevel(actual),
+            )
         }
-        val massage = if (state.massageSwitchKnown && !state.massageActive) 0 else state.massageLevel
-        val heating = ContentPorts.VehicleSnapshot.consistentHeatingLevel(
-            state.heatingLevel, state.heatingAutoKnown, state.heatingAutoActive)
-        val heatingKnown = heating in 0..4
-        val steering = state.steeringHeatLevel
-        val steeringKnown = steering in 0..3
-        val controls = mapOf(
-            ControlId.Lock to ControlState(
-                actual = if (realVehicle && state.lockKnown) if (state.locked) 1 else 0 else -1,
-                target = if (state.pendingVehicleCommand == ContentRegistry.Shortcuts.LOCK) if (state.pendingLocked) 1 else 0 else null,
-                available = vehicleIdle && realVehicle && state.lockKnown && capabilities.lock,
-                known = realVehicle && state.lockKnown),
-            ControlId.Ventilation to seat(ContentRegistry.Shortcuts.SEAT_VENTILATION, state.ventilationLevel),
-            ControlId.Heating to seat(ContentRegistry.Shortcuts.SEAT_HEATING, heating, maxLevel = 4, known = heatingKnown),
-            ControlId.SteeringHeat to seat(ContentRegistry.Shortcuts.STEERING_HEATING, steering, maxLevel = 3, known = steeringKnown),
-            ControlId.Massage to seat(ContentRegistry.Shortcuts.SEAT_MASSAGE, massage,
-                known = state.massageSwitchKnown && (massage in 0..3 || state.massageActive)),
-        )
         val source = MediaSource.entries.firstOrNull { it.label == ContentRegistry.normalizeMediaSource(state.mediaSource) } ?: MediaSource.Local
         val isSong = realMedia && state.mediaSongIdentity == ContentPorts.MediaSongIdentity.SONG
         val metadataReady = isSong && state.pendingSource.isEmpty()

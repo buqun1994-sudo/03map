@@ -244,7 +244,7 @@ class ContentRuntimeTest {
         assertEquals(0, binding.state.value.controls.getValue(ControlId.Ventilation).actual)
         assertNull(binding.state.value.controls.getValue(ControlId.Ventilation).target)
         assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
-        assertEquals("座椅车控命令未发送，请检查车机状态", binding.state.value.message)
+        assertEquals("车控命令未发送，请检查车机状态", binding.state.value.message)
 
         vehicle.accept = true
         binding.dispatch(ContentEvent.ControlTapped(ControlId.Ventilation))

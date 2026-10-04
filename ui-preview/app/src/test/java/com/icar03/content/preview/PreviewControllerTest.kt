@@ -26,7 +26,9 @@ class PreviewControllerTest {
     @Test fun everyPreviewControlMatchesFormalCyclesAndWaitsForSimulatedReadback() = runTest {
         val cycles = mapOf(ControlId.Lock to listOf(0, 1, 0), ControlId.Ventilation to listOf(0, 3, 2, 1, 0),
             ControlId.Massage to listOf(0, 3, 2, 1, 0), ControlId.Heating to listOf(0, 3, 2, 1, 4, 0),
+            ControlId.PassengerHeating to listOf(0, 3, 2, 1, 4, 0),
             ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0))
+        assertEquals(ControlId.entries.toSet(), cycles.keys)
         cycles.forEach { (id, levels) ->
             val initial = previewState()
             val controller = PreviewController(this, initial.copy(controls = initial.controls + (id to ControlState(actual = 0))))

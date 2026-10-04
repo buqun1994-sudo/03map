@@ -4,7 +4,7 @@
 
 第二层是 `:content-runtime` Android library，不是新的应用，也不是第三层高德 APK 注入。第一层 `:app` 仍运行显式模拟数据，不依赖本模块，不会因本轮改动连接车机或写系统设置。
 
-本模块直接编译正式 `source/amap-9.5.0.600013/content-src/` 中的八类最小闭包：`ContentState`、`ContentRegistry`、`ContentPreferenceStore`、`ContentPorts`、`ContentStore`、`ContentVehicleAdapter`、`ContentMediaAdapter`、`ContentMediaListener`。不复制 Adapter，不包含旧 Renderer、ContentRuntime 或地图几何类。
+本模块直接编译正式 `source/amap-9.5.0.600013/content-src/` 中的九类最小闭包：`ContentState`、`ContentRegistry`、`ContentPreferenceStore`、`ContentPorts`、`ContentStore`、`ContentVehicleAdapter`、`ContentVehicleProtocol`、`ContentMediaAdapter`、`ContentMediaListener`。控制定义由纯 `:content-model` 供 UI／runtime／预览共同消费；Store 在同一快照发布实际模式与下一目标能力，Binding 不二次查询车辆能力。不复制 Adapter，不包含旧 Renderer、ContentRuntime 或地图几何类。
 
 ## 接入入口
 

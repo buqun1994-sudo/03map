@@ -28,6 +28,7 @@ val exportFormalOemAssets by tasks.registering(Sync::class) {
 tasks.named("preBuild") { dependsOn(exportFormalOemResources, exportFormalOemAssets) }
 
 dependencies {
+    api(project(":content-model"))
     implementation("com.airbnb.android:lottie:6.6.7") { exclude(group = "androidx.appcompat") }
     implementation("androidx.compose.ui:ui:1.7.6")
     implementation("androidx.compose.foundation:foundation:1.7.6")

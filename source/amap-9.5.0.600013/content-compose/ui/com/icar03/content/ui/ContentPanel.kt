@@ -239,29 +239,66 @@ private fun TopBarText(text: String, tag: String, style: TextStyle, naturalWidth
 }
 
 @Composable
+private fun shortcutLabelStyle(): TextStyle =
+    MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 24.sp)
+
+@Composable
 private fun PrototypeGrid(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val narrow = maxWidth < 560.dp
         val gap = if (narrow) 12.dp else 20.dp
-        val columns = if ((maxWidth - gap * 3) / 4 < 64.dp) 2 else 4
-        val tileHeight = if (narrow) 112.dp else 135.dp
+        val columnWidth = (maxWidth - gap * 3) / 4
+        val columns = if (columnWidth < 64.dp) 2 else 4
+        val density = LocalDensity.current
+        val labelStyle = shortcutLabelStyle()
+        val labelMeasurer = rememberTextMeasurer()
+        val tileWidth = if (columns == 4) columnWidth else (maxWidth - gap) / 2
+        val labelWidth = with(density) { (tileWidth - 4.dp).roundToPx().coerceAtLeast(1) }
+        val labelHeight = ShortcutId.entries.maxOf { id ->
+            labelMeasurer.measure(AnnotatedString(id.label), labelStyle, maxLines = 2,
+                constraints = androidx.compose.ui.unit.Constraints(maxWidth = labelWidth)).size.height
+        }
+        // CJK font metrics may exceed two nominal line heights. Reserve the real
+        // text height plus the original 52dp icon, 8dp gap and 8dp breathing room.
+        val contentHeight = with(density) { labelHeight.toDp() } + 68.dp
+        val tileHeight = maxOf(if (narrow) 112.dp else 135.dp, contentHeight)
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            ShortcutId.entries.chunked(columns).forEachIndexed { index, row ->
+            if (columns == 4) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    row.forEach { id -> Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, tileHeight) } }
-                    if (columns == 4 && index == 1) {
-                        Box(Modifier.weight(1f)) {
-                            VerticalLevelCard("屏幕亮度", R.drawable.content_oem_ico_brightness_mid, state.brightness, if (narrow) 160.dp else 290.dp) { onEvent(ContentEvent.BrightnessChanged(it)) }
-                        }
-                        Box(Modifier.weight(1f)) {
-                            VerticalLevelCard("媒体音量", R.drawable.content_oem_ico_volume_2, state.volume, if (narrow) 160.dp else 290.dp) { onEvent(ContentEvent.VolumeChanged(it)) }
-                        }
+                    ShortcutId.entries.take(4).forEach { id ->
+                        Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, tileHeight) }
                     }
                 }
-            }
-            if (columns == 2) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                Box(Modifier.weight(1f)) { VerticalLevelCard("屏幕亮度", R.drawable.content_oem_ico_brightness_mid, state.brightness, 160.dp) { onEvent(ContentEvent.BrightnessChanged(it)) } }
-                Box(Modifier.weight(1f)) { VerticalLevelCard("媒体音量", R.drawable.content_oem_ico_volume_2, state.volume, 160.dp) { onEvent(ContentEvent.VolumeChanged(it)) } }
+                val lowerHeight = maxOf(if (narrow) 0.dp else 290.dp, tileHeight * 2 + gap)
+                val lowerTileHeight = (lowerHeight - gap) / 2
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    // Row-major order remains passenger / massage / settings / empty.
+                    Column(Modifier.width(columnWidth * 2 + gap), verticalArrangement = Arrangement.spacedBy(gap)) {
+                        ShortcutId.entries.drop(4).chunked(2).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                                row.forEach { id -> Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, lowerTileHeight) } }
+                                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                    Box(Modifier.width(columnWidth)) {
+                        VerticalLevelCard("屏幕亮度", R.drawable.content_oem_ico_brightness_mid, state.brightness, lowerHeight) { onEvent(ContentEvent.BrightnessChanged(it)) }
+                    }
+                    Box(Modifier.width(columnWidth)) {
+                        VerticalLevelCard("媒体音量", R.drawable.content_oem_ico_volume_2, state.volume, lowerHeight) { onEvent(ContentEvent.VolumeChanged(it)) }
+                    }
+                }
+            } else {
+                ShortcutId.entries.chunked(2).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        row.forEach { id -> Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, tileHeight) } }
+                        repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    Box(Modifier.weight(1f)) { VerticalLevelCard("屏幕亮度", R.drawable.content_oem_ico_brightness_mid, state.brightness, 160.dp) { onEvent(ContentEvent.BrightnessChanged(it)) } }
+                    Box(Modifier.weight(1f)) { VerticalLevelCard("媒体音量", R.drawable.content_oem_ico_volume_2, state.volume, 160.dp) { onEvent(ContentEvent.VolumeChanged(it)) } }
+                }
             }
         }
     }
@@ -274,28 +311,21 @@ private fun shortcutStatus(id: ShortcutId, state: ContentUiState): String {
         !control.known -> "状态未知"
         id == ShortcutId.Lock -> if (control.actual == 1) "已锁" else "未锁"
         control.actual == 0 -> "关闭"
-        id == ShortcutId.Heating && control.actual == 4 -> "自动"
-        id == ShortcutId.SteeringHeat && control.actual == 3 -> "自动"
+        id.control?.isAutomatic(control.actual) == true -> "自动"
         else -> "${control.actual}档"
     }
 }
 
 private fun shortcutIcon(id: ShortcutId, state: ContentUiState): Int? = when (id) {
     ShortcutId.Lock -> state.controls.getValue(ControlId.Lock).let { if (!it.known && !it.pending || it.displayed == 1) R.drawable.content_oem_ico_lock_close else R.drawable.content_oem_ico_lock_open }
-    ShortcutId.SteeringHeat -> steeringHeatIcon(state.controls.getValue(ControlId.SteeringHeat).displayed)
+    ShortcutId.SteeringHeat -> steeringHeatIcon(state.controls.getValue(ControlId.SteeringHeat).displayed, state.dark)
     ShortcutId.Settings -> R.drawable.content_oem_ic_settings
     else -> seatIcon(requireNotNull(id.control), state)
 }
 
-/** OEM HeatWheelBtnView.setNowBackground(main, activated): the misleading
- * auto_* names are the manual/off variants; 01 carries the automatic A badge.
- * They are state variants, not a made-up animation frame sequence. */
-internal fun steeringHeatIcon(level: Int): Int = when (level) {
-    1 -> R.drawable.content_oem_ic_carset_wheel_hot_auto_01_r_o
-    2 -> R.drawable.content_oem_ic_carset_wheel_hot_auto_02_r_o
-    3 -> R.drawable.content_oem_ic_carset_wheel_hot_01_r_o
-    else -> R.drawable.content_oem_ic_carset_wheel_hot_auto_00_r_o
-}
+/** Same Launcher skin family as the manual/AUTO Lottie, including the A badge. */
+internal fun steeringHeatIcon(level: Int, dark: Boolean = false): Int =
+    vehicleControlIconRecipe(ControlId.SteeringHeat, level, dark).resource
 
 @Composable
 private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color = when {
@@ -322,15 +352,8 @@ private fun shortcutEvent(id: ShortcutId, state: ContentUiState): ContentEvent? 
 internal fun shortcutRippleEnabled(id: ShortcutId, state: ContentUiState): Boolean {
     val idControl = id.control ?: return true
     val control = state.controls.getValue(idControl)
-    if (!control.available || !control.known || control.pending) return false
-    if (idControl == ControlId.Lock) return control.actual in 0..1
-    val terminal = when (idControl) {
-        ControlId.Heating -> 4
-        ControlId.SteeringHeat -> 3
-        ControlId.Ventilation, ControlId.Massage -> 1
-        ControlId.Lock -> error("lock handled above")
-    }
-    return control.actual == 0 || control.actual == terminal
+    if (!control.available || !control.known || control.pending || !idControl.isLevel(control.actual)) return false
+    return idControl.crossesPowerBoundary(control.actual)
 }
 
 @Composable
@@ -343,8 +366,9 @@ private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (Conten
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     var action by remember { mutableIntStateOf(0) }
-    val base = MaterialTheme.colorScheme.surfaceVariant
-    val selectedColor = MaterialTheme.colorScheme.primaryContainer
+    val colors = LocalContentColors.current
+    val base = colors.shortcutBase
+    val selectedColor = colors.shortcutSelected
     val polymorphicSelected = selected && id != ShortcutId.Lock
     val idleColor = if (polymorphicSelected) selectedColor else base
     val feedback = rememberBoundaryPressFeedback(interactions, rippleEnabled, idleColor,
@@ -371,7 +395,9 @@ private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (Conten
                 ShortcutOemIcon(id, state, icon, Modifier.size(52.dp).testTag("shortcut-icon-${id.name}"))
                 Spacer(Modifier.height(8.dp))
             }
-            Text(id.label, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp), maxLines = if (id == ShortcutId.SteeringHeat) 2 else 1)
+            Text(id.label, Modifier.fillMaxWidth().padding(horizontal = 2.dp).testTag("shortcut-label-${id.name}"),
+                style = shortcutLabelStyle(), maxLines = 2,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
         }
     }
@@ -382,6 +408,7 @@ private fun VerticalLevelCard(label: String, icon: Int, level: LevelState, heigh
     var draft by remember(level.actual, level.target, level.available) { mutableFloatStateOf(level.displayed) }
     val enabled = level.available && level.target == null
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val colors = LocalContentColors.current
     val heightPx = with(density) { height.toPx() }
     fun fraction(y: Float) = (1f - y / heightPx).coerceIn(0f, 1f)
     fun commit(value: Float) {
@@ -390,7 +417,7 @@ private fun VerticalLevelCard(label: String, icon: Int, level: LevelState, heigh
     }
     Surface(
         Modifier.fillMaxWidth().height(height).testTag(if (label == "屏幕亮度") "brightness-card" else "volume-card")
-            .downwardSoftShadow(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.background.luminance() < 0.2f)
+            .downwardSoftShadow(colors.sliderBase, MaterialTheme.colorScheme.background.luminance() < 0.2f)
             .semantics {
                 contentDescription = label
                 progressBarRangeInfo = ProgressBarRangeInfo(draft, 0f..1f)
@@ -409,11 +436,11 @@ private fun VerticalLevelCard(label: String, icon: Int, level: LevelState, heigh
                     change.consume()
                 }
             },
-        shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, shadowElevation = 0.dp,
+        shape = RoundedCornerShape(12.dp), color = colors.sliderBase, shadowElevation = 0.dp,
     ) {
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().fillMaxHeight(draft).align(Alignment.BottomCenter).testTag(if (label == "屏幕亮度") "brightness-fill" else "volume-fill")
-                .background(if (MaterialTheme.colorScheme.background.luminance() < .2f) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface))
+                .background(colors.sliderFill))
             OemIcon(icon, Modifier.size(52.dp).align(Alignment.BottomCenter).offset(y = (-55).dp), motionKey = draft)
         }
     }
@@ -423,9 +450,10 @@ private fun VerticalLevelCard(label: String, icon: Int, level: LevelState, heigh
 private fun PrototypeMediaCard(media: MediaState, onEvent: (ContentEvent) -> Unit, artwork: @Composable (() -> Unit)?, sourcesEnabled: Boolean, compact: Boolean) {
     val button = if (compact) 48.dp else 80.dp
     val icon = if (compact) 28.dp else 42.dp
-    Surface(Modifier.fillMaxSize().testTag("media-card").downwardSoftShadow(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.background.luminance() < 0.2f), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 0.dp) {
+    val colors = LocalContentColors.current
+    Surface(Modifier.fillMaxSize().testTag("media-card").downwardSoftShadow(colors.mediaBase, MaterialTheme.colorScheme.background.luminance() < 0.2f), shape = RoundedCornerShape(12.dp), color = colors.mediaBase, shadowElevation = 0.dp) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.width(if (compact) 72.dp else 120.dp).fillMaxHeight(), color = MaterialTheme.colorScheme.surfaceVariant) {
+            Surface(Modifier.width(if (compact) 72.dp else 120.dp).fillMaxHeight(), color = colors.mediaArtworkBase) {
                 Box(contentAlignment = Alignment.Center) { if (artwork != null) artwork() else OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(48.dp), "音乐封面") }
             }
             Column(Modifier.weight(1f).padding(horizontal = if (compact) 4.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -453,13 +481,16 @@ private fun PrototypeMediaCard(media: MediaState, onEvent: (ContentEvent) -> Uni
 
 @Composable
 private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit, compact: Boolean) {
+     val colors = LocalContentColors.current
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
         Surface(
-            Modifier.fillMaxSize().testTag("floating-dock").downwardSoftShadow(MaterialTheme.colorScheme.surface, state.dark), shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface, shadowElevation = 0.dp,
+            Modifier.fillMaxSize().testTag("floating-dock").downwardSoftShadow(colors.dockBase, state.dark), shape = RoundedCornerShape(12.dp),
+            color = colors.dockBase, shadowElevation = 0.dp,
         ) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val dockWidth = if (compact) maxWidth.coerceAtLeast(288.dp) else maxWidth
+                val minDockWidth = if (compact) 48.dp * ShortcutId.entries.size
+                    else 114.dp + 72.dp * (ShortcutId.entries.size - 1)
+                val dockWidth = maxWidth.coerceAtLeast(minDockWidth)
                 Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
                     Row(Modifier.width(dockWidth).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
                         ShortcutId.entries.forEach { id ->
@@ -473,9 +504,10 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                             RoundedPressButton(slot, "dock-${id.name}", id.label, enabled, compact,
                                 onClick = { shortcutEvent(id, state)?.let(onEvent) }, rectangular = false,
                                 selected = selected && id != ShortcutId.Lock,
-                                selectedColor = MaterialTheme.colorScheme.secondaryContainer,
-                                rippleEnabled = rippleEnabled,
-                                rippleColor = if (selected && id != ShortcutId.Lock) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.secondaryContainer) {
+                                selectedColor = colors.dockSelected,
+                                baseColor = colors.dockBase,
+                                 rippleEnabled = rippleEnabled,
+                                rippleColor = if (selected && id != ShortcutId.Lock) colors.dockBase else colors.dockSelected) {
                                 val icon = shortcutIcon(id, state)
                                 if (icon == null) Text("方向盘加热", style = MaterialTheme.typography.labelMedium, maxLines = 2)
                                 else ShortcutOemIcon(id, state, icon, Modifier.size(if (compact) 32.dp else 48.dp).testTag("dock-icon-${id.name}"))
@@ -492,11 +524,13 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
 private fun RoundedPressButton(
     modifier: Modifier, tag: String, description: String, enabled: Boolean, compact: Boolean,
     onClick: () -> Unit, rectangular: Boolean = true, selected: Boolean = false,
-    selectedColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    baseColor: Color? = null,
+    selectedColor: Color? = null,
     rippleEnabled: Boolean = !rectangular,
-    rippleColor: Color = selectedColor,
+    rippleColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
+    val colors = LocalContentColors.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val active = pressed && enabled
@@ -505,9 +539,11 @@ private fun RoundedPressButton(
     val opacity by animateFloatAsState(if (active && rectangular) 1f else 0f,
         tween(if (active) 200 else 240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "press-opacity")
     val scale by pressScale(active)
-    val background = if (opacity == 0f) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = opacity)
-    val base = if (selected) selectedColor else MaterialTheme.colorScheme.surface
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled && rippleEnabled && !rectangular, base, rippleColor)
+    val background = if (opacity == 0f) Color.Transparent else colors.mediaPressed.copy(alpha = opacity)
+    val selectedSurface = selectedColor ?: colors.dockSelected
+    val rippleSurface = rippleColor ?: selectedSurface
+    val base = if (selected) selectedSurface else baseColor ?: colors.mediaBase
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled && rippleEnabled && !rectangular, base, rippleSurface)
     Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(tag)
         .then(feedback.touchCoordinates)
             .then(feedback.pointerDownLatch)
@@ -529,6 +565,7 @@ private fun RoundedPressButton(
 @Composable
 private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize().testTag("sources-overlay")) {
+         val colors = LocalContentColors.current
         val compact = !state.previewMode && (maxWidth < 600.dp || maxHeight < 800.dp)
         val rowHeight = if (compact) 48.dp else 80.dp
         val menuWidth = 280.dp.coerceAtMost(maxWidth - 16.dp)
@@ -544,8 +581,8 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
         Surface(
             Modifier.align(Alignment.BottomEnd).padding(end = if (compact) 8.dp else 20.dp, bottom = if (compact) 152.dp else 264.dp)
                 .width(menuWidth).testTag("sources-menu")
-                .downwardSoftShadow(MaterialTheme.colorScheme.surfaceVariant, state.dark),
-            shape = RoundedCornerShape(12.dp), color = if (state.dark) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
+                .downwardSoftShadow(colors.sourceBase, state.dark),
+            shape = RoundedCornerShape(12.dp), color = colors.sourceBase,
         ) {
             Column(Modifier.padding(8.dp).selectableGroup()) {
                 MediaSource.entries.forEach { source ->
@@ -554,8 +591,8 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
                     val pressed by interactions.collectIsPressedAsState()
                     Row(
                         Modifier.fillMaxWidth().height(rowHeight).testTag("source-${source.name}")
-                            .background(if (selected) { if (state.dark) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant } else Color.Transparent, RoundedCornerShape(8.dp))
-                            .clickable(interactionSource = interactions, indication = ripple(), enabled = (!state.previewMode || state.media.available) && state.media.sourceAvailable && !state.media.pending, role = Role.RadioButton) { onEvent(ContentEvent.SourceSelected(source)) }
+                            .background(if (selected) colors.sourceSelected else Color.Transparent, RoundedCornerShape(8.dp))
+                            .clickable(interactionSource = interactions, indication = ripple(color = colors.sourceSelected), enabled = (!state.previewMode || state.media.available) && state.media.sourceAvailable && !state.media.pending, role = Role.RadioButton) { onEvent(ContentEvent.SourceSelected(source)) }
                             .semantics { this.selected = selected }
                             .padding(start = groupInset),
                         verticalAlignment = Alignment.CenterVertically,
@@ -578,7 +615,8 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
-    ModalBottomSheet(onDismissRequest = { onEvent(ContentEvent.DismissSheet) }, containerColor = MaterialTheme.colorScheme.surface) {
+     val colors = LocalContentColors.current
+    ModalBottomSheet(onDismissRequest = { onEvent(ContentEvent.DismissSheet) }, containerColor = colors.sheetBase) {
         Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("预览场景", style = MaterialTheme.typography.headlineSmall)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -655,52 +693,15 @@ private fun sourceIcon(source: MediaSource): Int = when (source) {
     MediaSource.Local -> R.drawable.content_oem_ico_media_local
 }
 
-private fun seatIcon(id: ControlId, state: ContentUiState): Int {
-    val level = state.controls.getValue(id).displayed.coerceIn(0, if (id == ControlId.Heating) 4 else 3)
-    if (id == ControlId.Heating && level == 4) {
-        return R.drawable.content_oem_ic_carset_seat_l_hot_auto_00_r_o
-    }
-    if (state.dark) return when (id) {
-        ControlId.Ventilation -> listOf(R.drawable.content_oem_ico_skin_seat_ventilate_l_off_night, R.drawable.content_oem_ico_skin_seat_ventilate_l_1_color_night, R.drawable.content_oem_ico_skin_seat_ventilate_l_2_color_night, R.drawable.content_oem_ico_skin_seat_ventilate_l_3_color_night)[level]
-        ControlId.Heating -> listOf(R.drawable.content_oem_ico_skin_seat_heat_l_off_night, R.drawable.content_oem_ico_skin_seat_heat_l_1_night, R.drawable.content_oem_ico_skin_seat_heat_l_2_night, R.drawable.content_oem_ico_skin_seat_heat_l_3_night)[level]
-        ControlId.Massage -> listOf(R.drawable.content_oem_ico_skin_seat_massage_l_off_night, R.drawable.content_oem_ico_skin_seat_massage_l_1_night, R.drawable.content_oem_ico_skin_seat_massage_l_2_night, R.drawable.content_oem_ico_skin_seat_massage_l_3_night)[level]
-        ControlId.Lock -> R.drawable.content_oem_ico_lock_close
-        ControlId.SteeringHeat -> steeringHeatIcon(level)
-    }
-    return when (id) {
-        ControlId.Ventilation -> when (level) {
-            1 -> R.drawable.content_oem_ico_skin_seat_ventilate_l_1_color_day
-            2 -> R.drawable.content_oem_ico_skin_seat_ventilate_l_2_color_day
-            3 -> R.drawable.content_oem_ico_skin_seat_ventilate_l_3_color_day
-            else -> R.drawable.content_oem_ico_skin_seat_ventilate_l_off_day
-        }
-        ControlId.Heating -> when (level) {
-            1 -> R.drawable.content_oem_ico_skin_seat_heat_l_1_day
-            2 -> R.drawable.content_oem_ico_skin_seat_heat_l_2_day
-            3 -> R.drawable.content_oem_ico_skin_seat_heat_l_3_day
-            else -> R.drawable.content_oem_ico_skin_seat_heat_l_off_day
-        }
-        ControlId.Massage -> when (level) {
-            1 -> R.drawable.content_oem_ico_skin_seat_massage_l_1_day
-            2 -> R.drawable.content_oem_ico_skin_seat_massage_l_2_day
-            3 -> R.drawable.content_oem_ico_skin_seat_massage_l_3_day
-            else -> R.drawable.content_oem_ico_skin_seat_massage_l_off_day
-        }
-        ControlId.Lock -> R.drawable.content_oem_ico_lock_close
-        ControlId.SteeringHeat -> steeringHeatIcon(level)
-    }
-}
-
 @Composable
-internal fun pressScale(active: Boolean) = animateFloatAsState(if (active) .94f else 1f,
-    tween(if (active) 200 else 240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "press-scale")
+internal fun pressScale(active: Boolean) = animateFloatAsState(
+    if (active) .94f else 1f,
+    tween(if (active) 200 else 240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)),
+    label = "press-scale",
+)
 
-private fun seatAccent(control: ControlId): Color = when (control) {
-    ControlId.Ventilation -> Color(0xFF3FA9FF)
-    ControlId.Heating -> Color(0xFFFF6400)
-    ControlId.Massage -> Color(0xFFA14FEC)
-    ControlId.Lock, ControlId.SteeringHeat -> Color.Unspecified
-}
+private fun seatIcon(id: ControlId, state: ContentUiState): Int =
+    vehicleControlIconRecipe(id, state.controls.getValue(id).displayed, state.dark).resource
 
 /** The same OEM resource, frame segment and palette feed both visible entrances. */
 @Composable
@@ -714,56 +715,17 @@ private fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, mo
     }
     if (control == null || control == ControlId.Lock) {
         OemIcon(icon, modifier, tint = shortcutTint(id, state),
-            motionKey = if (control == null) icon else state.controls.getValue(control).displayed)
+            motionKey = if (control == null) icon else state.controls.getValue(control).displayed,
+            animateOnAction = control == null)
         return
     }
     val value = state.controls.getValue(control)
-    val level = value.displayed.coerceIn(0, if (control == ControlId.Heating) 4 else 3)
-    if (control == ControlId.SteeringHeat || control == ControlId.Heating && level == 4) {
-        val original = androidx.compose.ui.graphics.vector.ImageVector.vectorResource(icon)
-        val base = if (state.dark) Color.White else Color.Black
-        val colors = remember(original, base) { oemNeutralLayerColors(original, base) }
-        OemIcon(icon, modifier, tint = Color.Unspecified, pathColors = colors,
-            motionKey = level, animationAsset = null, animateOnAction = false)
-        return
-    }
-    val accent = seatAccent(control)
-    val base = if (state.dark) Color.White else Color.Black
-    val body = if (level > 0) accent else base
-    val family = when (control) {
-        ControlId.Ventilation -> "ventilate"
-        ControlId.Heating -> "heat"
-        ControlId.Massage -> "massage"
-        ControlId.Lock, ControlId.SteeringHeat -> error("not a seat")
-    }
-    // OEM DockAcButton orders heat/vent high→low, massage low→high.
-    val gear = when {
-        level == 0 -> if (control == ControlId.Heating) 4 else 3
-        control == ControlId.Massage -> level - 1
-        else -> 3 - level
-    }
-    val asset = "ico_skin_seat_${family}_l_${if (state.dark) "wh" else "bk"}.json"
-    val colors = when (control) {
-        ControlId.Ventilation -> mapOf(
-            listOf("**", "组 4", "填充 1") to body,
-            listOf("**", "组 5", "填充 1") to body,
-            listOf("**", "组 6", "组 1", "填充 1") to if (level == 3) accent else base,
-            listOf("**", "组 6", "组 2", "填充 1") to if (level >= 2) accent else base,
-            listOf("**", "组 6", "组 3", "填充 1") to if (level >= 1) accent else base,
-        )
-        ControlId.Heating -> mapOf(
-            listOf("color1", "**", "填充 1") to body,
-            listOf("color2", "**", "填充 1") to base,
-            listOf("color3", "**", "填充 1") to if (level > 0) accent else base,
-        )
-        ControlId.Massage -> mapOf(listOf("color1", "**", "填充 1") to body)
-        ControlId.Lock, ControlId.SteeringHeat -> emptyMap()
-    }
-    OemIcon(icon, modifier, tint = Color.Unspecified,
-        pathColors = if (level > 0) mapOf(0 to accent) else emptyMap(), motionKey = level,
-        animationAsset = if (value.known) asset else null, animationColors = colors,
-        animationFrames = (gear * 30 + 1)..((gear + 1) * 30), animateOnAction = false,
-        animationStrokeColors = if (control == ControlId.Massage) mapOf(Color.Black.toArgb() to base, Color.White.toArgb() to base) else emptyMap())
+    val level = value.displayed.coerceIn(0, control.maxLevel)
+    val recipe = vehicleControlIconRecipe(control, level, state.dark)
+    OemIcon(recipe.resource, modifier, tint = Color.Unspecified, pathColors = recipe.pathColors,
+        motionKey = level, animationAsset = if (value.known || value.pending) recipe.asset else null,
+        animationColors = recipe.animationColors, animationFrames = recipe.frames,
+        animationStrokePathColors = recipe.animationStrokePathColors, animateOnAction = false)
 }
 
 private fun playClickSound(view: android.view.View) {

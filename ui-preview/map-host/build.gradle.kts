@@ -54,7 +54,7 @@ tasks.register("exportComposeDependencies") {
                 "version" to id.version, "type" to it.file.extension,
                 "file" to it.file.absolutePath)
         }.sortedBy { "${it["group"]}:${it["name"]}:${it["version"]}" }
-        val modules = listOf("content-ui", "content-runtime", "map-host").map { name ->
+        val modules = listOf("content-model", "content-ui", "content-runtime", "map-host").map { name ->
             mapOf("name" to name, "file" to rootProject.file("$name/build/outputs/aar/$name-release.aar").absolutePath)
         }
         val output = layout.buildDirectory.file("compose-export.json").get().asFile
@@ -67,5 +67,5 @@ tasks.register("exportComposeDependencies") {
     }
 }
 tasks.register("exportComposeRuntime") {
-    dependsOn("exportComposeDependencies", ":content-ui:assembleRelease", ":content-runtime:assembleRelease", "assembleRelease")
+    dependsOn("exportComposeDependencies", ":content-model:assembleRelease", ":content-ui:assembleRelease", ":content-runtime:assembleRelease", "assembleRelease")
 }

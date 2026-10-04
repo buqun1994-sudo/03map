@@ -1,5 +1,7 @@
 package com.autonavi.amapauto.content;
 
+import com.icar03.content.model.VehicleControl;
+
 public final class ContentRegistry {
     private ContentRegistry() {
     }
@@ -23,11 +25,12 @@ public final class ContentRegistry {
     }
 
     public static final class Shortcuts {
-        public static final String LOCK = "lock";
-        public static final String SEAT_VENTILATION = "seat_ventilation";
-        public static final String SEAT_HEATING = "seat_heating";
-        public static final String STEERING_HEATING = "steering_heating";
-        public static final String SEAT_MASSAGE = "seat_massage";
+        public static final String LOCK = VehicleControl.Lock.getId();
+        public static final String SEAT_VENTILATION = VehicleControl.Ventilation.getId();
+        public static final String SEAT_HEATING = VehicleControl.Heating.getId();
+        public static final String PASSENGER_SEAT_HEATING = VehicleControl.PassengerHeating.getId();
+        public static final String STEERING_HEATING = VehicleControl.SteeringHeat.getId();
+        public static final String SEAT_MASSAGE = VehicleControl.Massage.getId();
         public static final String SETTINGS = "settings";
 
         private Shortcuts() {

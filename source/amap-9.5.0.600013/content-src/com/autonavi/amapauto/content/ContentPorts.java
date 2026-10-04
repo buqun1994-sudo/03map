@@ -1,5 +1,7 @@
 package com.autonavi.amapauto.content;
 
+import com.icar03.content.model.VehicleControl;
+
 import android.graphics.Bitmap;
 import android.content.Context;
 import android.media.AudioManager;
@@ -87,27 +89,25 @@ public final class ContentPorts {
     }
 
     public interface VehiclePort {
-        /** Transport connection only; neither a known field nor permission to write a candidate. */
+        /** Transport only; a valid readback and an executable target remain separate. */
         boolean isAvailable();
 
         boolean isLockAvailable();
 
-        /** Existing seat entries have ordinary-UID Binder evidence; steering remains a candidate. */
+        /** Implemented control family; adapters can narrow this for actual firmware support. */
         default boolean isSeatControlAvailable(String seatId) {
-            return isAvailable() && (ContentRegistry.Shortcuts.SEAT_VENTILATION.equals(seatId)
-                    || ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId)
-                    || ContentRegistry.Shortcuts.SEAT_MASSAGE.equals(seatId));
+            VehicleControl control = VehicleControl.fromId(seatId);
+            return isAvailable() && control != null && control != VehicleControl.Lock;
         }
 
-        /** Exact formal target gate. Seat AUTO and every steering write are research candidates. */
         default boolean isSeatLevelAvailable(String seatId, int level) {
-            return level >= 0 && level <= 3 && isSeatControlAvailable(seatId);
+            VehicleControl control = VehicleControl.fromId(seatId);
+            return control != null && control.isLevel(level) && isSeatControlAvailable(seatId);
         }
 
-        /** Leaving seat AUTO also needs an unvalidated companion-field write, not a manual write. */
+        /** A transition uses the same target contract, including entry to and exit from AUTO. */
         default boolean isSeatLevelAvailable(String seatId, int currentLevel, int targetLevel) {
-            return isSeatLevelAvailable(seatId, targetLevel)
-                    && !(ContentRegistry.Shortcuts.SEAT_HEATING.equals(seatId) && currentLevel == 4);
+            return isSeatLevelAvailable(seatId, targetLevel);
         }
 
         boolean requestLock(boolean locked, long requestId);
@@ -157,6 +157,9 @@ public final class ContentPorts {
         public final int heatingLevel;
         public final boolean heatingAutoKnown;
         public final boolean heatingAutoActive;
+        public final int passengerHeatingLevel;
+        public final boolean passengerHeatingAutoKnown;
+        public final boolean passengerHeatingAutoActive;
         public final int steeringHeatLevel;
         public final int massageLevel;
         public final int massageModeRaw;
@@ -192,6 +195,22 @@ public final class ContentPorts {
                 boolean heatingAutoKnown, boolean heatingAutoActive, int steeringHeatLevel,
                 int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
                 boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked) {
+            this(dataAvailable, preview, temperatureC, batteryPercent, rangeRaw, chargeState,
+                    chargeConnectionRaw, chargeBmsRaw, chargeScheduleRaw, chargePowerKw,
+                    chargeRemainingMinutes, ventilationLevel, heatingLevel, heatingAutoKnown, heatingAutoActive,
+                    -1, false, false, steeringHeatLevel, massageLevel, massageModeRaw,
+                    massageSwitchKnown, massageActive, seatControlsKnown, lockKnown, locked);
+        }
+
+        /** Both seats carry independent actual modes and independent AUTO readback evidence. */
+        public VehicleSnapshot(boolean dataAvailable, boolean preview, float temperatureC,
+                int batteryPercent, int rangeRaw, int chargeState, int chargeConnectionRaw,
+                int chargeBmsRaw, int chargeScheduleRaw, float chargePowerKw,
+                int chargeRemainingMinutes, int ventilationLevel, int heatingLevel,
+                boolean heatingAutoKnown, boolean heatingAutoActive,
+                int passengerHeatingLevel, boolean passengerHeatingAutoKnown, boolean passengerHeatingAutoActive,
+                int steeringHeatLevel, int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
+                boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.temperatureC = temperatureC;
@@ -203,12 +222,16 @@ public final class ContentPorts {
             this.chargeScheduleRaw = chargeScheduleRaw;
             this.chargePowerKw = chargePowerKw;
             this.chargeRemainingMinutes = chargeRemainingMinutes;
-            this.ventilationLevel = normalizedLevel(ventilationLevel, 3);
+            this.ventilationLevel = VehicleControl.Ventilation.normalizeLevel(ventilationLevel);
             this.heatingLevel = consistentHeatingLevel(heatingLevel, heatingAutoKnown, heatingAutoActive);
             this.heatingAutoKnown = heatingAutoKnown;
             this.heatingAutoActive = heatingAutoKnown && heatingAutoActive;
-            this.steeringHeatLevel = normalizedLevel(steeringHeatLevel, 3);
-            this.massageLevel = normalizedLevel(massageLevel, 3);
+            this.passengerHeatingLevel = consistentHeatingLevel(VehicleControl.PassengerHeating,
+                    passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive);
+            this.passengerHeatingAutoKnown = passengerHeatingAutoKnown;
+            this.passengerHeatingAutoActive = passengerHeatingAutoKnown && passengerHeatingAutoActive;
+            this.steeringHeatLevel = VehicleControl.SteeringHeat.normalizeLevel(steeringHeatLevel);
+            this.massageLevel = consistentMassageLevel(massageLevel, massageSwitchKnown, massageActive);
             this.massageModeRaw = massageModeRaw;
             this.massageSwitchKnown = massageSwitchKnown;
             this.massageActive = massageActive;
@@ -219,7 +242,19 @@ public final class ContentPorts {
 
         /** Normalized-mode invariant, shared by Snapshot, Store, State copies and Mapper. */
         public static int consistentHeatingLevel(int level, boolean autoKnown, boolean autoActive) {
-            return autoKnown && level >= 0 && level <= 4 && (level == 4) == autoActive ? level : -1;
+            return consistentHeatingLevel(VehicleControl.Heating, level, autoKnown, autoActive);
+        }
+
+        public static int consistentHeatingLevel(VehicleControl control, int level, boolean autoKnown, boolean autoActive) {
+            if (control != VehicleControl.Heating && control != VehicleControl.PassengerHeating) return -1;
+            return autoKnown && control.isLevel(level) && control.isAutomatic(level) == autoActive ? level : -1;
+        }
+
+        /** Switch evidence defines OFF; an active massage requires a known positive strength. */
+        public static int consistentMassageLevel(int level, boolean switchKnown, boolean active) {
+            if (!switchKnown) return -1;
+            if (!active) return 0;
+            return level > 0 && VehicleControl.Massage.isLevel(level) ? level : -1;
         }
 
         public static int normalizedLevel(int level, int maxLevel) {

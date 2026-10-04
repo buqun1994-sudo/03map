@@ -11,4 +11,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "ContentUiPreview"
-include(":app", ":content-ui", ":content-runtime", ":map-host")
+include(":app", ":content-model", ":content-ui", ":content-runtime", ":map-host")

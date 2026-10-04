@@ -16,7 +16,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
-import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -46,6 +45,7 @@ import com.airbnb.lottie.SimpleColorFilter
 import com.airbnb.lottie.model.KeyPath
 import com.airbnb.lottie.value.LottieValueCallback
 import com.airbnb.lottie.value.LottieFrameInfo
+import kotlin.math.roundToInt
 
 internal val OemTint = SemanticsPropertyKey<Long>("OemTint")
 internal val IconMotion = SemanticsPropertyKey<Float>("IconMotion")
@@ -129,9 +129,22 @@ private data class OemFrame(
     val frames: IntRange?,
     val colors: Map<List<String>, Color>,
     val strokeColors: Map<Int, Color>,
+    val strokePathColors: Map<List<String>, Color>,
     val mediaGlyph: Boolean,
     val composition: LottieComposition? = null,
-)
+) {
+    /** Compare the resource/theme recipe while deliberately ignoring the loaded composition. */
+    fun hasSameRecipe(other: OemFrame): Boolean =
+        resource == other.resource && tint == other.tint && pathColors == other.pathColors &&
+            asset == other.asset && frames == other.frames && colors == other.colors &&
+            strokeColors == other.strokeColors && strokePathColors == other.strokePathColors && mediaGlyph == other.mediaGlyph
+
+    // Recoloring an in-flight glyph is not a new playback recipe. Keeping these
+    // keys separate prevents pending -> known readback/theme color interpolation
+    // from canceling the one-shot at an intermediate frame (notably the lock).
+    val playbackRecipe: List<Any?> get() = listOf(asset, frames, mediaGlyph)
+    fun hasSamePlaybackRecipe(other: OemFrame): Boolean = playbackRecipe == other.playbackRecipe
+}
 
 /** Shared asset consumer. Triggers are presentation events, never business truth. */
 @Composable
@@ -141,6 +154,7 @@ internal fun OemIcon(
     motionKey: Any? = null, animationAsset: String? = animationFor(resource),
     animationColors: Map<List<String>, Color> = emptyMap(), animationFrames: IntRange? = null,
     animationStrokeColors: Map<Int, Color> = emptyMap(),
+    animationStrokePathColors: Map<List<String>, Color> = emptyMap(),
     animateOnPress: Boolean = false, animateOnAction: Boolean = true,
 ) {
     val mediaGlyph = resource == R.drawable.content_oem_ico_media_play_f || resource == R.drawable.content_oem_ico_media_pause_f
@@ -168,16 +182,21 @@ internal fun OemIcon(
     // the persistent source button plays the new target through the same consumer.
     var pressAction by remember { mutableIntStateOf(0) }
     LaunchedEffect(pressed) { if (animateOnPress && pressed) pressAction++ }
-    val key = listOf(motionKey ?: resource, action, pressAction)
-    var previous by remember { mutableStateOf(key) }
-    LaunchedEffect(key, visible) {
-        val changed = previous != key
-        previous = key
+
+    // The trigger is the business/presentation event that is allowed to play an
+    // animation. It intentionally excludes the current resource/theme recipe so
+    // a day/night resource swap cannot replay a completed gear transition.
+    val triggerKey = listOf(motionKey ?: resource, action, pressAction)
+    var previous by remember { mutableStateOf(triggerKey) }
+    LaunchedEffect(triggerKey, visible) {
+        val changed = previous != triggerKey
+        previous = triggerKey
         if (changed && visible) {
             transition.snapTo(.9f)
             transition.animateTo(1f, tween(260, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
         } else transition.snapTo(1f)
     }
+
     val context = LocalContext.current.applicationContext
     var composition by remember(animationAsset) { mutableStateOf<LottieComposition?>(null) }
     var loadFailed by remember(animationAsset) { mutableStateOf(false) }
@@ -190,35 +209,89 @@ internal fun OemIcon(
             onDispose { task.removeListener(listener); task.removeFailureListener(failure) }
         }
     }
+
     val progress = remember { Animatable(1f) }
     var drawing by remember { mutableStateOf(false) }
     val targetFrame = OemFrame(resource, tint, pathColors, animationAsset, animationFrames,
-        animationColors, animationStrokeColors, mediaGlyph)
+        animationColors, animationStrokeColors, animationStrokePathColors, mediaGlyph)
     var renderedFrame by remember { mutableStateOf(targetFrame) }
-    var playedKey by remember { mutableStateOf(key) }
+    // Empty means that no business trigger has been consumed yet. This is
+    // distinct from a trigger that has been consumed while its asset was later
+    // replaced by a theme recipe.
+    var playedKey by remember { mutableStateOf<List<Any?>>(emptyList()) }
+    var cancelledTrigger by remember { mutableStateOf<List<Any?>?>(null) }
     val loaded = composition
     val canRender = visible
-    LaunchedEffect(key, loaded, loadFailed, canRender, animationAsset, animationFrames) {
+
+    LaunchedEffect(triggerKey, targetFrame.playbackRecipe, loaded, loadFailed, canRender) {
         drawing = false
-        if (!canRender) { playedKey = key; renderedFrame = targetFrame; return@LaunchedEffect }
-        if (playedKey == key) {
-            // A theme-only asset change adopts its stable Vector, without replay.
-            if (renderedFrame.asset != animationAsset) renderedFrame = targetFrame
-            // A→cold B→A can return to the last consumed key after A was
-            // cancelled mid-play. Treat that interruption as a stable tail,
-            // never as a completed animation frozen at an intermediate frame.
-            else if (renderedFrame.composition != null && progress.value < 1f) progress.snapTo(1f)
-            return@LaunchedEffect
-        }
-        if (animationAsset == null || loadFailed) {
-            playedKey = key
+        val sameTrigger = playedKey == triggerKey
+        val sameRecipe = renderedFrame.hasSamePlaybackRecipe(targetFrame)
+
+        if (!canRender) {
+            // Lifecycle/focus/page cancellation settles the visible state. A
+            // later resume must not synthesize a replay of this old trigger.
+            cancelledTrigger = triggerKey
+            playedKey = triggerKey
             renderedFrame = targetFrame
+            progress.snapTo(1f)
             return@LaunchedEffect
         }
-        // Cold loading retains the previous Vector/Drawable. Never show the
-        // target Vector before going back to the new animation's first frame.
+        if (cancelledTrigger != null) {
+            if (cancelledTrigger == triggerKey) {
+                // Keep the cancellation sticky while a late composition result
+                // arrives. A stable Vector is preferable to silently resuming
+                // an animation that was explicitly canceled by lifecycle.
+                if (!renderedFrame.hasSameRecipe(targetFrame) || renderedFrame.composition != null) {
+                    renderedFrame = targetFrame
+                    progress.snapTo(1f)
+                }
+                return@LaunchedEffect
+            }
+            cancelledTrigger = null
+        }
+
+        if (sameTrigger) {
+            if (sameRecipe) {
+                // The initial Lottie load and A→coldB→A can both arrive after
+                // the trigger was already consumed. Reattach the loaded recipe
+                // at its stable tail instead of leaving a null composition or
+                // replaying the animation.
+                if (targetFrame.asset != null && loaded != null && renderedFrame.composition == null) {
+                    renderedFrame = targetFrame.copy(composition = loaded)
+                    progress.snapTo(1f)
+                } else if (renderedFrame.composition != null && progress.value < 1f) {
+                    progress.snapTo(1f)
+                }
+                return@LaunchedEffect
+            }
+
+            // The business state is unchanged while the resource/theme recipe
+            // changed. Static vectors are adopted immediately. Lottie theme
+            // variants retain the old drawn frame until the new composition is
+            // ready, then switch atomically to its tail without replaying.
+            if (targetFrame.asset == null || loadFailed) {
+                renderedFrame = targetFrame
+                progress.snapTo(1f)
+                return@LaunchedEffect
+            }
+            if (loaded == null) return@LaunchedEffect
+            renderedFrame = targetFrame.copy(composition = loaded)
+            progress.snapTo(1f)
+            return@LaunchedEffect
+        }
+
+        // A new business trigger owns a fresh one-shot animation. Cold loading
+        // deliberately leaves the last valid rendered frame on screen.
+        if (targetFrame.asset == null || loadFailed) {
+            playedKey = triggerKey
+            renderedFrame = targetFrame
+            progress.snapTo(1f)
+            return@LaunchedEffect
+        }
         if (loaded == null) return@LaunchedEffect
-        val playing = key
+
+        val playing = triggerKey
         playedKey = playing
         progress.snapTo(0f)
         renderedFrame = targetFrame.copy(composition = loaded)
@@ -227,18 +300,22 @@ internal fun OemIcon(
             val duration = animationFrames?.let { (it.last - it.first) * 1000f / loaded.frameRate } ?: loaded.duration
             progress.animateTo(1f, tween(duration.toInt().coerceAtLeast(200),
                 easing = androidx.compose.animation.core.LinearEasing))
-        } finally { if (playing == playedKey) drawing = false }
+        } finally {
+            if (playing == playedKey) drawing = false
+        }
     }
+
     // Theme interpolation may recolor the same displayed state without changing
     // playback keys or resetting its progress. A pending different state holds
     // the complete old frame recipe until its asset can enter at progress zero.
-    val frame = if (renderedFrame.resource == resource && renderedFrame.asset == animationAsset)
-        targetFrame.copy(composition = renderedFrame.composition) else renderedFrame
+    val frame = if (renderedFrame.hasSamePlaybackRecipe(targetFrame)) {
+        targetFrame.copy(composition = renderedFrame.composition)
+    } else renderedFrame
     val semantics = modifier.graphicsLayer { scaleX = scale * transition.value; scaleY = scale * transition.value }
         .semantics {
             this[OemTint] = frame.tint.value.toLong(); this[OemResource] = frame.resource
             this[IconMotion] = scale * transition.value
-            this[IconAnimationReady] = composition != null
+            this[IconAnimationReady] = composition != null && frame.composition != null && frame.hasSameRecipe(targetFrame)
             this[IconAnimationVisible] = visible
             this[IconAnimationPlaying] = drawing && canRender && frame.composition != null
             this[IconAnimationRetained] = frame.composition != null && canRender
@@ -271,6 +348,12 @@ internal fun OemIcon(
                     addValueCallback(keyPath, LottieProperty.COLOR, LottieValueCallback(color.toArgb()))
                     addValueCallback(keyPath, LottieProperty.STROKE_COLOR, LottieValueCallback(color.toArgb()))
                 }
+                // Narrow, explicit stroke recipes take precedence over any legacy
+                // source-color mapping and leave stroke alpha/width/path untouched.
+                frame.strokePathColors.forEach { (path, color) ->
+                    addValueCallback(KeyPath(*path.toTypedArray()), LottieProperty.STROKE_COLOR,
+                        LottieValueCallback(color.toArgb()))
+                }
             }
         }
         DisposableEffect(drawable) { onDispose { drawable.cancelAnimation() } }
@@ -283,7 +366,7 @@ internal fun OemIcon(
         }
     } else if (frame.pathColors.isEmpty()) Icon(painter = painterResource(frame.resource), contentDescription = description, modifier = semantics, tint = frame.tint)
     else {
-        val original = ImageVector.vectorResource(frame.resource)
+        val original = androidx.compose.ui.graphics.vector.ImageVector.vectorResource(frame.resource)
         val layered = remember(original, frame.pathColors) { oemLayerColors(original, frame.pathColors) }
         Icon(imageVector = layered, contentDescription = description, modifier = semantics, tint = Color.Unspecified)
     }

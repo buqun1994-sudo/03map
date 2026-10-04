@@ -4,6 +4,7 @@
 -dontwarn javax.annotation.Nullable
 -keep class com.autonavi.amapauto.content.** { *; }
 -keep class com.icar03.content.host.ContentComposeHost { public *; }
+-keep class com.icar03.content.model.** { *; }
 -keep class com.icar03.content.ui.** { *; }
 -keep class com.icar03.content.runtime.** { *; }
 -keepattributes RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,AnnotationDefault,InnerClasses,EnclosingMethod,Signature

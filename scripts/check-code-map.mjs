@@ -106,7 +106,9 @@ if (!existsSync(sourceRoot)) {
     "res/drawable/split_gesture_handle.xml",
     "res/drawable/split_gesture_hint_background.xml",
     "res/values-night/colors.xml",
-    ...["ContentIconView", "ContentMediaAdapter", "ContentMediaListener", "ContentPorts", "ContentPreferenceStore", "ContentRegistry", "ContentRenderer", "ContentRuntime", "ContentState", "ContentStore", "ContentTheme", "ContentVehicleAdapter"]
+    "content-compose/ui/com/icar03/content/ui/VehicleControlIcons.kt",
+    "content-compose/model/com/icar03/content/model/VehicleControl.kt",
+    ...["ContentIconView", "ContentMediaAdapter", "ContentMediaListener", "ContentPorts", "ContentPreferenceStore", "ContentRegistry", "ContentRenderer", "ContentRuntime", "ContentState", "ContentStore", "ContentTheme", "ContentVehicleAdapter", "ContentVehicleProtocol"]
       .map((name) => `content-src/com/autonavi/amapauto/content/${name}.java`),
   ];
   for (const anchor of anchors) {
@@ -120,6 +122,21 @@ if (!existsSync(sourceRoot)) {
     ["smali/SplitPanelController.smali", [
       ".method public static install(Landroid/view/ViewGroup;)LSplitPanelController;",
       ".method private applyDividerX(F)V",
+    ]],
+    ["content-compose/ui/com/icar03/content/ui/VehicleControlIcons.kt", [
+      "internal data class VehicleControlIconRecipe(",
+      "internal fun vehicleControlIconRecipe(",
+    ]],
+    ["content-compose/model/com/icar03/content/model/VehicleControl.kt", [
+      "enum class VehicleControl(",
+      "PassengerHeating(\"passenger_seat_heating\"",
+      "fun nextLevel(level: Int): Int",
+      "fun crossesPowerBoundary(level: Int): Boolean",
+    ]],
+    ["content-src/com/autonavi/amapauto/content/ContentVehicleProtocol.java", [
+      "public static Write seatLevelWrite(String controlId, int level)",
+      "public static int normalizeHeatingLevel(int seatRaw, int heatingAutoRaw)",
+      "public static int normalizeSteeringLevel(int steeringRaw, int activeRaw)",
     ]],
     ["content-src/com/autonavi/amapauto/content/ContentRuntime.java", [
       "public static void attach(ViewGroup contentRoot)",

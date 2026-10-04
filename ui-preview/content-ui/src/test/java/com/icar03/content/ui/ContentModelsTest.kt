@@ -29,10 +29,10 @@ class ContentModelsTest {
     @Test fun boundaryRipplePolicyCoversEveryGearAndRejectsUnknownPendingOrUnavailable() {
         val state = ContentUiState()
         val edges = mapOf(ShortcutId.Lock to setOf(0, 1), ShortcutId.Ventilation to setOf(0, 1),
-            ShortcutId.Massage to setOf(0, 1), ShortcutId.Heating to setOf(0, 4), ShortcutId.SteeringHeat to setOf(0, 3))
+            ShortcutId.Massage to setOf(0, 1), ShortcutId.Heating to setOf(0, 4), ShortcutId.PassengerHeating to setOf(0, 4), ShortcutId.SteeringHeat to setOf(0, 3))
         edges.forEach { (shortcut, accepted) ->
             val id = requireNotNull(shortcut.control)
-            val max = when (id) { ControlId.Lock -> 1; ControlId.Heating -> 4; else -> 3 }
+            val max = id.maxLevel
             for (level in -1..max) {
                 val control = ControlState(actual = level, known = level >= 0)
                 val current = state.copy(controls = state.controls + (id to control))
@@ -44,8 +44,8 @@ class ContentModelsTest {
         }
     }
 
-    @Test fun shortcutCatalogIsSharedWithFiveVehicleControls() {
-        assertEquals(listOf("Lock", "SteeringHeat", "Ventilation", "Heating", "Massage", "Settings"), ShortcutId.entries.map { it.name })
+    @Test fun sevenShortcutsShareSixVehicleControlsInProductOrder() {
+        assertEquals(listOf("Lock", "SteeringHeat", "Ventilation", "Heating", "PassengerHeating", "Massage", "Settings"), ShortcutId.entries.map { it.name })
         assertEquals(ControlId.entries.toSet(), ShortcutId.entries.mapNotNull { it.control }.toSet())
         assertEquals(ControlId.SteeringHeat, ShortcutId.SteeringHeat.control)
         assertNull(ShortcutId.Settings.control)
@@ -62,8 +62,8 @@ class ContentModelsTest {
         assertFalse(instrumental.loading)
     }
 
-    @Test fun fiveControlsAndFiveStableSourcesAreUnique() {
-        assertEquals(5, ControlId.entries.size)
+    @Test fun sixControlsAndFiveStableSourcesAreUnique() {
+        assertEquals(6, ControlId.entries.size)
         assertEquals(5, MediaSource.entries.size)
         assertEquals(5, MediaSource.entries.map { it.label }.toSet().size)
     }

@@ -1,11 +1,13 @@
 package com.icar03.content.ui
 
 /** Pure presentation contract: no Android, vendor IDs, permissions or business ports. */
-enum class ControlId(val label: String) { Lock("车锁"), SteeringHeat("方向盘加热"), Ventilation("通风"), Heating("加热"), Massage("按摩") }
-enum class ShortcutId(val label: String, val control: ControlId? = null) {
-    Lock("车锁", ControlId.Lock), SteeringHeat("方向盘加热", ControlId.SteeringHeat),
-    Ventilation("通风", ControlId.Ventilation), Heating("加热", ControlId.Heating),
-    Massage("按摩", ControlId.Massage), Settings("设置")
+/** The shared domain definition also supplies stable presentation labels. */
+typealias ControlId = com.icar03.content.model.VehicleControl
+enum class ShortcutId(val control: ControlId? = null) {
+    Lock(ControlId.Lock), SteeringHeat(ControlId.SteeringHeat),
+    Ventilation(ControlId.Ventilation), Heating(ControlId.Heating),
+    PassengerHeating(ControlId.PassengerHeating), Massage(ControlId.Massage), Settings;
+    val label: String get() = control?.label ?: "设置"
 }
 enum class PanelPage { Shortcuts, Lyrics }
 enum class PreviewScenario(val label: String) {

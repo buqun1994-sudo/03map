@@ -9,6 +9,7 @@ import android.view.View
 import android.view.WindowManager
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.LocalView
@@ -288,7 +289,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
         compose.onNodeWithTag("shortcut-Settings").performClick()
         assertTrue(events.last() == ContentEvent.SettingsTapped)
-        compose.onNodeWithText("座椅通风").assertDoesNotExist()
+        compose.onNodeWithTag("shortcut-label-Ventilation", useUnmergedTree = true).assertTextEquals("座椅通风")
         compose.onNodeWithText("08:15").assertIsDisplayed()
         compose.onNodeWithText("08:15星期三").assertDoesNotExist()
         compose.onNodeWithText("--km").assertDoesNotExist()
@@ -338,7 +339,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val selected = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
         val baseline = captureHost("press-baseline")
         val selectedPixel = baseline.getPixel(selected.left.toInt() + 3, selected.center.y.toInt())
-        val expectedSelected = if (dark) android.graphics.Color.rgb(35, 35, 35) else android.graphics.Color.WHITE
+        val expectedSelected = if (dark) android.graphics.Color.rgb(26, 26, 26) else android.graphics.Color.WHITE
         assertTrue("lock state must keep the Dock base fill beyond its inner press area", selectedPixel == expectedSelected)
         compose.mainClock.autoAdvance = false
         listOf("dock-Lock", "dock-Ventilation", "media-play", "media-next", "source-button").forEach { tag ->
@@ -389,9 +390,10 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun seatLevelsKeepOriginalColorsAndResourcesInGridAndDock() {
+        val seatIds = listOf(ControlId.Ventilation, ControlId.Heating, ControlId.PassengerHeating, ControlId.Massage)
+        preloadOemAnimations(seatIds.flatMap { id -> (0..id.maxLevel).map { vehicleControlIconRecipe(id, it, dark).asset } }.distinct())
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
         mountInteractionState(state)
-        val seatIds = listOf(ControlId.Ventilation, ControlId.Heating, ControlId.Massage)
         val resources = seatIds.associateWith { mutableSetOf<Int>() }
         for (level in 0..3) {
             compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls.mapValues { (id, control) -> if (id in seatIds) control.copy(actual = level) else control }) }
@@ -420,17 +422,17 @@ open class ContentPanelLightPrototypeRenderTest {
                     val g = android.graphics.Color.green(pixel)
                     val b = android.graphics.Color.blue(pixel)
                     if (id == ControlId.Ventilation && b > 180 && b > r + 70 && g > r + 30) accent++
-                    if (id == ControlId.Heating && r > 180 && r > g + 50 && b < 120) accent++
+                    if ((id == ControlId.Heating || id == ControlId.PassengerHeating) && r > 180 && r > g + 50 && b < 120) accent++
                     if (id == ControlId.Massage && b > 140 && b > g + 50 && r > g + 25) accent++
                     val bodyContrast = if (level == 0) {
                         if (dark) r > 200 && g > 200 && b > 200 else r < 150 && g < 150 && b < 150
                     } else when (id) {
                         ControlId.Ventilation -> b > 180 && b > r + 70 && g > r + 30
-                        ControlId.Heating -> r > 180 && r > g + 50 && b < 120
+                        ControlId.Heating, ControlId.PassengerHeating -> r > 180 && r > g + 50 && b < 120
                         ControlId.Massage -> b > 140 && b > g + 50 && r > g + 25
                         else -> false
                     }
-                    if (x > bounds.left + bounds.width * .55f && bodyContrast) body++
+                    if ((if (id == ControlId.PassengerHeating) x < bounds.left + bounds.width * .45f else x > bounds.left + bounds.width * .55f) && bodyContrast) body++
                 }
                 assertTrue("OEM seat asset must remain visible on its themed surface: $id/$level", visible > 20)
                 assertTrue("seat body must contrast with its surface without bleaching: $id/$level", body > 5)
@@ -440,13 +442,18 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Heating to state.value.controls.getValue(ControlId.Heating).copy(actual = 4))) }
          val heatingGrid = compose.onNodeWithTag("shortcut-icon-Heating", useUnmergedTree = true)
          val heatingDock = compose.onNodeWithTag("dock-icon-Heating", useUnmergedTree = true)
+         val expectedAuto = if (dark) R.drawable.content_oem_ico_skin_seat_heat_l_auto_off_night else R.drawable.content_oem_ico_skin_seat_heat_l_auto_off_day
+         compose.mainClock.advanceTimeUntil(1600) {
+             heatingGrid.fetchSemanticsNode().config[OemResource] == expectedAuto && heatingGrid.fetchSemanticsNode().config[IconAnimationReady]
+         }
+         compose.mainClock.advanceTimeBy(1200)
          heatingGrid.assert(SemanticsMatcher.expectValue(OemTint, androidx.compose.ui.graphics.Color.Unspecified.value.toLong()))
          assertTrue("heating auto uses one shared OEM asset", heatingGrid.fetchSemanticsNode().config[OemResource] == heatingDock.fetchSemanticsNode().config[OemResource])
          compose.onNodeWithTag("control-Heating").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "自动"))
          resources.getValue(ControlId.Heating) += heatingGrid.fetchSemanticsNode().config[OemResource]
          assertTrue("ventilation and massage keep four OEM assets", resources.getValue(ControlId.Ventilation).size == 4 && resources.getValue(ControlId.Massage).size == 4)
          assertTrue("heating adds a distinct automatic OEM asset", resources.getValue(ControlId.Heating).size == 5)
-        heatingGrid.assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ic_carset_seat_l_hot_auto_00_r_o))
+        heatingGrid.assert(SemanticsMatcher.expectValue(OemResource, if (dark) R.drawable.content_oem_ico_skin_seat_heat_l_auto_off_night else R.drawable.content_oem_ico_skin_seat_heat_l_auto_off_day))
         assertWarmOemBody("shortcut-icon-Heating", "heating-auto-grid")
         assertWarmOemBody("dock-icon-Heating", "heating-auto-dock")
 
@@ -455,14 +462,19 @@ open class ContentPanelLightPrototypeRenderTest {
     private fun assertWarmOemBody(tag: String, name: String, orange: Boolean = true) {
         val frame = captureHost(name)
         val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val background = frame.getPixel(bounds.left.toInt() - 3, bounds.center.y.toInt())
+        val backgroundNeutral = android.graphics.Color.red(background)
         var accent = 0; var neutral = 0
         for (y in bounds.top.toInt() until bounds.bottom.toInt()) for (x in bounds.left.toInt() until bounds.right.toInt()) {
             val pixel = frame.getPixel(x, y)
             val r = android.graphics.Color.red(pixel); val g = android.graphics.Color.green(pixel); val b = android.graphics.Color.blue(pixel)
             if (r > 180 && g in 80..180 && b < 100 && r > g + 50) accent++
-            if (kotlin.math.abs(r-g) < 5 && kotlin.math.abs(g-b) < 5 && (if (dark) r > 160 else r < 145)) neutral++
+            // AUTO's neutral waves retain OEM dim alpha. Contrast against the
+            // actual selected surface rather than requiring an opaque white body.
+            if (kotlin.math.abs(r-g) < 5 && kotlin.math.abs(g-b) < 5 &&
+                (if (dark) r > backgroundNeutral + 16 else r < backgroundNeutral - 16)) neutral++
         }
-        assertTrue("OEM neutral body must remain visible on the themed surface: $tag", neutral > 5)
+        assertTrue("OEM neutral paths must contrast with the actual themed surface: $tag", neutral > 5)
         assertTrue("OEM orange is present only for a known active state: $tag", if (orange) accent > 5 else accent == 0)
     }
 
@@ -470,10 +482,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
         mountInteractionState(state)
         val resources = mutableSetOf<Int>()
-        val expected = mapOf(0 to R.drawable.content_oem_ic_carset_wheel_hot_auto_00_r_o,
-            1 to R.drawable.content_oem_ic_carset_wheel_hot_auto_01_r_o,
-            2 to R.drawable.content_oem_ic_carset_wheel_hot_auto_02_r_o,
-            3 to R.drawable.content_oem_ic_carset_wheel_hot_01_r_o)
+        val expected = (0..3).associateWith { vehicleControlIconRecipe(ControlId.SteeringHeat, it, dark).resource }
         for (level in listOf(0, 2, 1, 3)) {
             compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.SteeringHeat to state.value.controls.getValue(ControlId.SteeringHeat).copy(actual = level))) }
             val grid = compose.onNodeWithTag("shortcut-icon-SteeringHeat", useUnmergedTree = true)
@@ -535,7 +544,7 @@ open class ContentPanelLightPrototypeRenderTest {
             val color = androidx.compose.ui.graphics.Color(play.fetchSemanticsNode().config[PressBackground].toULong())
             assertTrue("media opacity must rise monotonically", color.alpha >= previous)
             if (color.alpha > 0f) {
-                val rgb = if (dark) 92f / 255 else 226f / 255
+                val rgb = if (dark) 48f / 255 else 233f / 255
                 assertTrue("media fill RGB remains fixed instead of flashing black", kotlin.math.abs(color.red - rgb) < .005f && kotlin.math.abs(color.green - rgb) < .005f && kotlin.math.abs(color.blue - rgb) < .005f)
             }
             previous = color.alpha
@@ -565,9 +574,9 @@ open class ContentPanelLightPrototypeRenderTest {
             val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
             return image.getPixel(bounds.left.toInt() + 3, bounds.top.toInt() + bounds.height.toInt() / 2)
         }
-        val selected = if (dark) android.graphics.Color.rgb(72,72,72) else android.graphics.Color.rgb(228,228,228)
+        val selected = if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(228,228,228)
         val normal = if (dark) android.graphics.Color.rgb(26,26,26) else android.graphics.Color.rgb(233,233,233)
-         val dockBase = if (dark) android.graphics.Color.rgb(35,35,35) else android.graphics.Color.WHITE
+         val dockBase = if (dark) android.graphics.Color.rgb(26,26,26) else android.graphics.Color.WHITE
         assertTrue("lock state keeps Dock base color", sample("dock-Lock") == dockBase)
         assertTrue("lock shortcut has no permanent selected background", sample("control-Lock") == normal)
         val media = compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot
@@ -589,7 +598,91 @@ open class ContentPanelLightPrototypeRenderTest {
         val bounds = compose.onNodeWithTag("sources-menu").fetchSemanticsNode().boundsInRoot
         val row = compose.onNodeWithTag("source-Bluetooth").fetchSemanticsNode().boundsInRoot
         assertTrue("menu follows restored light and retained dark surface", menu.getPixel(bounds.left.toInt()+3, bounds.center.y.toInt()) == (if (dark) normal else android.graphics.Color.WHITE))
-        assertTrue("selected source follows theme layer", menu.getPixel(row.left.toInt()+4, row.center.y.toInt()) == (if (dark) selected else normal))
+        val sourceSelected = if (dark) android.graphics.Color.rgb(72,72,72) else android.graphics.Color.rgb(233,233,233)
+        assertTrue("selected source follows theme layer", menu.getPixel(row.left.toInt()+4, row.center.y.toInt()) == sourceSelected)
+    }
+
+    @Test fun semanticColorRolesAreIndependentlyConsumed() {
+        val roles = ContentThemeColors(
+            shortcutBase = androidx.compose.ui.graphics.Color(0xFF112233),
+            shortcutSelected = androidx.compose.ui.graphics.Color(0xFF223344),
+            sliderBase = androidx.compose.ui.graphics.Color(0xFF334466),
+            sliderFill = androidx.compose.ui.graphics.Color(0xFF778899),
+            dockBase = androidx.compose.ui.graphics.Color(0xFF334455),
+            dockSelected = androidx.compose.ui.graphics.Color(0xFF445566),
+            mediaBase = androidx.compose.ui.graphics.Color(0xFF556677),
+            mediaArtworkBase = androidx.compose.ui.graphics.Color(0xFF667799),
+            mediaPressed = androidx.compose.ui.graphics.Color(0xFF667788),
+            sourceBase = androidx.compose.ui.graphics.Color(0xFF7788AA),
+            sourceSelected = androidx.compose.ui.graphics.Color(0xFF8899AA),
+            sheetBase = androidx.compose.ui.graphics.Color(0xFF99AACC),
+        )
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
+            previewMode = false,
+            sourcesOpen = true,
+            controls = previewState().controls +
+                (ControlId.Ventilation to ControlState(actual = 2)) +
+                (ControlId.Heating to ControlState(actual = 0)),
+        ))
+        compose.setContent {
+            val view = LocalView.current
+            @Suppress("DEPRECATION")
+            SideEffect {
+                val window = view.context.activity().window
+                window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            }
+            ContentTheme(dark) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalContentColors provides roles) {
+                    ContentPanel(state.value.copy(dark = dark), { events += it }, Modifier.testTag(hostTag))
+                }
+            }
+        }
+        compose.waitForIdle()
+        val frame = captureHost("semantic-role-palette", checkShortcutShadows = false)
+        fun sample(tag: String, x: Int = 3): Int {
+            val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            return frame.getPixel(bounds.left.toInt() + x, bounds.top.toInt() + bounds.height.toInt() / 2)
+        }
+        assertTrue("shortcut base has its own role", sample("control-Heating") == roles.shortcutBase.toArgb())
+        assertTrue("shortcut selected has its own role", sample("control-Ventilation") == roles.shortcutSelected.toArgb())
+        assertTrue("Dock base has its own role", sample("dock-Lock") == roles.dockBase.toArgb())
+        assertTrue("media base has its own role", frame.getPixel(
+            compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot.center.x.toInt(),
+            compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot.top.toInt() + 4,
+        ) == roles.mediaBase.toArgb())
+        val dockSelected = compose.onNodeWithTag("dock-Ventilation-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("Dock selected has its own role", frame.getPixel(dockSelected.left.toInt() + 5, dockSelected.center.y.toInt()) == roles.dockSelected.toArgb())
+        val sliderCard = compose.onNodeWithTag("brightness-card").fetchSemanticsNode().boundsInRoot
+        assertTrue("slider base has its own role", frame.getPixel(sliderCard.center.x.toInt(), sliderCard.top.toInt() + 4) == roles.sliderBase.toArgb())
+        val slider = compose.onNodeWithTag("brightness-fill", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("slider fill has its own role", frame.getPixel(slider.left.toInt() + 5, slider.top.toInt() + 5) == roles.sliderFill.toArgb())
+        val artwork = compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot
+        assertTrue("media artwork base has its own role", frame.getPixel(artwork.left.toInt() + 36, artwork.top.toInt() + 4) == roles.mediaArtworkBase.toArgb())
+        val source = compose.onNodeWithTag("source-Bluetooth").fetchSemanticsNode().boundsInRoot
+        val sourceMenu = compose.onNodeWithTag("sources-menu").fetchSemanticsNode().boundsInRoot
+        assertTrue("source base has its own role", frame.getPixel(sourceMenu.center.x.toInt(), sourceMenu.top.toInt() + 4) == roles.sourceBase.toArgb())
+        assertTrue("source selected has its own role", frame.getPixel(source.left.toInt() + 4, source.center.y.toInt()) == roles.sourceSelected.toArgb())
+
+        compose.runOnIdle { state.value = state.value.copy(sourcesOpen = false) }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeBy(320)
+        compose.waitForIdle()
+        val play = compose.onNodeWithTag("media-play")
+        play.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeUntil(1200) {
+            play.fetchSemanticsNode().config[PressActive] == true
+        }
+        compose.mainClock.advanceTimeBy(320)
+        compose.waitForIdle()
+        val pressed = captureHost("semantic-role-media-pressed", checkShortcutShadows = false)
+        val pressArea = compose.onNodeWithTag("media-play-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("media pressed has its own role", pressed.getPixel(pressArea.left.toInt() + 5, pressArea.center.y.toInt()) == roles.mediaPressed.toArgb())
+        play.performTouchInput { cancel() }
+        compose.mainClock.autoAdvance = true
     }
 
     @Test fun touchOriginRippleAndIconMotionAreSharedWithoutDoubleSound() {
@@ -861,14 +954,14 @@ open class ContentPanelLightPrototypeRenderTest {
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, controls = ContentUiState().controls.mapValues { (id, control) ->
             control.copy(actual = when (id) {
                 ControlId.Ventilation -> 2
-                ControlId.Heating -> 1
+                ControlId.Heating, ControlId.PassengerHeating -> 1
                 ControlId.Massage -> 2
                 ControlId.SteeringHeat -> 1
                 ControlId.Lock -> 0
             })
         }))
         mountInteractionState(state)
-        listOf("Ventilation", "Heating", "Massage", "SteeringHeat").forEach { id ->
+        listOf("Ventilation", "Heating", "PassengerHeating", "Massage", "SteeringHeat").forEach { id ->
             compose.onNodeWithTag("control-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
             compose.onNodeWithTag("dock-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
         }
@@ -888,6 +981,185 @@ open class ContentPanelLightPrototypeRenderTest {
             assertTrue("divider remains aligned with content edge during viewport changes", kotlin.math.abs(divider.right - host.right) <= 1 && kotlin.math.abs(divider.height - host.height) <= 1)
             assertTrue("divider is subtle and does not consume map geometry", divider.width <= 1.1f)
         }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test fun sameCompositionThemeRoundTripUpdatesOemResourcePixelsWithoutReplay() {
+        preloadOemAnimations(listOf("ico_skin_seat_heat_l_bk.json", "ico_skin_seat_heat_l_wh.json",
+            "ico_skin_heat_l_auto_bk.json", "ico_skin_seat_heat_l_auto_wh.json",
+            "ico_skin_seat_heat_r_auto_bk.json", "ico_skin_seat_heat_r_auto_wh.json",
+            "ico_skin_stwh_heat_bk.json", "ico_skin_stwh_heat_wh.json"))
+        fun controls(
+            heating: Int,
+            ventilation: ControlState = ControlState(actual = -1, available = false, known = false),
+            steering: ControlState = ControlState(actual = -1, available = false, known = false),
+            passenger: ControlState = ControlState(actual = -1, available = false, known = false),
+        ) = ControlId.entries.associateWith { id -> when (id) {
+            ControlId.Lock -> ControlState(actual = 1)
+            ControlId.Heating -> ControlState(actual = heating)
+            ControlId.PassengerHeating -> passenger
+            ControlId.Ventilation -> ventilation
+            ControlId.SteeringHeat -> steering
+            ControlId.Massage -> ControlState(actual = -1, available = false, known = false)
+        } }
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
+            previewMode = false,
+            dark = false,
+            controls = controls(heating = 4, ventilation = ControlState(actual = -1, available = false, known = false)),
+        ))
+        fun mountDynamicTheme() {
+            compose.setContent {
+                val view = LocalView.current
+                @Suppress("DEPRECATION")
+                SideEffect {
+                    val window = view.context.activity().window
+                    window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                    window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                }
+                val parentOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                androidx.compose.runtime.CompositionLocalProvider(androidx.lifecycle.compose.LocalLifecycleOwner provides parentOwner) {
+                    val current = state.value
+                    ContentTheme(current.dark) { ContentPanel(current, { events += it }, Modifier.testTag(hostTag)) }
+                }
+            }
+            compose.waitForIdle()
+        }
+        fun node(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true)
+        fun settle(tag: String, asset: String) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            if (asset.isNotEmpty()) {
+                compose.mainClock.advanceTimeUntil(1600) { node(tag).fetchSemanticsNode().config[IconAnimationReady] == true }
+                compose.mainClock.advanceTimeBy(1400)
+            }
+        }
+        fun setTheme(dark: Boolean) {
+            compose.runOnIdle { state.value = state.value.copy(dark = dark) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeByFrame()
+            compose.mainClock.advanceTimeBy(96)
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        fun awaitResource(tag: String, resource: Int) {
+            compose.mainClock.advanceTimeUntil(1200) {
+                node(tag).fetchSemanticsNode().config[OemResource] == resource
+            }
+            compose.waitForIdle()
+        }
+        fun assertStatic(tag: String, resource: Int) {
+            node(tag).assert(SemanticsMatcher.expectValue(OemResource, resource))
+            node(tag).assert(SemanticsMatcher.expectValue(IconAnimationAsset, ""))
+            node(tag).assert(SemanticsMatcher.expectValue(IconAnimationReady, false))
+            node(tag).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+        }
+
+        mountDynamicTheme()
+        compose.mainClock.autoAdvance = false
+
+        // Unknown seat is a static day/night Vector. Resource and pixels must
+        // follow the current theme even though its business trigger is stable.
+        val unknown = "shortcut-icon-Ventilation"
+        node(unknown).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_skin_seat_ventilate_l_off_day))
+        node(unknown).assert(SemanticsMatcher.expectValue(IconAnimationAsset, ""))
+        node(unknown).assert(SemanticsMatcher.expectValue(IconAnimationReady, false))
+        node(unknown).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+        val unknownDay = iconPixels(captureHost("theme-unknown-day"), unknown)
+        setTheme(true)
+        awaitResource(unknown, R.drawable.content_oem_ico_skin_seat_ventilate_l_off_night)
+        node(unknown).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_skin_seat_ventilate_l_off_night))
+        node(unknown).assert(SemanticsMatcher.expectValue(IconAnimationAsset, ""))
+        node(unknown).assert(SemanticsMatcher.expectValue(IconAnimationReady, false))
+        node(unknown).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+        val unknownNight = iconPixels(captureHost("theme-unknown-night"), unknown)
+        assertTrue("unknown seat day/night must differ in actual pixels", !unknownDay.contentEquals(unknownNight))
+        setTheme(false)
+        awaitResource(unknown, R.drawable.content_oem_ico_skin_seat_ventilate_l_off_day)
+        node(unknown).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_skin_seat_ventilate_l_off_day))
+        assertTrue("unknown seat must return to the original day pixels", unknownDay.contentEquals(iconPixels(captureHost("theme-unknown-day-return"), unknown)))
+
+        // Heat 0/1/3 use the registered Lottie path. Theme swaps retain the
+        // already played tail and never start the same level again.
+        val heat = "shortcut-icon-Heating"
+        for (level in listOf(0, 1, 3)) {
+            compose.runOnIdle { state.value = state.value.copy(dark = false, controls = controls(heating = level)) }
+            settle(heat, "ico_skin_seat_heat_l_bk.json")
+            val dayResource = when (level) {
+                1 -> R.drawable.content_oem_ico_skin_seat_heat_l_1_day
+                3 -> R.drawable.content_oem_ico_skin_seat_heat_l_3_day
+                else -> R.drawable.content_oem_ico_skin_seat_heat_l_off_day
+            }
+            node(heat).assert(SemanticsMatcher.expectValue(OemResource, dayResource))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_skin_seat_heat_l_bk.json"))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationReady, true))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            val dayTail = iconPixels(captureHost("theme-heat-$level-day"), heat)
+
+            val nightResource = when (level) {
+                1 -> R.drawable.content_oem_ico_skin_seat_heat_l_1_night
+                3 -> R.drawable.content_oem_ico_skin_seat_heat_l_3_night
+                else -> R.drawable.content_oem_ico_skin_seat_heat_l_off_night
+            }
+            setTheme(true)
+            awaitResource(heat, nightResource)
+            settle(heat, "ico_skin_seat_heat_l_wh.json")
+            node(heat).assert(SemanticsMatcher.expectValue(OemResource, nightResource))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_skin_seat_heat_l_wh.json"))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationReady, true))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            val nightTail = iconPixels(captureHost("theme-heat-$level-night"), heat)
+            assertTrue("heat $level day/night must differ in actual pixels", !dayTail.contentEquals(nightTail))
+
+            setTheme(false)
+            awaitResource(heat, dayResource)
+            settle(heat, "ico_skin_seat_heat_l_bk.json")
+            node(heat).assert(SemanticsMatcher.expectValue(OemResource, dayResource))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_skin_seat_heat_l_bk.json"))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationReady, true))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+            node(heat).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            assertTrue("heat $level must return to the played day tail", dayTail.contentEquals(iconPixels(captureHost("theme-heat-$level-day-return"), heat)))
+        }
+
+        // AUTO is the OEM selected-A idle segment, not an invented actual heat
+        // level. Both entrances retain its tail across same-composition themes.
+        compose.runOnIdle { state.value = state.value.copy(dark = false, controls = controls(
+            heating = 4, passenger = ControlState(actual = 4), steering = ControlState(actual = 2))) }
+        for ((id, level) in mapOf(ControlId.Heating to 4, ControlId.PassengerHeating to 4, ControlId.SteeringHeat to 2)) {
+            setTheme(false)
+            val tag = "shortcut-icon-${id.name}"
+            val day = vehicleControlIconRecipe(id, level, false)
+            val night = vehicleControlIconRecipe(id, level, true)
+            settle(tag, day.asset)
+            fun assertTail(recipe: VehicleControlIconRecipe) {
+                for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                    val icon = node("$prefix-${id.name}")
+                    icon.assert(SemanticsMatcher.expectValue(OemResource, recipe.resource))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationAsset, recipe.asset))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationReady, true))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
+                }
+            }
+            assertTail(day)
+            val dayPixels = iconPixels(captureHost("theme-${id.name}-day"), tag)
+            setTheme(true)
+            awaitResource(tag, night.resource)
+            assertTail(night)
+            val nightPixels = iconPixels(captureHost("theme-${id.name}-night"), tag)
+            assertTrue("same-family $id day/night retains neutral contrast in actual pixels", !dayPixels.contentEquals(nightPixels))
+            setTheme(false)
+            awaitResource(tag, day.resource)
+            assertTail(day)
+            assertTrue("$id returns to its played day tail", dayPixels.contentEquals(iconPixels(captureHost("theme-${id.name}-day-return"), tag)))
+        }
+        compose.mainClock.autoAdvance = true
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -1151,6 +1423,235 @@ open class ContentPanelLightPrototypeRenderTest {
             compose.mainClock.autoAdvance = true
             com.airbnb.lottie.LottieCompositionFactory.clearCache(context)
         }
+    }
+
+    @Test fun sevenEntrancesKeepWideRowOrderSliderGeometryAndFullCenteredNames() {
+        mountInteractionState(androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false)))
+        val catalog = ShortcutId.entries.toList()
+        fun tileTag(id: ShortcutId) = if (id.control == null) "shortcut-${id.name}" else "control-${id.name}"
+        val bounds = catalog.associateWith { compose.onNodeWithTag(tileTag(it)).assertIsDisplayed().getUnclippedBoundsInRoot() }
+        val ordered = bounds.entries.sortedWith(compareBy({ it.value.top.value }, { it.value.left.value })).map { it.key }
+        assertTrue("seven grid entries must preserve row-major product order", ordered == catalog)
+        catalog.take(4).forEach { assertTrue("first row remains 135dp", bounds.getValue(it).bottom - bounds.getValue(it).top == 135.dp) }
+        val brightness = compose.onNodeWithContentDescription("屏幕亮度").getUnclippedBoundsInRoot()
+        val volume = compose.onNodeWithContentDescription("媒体音量").getUnclippedBoundsInRoot()
+        assertTrue("sliders retain the original 290dp lower region", brightness.bottom - brightness.top == 290.dp && volume.bottom - volume.top == 290.dp)
+        assertTrue("passenger/massage occupy lower left row", bounds.getValue(ShortcutId.PassengerHeating).top == bounds.getValue(ShortcutId.Massage).top &&
+            bounds.getValue(ShortcutId.Massage).right < brightness.left)
+        catalog.forEach { id ->
+            val dock = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed().assertHasClickAction().getUnclippedBoundsInRoot()
+            assertTrue("each of seven Dock slots retains a 48dp touch region", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
+            val label = compose.onNodeWithTag("shortcut-label-${id.name}", useUnmergedTree = true)
+            label.assertTextEquals(id.label)
+            val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            label.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            assertTrue("full name is not clipped or ellipsized: ${id.label}", layouts.single().lineCount <= 2 && !layouts.single().hasVisualOverflow)
+        }
+        compose.onNodeWithTag("control-PassengerHeating").performClick()
+        compose.onNodeWithTag("dock-PassengerHeating").performClick()
+        assertTrue("both new entrances dispatch the same independent passenger command", events.takeLast(2) == listOf(
+            ContentEvent.ControlTapped(ControlId.PassengerHeating), ContentEvent.ControlTapped(ControlId.PassengerHeating)))
+    }
+
+    @Test fun compactSevenSlotsScrollWithoutShrinkingHitRegionsOrTruncatingNames() {
+        val width = androidx.compose.runtime.mutableStateOf(400.dp)
+        compose.setContent { ContentTheme(dark) { ContentPanel(ContentUiState(previewMode = false).copy(dark = dark), {}, Modifier.width(width.value).testTag(hostTag)) } }
+        for (value in listOf(400.dp, 320.dp)) {
+            compose.runOnIdle { width.value = value }
+            ShortcutId.entries.forEach { id ->
+                val tile = compose.onNodeWithTag(if (id.control == null) "shortcut-${id.name}" else "control-${id.name}")
+                tile.assertHasClickAction()
+                val region = tile.getUnclippedBoundsInRoot()
+                assertTrue("narrow grid remains a real touch surface", region.right - region.left >= 48.dp && region.bottom - region.top >= 48.dp)
+                val label = compose.onNodeWithTag("shortcut-label-${id.name}", useUnmergedTree = true)
+                label.assertTextEquals(id.label)
+                val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                label.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+                assertTrue("narrow full name is fully visible: ${id.label} at $value / tile=$region / text=${layouts.single().size} / lines=${layouts.single().lineCount} / widthOverflow=${layouts.single().didOverflowWidth} / heightOverflow=${layouts.single().didOverflowHeight}", layouts.single().lineCount <= 2 && !layouts.single().hasVisualOverflow)
+                val dock = compose.onNodeWithTag("dock-${id.name}").performScrollTo().assertIsDisplayed().getUnclippedBoundsInRoot()
+                assertTrue("seven-slot minimum width is scrollable, not squeezed below 48dp", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
+            }
+        }
+    }
+
+    @Test fun driverPassengerAndWheelCyclesPlayOneShotInBothEntrances() {
+        val ids = listOf(ControlId.Heating, ControlId.PassengerHeating, ControlId.SteeringHeat)
+        preloadOemAnimations(ids.flatMap { id -> (0..id.maxLevel).map { vehicleControlIconRecipe(id, it, dark).asset } }.distinct())
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        mountInteractionState(state)
+        compose.mainClock.autoAdvance = false
+        val seats = listOf(3, 2, 1, 4, 0)
+        val wheel = listOf(2, 1, 3, 0, 2)
+        seats.indices.forEach { step ->
+            val modes = mapOf(ControlId.Heating to seats[step], ControlId.PassengerHeating to seats[step], ControlId.SteeringHeat to wheel[step])
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + modes.mapValues { ControlState(actual = it.value) }) }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(128)
+            modes.forEach { (id, level) ->
+                val recipe = vehicleControlIconRecipe(id, level, dark)
+                for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                    val icon = compose.onNodeWithTag("$prefix-${id.name}", useUnmergedTree = true)
+                    icon.assert(SemanticsMatcher.expectValue(OemResource, recipe.resource))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationAsset, recipe.asset))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, true))
+                    val progress = icon.fetchSemanticsNode().config[IconAnimationProgress]
+                    assertTrue("$id/$level enters its selected OEM segment once", progress > 0f && progress < .5f)
+                }
+            }
+            compose.mainClock.advanceTimeBy(208)
+            val middle = captureHost("new-vehicle-$step-mid")
+            compose.mainClock.advanceTimeBy(352)
+            val later = captureHost("new-vehicle-$step-later")
+            ids.forEach { id ->
+                assertTrue("$id must move original path pixels after the 260ms generic transition has ended",
+                    !iconPixels(middle, "dock-icon-${id.name}").contentEquals(iconPixels(later, "dock-icon-${id.name}")))
+            }
+            compose.mainClock.advanceTimeBy(600)
+            val tail = captureHost("new-vehicle-$step-tail")
+            compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
+            compose.mainClock.advanceTimeBy(96)
+            val held = captureHost("new-vehicle-$step-held")
+            for (id in ids) for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                val tag = "$prefix-${id.name}"
+                val icon = compose.onNodeWithTag(tag, useUnmergedTree = true)
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                assertTrue("same snapshot/time does not replay or replace $id tail", iconPixels(tail, tag).contentEquals(iconPixels(held, tag)))
+            }
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun lockPendingPaletteAndConfirmationKeepTheOneShotTimeline() {
+        preloadOemAnimations(listOf("ico_lock_close_f.json", "ico_lock_open_f.json"))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        var requested: Int? = null
+        mountInteractionState(state) { event ->
+            if (event == ContentEvent.ControlTapped(ControlId.Lock)) requested = ControlId.Lock.nextLevel(state.value.controls.getValue(ControlId.Lock).actual)
+        }
+        compose.mainClock.autoAdvance = false
+        fun node(prefix: String) = compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
+        fun assertMoving(previous: Float = 0f): Float {
+            var progress = 0f
+            for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                val icon = node(prefix)
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, true))
+                progress = icon.fetchSemanticsNode().config[IconAnimationProgress]
+                assertTrue("pending/readback/palette must not cancel, reset or tail-snap lock", progress > previous && progress < 1f)
+            }
+            return progress
+        }
+        for ((entrance, target) in listOf("control-Lock" to 0, "dock-Lock" to 1)) {
+            requested = null
+            val actual = state.value.controls.getValue(ControlId.Lock).actual
+            compose.onNodeWithTag(entrance).performTouchInput { down(center) }
+            compose.mainClock.advanceTimeBy(64)
+            compose.onNodeWithTag(entrance).performTouchInput { up() }
+            compose.mainClock.advanceTimeBy(96)
+            assertTrue("real click must request the next lock mode", requested == target)
+            for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            }
+            // No optimistic mode is created by the glyph: the real parent now
+            // supplies an unknown pending target. Opening uses primary tint here.
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
+                (ControlId.Lock to ControlState(actual = -1, target = target, known = false))) }
+            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
+            var progress = assertMoving()
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
+                (ControlId.Lock to ControlState(actual = actual, target = target, known = true))) }
+            // Opening changes primary -> blue, same displayed/asset/frames. The
+            // previous effect-key regression snaps to 1 here and fails this check.
+            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
+            progress = assertMoving(progress)
+            compose.runOnIdle { state.value = state.value.copy(time = "12:26", controls = state.value.controls +
+                (ControlId.Lock to ControlState(actual = target, target = null, known = true))) }
+            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
+            progress = assertMoving(progress)
+            val middle = captureHost("lock-pending-$target-mid")
+            compose.onNodeWithTag(entrance).performTouchInput { down(center) }
+            compose.mainClock.advanceTimeBy(64)
+            progress = assertMoving(progress)
+            compose.onNodeWithTag(entrance).performTouchInput { up() }
+            compose.mainClock.advanceTimeBy(64)
+            assertMoving(progress)
+            compose.mainClock.advanceTimeBy(2400)
+            val tail = captureHost("lock-pending-$target-tail")
+            for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                val tag = "$prefix-Lock"
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationAsset, if (target == 0) "ico_lock_open_f.json" else "ico_lock_close_f.json"))
+                assertTrue("both lock directions have actual intermediate glyph pixels", !iconPixels(middle, tag).contentEquals(iconPixels(tail, tag)))
+            }
+            compose.runOnIdle { state.value = state.value.copy(time = "12:27") }
+            compose.mainClock.advanceTimeBy(96)
+            val held = captureHost("lock-pending-$target-held")
+            for (prefix in listOf("shortcut-icon", "dock-icon")) assertTrue("confirmed/time update retains lock tail",
+                iconPixels(tail, "$prefix-Lock").contentEquals(iconPixels(held, "$prefix-Lock")))
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun knownLockClicksPublishTargetsImmediatelyAndReadbackKeepsPlaying() {
+        preloadOemAnimations(listOf("ico_lock_close_f.json", "ico_lock_open_f.json"))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        mountInteractionState(state) { event ->
+            if (event == ContentEvent.ControlTapped(ControlId.Lock)) {
+                val actual = state.value.controls.getValue(ControlId.Lock)
+                state.value = state.value.copy(controls = state.value.controls +
+                    (ControlId.Lock to actual.copy(target = ControlId.Lock.nextLevel(actual.actual), available = false)))
+            }
+        }
+        compose.mainClock.autoAdvance = false
+        fun progress(previous: Float = 0f): Float {
+            var current = 0f
+            for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                val icon = compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, true))
+                current = icon.fetchSemanticsNode().config[IconAnimationProgress]
+                assertTrue("known pending/ACK/confirmation preserves forward lock progress", current > previous && current < 1f)
+            }
+            return current
+        }
+        for ((entrance, target) in listOf("control-Lock" to 0, "dock-Lock" to 1)) {
+            compose.onNodeWithTag(entrance).performTouchInput { down(center) }
+            compose.mainClock.advanceTimeBy(64)
+            compose.onNodeWithTag(entrance).performTouchInput { up() }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(96)
+            val pending = state.value.controls.getValue(ControlId.Lock)
+            assertTrue("click publishes a target immediately and preserves actual evidence",
+                pending.known && pending.target == target && pending.actual != target && !pending.available)
+            var prior = progress()
+            val asset = if (target == 0) "ico_lock_open_f.json" else "ico_lock_close_f.json"
+            for (prefix in listOf("shortcut-icon", "dock-icon")) compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
+                .assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
+            // Binder ACK and an unchanged actual report leave the accepted target pending.
+            compose.runOnIdle { state.value = state.value.copy(time = "12:26", controls = state.value.controls.toMap()) }
+            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
+            prior = progress(prior)
+            // Own readback confirms actual and clears pending, keeping the same displayed mode.
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
+                (ControlId.Lock to ControlState(actual = target, known = true, available = true))) }
+            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
+            progress(prior)
+            compose.mainClock.advanceTimeBy(2400)
+            val tail = captureHost("lock-known-$target-tail")
+            compose.runOnIdle { state.value = state.value.copy(time = "12:27", controls = state.value.controls.toMap()) }
+            compose.mainClock.advanceTimeBy(96)
+            val held = captureHost("lock-known-$target-held")
+            for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                val tag = "$prefix-Lock"
+                compose.onNodeWithTag(tag, useUnmergedTree = true)
+                    .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                    .assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                assertTrue("known confirmation and repeated snapshot keep the correct lock tail", iconPixels(tail, tag).contentEquals(iconPixels(held, tag)))
+            }
+        }
+        compose.mainClock.autoAdvance = true
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

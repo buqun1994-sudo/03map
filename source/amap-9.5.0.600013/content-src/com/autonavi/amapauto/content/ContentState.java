@@ -1,5 +1,7 @@
 package com.autonavi.amapauto.content;
 
+import com.icar03.content.model.VehicleControl;
+
 import android.graphics.Bitmap;
 
 public final class ContentState {
@@ -21,6 +23,10 @@ public final class ContentState {
     public long nowMillis;
     public boolean vehicleDataAvailable;
     public boolean vehiclePreview;
+    // Derived only by ContentStore when publishing a snapshot, never a second policy owner.
+    public boolean vehicleWriteAvailable;
+    public boolean lockWriteAvailable;
+    public java.util.Set<String> writableSeatControls = java.util.Collections.emptySet();
     public float temperatureC = Float.NaN;
     public int batteryPercent = -1;
     public int rangeRaw = -1;
@@ -65,6 +71,9 @@ public final class ContentState {
     public int heatingLevel = -1;
     public boolean heatingAutoKnown;
     public boolean heatingAutoActive;
+    public int passengerHeatingLevel = -1;
+    public boolean passengerHeatingAutoKnown;
+    public boolean passengerHeatingAutoActive;
     public int steeringHeatLevel = -1;
     public int massageLevel = -1;
     public int massageModeRaw = -1;
@@ -81,6 +90,22 @@ public final class ContentState {
     public boolean pendingLocked;
     public String[] dockItems = ContentRegistry.defaultDockItems();
 
+    /** Canonical actual mode; raw companion evidence stays in this snapshot only. */
+    public int controlLevel(VehicleControl control) {
+        switch (control) {
+            case Lock: return lockKnown ? (locked ? 1 : 0) : -1;
+            case Ventilation: return control.normalizeLevel(ventilationLevel);
+            case Heating: return ContentPorts.VehicleSnapshot.consistentHeatingLevel(
+                    control, heatingLevel, heatingAutoKnown, heatingAutoActive);
+            case PassengerHeating: return ContentPorts.VehicleSnapshot.consistentHeatingLevel(
+                    control, passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive);
+            case SteeringHeat: return control.normalizeLevel(steeringHeatLevel);
+            case Massage: return ContentPorts.VehicleSnapshot.consistentMassageLevel(
+                    massageLevel, massageSwitchKnown, massageActive);
+            default: return -1;
+        }
+    }
+
     public ContentState copy() {
         ContentState copy = new ContentState();
         copy.themeMode = themeMode;
@@ -89,6 +114,9 @@ public final class ContentState {
         copy.nowMillis = nowMillis;
         copy.vehicleDataAvailable = vehicleDataAvailable;
         copy.vehiclePreview = vehiclePreview;
+        copy.vehicleWriteAvailable = vehicleWriteAvailable;
+        copy.lockWriteAvailable = lockWriteAvailable;
+        copy.writableSeatControls = writableSeatControls;
         copy.temperatureC = temperatureC;
         copy.batteryPercent = batteryPercent;
         copy.rangeRaw = rangeRaw;
@@ -134,8 +162,13 @@ public final class ContentState {
                 heatingLevel, heatingAutoKnown, heatingAutoActive);
         copy.heatingAutoKnown = heatingAutoKnown;
         copy.heatingAutoActive = heatingAutoKnown && heatingAutoActive;
+        copy.passengerHeatingLevel = ContentPorts.VehicleSnapshot.consistentHeatingLevel(VehicleControl.PassengerHeating,
+                passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive);
+        copy.passengerHeatingAutoKnown = passengerHeatingAutoKnown;
+        copy.passengerHeatingAutoActive = passengerHeatingAutoKnown && passengerHeatingAutoActive;
         copy.steeringHeatLevel = steeringHeatLevel;
-        copy.massageLevel = massageLevel;
+        copy.massageLevel = ContentPorts.VehicleSnapshot.consistentMassageLevel(
+                massageLevel, massageSwitchKnown, massageActive);
         copy.massageModeRaw = massageModeRaw;
         copy.massageSwitchKnown = massageSwitchKnown;
         copy.massageActive = massageActive;

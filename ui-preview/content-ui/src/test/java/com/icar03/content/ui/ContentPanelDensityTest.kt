@@ -93,7 +93,10 @@ open class ContentPanelSystem141Test {
         // At 320dpi the page scrolls; controls below the fold remain reachable.
         compose.onNodeWithTag("brightness-card").performScrollTo()
         touch("brightness-card"); touch("volume-card"); touch("source-button")
-        ShortcutId.entries.forEach { touch("dock-${it.name}") }
+        ShortcutId.entries.forEach {
+            compose.onNodeWithTag("dock-${it.name}").performScrollTo()
+            touch("dock-${it.name}")
+        }
         assertTopBar()
         compose.onNodeWithTag("dock-SteeringHeat").assertHasClickAction()
         compose.onNodeWithTag("dock-Settings").performClick()

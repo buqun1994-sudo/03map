@@ -4,7 +4,64 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+
+/**
+ * Semantic surfaces owned by the content panel.
+ *
+ * Fields intentionally remain independent even when two roles currently share an
+ * RGB value. This keeps a later visual adjustment local to its owning surface and
+ * prevents a Material color token from silently changing another role.
+ */
+internal data class ContentThemeColors(
+    val shortcutBase: Color,
+    val shortcutSelected: Color,
+    val sliderBase: Color,
+    val sliderFill: Color,
+    val dockBase: Color,
+    val dockSelected: Color,
+    val mediaBase: Color,
+    val mediaArtworkBase: Color,
+    val mediaPressed: Color,
+    val sourceBase: Color,
+    val sourceSelected: Color,
+    val sheetBase: Color,
+)
+
+private val LightContentColors = ContentThemeColors(
+    shortcutBase = Color(0xFFE9E9E9),
+    shortcutSelected = Color(0xFFE4E4E4),
+    sliderBase = Color.White,
+    sliderFill = Color.White,
+    dockBase = Color.White,
+    dockSelected = Color(0xFFE9E9E9),
+    mediaBase = Color.White,
+    mediaArtworkBase = Color(0xFFE9E9E9),
+    mediaPressed = Color(0xFFE9E9E9),
+    sourceBase = Color.White,
+    sourceSelected = Color(0xFFE9E9E9),
+    sheetBase = Color.White,
+)
+
+private val DarkContentColors = ContentThemeColors(
+    shortcutBase = Color(0xFF1A1A1A),
+    shortcutSelected = Color(0xFF303030),
+    sliderBase = Color(0xFF1A1A1A),
+    sliderFill = Color(0xFF484848),
+    dockBase = Color(0xFF1A1A1A),
+    dockSelected = Color(0xFF303030),
+    mediaBase = Color(0xFF1A1A1A),
+    mediaArtworkBase = Color(0xFF1A1A1A),
+    mediaPressed = Color(0xFF303030),
+    sourceBase = Color(0xFF1A1A1A),
+    sourceSelected = Color(0xFF484848),
+    sheetBase = Color(0xFF1A1A1A),
+)
+
+/** Semantic content colors are kept separate from Material's generic surface roles. */
+internal val LocalContentColors = staticCompositionLocalOf { LightContentColors }
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF27303B),
@@ -51,5 +108,10 @@ private val DarkColors = darkColorScheme(
 /** System sans-serif fallback is used; this preview does not claim OEM font embedding. */
 @Composable
 fun ContentTheme(dark: Boolean, content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, content = content)
+    MaterialTheme(colorScheme = if (dark) DarkColors else LightColors) {
+        CompositionLocalProvider(
+            LocalContentColors provides if (dark) DarkContentColors else LightContentColors,
+            content = content,
+        )
+    }
 }
