@@ -12,7 +12,7 @@ class LyricsSpeakerUpgradeTest {
 
     @Test fun explicitVoicesUpgradeAnIdenticalBodyWithoutInventingWordTiming() {
         assertTrue(upgrade(baseline, duet))
-        assertEquals(listOf(1, 2, 3), duet.timedLines().map { it.speakerSide })
+        assertEquals(listOf(1, 2, 1), duet.timedLines().map { it.speakerSide })
         assertTrue(duet.timedLines().all { it.words.isEmpty() })
         assertEquals(1.0, LyricsContentRanker.inspect(query, duet).speakerCoverage, 0.0)
     }

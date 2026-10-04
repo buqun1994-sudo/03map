@@ -125,18 +125,91 @@ open class QuickControlsNativeTest {
     }
 
     @Test fun autoAndUnknownNeverProjectAFakeManualLevel() {
+        preload()
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Wiper to ControlState(actual = 5, rememberedLevel = 3))) }
         mountPanel()
-        compose.onNodeWithTag("control-Wiper").assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo.Indeterminate))
+        compose.onNodeWithTag("control-Wiper").assertIsNotSelected()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo.Indeterminate))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "自动"))
             .assert(SemanticsMatcher.expectValue(ControlDraft, 0f))
+        compose.onNodeWithTag("dock-Wiper").assertIsNotSelected()
         compose.onNodeWithTag("shortcut-AutoWiper").assertIsSelected()
-        compose.onNodeWithTag("shortcut-icon-Wiper", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationAsset, ""))
+        assertManualWiperIcons(0)
         capture("automatic-separate")
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Wiper to ControlState(actual = -1, known = false))) }
         compose.onNodeWithTag("control-Wiper").assertIsNotEnabled()
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo.Indeterminate))
         capture("unknown-no-manual-truth")
+    }
+
+    @Test fun allWiperModesAndPendingTargetsKeepManualGridDockAndAutomaticButtonConsistent() {
+        preload()
+        mountPanel()
+        val cases = (0..5).map { ControlState(actual = it, rememberedLevel = 3) } +
+            (0..5).map { ControlState(actual = 5, target = it, available = false, rememberedLevel = 3) } +
+            listOf(ControlState(actual = 0, target = 5, available = false, rememberedLevel = 3),
+                ControlState(actual = 2, target = 5, available = false, rememberedLevel = 3),
+                ControlState(actual = -1, target = 4, known = false, available = false, rememberedLevel = 3))
+        for (value in cases) {
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Wiper to value)) }
+            val displayed = value.target ?: value.actual
+            val manual = if (displayed == 5) 0 else displayed
+            val selected = displayed in 1..4
+            for (tag in listOf("control-Wiper", "dock-Wiper")) {
+                val node = compose.onNodeWithTag(tag)
+                node.assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, selected))
+                if (value.pending) node.assertIsNotEnabled() else node.assertIsEnabled()
+            }
+            compose.onNodeWithTag("shortcut-AutoWiper")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, displayed == 5))
+            compose.onNodeWithTag("control-Wiper")
+                .assert(SemanticsMatcher.expectValue(ControlDraft, manual / 4f))
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo,
+                    if (displayed == 5) ProgressBarRangeInfo.Indeterminate
+                    else ProgressBarRangeInfo(displayed.toFloat(), 0f..4f, 3)))
+            assertManualWiperIcons(manual)
+            assertEquals("UI projection never changes vehicle facts or confirmed memory", value, state.value.controls.getValue(ControlId.Wiper))
+        }
+        assertTrue("readback/target changes must not send a command", events.isEmpty())
+    }
+
+    @Test fun offAndAutomaticChangesDoNotReplayOrColorEitherManualWiperIcon() {
+        preload()
+        mountPanel()
+        assertManualWiperIcons(0)
+        val off = capture("manual-wiper-off-reference")
+        compose.mainClock.autoAdvance = false
+        val values = listOf(ControlState(actual = 0, target = 5, available = false),
+            ControlState(actual = 5), ControlState(actual = 5, target = 0, available = false), ControlState(actual = 0))
+        for (value in values) {
+            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Wiper to value)) }
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            assertManualWiperIcons(0)
+            val frame = capture("manual-wiper-off-auto-${value.actual}-${value.target}")
+            for (tag in listOf("shortcut-icon-Wiper", "dock-icon-Wiper")) {
+                compose.onNodeWithTag(tag, useUnmergedTree = true)
+                    .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                    .assert(SemanticsMatcher.expectValue(IconMotion, 1f))
+                assertArrayEquals("$tag stays at the neutral OFF frame for $value", iconPixels(off, tag), iconPixels(frame, tag))
+            }
+            compose.onNodeWithTag("control-Wiper").assertIsNotSelected()
+            compose.onNodeWithTag("dock-Wiper").assertIsNotSelected()
+        }
+        compose.mainClock.autoAdvance = true
+        assertTrue(events.isEmpty())
+    }
+
+    private fun assertManualWiperIcons(level: Int) {
+        val expected = vehicleControlIconRecipe(ControlId.Wiper, level, dark)
+        val tags = listOf("shortcut-icon-Wiper", "dock-icon-Wiper")
+        compose.waitUntil(3_000) { tags.all { tag ->
+            val current = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().config
+            current[IconAnimationReady] && current[OemResource] == expected.resource && current[IconAnimationAsset] == expected.asset
+        } }
+        for (tag in tags) compose.onNodeWithTag(tag, useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(OemResource, expected.resource))
+            .assert(SemanticsMatcher.expectValue(IconAnimationAsset, expected.asset))
     }
 
     @Test fun continuousDragAlsoUsesSingleCommitAndHorizontalPagerKeepsItsGesture() {
@@ -987,7 +1060,7 @@ open class QuickControlsNativeTest {
 
     private fun iconPixels(bitmap: Bitmap, tag: String): IntArray {
         val host = compose.onNodeWithTag("quick-native-host").fetchSemanticsNode().boundsInRoot
-        val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val x = (bounds.left - host.left).toInt(); val y = (bounds.top - host.top).toInt()
         val width = bounds.width.toInt(); val height = bounds.height.toInt()
         return IntArray(width * height).also { bitmap.getPixels(it, 0, width, x, y, width, height) }

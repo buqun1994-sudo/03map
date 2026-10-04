@@ -17,12 +17,19 @@ class TtmlSpeakerLayoutTest {
         assertEquals(listOf(1, 2, 1, 2, 2, 1, 1), rows.map { it.speakerSide })
     }
 
-    @Test fun chorusAndExplicitSharedVoicesAreCenteredWithoutBecomingSoloIdentities() {
+    @Test fun chorusAndExplicitSharedVoicesStayLeftWithoutBecomingSoloIdentities() {
         val rows = body(listOf("all", "b", "a b", "a", "b a", "a a", ""),
             """<ttm:agent xml:id="all" type="group"/><ttm:agent xml:id="a" type="person"/><ttm:agent xml:id="b" type="person"/>""")
-        assertEquals(listOf(3, 1, 3, 2, 3, 2, 2), rows.map { it.speakerSide })
+        assertEquals(listOf(1, 1, 1, 2, 1, 2, 2), rows.map { it.speakerSide })
         assertTrue(rows.all { it.words.isEmpty() })
         assertEquals((1L..7L).map { it * 1_000L }, rows.map { it.timeMs })
+    }
+
+    @Test fun anOpeningJointLineCannotChooseTheSoloLaneOrder() {
+        val rows = body(listOf("a b", "b", "a", "a b", ""),
+            """<ttm:agent xml:id="a" type="person"/><ttm:agent xml:id="b" type="person"/>""")
+        assertEquals(listOf(1, 1, 2, 1, 1), rows.map { it.speakerSide })
+        assertFalse(rows.any { it.speakerSide == TtmlSpeakerLayout.CENTER })
     }
 
     @Test fun undeclaredVoicesUseStableSourceOrderAndSingleOrUntaggedRowsKeepTheDefault() {

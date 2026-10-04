@@ -241,7 +241,7 @@ class LyricsCacheRefreshTest {
         withCache(name) { cache ->
             val restored = cache.read(identity, false)!!.result
             assertEquals(raw, restored.ttmlLyrics)
-            assertEquals(listOf(1, 2, 3), restored.timedLines().map { it.speakerSide })
+            assertEquals(listOf(1, 2, 1), restored.timedLines().map { it.speakerSide })
             assertTrue(restored.timedLines().all { it.words.isEmpty() })
             assertTrue(cache.writeManual(identity, result()))
             assertFalse(put(cache, duet))

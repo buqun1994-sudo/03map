@@ -315,11 +315,11 @@ class WallpaperLyricsRenderTest {
         val first = captureHost("duet-side-layout")
         val leading = inkBounds(first, rowTop(0, heights, 1).roundToInt(), rowBottom(0, heights, 1).roundToInt())!!
         val trailing = inkBounds(first, rowTop(1, heights, 1).roundToInt(), rowBottom(1, heights, 1).roundToInt())!!
-        val center = inkBounds(first, rowTop(2, heights, 1).roundToInt(), rowBottom(2, heights, 1).roundToInt())!!
+        val chorus = inkBounds(first, rowTop(2, heights, 1).roundToInt(), rowBottom(2, heights, 1).roundToInt())!!
         assertTrue("leading source and subrows keep a visible near inset: $leading", leading.left in 40..65)
         assertTrue("trailing duet and subrows mirror the near inset: $trailing", trailing.right in 575..600)
-        assertEquals("center side is centered in native pixels", 320f, center.exactCenterX(), 8f)
-        assertTrue("center side leaves space on both sides", center.left > 100 && center.right < 540)
+        assertTrue("chorus uses the same left lane, never a center column: $chorus", chorus.left in 40..65)
+        assertTrue("the short chorus is not centered in the viewport", chorus.exactCenterX() < 320f)
 
         project(initial.copy(positionMs = 3_500L))
         assertEquals(listOf(0, 1), value(LyricActiveRows))
@@ -522,7 +522,7 @@ class WallpaperLyricsRenderTest {
             backgroundWords = listOf(LyricWord(1_800L, 4_000L, "背景合唱仍在继续")), side = LyricSide.Leading),
         LyricLine(2_000L, "合成对唱整行", "合成对唱译文", "he cheng dui chang zheng hang",
             words = listOf(LyricWord(2_000L, 2_400L, "合成")), endTimeMs = 5_000L, side = LyricSide.Trailing),
-        LyricLine(6_000L, "中央合成整行", side = LyricSide.Center),
+        LyricLine(6_000L, "合唱合成整行", side = LyricSide.Leading),
     )
 
     private fun duetState(lines: List<LyricLine>) = LyricsState(

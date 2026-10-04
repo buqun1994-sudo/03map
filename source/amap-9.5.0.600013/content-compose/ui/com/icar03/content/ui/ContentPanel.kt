@@ -359,7 +359,7 @@ private fun shortcutStatus(id: ShortcutId, state: ContentUiState): String {
 private fun shortcutIcon(id: ShortcutId, state: ContentUiState): Int = when (id) {
     ShortcutId.Lock -> state.controls.getValue(ControlId.Lock).let { if (!it.known && !it.pending || it.displayed == 1) R.drawable.content_oem_ico_lock_close else R.drawable.content_oem_ico_lock_open }
     ShortcutId.SteeringHeat -> steeringHeatIcon(state.controls.getValue(ControlId.SteeringHeat).displayed, state.dark)
-    ShortcutId.Wiper -> vehicleControlIconRecipe(ControlId.Wiper, state.controls.getValue(ControlId.Wiper).displayed, state.dark).resource
+    ShortcutId.Wiper -> vehicleControlIconRecipe(ControlId.Wiper, state.controls.getValue(ControlId.Wiper).manualWiperDisplayed, state.dark).resource
     ShortcutId.AutoWiper -> vehicleControlIconRecipe(ControlId.Wiper, ControlId.Wiper.automaticLevel, state.dark).resource
     ShortcutId.RearWiper -> rearWiperIconRecipe(state.placeholderSwitches[id] == true, state.dark).resource
     ShortcutId.RearWash -> R.drawable.content_oem_ico_wash_rear
@@ -386,6 +386,7 @@ private fun shortcutSelected(id: ShortcutId, state: ContentUiState): Boolean {
     if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) return state.placeholderSwitches[id] == true
     val control = id.control?.let { state.controls.getValue(it) } ?: return false
     if (id == ShortcutId.AutoWiper) return (control.known || control.pending) && ControlId.Wiper.isAutomatic(control.displayed)
+    if (id == ShortcutId.Wiper) return (control.known || control.pending) && ControlId.Wiper.isManualLevel(control.manualWiperDisplayed)
     return (control.known || control.pending) && if (id == ShortcutId.Lock) control.displayed == 0 else control.displayed > 0
 }
 
@@ -727,7 +728,7 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
 @Composable
 internal fun VehicleControlOemIcon(control: ControlId, value: ControlState, dark: Boolean, modifier: Modifier) {
     val base = MaterialTheme.colorScheme.primary
-    val level = value.displayed.coerceIn(0, control.maxLevel)
+    val level = (if (control == ControlId.Wiper) value.manualWiperDisplayed else value.displayed).coerceIn(0, control.maxLevel)
     val recipe = if (control == ControlId.Wiper) vehicleControlIconRecipe(control, level, dark, base)
         else vehicleControlIconRecipe(control, level, dark)
     val known = value.known || value.pending

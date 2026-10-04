@@ -20,6 +20,41 @@ class ContentModelsTest {
         assertEquals(3, control.displayed)
         assertTrue(control.pending)
     }
+    @Test fun manualWiperProjectionKeepsOffAndFourManualLevelsButExcludesAutomatic() {
+        for (actual in 0..5) {
+            val value = ControlState(actual = actual, rememberedLevel = 4)
+            val expected = if (actual == 5) 0 else actual
+            assertEquals("manual wiper at $actual", expected, value.manualWiperDisplayed)
+            assertEquals(actual, value.displayed)
+            assertEquals(actual, value.actual)
+            assertNull(value.target)
+            assertEquals(4, value.rememberedLevel)
+            assertEquals(actual in 1..4, ControlId.Wiper.isManualLevel(value.manualWiperDisplayed))
+            assertEquals(actual == 5, ControlId.Wiper.isAutomatic(value.displayed))
+        }
+        val unknown = ControlState(actual = 5, known = false, available = false)
+        assertEquals(-1, unknown.manualWiperDisplayed)
+        assertEquals(-1, unknown.displayed)
+    }
+
+    @Test fun pendingWiperProjectionUsesTheSharedTargetWithoutChangingActualOrMemory() {
+        for (actual in 0..5) for (target in 0..5) {
+            val value = ControlState(actual = actual, target = target, available = false, rememberedLevel = 3)
+            assertEquals("manual target $target from $actual", if (target == 5) 0 else target, value.manualWiperDisplayed)
+            assertEquals(target, value.displayed)
+            assertEquals(actual, value.actual)
+            assertEquals(target, value.target)
+            assertEquals(3, value.rememberedLevel)
+            assertTrue(value.pending)
+            assertEquals(target in 1..4, ControlId.Wiper.isManualLevel(value.manualWiperDisplayed))
+            assertEquals(target == 5, ControlId.Wiper.isAutomatic(value.displayed))
+        }
+        val unknownPending = ControlState(actual = -1, known = false, target = 2, available = false)
+        assertEquals(2, unknownPending.manualWiperDisplayed)
+        assertEquals(-1, unknownPending.actual)
+        assertFalse(unknownPending.known)
+    }
+
     @Test fun scenarioCatalogHasExplicitRequiredStates() {
         assertEquals(7, PreviewScenario.entries.size)
         assertTrue(previewState(PreviewScenario.SourceMenu).sourcesOpen)

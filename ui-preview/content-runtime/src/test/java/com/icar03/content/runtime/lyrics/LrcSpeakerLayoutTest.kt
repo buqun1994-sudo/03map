@@ -8,7 +8,7 @@ class LrcSpeakerLayoutTest {
         val result = LyricsResult(lyrics = "[00:01]开场\n[00:02]女：\n[00:03]第一句\n[00:04]接着唱\n[00:05]男声：第二句\n[00:06]Female：第三句\n[00:07]合唱：一起唱")
         val rows = result.timedLines()
         assertEquals(listOf("开场", "第一句", "接着唱", "第二句", "第三句", "一起唱"), rows.map { it.text })
-        assertEquals(listOf(0, 1, 1, 2, 1, 3), rows.map { it.speakerSide })
+        assertEquals(listOf(0, 1, 1, 2, 1, 1), rows.map { it.speakerSide })
         assertEquals(listOf(1L, 3L, 4L, 5L, 6L, 7L).map { it * 1_000L }, rows.map { it.timeMs })
     }
 
@@ -54,6 +54,73 @@ class LrcSpeakerLayoutTest {
         val rows = listOf("我说：往前走", "然后她问：好吗", "词：甲", "鼓：乙", "笛：丙", "鼓：丁", "Hello!: world", "World!: text", "Hello!: again")
             .mapIndexed { index, text -> ParsedLyricLine(index * 1_000L, text) }
         assertSame(rows, LrcSpeakerLayout.project(rows, "", ""))
+    }
+
+    @Test fun productionCreditsDoNotOccupyTheFirstSoloLaneAndLongNamesRemainValid() {
+        val result = LyricsResult(candidateArtist = "功夫胖KUNGFU-PEN/GAI周延", lyrics =
+            "[00:01]副歌选段：合成曲名\n[00:02]选段作词：合成人名\n[00:03]录音棚：合成地点\n" +
+            "[00:04]GAI周延：\n[00:05]首位独唱正文\n[00:06]合：\n[00:07]合唱正文\n" +
+            "[00:08]功夫胖KUNGFU-PEN：\n[00:09]第二位独唱正文\n[00:10]GAI周延：再唱正文")
+        val rows = result.timedLines()
+        assertTrue(rows.take(3).all { it.speaker.isEmpty() && it.speakerSide == 0 })
+        assertEquals(listOf(1, 1, 2, 1), rows.drop(3).map { it.speakerSide })
+        assertEquals(listOf("首位独唱正文", "合唱正文", "第二位独唱正文", "再唱正文"), rows.drop(3).map { it.text })
+        assertEquals(normalizeText("功夫胖KUNGFU-PEN"), rows.single { it.text == "第二位独唱正文" }.speaker)
+    }
+
+    @Test fun jointArtistLabelsAlwaysStayLeftAndNeverDetermineSoloOrder() {
+        val result = LyricsResult(candidateArtist = "功夫胖KUNGFU-PEN/GAI周延", lyrics =
+            "[00:01]GAI周延/功夫胖KUNGFU-PEN：\n[00:02]开場合唱\n" +
+            "[00:03]功夫胖KUNGFU-PEN：第一独唱\n[00:04]GAI周延：第二独唱\n" +
+            "[00:05]功夫胖KUNGFU-PEN／GAI周延：末尾合唱\n[00:06]继续合唱")
+        val rows = result.timedLines()
+        assertEquals(listOf(1, 1, 2, 1, 1), rows.map { it.speakerSide })
+        assertEquals(listOf("group", normalizeText("功夫胖KUNGFU-PEN"), normalizeText("GAI周延"), "group", "group"), rows.map { it.speaker })
+        assertEquals(listOf("开場合唱", "第一独唱", "第二独唱", "末尾合唱", "继续合唱"), rows.map { it.text })
+    }
+
+    @Test fun jointLabelsCannotCollapseIntoAHyphenatedSoloIdentity() {
+        val rows = LyricsResult(candidateArtist = "A-B/C", lyrics =
+            "[00:01]A/B：合成开场\n[00:02]C：第一真实独唱\n[00:03]A-B：第二真实独唱").timedLines()
+        assertEquals(listOf(0, 1, 2), rows.map { it.speakerSide })
+        assertEquals(listOf("", "c", "ab"), rows.map { it.speaker })
+        assertEquals(listOf("A/B：合成开场", "第一真实独唱", "第二真实独唱"), rows.map { it.text })
+    }
+
+    @Test fun metadataConfirmedNamesHaveNoShortNameOrPunctuationGate() {
+        val longName = "An Extremely Long Multi-Word Stage-Name"
+        val rows = LyricsResult(candidateArtist = "$longName/A-Lin", lyrics =
+            "[00:01]$longName：合成长名正文\n[00:02]A-Lin：合成短名正文\n[00:03]$longName：合成重复正文").timedLines()
+        assertEquals(listOf(1, 2, 1), rows.map { it.speakerSide })
+        assertEquals(listOf("合成长名正文", "合成短名正文", "合成重复正文"), rows.map { it.text })
+    }
+
+    @Test fun longYrcOnlyLabelsPreserveIdentityAuxiliaryTracksAndEverySurvivingWordTime() {
+        for (shift in listOf(0L, 500L, 3_000L)) {
+            val first = 1_000L + shift
+            val second = 3_000L + shift
+            val result = LyricsResult(candidateArtist = "GAI周延/功夫胖KUNGFU-PEN", durationMs = 10_000L,
+                lyrics = "[00:01]第一正文\n[00:03]第二正文",
+                translatedLyrics = "[00:01]GAI周延：第一译文\n[00:03]功夫胖KUNGFU-PEN：第二译文",
+                romanizedLyrics = "[00:01]GAI周延：first roma\n[00:03]功夫胖KUNGFU-PEN：second roma",
+                wordLyrics = "[$first,1000]($first,100,0)GAI周延(${first + 100},100,0)：(${first + 200},800,0)第一正文\n" +
+                    "[$second,1000]($second,100,0)功夫胖KUNGFU-PEN(${second + 100},100,0)：(${second + 200},800,0)第二正文")
+            val rows = result.timedLines()
+            assertEquals(listOf(first, second), rows.map { it.timeMs })
+            assertEquals(listOf(1, 2), rows.map { it.speakerSide })
+            assertEquals(listOf(normalizeText("GAI周延"), normalizeText("功夫胖KUNGFU-PEN")), rows.map { it.speaker })
+            assertEquals(listOf("第一正文", "第二正文"), rows.map { it.words.single().text })
+            assertEquals(listOf(first + 200, second + 200), rows.map { it.words.single().startTimeMs })
+            assertEquals(listOf(first + 1_000, second + 1_000), rows.map { it.words.single().endTimeMs })
+            assertEquals(listOf("第一译文", "第二译文"), rows.map { it.translation })
+            assertEquals(listOf("first roma", "second roma"), rows.map { it.romanization })
+        }
+    }
+
+    @Test fun repeatedSectionLabelsCannotTurnAnUnmarkedSongIntoADuet() {
+        val result = LyricsResult(lyrics = "[00:01]副歌选段：合成曲名\n[00:02]副歌选段：合成曲名\n" +
+            "[00:03]混音师：合成人名\n[00:04]另一制作：合成人名\n[00:05]普通正文")
+        assertTrue(result.timedLines().all { it.speaker.isEmpty() && it.speakerSide == 0 })
     }
 
     @Test fun realYrcWordsAndLrcLabelsAreStrippedAfterTrustedAxisAlignment() {

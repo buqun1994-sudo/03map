@@ -145,16 +145,22 @@ internal object LrcParser {
         translatedRaw: String,
         wordRaw: String = "",
         romanizedRaw: String = "",
-        durationMs: Long = 0L
+        durationMs: Long = 0L,
+        artist: String = "",
+        track: String = ""
     ): List<ParsedLyricLine> {
         val offset = parseOffsetMs(originalRaw).takeIf { it != 0L } ?: parseOffsetMs(wordRaw)
         val originals = parse(originalRaw, offset)
         val wordLines = parseYrc(wordRaw, offset).ifEmpty { parse(wordRaw, offset) }
         val base = originals.ifEmpty { wordLines }
         if (base.isEmpty()) return emptyList()
+        // Recognize each raw stream independently; duplicate channels do not create name evidence.
+        val speakers = (originals.zip(LrcSpeakerLayout.identify(originals, artist, track)) +
+            wordLines.zip(LrcSpeakerLayout.identify(wordLines, artist, track)))
+            .mapNotNull { (row, label) -> label?.let { row.text to it } }.toMap()
         val matchingWords = assignments(base, wordLines, WORD_TOLERANCE_MS) { original, wordLine ->
             wordLine.words.isNotEmpty() && wordLine.words.any { it.endTimeMs > original.timeMs } &&
-                original.text.speakerTextKey() == wordLine.text.speakerTextKey()
+                sameWordBody(original.text, wordLine.text, speakers)
         }
         val words = matchingWords.takeIf { it.size * 2 >= base.size }.orEmpty()
         val useWordTiming = base.indices.count { index ->
@@ -166,8 +172,9 @@ internal object LrcParser {
         val romanizationIndexes = assignments(base, romanizations, TRANSLATION_TOLERANCE_MS, preferLater = true)
         val aligned = base.mapIndexed { index, line ->
             val wordLine = words[index]?.let { wordLines[it] }
-            val wordSpeaker = line.speaker.ifBlank { speakerPrefix(wordLine?.text.orEmpty())?.first.orEmpty() }
-            val wordPrefixLength = if (line.speaker.isBlank()) speakerPrefix(wordLine?.text.orEmpty())?.second ?: 0
+            val wordLabel = wordLine?.let { speakers[it.text] }
+            val wordSpeaker = line.speaker.ifBlank { wordLabel?.identity.orEmpty() }
+            val wordPrefixLength = if (line.speaker.isBlank()) wordLabel?.prefixLength ?: 0
                 else line.speakerPrefixLength
             line.copy(
                 translation = translationIndexes[index]?.let { translations[it].text }.orEmpty(),
@@ -178,7 +185,7 @@ internal object LrcParser {
                 speakerPrefixLength = wordPrefixLength
             )
         }
-        return rehangOnTrustedWords(originalRaw, wordRaw, offset, durationMs, aligned) ?: aligned
+        return rehangOnTrustedWords(originalRaw, wordRaw, offset, durationMs, aligned, speakers) ?: aligned
     }
 
     private fun rehangOnTrustedWords(
@@ -186,7 +193,8 @@ internal object LrcParser {
         wordRaw: String,
         offsetMs: Long,
         durationMs: Long,
-        aligned: List<ParsedLyricLine>
+        aligned: List<ParsedLyricLine>,
+        speakers: Map<String, LrcSpeakerLayout.Label>
     ): List<ParsedLyricLine>? {
         if (durationMs <= 0L || aligned.size < 2) return null
         val originalRows = mutableListOf<ParsedLyricLine>()
@@ -202,15 +210,14 @@ internal object LrcParser {
         }
         if (originalRows.size != aligned.size || originalRows.size < 2) return null
         val keys = originalRows.map { it.timeMs to it.text }
-        val alignedKeys = aligned.map { it.timeMs to it.text.speakerTextKey() }
+        val alignedKeys = aligned.map { it.timeMs to it.text.speakerTextKey(speakers) }
         if (keys.toSet().size != keys.size ||
-            originalRows.map { it.timeMs to it.text.speakerTextKey() }.toSet() != alignedKeys.toSet()) return null
+            originalRows.map { it.timeMs to it.text.speakerTextKey(speakers) }.toSet() != alignedKeys.toSet()) return null
 
         val wordRows = trustedYrcRows(wordRaw, offsetMs, durationMs) ?: return null
         if (wordRows.size != originalRows.size) return null
         if (originalRows.indices.any { index ->
-            val text = originalRows[index].text.speakerTextKey()
-            text.isEmpty() || text != wordRows[index].text.speakerTextKey()
+            !sameWordBody(originalRows[index].text, wordRows[index].text, speakers)
         }) return null
         val oldLast = originalRows.maxOf(ParsedLyricLine::timeMs)
         val newLast = wordRows.last().timeMs
@@ -220,7 +227,10 @@ internal object LrcParser {
         val byOriginal = keys.zip(wordRows).toMap()
         return aligned.map { line ->
             val wordLine = byOriginal.getValue(line.timeMs to line.text)
-            line.copy(timeMs = wordLine.timeMs, words = wordLine.words, endTimeMs = wordLine.endTimeMs)
+            val wordLabel = speakers[wordLine.text]
+            line.copy(timeMs = wordLine.timeMs, words = wordLine.words, endTimeMs = wordLine.endTimeMs,
+                speaker = line.speaker.ifBlank { wordLabel?.identity.orEmpty() },
+                speakerPrefixLength = if (line.speaker.isBlank()) wordLabel?.prefixLength ?: 0 else line.speakerPrefixLength)
         }.sortedBy(ParsedLyricLine::timeMs)
     }
 
@@ -318,19 +328,15 @@ internal object LrcParser {
         return assignedOriginals
     }
 
-    private fun String.speakerTextKey(): String =
-        substring(speakerPrefix(this)?.second ?: 0).filterNot(Char::isWhitespace)
+    private fun String.speakerTextKey(speakers: Map<String, LrcSpeakerLayout.Label>): String =
+        normalizeText(speakers[this]?.rest ?: this)
 
-    private fun speakerPrefix(text: String): Pair<String, Int>? {
-        val start = text.indexOfFirst { !it.isWhitespace() }.takeIf { it >= 0 } ?: return null
-        val relativeColon = text.substring(start).indexOfFirst { it == ':' || it == '：' }
-        if (relativeColon !in 1..32) return null
-        val colon = start + relativeColon
-        val label = text.substring(start, colon).trim()
-        if (label.length > 10 || label.any(Char::isWhitespace)) return null
-        var end = colon + 1
-        while (end < text.length && text[end].isWhitespace()) end++
-        return label to end
+    private fun sameWordBody(original: String, word: String, speakers: Map<String, LrcSpeakerLayout.Label>): Boolean {
+        val key = original.speakerTextKey(speakers)
+        val first = speakers[original]
+        val second = speakers[word]
+        return key.isNotEmpty() && key == word.speakerTextKey(speakers) &&
+            (first == null || second == null || first.identity == second.identity)
     }
 
     private fun parseOffsetMs(raw: String): Long = offsets.find(raw)?.groupValues?.get(1)

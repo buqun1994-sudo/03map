@@ -243,6 +243,50 @@ class LrcParserTest {
         }
     }
 
+    @Test fun punctuationOnlyBodiesCannotCertifyACompleteWordClock() {
+        val original = "[00:10]！！！\n[00:30]？？？"
+        for (shift in listOf(0L, 500L)) {
+            val first = 10_000L + shift
+            val second = 30_000L + shift
+            val words = "[$first,500]($first,500,0)？？？\n[$second,500]($second,500,0)！！！"
+            val rows = LrcParser.align(original, "", words, durationMs = 40_000L)
+            assertEquals(listOf(10_000L, 30_000L), rows.map { it.timeMs })
+            assertTrue(rows.all { it.words.isEmpty() && it.endTimeMs == null })
+        }
+    }
+
+    @Test fun unrecognizedColonSentencesMustMatchInFullAcrossBothWordAxisPaths() {
+        val original = "[00:10]我说：往前走\n[00:30]然后她问：好吗"
+        for (shift in listOf(0L, 500L)) {
+            val first = 10_000L + shift
+            val second = 30_000L + shift
+            val words = "[$first,500]($first,500,0)他问：往前走\n[$second,500]($second,500,0)司机说：好吗"
+            val rows = LrcParser.align(original, "", words, durationMs = 40_000L)
+            assertEquals(listOf(10_000L, 30_000L), rows.map { it.timeMs })
+            assertTrue(rows.all { it.words.isEmpty() && it.speaker.isEmpty() && it.endTimeMs == null })
+        }
+    }
+
+    @Test fun identicalWordsFromContradictoryRecognizedVoicesNeverAttach() {
+        val original = "[00:10]V1：Same words\n[00:30]V2：Same words"
+        for (shift in listOf(0L, 500L)) {
+            val first = 10_000L + shift
+            val second = 30_000L + shift
+            val words = "[$first,500]($first,500,0)V2：Same words\n[$second,500]($second,500,0)V1：Same words"
+            val rows = LrcParser.align(original, "", words, durationMs = 40_000L)
+            assertEquals(listOf(10_000L, 30_000L), rows.map { it.timeMs })
+            assertTrue(rows.all { it.words.isEmpty() })
+        }
+    }
+
+    @Test fun twoRawChannelsCannotInventRepeatedSoloNameEvidence() {
+        val original = "[00:01]Aster：First\n[00:03]Briar：Second"
+        val words = "[1000,500](1000,500,0)Aster：First\n[3000,500](3000,500,0)Briar：Second"
+        val rows = LyricsResult(lyrics = original, wordLyrics = words, durationMs = 10_000L).timedLines()
+        assertTrue(rows.all { it.speaker.isEmpty() && it.speakerSide == 0 })
+        assertEquals(listOf("Aster：First", "Briar：Second"), rows.map { it.text })
+    }
+
     @Test fun unknownDurationAndSingleLineBodiesNeverEnableClockRehang() {
         val original = "[00:10.00]a\n[00:30.00]b"
         val words = "[10500,500](10500,500,0)a\n[30500,500](30500,500,0)b"

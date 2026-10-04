@@ -64,6 +64,12 @@ data class ControlState(val actual: Int = 0, val target: Int? = null, val availa
     val displayed: Int get() = target ?: if (known) actual else -1
     val pending: Boolean get() = target != null
 }
+
+/** Manual grid/Dock icons share this view of the single front-wiper state.
+ * AUTO is not manual power; unknown remains unknown and actual/target/memory stay untouched. */
+internal val ControlState.manualWiperDisplayed: Int
+    get() = displayed.let { if (ControlId.Wiper.isAutomatic(it)) 0 else it }
+
 data class LevelState(val actual: Float, val target: Float? = null, val available: Boolean = true) {
     val displayed: Float get() = target ?: actual
 }

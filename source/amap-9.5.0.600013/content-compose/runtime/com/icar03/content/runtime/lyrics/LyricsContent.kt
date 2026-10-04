@@ -21,7 +21,7 @@ internal fun LyricsResult.timedLines(): List<ParsedLyricLine> {
         }
     }
     return LrcSpeakerLayout.project(LrcParser.align(lyrics, translatedLyrics, wordRaw = wordLyrics,
-        romanizedRaw = romanizedLyrics, durationMs = durationMs), candidateArtist, candidateTrack)
+        romanizedRaw = romanizedLyrics, durationMs = durationMs, artist = candidateArtist, track = candidateTrack), candidateArtist, candidateTrack)
 }
 
 internal fun LyricsResult.plainText(): String = if (isInstrumentalContent()) "" else cleanLyrics(plainLyrics).ifBlank {

@@ -182,9 +182,8 @@ internal fun lyricVoiceInsets(side: LyricSide, width: Int, fontSize: Float): Pai
     val near = min(width * LyricVisuals.VOICE_NEAR_INSET_RATIO, fontSize * LyricVisuals.VOICE_MAX_INSET_EM / 2f)
         .roundToInt().coerceIn(0, far)
     return when (side) {
-        LyricSide.Leading -> near to far
+        LyricSide.Leading, LyricSide.Center -> near to far // Legacy center values now use the left lane.
         LyricSide.Trailing -> far to near
-        LyricSide.Center -> far to far
         LyricSide.Unspecified -> 0 to 0
     }
 }
@@ -206,7 +205,6 @@ internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics,
             (width - mainLeftInset - mainRightInset).coerceAtLeast(1))
             .setAlignment(when (line.side) {
                 LyricSide.Trailing -> Layout.Alignment.ALIGN_OPPOSITE
-                LyricSide.Center -> Layout.Alignment.ALIGN_CENTER
                 else -> Layout.Alignment.ALIGN_NORMAL
             }).setIncludePad(false).setLineSpacing(0f, 1.3f)
             .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE).build()
@@ -227,7 +225,7 @@ internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics,
     val actualMainWidth = mainTrack?.layout?.width?.toFloat() ?: mainLayoutWidth.toFloat()
     val actualMainLeft = mainTrack?.left ?: mainLeftInset.toFloat()
     return NativeLyricRow(tracks, (top - metrics.gap + metrics.padding).roundToInt().coerceAtLeast(1),
-        actualMainLeft + when (line.side) { LyricSide.Trailing -> actualMainWidth; LyricSide.Center -> actualMainWidth / 2f; else -> 0f })
+        actualMainLeft + if (line.side == LyricSide.Trailing) actualMainWidth else 0f)
 }
 
 /** All string searches, caret queries, wrap segmentation and grapheme work happen once per immutable body. */

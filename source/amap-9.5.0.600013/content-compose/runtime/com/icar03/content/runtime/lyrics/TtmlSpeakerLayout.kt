@@ -2,7 +2,7 @@ package com.icar03.content.runtime.lyrics
 
 /**
  * Derives stable vocal lanes from structured TTML metadata.
- * The lane order follows the first source occurrence, matching Lyrimuse's duet plan.
+ * Solo lanes follow the first real solo occurrence; shared/group rows stay left.
  */
 internal object TtmlSpeakerLayout {
     const val UNSPECIFIED = 0
@@ -20,6 +20,7 @@ internal object TtmlSpeakerLayout {
                 .distinct()
         }
         val persons = references.asSequence()
+            .filter { it.size == 1 }
             .flatten()
             .filter { it !in groupIds }
             .distinct()
@@ -32,8 +33,8 @@ internal object TtmlSpeakerLayout {
         return references.map { identities ->
             val side = when {
                 identities.isEmpty() -> inherited
-                identities.size > 1 -> CENTER
-                identities.single() in groupIds -> CENTER
+                identities.size > 1 -> LEADING
+                identities.single() in groupIds -> LEADING
                 else -> lanes.getValue(identities.single())
             }
             inherited = side

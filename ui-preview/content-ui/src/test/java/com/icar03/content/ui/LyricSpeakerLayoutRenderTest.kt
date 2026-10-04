@@ -38,12 +38,17 @@ class LyricSpeakerLayoutRenderTest {
         }
     }
 
-    @Test fun chorusUsesSymmetricSpaceAndUnspecifiedRowsRetainTheirOriginalWidth() {
+    @Test fun legacyChorusUsesTheLeftLaneAndUnspecifiedRowsRetainTheirOriginalWidth() {
         val chorusLine = line.copy(side = LyricSide.Center)
         val chorus = prepareLyricRow(chorusLine, 400, metrics, face)
-        assertTrue(chorus.tracks.all { it.left == 60f && it.layout.width == 280 })
-        val ink = bounds(render(chorusLine, chorus, false))
-        assertEquals(200f, ink.exactCenterX(), 4f)
+        val leftLine = line.copy(side = LyricSide.Leading)
+        val left = prepareLyricRow(leftLine, 400, metrics, face)
+        assertTrue(chorus.tracks.all { it.left == 30f && it.layout.width == 310 })
+        assertEquals(left.mainPivotX, chorus.mainPivotX, 0f)
+        for (cold in listOf(false, true)) {
+            assertTrue("chorus and left voice draw identically, cold=$cold",
+                render(chorusLine, chorus, cold).sameAs(render(leftLine, left, cold)))
+        }
         val ordinary = prepareLyricRow(line, 400, metrics, face)
         assertTrue(ordinary.tracks.all { it.left == 0f && it.layout.width == 400 })
         assertEquals(0 to 0, lyricVoiceInsets(LyricSide.Unspecified, 400, 48f))
