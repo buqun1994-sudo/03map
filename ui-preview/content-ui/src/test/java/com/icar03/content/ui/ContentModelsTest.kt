@@ -92,6 +92,38 @@ class ContentModelsTest {
         assertNull(ShortcutId.Settings.control)
     }
 
+    @Test fun dockCountsKeepTheLockAndSettingsAroundTheOrderedMiddleSlots() {
+        val expected = mapOf(
+            3 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Settings),
+            4 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Settings),
+            5 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Heating, ShortcutId.Settings),
+            6 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Heating, ShortcutId.Massage, ShortcutId.Settings),
+        )
+        expected.forEach { (count, items) ->
+            val actual = dockItemsForCount(count)
+            assertEquals("Dock count $count", items, actual)
+            assertEquals(count, actual.size)
+            assertEquals(ShortcutId.Lock, actual.first())
+            assertEquals(ShortcutId.Settings, actual.last())
+            assertEquals("every slot is unique at count $count", actual.size, actual.toSet().size)
+            assertEquals(1, actual.count { it.control == ControlId.Lock })
+            assertEquals(1, actual.count { it == ShortcutId.Settings })
+            assertTrue("only the declared Dock catalog can supply slots", DockShortcuts.items.containsAll(actual))
+        }
+        assertEquals("shrinking does not remove anything from the shared catalog", expected.getValue(6), DockShortcuts.items)
+    }
+
+    @Test fun outOfRangeDockCountsClampWithoutOverflowOrLosingEitherFixedEnd() {
+        val smallest = listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Settings)
+        for (count in listOf(Int.MIN_VALUE, -100, -1, 0, 1, 2)) {
+            assertEquals("lower bound $count", smallest, dockItemsForCount(count))
+        }
+        for (count in listOf(7, 100, Int.MAX_VALUE)) {
+            assertEquals("upper bound $count", DockShortcuts.items, dockItemsForCount(count))
+        }
+        assertEquals("repeated normalization never mutates the next projection", smallest, dockItemsForCount(3))
+    }
+
     @Test fun metadataDeclaresFourPresentationsWithoutDuplicatingVehicleState() {
         assertEquals(4, QuickControlType.entries.size)
         assertEquals(11, ShortcutId.entries.size)

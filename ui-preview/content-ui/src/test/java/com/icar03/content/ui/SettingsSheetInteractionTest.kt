@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.view.View
 import android.view.WindowManager
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -18,6 +19,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import org.junit.Assert.*
@@ -35,6 +39,7 @@ import java.io.File
 @Config(sdk = [28], qualifiers = "w640dp-h1080dp-mdpi")
 open class SettingsSheetInteractionTest {
     protected open val dark = false
+    protected open val systemDpi: Int? = null
     @get:Rule val compose = createComposeRule()
     private val state = mutableStateOf(ContentUiState(previewMode = false))
     private val events = mutableListOf<ContentEvent>()
@@ -44,28 +49,41 @@ open class SettingsSheetInteractionTest {
         state.value = state.value.copy(settingsOpen = open)
         compose.setContent {
             val view = LocalView.current
-            val currentDensity = LocalDensity.current.density
+            val presentationDensity = systemDpi?.let { Density(it / 160f) } ?: LocalDensity.current
             @Suppress("DEPRECATION")
             SideEffect {
-                density = currentDensity
+                density = presentationDensity.density
                 val window = view.context.activity().window
                 window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
+            CompositionLocalProvider(LocalDensity provides presentationDensity) {
             ContentTheme(dark) {
                 ContentPanel(state.value.copy(dark = dark), { event ->
                     events += event
                     when (event) {
-                        ContentEvent.SettingsTapped -> state.value = state.value.copy(settingsOpen = true)
+                        ContentEvent.SettingsTapped -> state.value = state.value.copy(settingsOpen = !state.value.settingsOpen, settingsSection = SettingsSection.TopBar)
                         ContentEvent.SettingsDismissed -> state.value = state.value.copy(settingsOpen = false)
                         is ContentEvent.SettingsSectionSelected -> state.value = state.value.copy(settingsSection = event.section)
                         is ContentEvent.ShowSecondsChanged -> state.value = state.value.copy(showSeconds = event.value)
                         is ContentEvent.ShowWeekdayChanged -> state.value = state.value.copy(showWeekday = event.value)
+                        is ContentEvent.ShowIndoorTemperatureChanged -> state.value = state.value.copy(showIndoorTemperature = event.value)
+                        is ContentEvent.ShowBatteryChanged -> state.value = state.value.copy(showBattery = event.value)
+                        is ContentEvent.ShowChargingStatusChanged -> state.value = state.value.copy(showChargingStatus = event.value)
+                        is ContentEvent.LyricsFontScaleChanged -> state.value = state.value.copy(lyricsFontScale = event.value)
+                        is ContentEvent.LyricsLineSpacingChanged -> state.value = state.value.copy(lyricsLineSpacing = event.value)
+                        is ContentEvent.LyricsSpeakerLayoutChanged -> state.value = state.value.copy(lyricsSpeakerLayout = event.value)
+                        is ContentEvent.LyricsHighlightChanged -> state.value = state.value.copy(lyricsHighlight = event.value)
+                        is ContentEvent.ShowAmbientArtworkChanged -> state.value = state.value.copy(showAmbientArtwork = event.value)
+                        is ContentEvent.ShowMediaSourceSwitcherChanged -> state.value = state.value.copy(showMediaSourceSwitcher = event.value)
+                        is ContentEvent.DockButtonCountChanged -> state.value = state.value.copy(dockButtonCount = event.value)
+                        is ContentEvent.ShowActionFeedbackChanged -> state.value = state.value.copy(showActionFeedback = event.value)
                         else -> Unit
                     }
                 }, Modifier.testTag("settings-native-root"))
+            }
             }
         }
         compose.waitForIdle()
@@ -99,10 +117,10 @@ open class SettingsSheetInteractionTest {
 
     @Test fun menuAndSwitchClicksWithSmallMovementWorkAndBackgroundActionsStayBlocked() {
         mount(open = true)
-        compose.onNodeWithTag("settings-menu-Display").performTouchInput {
+        compose.onNodeWithTag("settings-menu-TopBar").performTouchInput {
             down(center); moveBy(Offset(1f, 1f)); up()
         }
-        assertEquals(SettingsSection.Display, state.value.settingsSection)
+        assertEquals(SettingsSection.TopBar, state.value.settingsSection)
         compose.onNodeWithContentDescription("显示秒数").performTouchInput {
             down(center); moveBy(Offset(1f, 1f)); up()
         }
@@ -194,24 +212,133 @@ open class SettingsSheetInteractionTest {
         compose.mainClock.autoAdvance = true
     }
 
-    @Test fun readOnlyKnownVehicleStatesRemainAccurateInSettings() {
+    @Test fun settingsOnlyExposePreferencesAndNoVehicleStatusDuplicates() {
         state.value = state.value.copy(controls = state.value.controls + mapOf(
             ControlId.Lock to ControlState(actual = 1, available = false),
             ControlId.Wiper to ControlState(actual = 5, available = false),
             ControlId.RearWash to ControlState(actual = 1, available = false),
         ))
         mount(open = true)
-        compose.onNodeWithText("已锁定").assertExists()
-        compose.onNodeWithText("自动").assertExists()
-        compose.onNodeWithText("洗涤中").assertExists()
-        compose.onNodeWithTag("settings-menu-Connection").performScrollTo().performClick()
-        compose.onAllNodesWithText("已连接").assertCountEquals(2)
+        compose.onNodeWithText("已锁定").assertDoesNotExist()
+        compose.onNodeWithText("洗涤中").assertDoesNotExist()
+        compose.onNodeWithTag("settings-menu-TopBar").assertExists()
+        compose.onNodeWithTag("settings-menu-Connection").assertDoesNotExist()
+        compose.onNodeWithText("车辆状态").assertDoesNotExist()
+        for (section in SettingsSection.entries) {
+            val tag = "settings-menu-${section.name}"
+            val menu = compose.onNodeWithTag(tag).assertExists()
+            val menuBounds = menu.fetchSemanticsNode().boundsInRoot
+            val title = compose.onNode(
+                hasText(section.label) and hasAnyAncestor(hasTestTag(tag)),
+                useUnmergedTree = true,
+            ).assertExists()
+            val titleBounds = title.fetchSemanticsNode().boundsInRoot
+            assertEquals("${section.name} title is horizontally centered", menuBounds.center.x, titleBounds.center.x, 1f)
+            assertEquals("${section.name} title is vertically centered", menuBounds.center.y, titleBounds.center.y, 2f)
+            assertMinimumFontPixels(section.label, 24f, tag)
+            compose.onNode(
+                hasText(section.description) and hasAnyAncestor(hasTestTag(tag)),
+                useUnmergedTree = true,
+            ).assertDoesNotExist()
+        }
+        assertTrue("the menu keeps enough width for the detail column", bounds("settings-menu").width <= 192f * density + 1f)
     }
 
-    private fun dragAndRelease(distance: Float, cancelGesture: Boolean = false) {
+    @Test fun preferenceControlsHaveLargeTouchTargetsAndDoNotExposeShortcutActions() {
+        mount(open = true)
+        compose.onNodeWithTag("settings-menu-Lyrics").performClick()
+        compose.onNodeWithTag("settings-option-歌词字号-大").performScrollTo().performClick()
+        assertEquals(1.15f, state.value.lyricsFontScale, .001f)
+        compose.onNodeWithContentDescription("按声部布局").performScrollTo().performClick()
+        assertFalse(state.value.lyricsSpeakerLayout)
+        compose.onNodeWithTag("settings-menu-Layout").performScrollTo().performClick()
+        compose.onNodeWithTag("settings-option-Dock 显示按钮-3").performClick()
+        assertEquals(3, state.value.dockButtonCount)
+        assertTrue("top gesture band must be larger than the visible handle", bounds("settings-gesture-handle").height > 60f)
+        compose.onNode(hasText("车辆") and hasAnyAncestor(hasTestTag("settings-sheet"))).assertDoesNotExist()
+        compose.onNode(hasText("媒体音量") and hasAnyAncestor(hasTestTag("settings-sheet"))).assertDoesNotExist()
+    }
+
+    @Test fun theSettingsButtonOpensAndClosesTheVisibleSheet() {
+        mount()
+        compose.onNodeWithTag("dock-Settings").performClick()
+        compose.onNodeWithTag("settings-sheet").assertIsDisplayed()
+        compose.onNodeWithTag("dock-Settings").performClick()
+        compose.onNodeWithTag("settings-sheet").assertDoesNotExist()
+        assertFalse(state.value.settingsOpen)
+        assertTrue(events.all { it == ContentEvent.SettingsTapped })
+    }
+
+    @Test fun fullWidthTopBandAcceptsDragsAtTheEdgeAndDetailsScrollIndependently() {
+        mount(open = true)
+        val host = bounds("settings-sheet-host")
+        val band = bounds("settings-gesture-handle")
+        assertEquals(host.width, band.width, 1f)
+        assertTrue(band.height + 1 >= 72f * density)
+        val detail = compose.onNodeWithTag("settings-detail-scroll")
+        val range = detail.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+        if (range.maxValue() > 0f) {
+            val before = range.value()
+            detail.performTouchInput { swipeUp(durationMillis = 600) }
+            assertTrue("the content owns its vertical scroll", range.value() > before)
+            assertEquals(host.top, bounds("settings-sheet").top, 1f)
+            assertTrue(state.value.settingsOpen)
+            compose.onNodeWithContentDescription("显示星期").performScrollTo()
+        }
+        compose.mainClock.autoAdvance = false
+        dragAndRelease(host.height * .1f, relativeX = .05f)
+        compose.mainClock.advanceTimeByFrame()
+        assertTrue("left edge drag follows the finger", bounds("settings-sheet").top > host.top)
+        compose.mainClock.advanceTimeBy(500)
+        assertEquals(host.top, bounds("settings-sheet").top, 1f)
+        assertTrue(events.none { it == ContentEvent.SettingsDismissed })
+        dragAndRelease(host.height * .3f, relativeX = .95f)
+        compose.mainClock.advanceTimeByFrame()
+        assertTrue("edge drag dismiss continues from the finger", bounds("settings-sheet").top >= host.top + host.height * .29f)
+        compose.mainClock.advanceTimeUntil(1_000) { !state.value.settingsOpen }
+        assertEquals(1, events.count { it == ContentEvent.SettingsDismissed })
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun everyPreferenceGroupHasAReachableCarScaleControlAndAnActualFrame() {
+        mount(open = true)
+        for (section in SettingsSection.entries) {
+            compose.onNodeWithTag("settings-menu-${section.name}").performScrollTo().performClick()
+            capture("settings-${section.name}")
+            val detail = compose.onNodeWithTag("settings-detail-scroll")
+            assertEquals(0f, detail.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value(), 1f)
+        }
+        compose.onNodeWithTag("settings-menu-Lyrics").performScrollTo().performClick()
+        for (option in listOf("小", "标准", "大")) {
+            val area = compose.onNodeWithTag("settings-option-歌词字号-$option").performScrollTo()
+                .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue("option hit width", area.width + 1 >= maxOf(64 * density, 64f))
+            assertTrue("option hit height", area.height + 1 >= maxOf(56 * density, 64f))
+            assertMinimumFontPixels(option, 22f, "settings-option-歌词字号-$option")
+        }
+        val speaker = compose.onNodeWithContentDescription("按声部布局").performScrollTo().assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("the switch row keeps a car-sized target", speaker.height + 1 >= maxOf(78 * density, 88f))
+        assertMinimumFontPixels("按声部布局", 24f)
+        assertMinimumFontPixels("有声部信息时左右分配歌词", 16f)
+        capture("settings-Lyrics-scroll")
+    }
+
+    private fun assertMinimumFontPixels(text: String, minimum: Float, ancestorTag: String? = null) {
+        val layouts = mutableListOf<TextLayoutResult>()
+        val matcher = hasText(text).let { if (ancestorTag == null) it else it and hasAnyAncestor(hasTestTag(ancestorTag)) }
+        compose.onNode(matcher, useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        val input = layouts.single().layoutInput
+        val pixels = input.style.fontSize.value * input.density.density * input.density.fontScale
+        assertTrue("$text has a readable font: $pixels", pixels + .05f >= minimum)
+    }
+
+    private fun dragAndRelease(distance: Float, cancelGesture: Boolean = false, relativeX: Float = .5f) {
         val host = bounds("settings-sheet-host")
         val origin = bounds("settings-native-root").topLeft
-        val point = bounds("settings-gesture-handle").center - origin
+        val band = bounds("settings-gesture-handle")
+        val point = Offset(band.left + band.width * relativeX, band.center.y) - origin
         val root = compose.onNodeWithTag("settings-native-root")
         root.performTouchInput { down(point) }
         repeat(5) { index ->
@@ -272,3 +399,22 @@ class SettingsSheet320DarkInteractionTest : SettingsSheetInteractionTest() { ove
 
 @Config(sdk = [34], qualifiers = "w640dp-h1080dp-mdpi")
 class SettingsSheetApi34InteractionTest : SettingsSheetInteractionTest()
+
+
+@Config(sdk = [28], qualifiers = "w640dp-h1080dp-mdpi")
+class SettingsSheet141InteractionTest : SettingsSheetInteractionTest() { override val systemDpi = 141 }
+
+@Config(sdk = [28], qualifiers = "w640dp-h1080dp-mdpi")
+class SettingsSheet141DarkInteractionTest : SettingsSheetInteractionTest() {
+    override val systemDpi = 141
+    override val dark = true
+}
+
+@Config(sdk = [28], qualifiers = "w640dp-h1080dp-mdpi")
+class SettingsSheet212InteractionTest : SettingsSheetInteractionTest() { override val systemDpi = 212 }
+
+@Config(sdk = [28], qualifiers = "w640dp-h1080dp-mdpi")
+class SettingsSheet212DarkInteractionTest : SettingsSheetInteractionTest() {
+    override val systemDpi = 212
+    override val dark = true
+}

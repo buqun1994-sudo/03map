@@ -36,18 +36,18 @@ class ContentSettingsFeedbackTest {
         binding.dispatch(ContentEvent.SettingsTapped)
         assertTrue(binding.state.value.settingsOpen)
         assertFalse(binding.state.value.sourcesOpen)
-        assertEquals(SettingsSection.Vehicle, binding.state.value.settingsSection)
+        assertEquals(SettingsSection.TopBar, binding.state.value.settingsSection)
 
-        binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Display))
-        assertEquals(SettingsSection.Display, binding.state.value.settingsSection)
+        binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Lyrics))
+        assertEquals(SettingsSection.Lyrics, binding.state.value.settingsSection)
         binding.dispatch(ContentEvent.SettingsDismissed)
         assertFalse(binding.state.value.settingsOpen)
         assertFalse(binding.state.value.sourcesOpen)
 
-        binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Sound))
-        assertEquals("a closed sheet ignores menu selections", SettingsSection.Display, binding.state.value.settingsSection)
+        binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Media))
+        assertEquals("a closed sheet ignores menu selections", SettingsSection.Lyrics, binding.state.value.settingsSection)
         binding.dispatch(ContentEvent.SettingsTapped)
-        assertEquals(SettingsSection.Vehicle, binding.state.value.settingsSection)
+        assertEquals(SettingsSection.TopBar, binding.state.value.settingsSection)
     }
 
     @Test fun openSettingsRejectsPageMediaControlAndSystemIntentsButPersistsDisplayPreferences() = withFixture { fixture ->
@@ -95,17 +95,53 @@ class ContentSettingsFeedbackTest {
 
         val showWeekday = !originalStore.showWeekday
         val showSeconds = !originalStore.showSeconds
+        val showTemperature = !originalStore.showIndoorTemperature
+        val showBattery = !originalStore.showBattery
+        val showCharging = !originalStore.showChargingStatus
         binding.dispatch(ContentEvent.ShowWeekdayChanged(showWeekday))
         binding.dispatch(ContentEvent.ShowSecondsChanged(showSeconds))
+        binding.dispatch(ContentEvent.ShowIndoorTemperatureChanged(showTemperature))
+        binding.dispatch(ContentEvent.ShowBatteryChanged(showBattery))
+        binding.dispatch(ContentEvent.ShowChargingStatusChanged(showCharging))
+        binding.dispatch(ContentEvent.LyricsFontScaleChanged(1.15f))
+        binding.dispatch(ContentEvent.LyricsLineSpacingChanged(2))
+        binding.dispatch(ContentEvent.LyricsSpeakerLayoutChanged(false))
+        binding.dispatch(ContentEvent.LyricsHighlightChanged(false))
+        binding.dispatch(ContentEvent.ShowAmbientArtworkChanged(false))
+        binding.dispatch(ContentEvent.ShowMediaSourceSwitcherChanged(false))
+        binding.dispatch(ContentEvent.DockButtonCountChanged(3))
+        binding.dispatch(ContentEvent.ShowActionFeedbackChanged(false))
         assertTrue(binding.state.value.settingsOpen)
         assertEquals(showWeekday, binding.state.value.showWeekday)
         assertEquals(showSeconds, binding.state.value.showSeconds)
+        assertEquals(showTemperature, binding.state.value.showIndoorTemperature)
+        assertEquals(showBattery, binding.state.value.showBattery)
+        assertEquals(showCharging, binding.state.value.showChargingStatus)
+        assertEquals(1.15f, binding.state.value.lyricsFontScale, .001f)
+        assertEquals(2, binding.state.value.lyricsLineSpacing)
+        assertFalse(binding.state.value.lyricsSpeakerLayout)
+        assertFalse(binding.state.value.lyricsHighlight)
+        assertFalse(binding.state.value.showAmbientArtwork)
+        assertFalse(binding.state.value.showMediaSourceSwitcher)
+        assertEquals(3, binding.state.value.dockButtonCount)
+        assertFalse(binding.state.value.showActionFeedback)
         assertEquals(showWeekday, fixture.store.snapshot().showWeekday)
         assertEquals(showSeconds, fixture.store.snapshot().showSeconds)
         val persisted = ContentState()
         ContentPreferenceStore(RuntimeEnvironment.getApplication()).load(persisted)
         assertEquals(showWeekday, persisted.showWeekday)
         assertEquals(showSeconds, persisted.showSeconds)
+        assertEquals(showTemperature, persisted.showIndoorTemperature)
+        assertEquals(showBattery, persisted.showBattery)
+        assertEquals(showCharging, persisted.showChargingStatus)
+        assertEquals(1.15f, persisted.lyricsFontScale, .001f)
+        assertEquals(2, persisted.lyricsLineSpacing)
+        assertFalse(persisted.lyricsSpeakerLayout)
+        assertFalse(persisted.lyricsHighlight)
+        assertFalse(persisted.showAmbientArtwork)
+        assertFalse(persisted.showMediaSourceSwitcher)
+        assertEquals(3, persisted.dockButtonCount)
+        assertFalse(persisted.showActionFeedback)
     }
 
     @Test fun playbackFailureExpiresAtThreeSecondsAndOrdinaryObservationsDoNotExtendIt() = withFixture { fixture ->
@@ -159,7 +195,7 @@ class ContentSettingsFeedbackTest {
         // The accepted intent predates Settings; its asynchronous rejection can arrive while the sheet is open.
         fixture.binding.dispatch(ContentEvent.PlayPause)
         fixture.binding.dispatch(ContentEvent.SettingsTapped)
-        fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Display))
+        fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Lyrics))
         fixture.drain()
         assertTrue(fixture.binding.state.value.settingsOpen)
         assertEquals(PLAYBACK_FAILURE, fixture.binding.state.value.message)
@@ -183,7 +219,7 @@ class ContentSettingsFeedbackTest {
         assertTrue(fixture.binding.active.value)
         assertFalse(fixture.binding.state.value.settingsOpen)
         assertFalse(fixture.binding.state.value.sourcesOpen)
-        assertEquals(SettingsSection.Vehicle, fixture.binding.state.value.settingsSection)
+        assertEquals(SettingsSection.TopBar, fixture.binding.state.value.settingsSection)
         assertNull(fixture.binding.state.value.message)
         assertEquals(1, fixture.media.playbackRequests.get())
         advance(3_100L)
@@ -193,6 +229,36 @@ class ContentSettingsFeedbackTest {
         assertNull(fixture.binding.state.value.message)
         assertFalse(fixture.binding.state.value.settingsOpen)
         assertEquals(1, fixture.media.playbackRequests.get())
+    }
+
+    @Test fun repeatedSettingsButtonClicksToggleTheSameSheetAndKeepSourcesClosed() = withFixture { fixture ->
+        fixture.binding.dispatch(ContentEvent.SettingsTapped)
+        assertTrue(fixture.binding.state.value.settingsOpen)
+        fixture.binding.dispatch(ContentEvent.SettingsTapped)
+        assertFalse(fixture.binding.state.value.settingsOpen)
+        assertFalse(fixture.binding.state.value.sourcesOpen)
+        fixture.binding.dispatch(ContentEvent.SettingsTapped)
+        assertTrue(fixture.binding.state.value.settingsOpen)
+        assertEquals(SettingsSection.TopBar, fixture.binding.state.value.settingsSection)
+        assertEquals(0, fixture.vehicle.requests.get())
+        assertEquals(0, fixture.media.sourceRequests.get())
+    }
+
+    @Test fun feedbackDisabledDropsExistingAndNewFailuresWithoutReplayingThemOnEnable() = withFixture { fixture ->
+        fixture.rejectPlayback()
+        // A programmatic preference change uses the same owner as the Settings event.
+        fixture.store.setShowActionFeedback(false)
+        assertNull(fixture.binding.state.value.message)
+        fixture.binding.dispatch(ContentEvent.PlayPause)
+        fixture.drain()
+        assertEquals(2, fixture.media.playbackRequests.get())
+        assertEquals(ContentState.COMMAND_FAILED, fixture.store.snapshot().commandStatus)
+        assertNull(fixture.binding.state.value.message)
+        fixture.binding.dispatch(ContentEvent.ShowActionFeedbackChanged(true))
+        fixture.drain()
+        assertNull("enabling feedback must not replay the hidden failure", fixture.binding.state.value.message)
+        fixture.rejectPlayback()
+        assertEquals(3, fixture.media.playbackRequests.get())
     }
 
     private fun withFixture(test: (Fixture) -> Unit) {

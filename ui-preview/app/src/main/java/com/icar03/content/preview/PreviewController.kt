@@ -26,11 +26,30 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             ContentEvent.ToggleTheme -> update { it.copy(dark = !it.dark) }
             is ContentEvent.PageSelected -> update { it.copy(page = event.page) }
             ContentEvent.OpenSources -> update { it.copy(sourcesOpen = true, scenariosOpen = false) }
-            ContentEvent.SettingsTapped -> update { it.copy(settingsOpen = true, settingsSection = SettingsSection.Vehicle, sourcesOpen = false, scenariosOpen = false, message = null) }
+            ContentEvent.SettingsTapped -> update {
+                it.copy(
+                    settingsOpen = !it.settingsOpen,
+                    settingsSection = SettingsSection.TopBar,
+                    sourcesOpen = false,
+                    scenariosOpen = false,
+                    message = null,
+                )
+            }
             ContentEvent.SettingsDismissed -> update { it.copy(settingsOpen = false, message = null) }
-            is ContentEvent.SettingsSectionSelected -> update { it.copy(settingsSection = event.section) }
+            is ContentEvent.SettingsSectionSelected -> update { if (it.settingsOpen) it.copy(settingsSection = event.section) else it }
             is ContentEvent.ShowWeekdayChanged -> update { it.copy(showWeekday = event.value) }
             is ContentEvent.ShowSecondsChanged -> update { it.copy(showSeconds = event.value) }
+            is ContentEvent.ShowIndoorTemperatureChanged -> update { it.copy(showIndoorTemperature = event.value) }
+            is ContentEvent.ShowBatteryChanged -> update { it.copy(showBattery = event.value) }
+            is ContentEvent.ShowChargingStatusChanged -> update { it.copy(showChargingStatus = event.value) }
+            is ContentEvent.LyricsFontScaleChanged -> update { it.copy(lyricsFontScale = if (event.value.isFinite()) event.value.coerceIn(.85f, 1.15f) else 1f) }
+            is ContentEvent.LyricsLineSpacingChanged -> update { it.copy(lyricsLineSpacing = event.value.coerceIn(0, 2)) }
+            is ContentEvent.LyricsSpeakerLayoutChanged -> update { it.copy(lyricsSpeakerLayout = event.value) }
+            is ContentEvent.LyricsHighlightChanged -> update { it.copy(lyricsHighlight = event.value) }
+            is ContentEvent.ShowAmbientArtworkChanged -> update { it.copy(showAmbientArtwork = event.value) }
+            is ContentEvent.ShowMediaSourceSwitcherChanged -> update { it.copy(showMediaSourceSwitcher = event.value) }
+            is ContentEvent.DockButtonCountChanged -> update { it.copy(dockButtonCount = event.value.coerceIn(3, 6)) }
+            is ContentEvent.ShowActionFeedbackChanged -> update { it.copy(showActionFeedback = event.value, message = if (event.value) it.message else null) }
             ContentEvent.OpenScenarios -> update { it.copy(scenariosOpen = true, sourcesOpen = false) }
             ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false, settingsOpen = false) }
             is ContentEvent.ControlTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.nextLevel(control.actual) }
@@ -106,7 +125,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             delay(900)
             if (generation != token || !active) return@launch
             finish(!failure)
-            update { it.copy(message = if (failure) "模拟失败 · 已恢复确认值" else "模拟回流已确认 · 未执行真实操作") }
+            update { it.copy(message = if (!it.showActionFeedback) null else if (failure) "模拟失败 · 已恢复确认值" else "模拟回流已确认 · 未执行真实操作") }
             jobs.remove(key)
         }
     }

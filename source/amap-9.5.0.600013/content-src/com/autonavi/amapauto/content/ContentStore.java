@@ -254,6 +254,85 @@ public final class ContentStore {
         publish();
     }
 
+    public void setShowIndoorTemperature(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_INDOOR_TEMPERATURE, value);
+    }
+
+    public void setShowBattery(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_BATTERY, value);
+    }
+
+    public void setShowChargingStatus(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_CHARGING_STATUS, value);
+    }
+
+    public void setLyricsFontScale(float value) {
+        synchronized (this) {
+            state.lyricsFontScale = Float.isFinite(value) ? Math.max(0.85f, Math.min(1.15f, value)) : 1.0f;
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsLineSpacing(int value) {
+        synchronized (this) {
+            state.lyricsLineSpacing = Math.max(0, Math.min(2, value));
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsSpeakerLayout(boolean value) {
+        setBooleanPreference(PreferenceField.LYRICS_SPEAKER_LAYOUT, value);
+    }
+
+    public void setLyricsHighlight(boolean value) {
+        setBooleanPreference(PreferenceField.LYRICS_HIGHLIGHT, value);
+    }
+
+    public void setShowAmbientArtwork(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_AMBIENT_ARTWORK, value);
+    }
+
+    public void setShowMediaSourceSwitcher(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_MEDIA_SOURCE_SWITCHER, value);
+    }
+
+    public void setDockButtonCount(int value) {
+        synchronized (this) {
+            state.dockButtonCount = Math.max(3, Math.min(6, value));
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setShowActionFeedback(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_ACTION_FEEDBACK, value);
+    }
+
+    private enum PreferenceField {
+        SHOW_INDOOR_TEMPERATURE, SHOW_BATTERY, SHOW_CHARGING_STATUS,
+        LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, SHOW_AMBIENT_ARTWORK,
+        SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK
+    }
+
+    private void setBooleanPreference(PreferenceField field, boolean value) {
+        synchronized (this) {
+            switch (field) {
+                case SHOW_INDOOR_TEMPERATURE: state.showIndoorTemperature = value; break;
+                case SHOW_BATTERY: state.showBattery = value; break;
+                case SHOW_CHARGING_STATUS: state.showChargingStatus = value; break;
+                case LYRICS_SPEAKER_LAYOUT: state.lyricsSpeakerLayout = value; break;
+                case LYRICS_HIGHLIGHT: state.lyricsHighlight = value; break;
+                case SHOW_AMBIENT_ARTWORK: state.showAmbientArtwork = value; break;
+                case SHOW_MEDIA_SOURCE_SWITCHER: state.showMediaSourceSwitcher = value; break;
+                case SHOW_ACTION_FEEDBACK: state.showActionFeedback = value; break;
+            }
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
     public void acceptVehicleSnapshot(ContentPorts.VehicleSnapshot snapshot) {
         if (snapshot == null) {
             return;

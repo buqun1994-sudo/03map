@@ -54,9 +54,13 @@ object DockShortcuts {
 }
 
 enum class PanelPage { Shortcuts, Lyrics }
-enum class SettingsSection(val label: String) {
-    Vehicle("车辆"), Volume("音量"), Sound("声音"), Display("显示"),
-    Connection("连接"), Assistant("理想同学"), Mode("模式"), Accessories("配件"), General("通用")
+enum class SettingsSection(val label: String, val description: String) {
+    TopBar("顶栏", "时间、温度、电量和充电信息"),
+    Lyrics("歌词", "字号、行距和声部呈现"),
+    Artwork("封面氛围", "歌曲封面背景的显示方式"),
+    Media("媒体", "媒体卡的附加入口"),
+    Layout("Dock", "底部快捷按钮的显示数量"),
+    Interaction("交互", "操作结果提示")
 }
 enum class PreviewScenario(val label: String) {
     Ready("日常预览"), NoData("无数据"), Unavailable("能力不可用"), Failure("失败回弹"), Pending("待确认"), Playing("正在播放"), SourceMenu("来源菜单")
@@ -121,8 +125,14 @@ data class ContentUiState(
     val brightness: LevelState = LevelState(.65f), val volume: LevelState = LevelState(.38f),
     val media: MediaState = MediaState(), val lyrics: LyricsState = LyricsState(), val sourcesOpen: Boolean = false,
     val scenariosOpen: Boolean = false, val message: String? = null, val messageRevision: Long = 0L,
-    val settingsOpen: Boolean = false, val settingsSection: SettingsSection = SettingsSection.Vehicle,
+    val settingsOpen: Boolean = false, val settingsSection: SettingsSection = SettingsSection.TopBar,
     val showWeekday: Boolean = true, val showSeconds: Boolean = false,
+    val showIndoorTemperature: Boolean = true, val showBattery: Boolean = true,
+    val showChargingStatus: Boolean = true, val lyricsFontScale: Float = 1.0f,
+    val lyricsLineSpacing: Int = 1, val lyricsSpeakerLayout: Boolean = true,
+    val lyricsHighlight: Boolean = true, val showAmbientArtwork: Boolean = true,
+    val showMediaSourceSwitcher: Boolean = true, val dockButtonCount: Int = 6,
+    val showActionFeedback: Boolean = true,
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,
     val placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap(),
@@ -149,13 +159,30 @@ sealed interface ContentEvent {
     data object SettingsDismissed : ContentEvent
     data class ShowWeekdayChanged(val value: Boolean) : ContentEvent
     data class ShowSecondsChanged(val value: Boolean) : ContentEvent
+    data class ShowIndoorTemperatureChanged(val value: Boolean) : ContentEvent
+    data class ShowBatteryChanged(val value: Boolean) : ContentEvent
+    data class ShowChargingStatusChanged(val value: Boolean) : ContentEvent
+    data class LyricsFontScaleChanged(val value: Float) : ContentEvent
+    data class LyricsLineSpacingChanged(val value: Int) : ContentEvent
+    data class LyricsSpeakerLayoutChanged(val value: Boolean) : ContentEvent
+    data class LyricsHighlightChanged(val value: Boolean) : ContentEvent
+    data class ShowAmbientArtworkChanged(val value: Boolean) : ContentEvent
+    data class ShowMediaSourceSwitcherChanged(val value: Boolean) : ContentEvent
+    data class DockButtonCountChanged(val value: Int) : ContentEvent
+    data class ShowActionFeedbackChanged(val value: Boolean) : ContentEvent
     data object DismissSheet : ContentEvent
 }
 
 /** Settings remains modal until its content-layer exit finishes. */
 fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
     ContentEvent.SettingsTapped, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet,
-    is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged -> true
+    is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged,
+    is ContentEvent.ShowIndoorTemperatureChanged, is ContentEvent.ShowBatteryChanged,
+    is ContentEvent.ShowChargingStatusChanged, is ContentEvent.LyricsFontScaleChanged,
+    is ContentEvent.LyricsLineSpacingChanged, is ContentEvent.LyricsSpeakerLayoutChanged,
+    is ContentEvent.LyricsHighlightChanged, is ContentEvent.ShowAmbientArtworkChanged,
+    is ContentEvent.ShowMediaSourceSwitcherChanged, is ContentEvent.DockButtonCountChanged,
+    is ContentEvent.ShowActionFeedbackChanged -> true
     else -> false
 }
 

@@ -319,6 +319,151 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithText("此处仅预览歌词空态。").assertDoesNotExist()
     }
 
+    @Test
+    fun dockCountPreferenceKeepsBothFixedEndsAndCompleteTouchAreas() {
+        val state = androidx.compose.runtime.mutableStateOf(previewState().copy(previewMode = false))
+        mountInteractionState(state)
+        val expected = mapOf(
+            3 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Settings),
+            4 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Settings),
+            5 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Heating, ShortcutId.Settings),
+            6 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Heating, ShortcutId.Massage, ShortcutId.Settings),
+        )
+        val originalDock = compose.onNodeWithTag("floating-dock").getUnclippedBoundsInRoot()
+        for (count in listOf(3, 4, 5, 6, 3)) {
+            compose.runOnIdle { state.value = state.value.copy(dockButtonCount = count) }
+            compose.waitForIdle()
+            val items = expected.getValue(count)
+            compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(count)
+            DockShortcuts.items.forEach { id ->
+                val node = compose.onNodeWithTag("dock-${id.name}")
+                if (id in items) {
+                    val bounds = node.assertIsDisplayed().assertHasClickAction().getUnclippedBoundsInRoot()
+                    assertTrue("Dock $count/$id retains a complete 48dp target", bounds.right - bounds.left >= 48.dp && bounds.bottom - bounds.top >= 48.dp)
+                } else node.assertDoesNotExist()
+            }
+            val dock = compose.onNodeWithTag("floating-dock").getUnclippedBoundsInRoot()
+            val lock = compose.onNodeWithTag("dock-Lock").getUnclippedBoundsInRoot()
+            val settings = compose.onNodeWithTag("dock-Settings").getUnclippedBoundsInRoot()
+            assertEquals("count changes retain the Dock surface", originalDock, dock)
+            assertEquals("lock remains at the left edge", dock.left, lock.left)
+            assertEquals("settings remains at the right edge", dock.right, settings.right)
+            assertTrue(lock.right < settings.left)
+            compose.onNodeWithTag("dock-Settings").performClick()
+            assertTrue(events.last() == ContentEvent.SettingsTapped)
+        }
+        compose.onNodeWithTag("control-Heating").assertIsDisplayed()
+        compose.onNodeWithTag("shortcut-Settings").assertIsDisplayed()
+    }
+
+    @Test
+    fun hidingSourcePreferenceRemovesBothEntrancesWithoutMovingTheEmptyCopy() {
+        val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
+            previewMode = false, page = PanelPage.Lyrics, media = MediaState(isSong = false)))
+        mountInteractionState(state)
+        compose.onNodeWithTag("source-button").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("lyrics-source-action").assertIsDisplayed().assertIsEnabled()
+        val copyBounds = compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot()
+        val mediaBounds = compose.onNodeWithTag("media-card").getUnclippedBoundsInRoot()
+        compose.runOnIdle { state.value = state.value.copy(showMediaSourceSwitcher = false) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("source-button").assertDoesNotExist()
+        compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
+        compose.onNodeWithContentDescription("选择来源").assertDoesNotExist()
+        compose.onNodeWithTag("lyrics-empty-copy").assertTextEquals("暂无歌词")
+        assertEquals("the optional action cannot shift the centered text", copyBounds,
+            compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot())
+        assertEquals(mediaBounds, compose.onNodeWithTag("media-card").getUnclippedBoundsInRoot())
+        compose.onNodeWithTag("media-play").assertIsEnabled().performClick()
+        assertTrue(events.last() == ContentEvent.PlayPause)
+        compose.onNodeWithTag("media-next").assertIsEnabled().performClick()
+        assertTrue(events.last() == ContentEvent.NextTrack)
+
+        compose.runOnIdle { state.value = state.value.copy(showMediaSourceSwitcher = true) }
+        compose.waitForIdle()
+        for (tag in listOf("source-button", "lyrics-source-action")) {
+            compose.onNodeWithTag(tag).assertIsDisplayed().assertIsEnabled().performClick()
+            assertTrue("restored $tag uses the shared source event", events.last() == ContentEvent.OpenSources)
+        }
+        assertEquals(copyBounds, compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot())
+    }
+
+    @Test
+    fun topBarPreferencesChangeTheDefaultClockAndOptionalReadings() {
+        val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
+            previewMode = false, time = "12:24:31", weekday = "星期三", temperature = "25°",
+            chargeStatus = "已插枪", batteryPercent = 80))
+        mountInteractionState(state)
+        compose.onNodeWithTag("top-time").assertTextEquals("12:24 星期三")
+        compose.onNodeWithTag("top-temperature").assertTextEquals("25°C")
+        compose.onNodeWithTag("top-battery", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("charge-status").assertTextEquals("已插枪")
+        val originalTimeLeft = compose.onNodeWithTag("top-time").getUnclippedBoundsInRoot().left
+        compose.runOnIdle { state.value = state.value.copy(showSeconds = true) }
+        compose.onNodeWithTag("top-time").assertTextEquals("12:24:31 星期三")
+        compose.runOnIdle { state.value = state.value.copy(showWeekday = false) }
+        compose.onNodeWithTag("top-time").assertTextEquals("12:24:31")
+        compose.runOnIdle { state.value = state.value.copy(showSeconds = false,
+            showIndoorTemperature = false, showBattery = false, showChargingStatus = false) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("top-time").assertTextEquals("12:24")
+        compose.onNodeWithTag("top-temperature").assertDoesNotExist()
+        compose.onNodeWithTag("top-battery", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("charge-status").assertDoesNotExist()
+        compose.onNodeWithTag("top-range").assertTextEquals("366km")
+        assertEquals("the clock retains its physical left anchor", originalTimeLeft,
+            compose.onNodeWithTag("top-time").getUnclippedBoundsInRoot().left)
+        assertEquals("the display preference did not alter the source clock", "12:24:31", state.value.time)
+        assertEquals("已插枪", state.value.chargeStatus)
+        assertEquals(80, state.value.batteryPercent)
+
+        compose.runOnIdle { state.value = state.value.copy(showWeekday = true, showSeconds = true,
+            showIndoorTemperature = true, showBattery = true, showChargingStatus = true) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("top-time").assertTextEquals("12:24:31 星期三")
+        compose.onNodeWithTag("top-temperature").assertIsDisplayed()
+        compose.onNodeWithTag("top-battery", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("charge-status").assertTextEquals("已插枪")
+    }
+
+    @Test
+    fun lyricsPreferencesReachTheLivePageThroughItsBodyTransition() {
+        val lines = listOf(LyricLine(0, "默认歌词不会再提前换行", side = LyricSide.Trailing),
+            LyricLine(4_000, "合成下一句", side = LyricSide.Leading))
+        val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
+            previewMode = false, page = PanelPage.Lyrics,
+            lyrics = LyricsState(recordingKey = "page-lyric-preferences", lines = lines,
+                timelineReady = true, positionMs = 500, activeIndex = 0, scrollIndex = 0, durationMs = 60_000)))
+        compose.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalLyricGeometryDispatcher provides kotlinx.coroutines.Dispatchers.Unconfined,
+                LocalLyricPreparationDispatcher provides kotlinx.coroutines.Dispatchers.Unconfined,
+            ) {
+                ContentTheme(dark) { ContentPanel(state.value.copy(dark = dark), { events += it }, Modifier.testTag(hostTag)) }
+            }
+        }
+        compose.waitForIdle()
+        val body = compose.onNode(SemanticsMatcher.keyIsDefined(LyricRowHeights), useUnmergedTree = true)
+        val voiceHeights = body.fetchSemanticsNode().config[LyricRowHeights]
+        compose.runOnIdle { state.value = state.value.copy(lyricsSpeakerLayout = false) }
+        compose.waitForIdle()
+        val defaultHeights = body.fetchSemanticsNode().config[LyricRowHeights]
+        assertTrue("ContentPanel forwards voice preferences through LyricsBodyTransition", defaultHeights[0] < voiceHeights[0])
+        compose.runOnIdle { state.value = state.value.copy(lyricsLineSpacing = 2) }
+        compose.waitForIdle()
+        val looseHeights = body.fetchSemanticsNode().config[LyricRowHeights]
+        assertTrue("the actual page changes main-only row spacing", looseHeights.zip(defaultHeights).all { (loose, normal) -> loose > normal })
+        compose.runOnIdle { state.value = state.value.copy(lyricsFontScale = .85f) }
+        compose.waitForIdle()
+        assertEquals(34f, body.fetchSemanticsNode().config[LyricFontPixels], .01f)
+        assertEquals(40.8f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
+        compose.runOnIdle { state.value = state.value.copy(lyricsHighlight = false) }
+        compose.waitForIdle()
+        body.assert(SemanticsMatcher.expectValue(LyricEmphasizedRows, emptyList()))
+        body.assert(SemanticsMatcher.expectValue(LyricScrollAnchor, 0))
+        assertTrue("the page retains its real immutable lyric source", state.value.lyrics.lines === lines)
+    }
+
     private fun iconEntrances(id: ControlId): List<String> = if (DockShortcuts.items.any { it.control == id })
         listOf("shortcut-icon", "dock-icon") else listOf("shortcut-icon")
 

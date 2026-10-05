@@ -52,7 +52,8 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier) {
         ContentPanel(state, binding::dispatch, modifier,
             artwork = bitmap?.let { image -> { Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } },
             ambientBackground = {
-                MediaAmbientBackground(ambient, state.dark, active = active, animating = state.media.playing)
+                MediaAmbientBackground(ambient, state.dark, active = active && state.showAmbientArtwork,
+                animating = state.media.playing && state.showAmbientArtwork)
             },
             clockText = { val text by binding.clock.collectAsState(); text },
             lyricsState = { val lyrics by binding.lyrics.collectAsState(); lyrics })

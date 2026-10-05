@@ -78,7 +78,9 @@ fun ContentPanel(
     state: ContentUiState, onEvent: (ContentEvent) -> Unit, modifier: Modifier = Modifier,
     artwork: @Composable (() -> Unit)? = null,
     ambientBackground: @Composable (() -> Unit)? = null,
-    clockText: @Composable () -> ClockText = { ClockText(state.time, state.weekday) },
+    clockText: @Composable () -> ClockText = {
+        ClockText(if (state.showSeconds) state.time else state.time.take(5), if (state.showWeekday) state.weekday else "")
+    },
     lyricsState: @Composable () -> LyricsState = { state.lyrics },
 ) {
     val view = LocalView.current
@@ -143,7 +145,8 @@ fun ContentPanel(
                     }
                     Box(Modifier.fillMaxWidth().height(if (compact) 80.dp else 136.dp)
                         .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp)) {
-                        PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable, compact)
+                        PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
+                            compact, state.showMediaSourceSwitcher)
                     }
                     PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive)
                 }
@@ -164,7 +167,7 @@ fun ContentPanel(
             // Keep the moving feedback surface inside the same fixed content bounds.
             Box(Modifier.fillMaxSize().padding(top = topBarHeight, bottom = dockHeight).clipToBounds().zIndex(10f)) {
                 AnimatedVisibility(
-                    visible = state.message != null,
+                    visible = state.message != null && state.showActionFeedback,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
                     enter = fadeIn(tween(220)) + slideInVertically(tween(220, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
                     exit = fadeOut(tween(200)) + slideOutVertically(tween(200, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
@@ -198,7 +201,7 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
         val compact = maxWidth < 600.dp
         val style = MaterialTheme.typography.titleLarge
         val gap = if (compact) 4.dp else 8.dp
-        val batterySize = if (compact) 24.dp else 32.dp
+        val batterySize = if (!state.showBattery) 0.dp else if (compact) 24.dp else 32.dp
         val availablePx = with(density) { (maxWidth - 24.dp - batterySize).toPx() }
         val gapPx = with(density) { gap.toPx() }
         fun width(text: String) = measurer.measure(AnnotatedString(text), style, softWrap = false, maxLines = 1).size.width.toFloat()
@@ -209,7 +212,7 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
         val minuteTime = timeWithWeekday(clock.time.take(5), clock.weekday)
         val shortWeekdayTime = timeWithWeekday(clock.time.take(5), clock.weekday.replace("星期", "周"))
         val temperatureGap = gap + 4.dp
-        val fullStatus = state.chargeStatus
+        val fullStatus = if (state.showChargingStatus) state.chargeStatus else null
         val statusParts = fullStatus?.split("·").orEmpty()
         val powerStatus = statusParts.firstOrNull { it.contains("充电功率") || it.contains("kW") }
         val minutesStatus = statusParts.firstOrNull { it.contains("剩余") || it.contains("分钟") }
@@ -234,7 +237,7 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
         }
         // Optional temperature yields first, then seconds; weekday and primary values survive.
         val times = listOf(fullTime, minuteTime, shortWeekdayTime).distinct()
-        val choices = listOf(Triple(fullTime, statuses.first(), true)) +
+        val choices = listOf(Triple(fullTime, statuses.first(), state.showIndoorTemperature)) +
             times.map { Triple(it, statuses.first(), false) } +
             statuses.drop(1).flatMap { status -> times.map { Triple(it, status, false) } }
         val choice = choices.firstOrNull { required(it.first, it.second, it.third) <= availablePx }
@@ -268,8 +271,10 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
                 battery == R.drawable.content_oem_ico_battery_0 -> mapOf(0 to base)
                 else -> mapOf(0 to green, 1 to base)
             }
-            OemIcon(battery, Modifier.size(batterySize).testTag("top-battery"), state.batteryDescription,
-                tint = Color.Unspecified, pathColors = colors)
+            if (state.showBattery) {
+                OemIcon(battery, Modifier.size(batterySize).testTag("top-battery"), state.batteryDescription,
+                    tint = Color.Unspecified, pathColors = colors)
+            }
         }
     }
 }
@@ -485,7 +490,10 @@ internal fun shortcutTag(id: ShortcutId): String =
     if (id.control != null && id != ShortcutId.AutoWiper) "control-${id.name}" else "shortcut-${id.name}"
 
 @Composable
-private fun PrototypeMediaCard(media: MediaState, onEvent: (ContentEvent) -> Unit, artwork: @Composable (() -> Unit)?, sourcesEnabled: Boolean, compact: Boolean) {
+private fun PrototypeMediaCard(
+    media: MediaState, onEvent: (ContentEvent) -> Unit, artwork: @Composable (() -> Unit)?,
+    sourcesEnabled: Boolean, compact: Boolean, showSourceSwitcher: Boolean,
+) {
     val button = if (compact) 48.dp else 80.dp
     val icon = if (compact) 28.dp else 42.dp
     val colors = LocalContentColors.current
@@ -506,22 +514,30 @@ private fun PrototypeMediaCard(media: MediaState, onEvent: (ContentEvent) -> Uni
             Spacer(Modifier.width(if (compact) 0.dp else 12.dp))
             RoundedPressButton(Modifier.size(button), "media-next", "下一首", media.available && media.nextAvailable && !media.pending, compact,
                 onClick = { onEvent(ContentEvent.NextTrack) }) { OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(icon).testTag("media-next-icon")) }
-            Spacer(Modifier.width(if (compact) 0.dp else 12.dp))
-            VerticalDivider(Modifier.height(64.dp), color = MaterialTheme.colorScheme.outline)
-            RoundedPressButton(Modifier.width(if (compact) 48.dp else 96.dp).fillMaxHeight()
-                .semantics { stateDescription = if (media.targetSource != null) "切换中：${media.targetSource.label}" else media.source.label },
-                "source-button", "选择来源", sourcesEnabled, compact, onClick = { onEvent(ContentEvent.OpenSources) }) {
-                OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(icon).testTag("media-source-icon"), tint = sourceTint())
+            if (showSourceSwitcher) {
+                Spacer(Modifier.width(if (compact) 0.dp else 12.dp))
+                VerticalDivider(Modifier.height(64.dp), color = MaterialTheme.colorScheme.outline)
+                RoundedPressButton(Modifier.width(if (compact) 48.dp else 96.dp).fillMaxHeight()
+                    .semantics { stateDescription = if (media.targetSource != null) "切换中：${media.targetSource.label}" else media.source.label },
+                    "source-button", "选择来源", sourcesEnabled, compact, onClick = { onEvent(ContentEvent.OpenSources) }) {
+                    OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(icon).testTag("media-source-icon"), tint = sourceTint())
+                }
             }
         }
     }
 }
 
+internal fun dockItemsForCount(count: Int): List<ShortcutId> {
+    val normalized = count.coerceIn(3, DockShortcuts.MAX_BUTTONS)
+    val middle = DockShortcuts.items.drop(1).dropLast(1).take(normalized - 2)
+    return listOf(DockShortcuts.items.first()) + middle + listOf(DockShortcuts.items.last())
+}
+
 @Composable
 private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit, compact: Boolean,
     overlay: DockLevelOverlayState, interactive: Boolean) {
-     val colors = LocalContentColors.current
-    val items = DockShortcuts.items
+    val colors = LocalContentColors.current
+    val items = dockItemsForCount(state.dockButtonCount)
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
         Surface(
             Modifier.fillMaxSize().testTag("floating-dock").downwardSoftShadow(colors.dockBase, state.dark), shape = RoundedCornerShape(12.dp),
@@ -676,7 +692,9 @@ private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) 
 @Composable
 private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyricsState: @Composable () -> LyricsState) {
     val lyrics = lyricsState()
-    LyricsBodyTransition(lyrics, state.dark) {
+    LyricsBodyTransition(lyrics, state.dark,
+        fontScale = state.lyricsFontScale, lineSpacing = state.lyricsLineSpacing,
+        speakerLayout = state.lyricsSpeakerLayout, highlightCurrent = state.lyricsHighlight) {
         if (lyrics.lines.isEmpty()) LyricsEmptyContent(state, onEvent, lyrics)
     }
 }
@@ -702,7 +720,7 @@ private fun LyricsEmptyContent(state: ContentUiState, onEvent: (ContentEvent) ->
             Text(emptyText, Modifier.testTag("lyrics-empty-copy"), style = MaterialTheme.typography.headlineMedium,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 color = MaterialTheme.colorScheme.onBackground)
-            if (!state.previewMode && state.media.sourceAvailable && emptyState != LyricsEmptyState.Instrumental) TextButton(
+            if (!state.previewMode && state.showMediaSourceSwitcher && state.media.sourceAvailable && emptyState != LyricsEmptyState.Instrumental) TextButton(
                 onClick = { onEvent(ContentEvent.OpenSources) },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("lyrics-source-action"),
                 interactionSource = interactions,

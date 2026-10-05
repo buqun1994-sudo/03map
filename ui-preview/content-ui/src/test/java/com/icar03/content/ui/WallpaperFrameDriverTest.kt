@@ -53,7 +53,7 @@ class WallpaperFrameDriverTest {
         playbackSpeed = speed, durationMs = 500,
     )
 
-    private fun mount(initial: () -> LyricsState = { source() }): MutableState<LyricsState> {
+    private fun mount(speakerLayout: Boolean = true, initial: () -> LyricsState = { source() }): MutableState<LyricsState> {
         ShadowSystemClock.advanceBy(Duration.ofMillis(1_000))
         val current = mutableStateOf(initial())
         compose.mainClock.autoAdvance = false
@@ -61,7 +61,7 @@ class WallpaperFrameDriverTest {
             CompositionLocalProvider(LocalLyricGeometryDispatcher provides Dispatchers.Unconfined,
                 LocalLyricPreparationDispatcher provides Dispatchers.Unconfined) {
                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black).testTag(host)) {
-                    WallpaperLyrics(current.value, true)
+                    WallpaperLyrics(current.value, true, speakerLayout = speakerLayout)
                 }
             }
         }
@@ -284,6 +284,36 @@ class WallpaperFrameDriverTest {
         assertTrue("the driver survives without another anchor effect", value(LyricFrameElapsed) > resumedSample)
     }
 
+    @Test fun anchorRevisionAloneRefreshesASleepingSampleWhenSpeakerLayoutIsDisabled() {
+        val current = mount(speakerLayout = false) { separatedWords() }
+        advancePosition(1_500)
+        assertFalse(value(LyricFrameRunning))
+        val sleepingSample = value(LyricFrameElapsed)
+        val sleepingPosition = value(LyricFramePosition)
+        val heights = value(LyricRowHeights)
+        advancePosition(500, frames = 128)
+        assertEquals("the quiet interval did not sample by itself", sleepingSample, value(LyricFrameElapsed))
+
+        val beforeRevision = current.value
+        compose.runOnIdle {
+            current.value = beforeRevision.copy(anchorRevision = beforeRevision.anchorRevision + 1)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
+        assertSame("the immutable lyric document did not change", beforeRevision.lines, current.value.lines)
+        assertEquals(beforeRevision.positionMs, current.value.positionMs)
+        assertEquals(beforeRevision.capturedAtMs, current.value.capturedAtMs)
+        assertEquals(beforeRevision.scrollIndex, current.value.scrollIndex)
+        assertEquals(heights, value(LyricRowHeights))
+        assertTrue("a new trusted anchor revision refreshes the actual driver sample even with cached display lines",
+            value(LyricFrameElapsed) > sleepingSample)
+        assertTrue("the resampled position uses the existing trusted clock", value(LyricFramePosition) > sleepingPosition)
+        assertFalse("refreshing an anchor cannot fabricate a visible word interval", value(LyricFrameRunning))
+        val refreshedSample = value(LyricFrameElapsed)
+        advancePosition(100, frames = 128)
+        assertEquals("the driver returns to sleep after admitting the revision", refreshedSample, value(LyricFrameElapsed))
+    }
+
     @Test fun pauseCancelsASleepingWaitAndViewVisibilityLossStopsTheResumedFrames() {
         val current = mount { separatedWords() }
         advancePosition(1_500)
@@ -359,7 +389,7 @@ class WallpaperFrameDriverTest {
         File(directory, "wallpaper-worker-fallback.png").outputStream().use {
             assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
         }
-        // Hiding the view cancels the held worker but does not withdraw the admitted body.
+        // Losing View visibility cancels the held worker but does not withdraw the admitted body.
         setLyricViewShown(compose, host, false)
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         compose.runOnIdle { held.releaseCancelledTasks() }

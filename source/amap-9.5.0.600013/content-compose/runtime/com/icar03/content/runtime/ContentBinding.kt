@@ -54,7 +54,7 @@ class ContentBinding(
     private var volume = ContentPorts.SystemSnapshot(false, 0)
     private var sourcesOpen = false
     private var settingsOpen = false
-    private var settingsSection = SettingsSection.Vehicle
+    private var settingsSection = SettingsSection.TopBar
     private var placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap()
     private var feedback: String? = null
     private var feedbackRevision = 0L
@@ -67,7 +67,7 @@ class ContentBinding(
     }
     private fun replaceFeedback(message: String?) {
         handler.removeCallbacks(feedbackTimeout)
-        feedback = message?.takeIf { it.isNotBlank() }
+        feedback = message?.takeIf { latestSnapshot.showActionFeedback && it.isNotBlank() }
         feedbackRevision++
         if (feedback != null && running) handler.postDelayed(feedbackTimeout, FEEDBACK_DURATION_MS)
     }
@@ -184,7 +184,7 @@ class ContentBinding(
         synchronized(handler) { queuedProjectionEpoch = null }
         sourcesOpen = false
         settingsOpen = false
-        settingsSection = SettingsSection.Vehicle
+        settingsSection = SettingsSection.TopBar
         replaceFeedback(null)
         mutableArtwork.value = null
         mutableAmbient.value = null
@@ -259,9 +259,14 @@ class ContentBinding(
             }
             ContentEvent.SettingsTapped -> {
                 sourcesOpen = false
-                settingsOpen = true
-                settingsSection = SettingsSection.Vehicle
-                replaceFeedback(null)
+                if (settingsOpen) {
+                    settingsOpen = false
+                    replaceFeedback(null)
+                } else {
+                    settingsOpen = true
+                    settingsSection = SettingsSection.TopBar
+                    replaceFeedback(null)
+                }
                 publishShell()
             }
             is ContentEvent.SettingsSectionSelected -> {
@@ -277,6 +282,17 @@ class ContentBinding(
             }
             is ContentEvent.ShowWeekdayChanged -> store.setShowWeekday(event.value)
             is ContentEvent.ShowSecondsChanged -> store.setShowSeconds(event.value)
+            is ContentEvent.ShowIndoorTemperatureChanged -> store.setShowIndoorTemperature(event.value)
+            is ContentEvent.ShowBatteryChanged -> store.setShowBattery(event.value)
+            is ContentEvent.ShowChargingStatusChanged -> store.setShowChargingStatus(event.value)
+            is ContentEvent.LyricsFontScaleChanged -> store.setLyricsFontScale(event.value)
+            is ContentEvent.LyricsLineSpacingChanged -> store.setLyricsLineSpacing(event.value)
+            is ContentEvent.LyricsSpeakerLayoutChanged -> store.setLyricsSpeakerLayout(event.value)
+            is ContentEvent.LyricsHighlightChanged -> store.setLyricsHighlight(event.value)
+            is ContentEvent.ShowAmbientArtworkChanged -> store.setShowAmbientArtwork(event.value)
+            is ContentEvent.ShowMediaSourceSwitcherChanged -> store.setShowMediaSourceSwitcher(event.value)
+            is ContentEvent.DockButtonCountChanged -> store.setDockButtonCount(event.value)
+            is ContentEvent.ShowActionFeedbackChanged -> store.setShowActionFeedback(event.value)
             else -> Unit
         }
     }
@@ -395,6 +411,7 @@ class ContentBinding(
     private fun project(snapshot: ContentState) {
         val previous = latestSnapshot
         latestSnapshot = snapshot
+        if (!snapshot.showActionFeedback && previous.showActionFeedback) replaceFeedback(null)
         if (snapshot.commandSequence != commandSequence) {
             commandSequence = snapshot.commandSequence
             if (snapshot.commandStatus == ContentState.COMMAND_FAILED && snapshot.commandMessage.isNotBlank()) {
@@ -416,6 +433,12 @@ class ContentBinding(
     private fun projectArtwork(snapshot: ContentState) {
         val isSong = snapshot.mediaDataAvailable && !snapshot.mediaPreview && snapshot.mediaSongIdentity == ContentPorts.MediaSongIdentity.SONG
         mutableArtwork.value = snapshot.mediaArtwork?.takeIf { isSong && snapshot.pendingSource.isEmpty() && !it.isRecycled }
+        if (!snapshot.showAmbientArtwork) {
+            cancelAmbientRequest()
+            retainedAmbient = null
+            mutableAmbient.value = null
+            return
+        }
         if (!isSong) {
             cancelAmbientRequest()
             mutableAmbient.value = null

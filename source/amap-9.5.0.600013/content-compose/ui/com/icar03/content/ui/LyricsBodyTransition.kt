@@ -26,8 +26,11 @@ private class LyricSourceHolder(var value: LyricsState? = null)
 
 /** One document/cache at a time. A recording change retires the old viewport before mounting the next. */
 @Composable
-internal fun LyricsBodyTransition(lyrics: LyricsState, dark: Boolean, modifier: Modifier = Modifier,
-    emptyContent: @Composable () -> Unit = {}) {
+internal fun LyricsBodyTransition(
+    lyrics: LyricsState, dark: Boolean, modifier: Modifier = Modifier,
+    fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
+    highlightCurrent: Boolean = true, emptyContent: @Composable () -> Unit = {},
+) {
     val visible = rememberLyricVisibility()
     val incoming = lyrics.takeIf { it.lines.isNotEmpty() && !lyricBodyAtEnd(it) && !it.changingTrack }
     val targetKey = if (lyricBodyAtEnd(lyrics) || lyrics.changingTrack) null
@@ -88,7 +91,8 @@ internal fun LyricsBodyTransition(lyrics: LyricsState, dark: Boolean, modifier: 
         if (displayedKey != null && displayed != null) key(displayedKey) {
             WallpaperLyrics(displayed, dark, opacity = alpha, freezeMotion = frozenMotion,
                 holdFollow = entering, startAtFirstRow = fromStart, visibility = visible,
-                onLayoutReady = { ready = true })
+                fontScale = fontScale, lineSpacing = lineSpacing, speakerLayout = speakerLayout,
+                highlightCurrent = highlightCurrent, onLayoutReady = { ready = true })
         } else emptyContent()
     }
 }

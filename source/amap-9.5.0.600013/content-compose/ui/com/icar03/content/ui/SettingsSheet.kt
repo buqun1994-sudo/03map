@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,9 +21,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -32,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -53,14 +54,17 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 /**
- * Settings is a content-layer sheet. Its bounds are supplied by ContentPanel so
- * the top bar and Dock remain outside the sheet's clipping and touch region.
+ * Preference-only settings surface. The vehicle, media and system controls stay on their
+ * existing shortcut owners; this surface only changes durable presentation preferences.
  */
 @Composable
 internal fun SettingsSheet(
@@ -70,7 +74,15 @@ internal fun SettingsSheet(
     onVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     BoxWithConstraints(modifier.clipToBounds().testTag("settings-sheet-host")) {
-        val menuWidth = (maxWidth * .28f).coerceIn(72.dp, 148.dp)
+        val compact = maxWidth < 520.dp
+        val menuWidth = when {
+            maxWidth >= 720.dp -> 184.dp
+            maxWidth >= 520.dp -> 176.dp
+            else -> 128.dp
+        }
+        val contentGap = if (compact) 8.dp else 16.dp
+        val outerPadding = if (compact) 8.dp else 16.dp
+        val gestureZoneHeight = if (compact) 72.dp else 92.dp
         val density = LocalDensity.current
         val heightPx = with(density) { maxHeight.toPx() }
         val minimumFlingDistance = with(density) { 12.dp.toPx() }
@@ -83,9 +95,10 @@ internal fun SettingsSheet(
         var dragPosition by remember { mutableStateOf(0f) }
         var releaseRevision by remember { mutableStateOf(0) }
         var dismissOnRelease by remember { mutableStateOf(false) }
-        var handleCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+        var gestureCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         val open = state.settingsOpen
         val currentEvent by rememberUpdatedState(onEvent)
+
         LaunchedEffect(open, heightPx, releaseRevision) {
             if (heightPx <= 0f) return@LaunchedEffect
             if (open && !wasOpen) {
@@ -94,8 +107,6 @@ internal fun SettingsSheet(
                 wasOpen = true
             }
             if (dragging) {
-                // Transfer the final drag position before switching render owners.
-                // This also interrupts any entry or settle animation.
                 offset.snapTo(dragPosition.coerceIn(0f, heightPx))
                 dragging = false
             }
@@ -115,17 +126,19 @@ internal fun SettingsSheet(
         }
         androidx.compose.runtime.SideEffect { onVisibilityChanged(open || wasOpen) }
         if (!open && !wasOpen) return@BoxWithConstraints
-        val handleGesture = Modifier
+
+        // The whole upper band is the vertical gesture target. The visible handle is only a cue.
+        val gestureBand = Modifier
             .fillMaxWidth()
-            .height(32.dp)
+            .height(gestureZoneHeight)
             .testTag("settings-gesture-handle")
-            .onGloballyPositioned { handleCoordinates = it }
+            .onGloballyPositioned { gestureCoordinates = it }
             .pointerInput(open, heightPx, density) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     if (!open) return@awaitEachGesture
                     fun rootPosition(position: androidx.compose.ui.geometry.Offset) =
-                        handleCoordinates?.localToRoot(position) ?: position
+                        gestureCoordinates?.localToRoot(position) ?: position
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, rootPosition(down.position))
                     var currentDistance = offset.value.coerceIn(0f, heightPx)
@@ -166,9 +179,7 @@ internal fun SettingsSheet(
                     }
                 }
             }
-        // A stable pointer node owns this whole content rectangle during motion.
-        // Siblings below it are excluded from hit testing; observing without
-        // consuming child events preserves menu clicks and vertical scrolling.
+        // Observe the sheet rectangle without consuming child clicks or the detail scroll.
         val touchShield = Modifier.pointerInput(Unit) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false)
@@ -187,14 +198,21 @@ internal fun SettingsSheet(
                 tonalElevation = 2.dp,
             ) {
                 Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.fillMaxWidth().then(handleGesture), contentAlignment = Alignment.Center) {
-                        Box(Modifier.width(48.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
+                    Box(Modifier.fillMaxWidth().then(gestureBand), contentAlignment = Alignment.Center) {
+                        Box(Modifier.width(if (compact) 52.dp else 68.dp).height(5.dp)
+                            .clip(RoundedCornerShape(3.dp))
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .42f)))
                     }
-                    Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
-                        SettingsMenu(state.settingsSection, currentEvent, Modifier.width(menuWidth).fillMaxHeight())
-                        Spacer(Modifier.width(12.dp))
-                        SettingsDetail(state, currentEvent, Modifier.weight(1f).fillMaxHeight())
+                    Row(
+                        Modifier.fillMaxSize().padding(start = outerPadding, end = outerPadding, bottom = outerPadding),
+                        horizontalArrangement = Arrangement.spacedBy(contentGap),
+                    ) {
+                        SettingsMenu(state.settingsSection, currentEvent, compact,
+                            Modifier.width(menuWidth).fillMaxHeight())
+                        key(state.settingsSection) {
+                            SettingsDetail(state, currentEvent,
+                                Modifier.weight(1f).fillMaxHeight(), compact)
+                        }
                     }
                 }
             }
@@ -206,158 +224,244 @@ internal fun SettingsSheet(
 private fun SettingsMenu(
     selected: SettingsSection,
     onEvent: (ContentEvent) -> Unit,
+    compact: Boolean,
     modifier: Modifier,
 ) {
     val colors = LocalContentColors.current
-    Column(modifier.testTag("settings-menu").verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier.testTag("settings-menu").verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
+    ) {
         SettingsSection.entries.forEach { section ->
             val active = section == selected
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = settingsMinimumSize(if (compact) 44.dp else 64.dp, 72f))
+                    .clip(RoundedCornerShape(if (compact) 12.dp else 16.dp))
                     .background(if (active) colors.shortcutSelected else Color.Transparent)
                     .testTag("settings-menu-${section.name}")
-                     .clickable(role = Role.Button) { onEvent(ContentEvent.SettingsSectionSelected(section)) }
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .clickable(role = Role.Button) { onEvent(ContentEvent.SettingsSectionSelected(section)) },
+                contentAlignment = Alignment.Center,
             ) {
-                Text(section.label, style = MaterialTheme.typography.titleMedium,
+                Text(
+                    section.label,
+                    modifier = Modifier.padding(horizontal = if (compact) 6.dp else 10.dp),
+                    style = settingsTextStyle(
+                        if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                        24f,
+                    ),
                     color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2)
+                    maxLines = 1,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SettingsDetail(state: ContentUiState, onEvent: (ContentEvent) -> Unit, modifier: Modifier) {
-    Column(modifier.verticalScroll(rememberScrollState()).padding(end = 8.dp)) {
-        Text(state.settingsSection.label, style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(vertical = 8.dp))
+private fun SettingsDetail(
+    state: ContentUiState,
+    onEvent: (ContentEvent) -> Unit,
+    modifier: Modifier,
+    compact: Boolean,
+) {
+    Column(
+        modifier.testTag("settings-detail-scroll").verticalScroll(rememberScrollState())
+            .padding(end = if (compact) 4.dp else 12.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
+    ) {
+        Text(state.settingsSection.label,
+            style = settingsTextStyle(if (compact) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium, 30f),
+            modifier = Modifier.padding(top = 2.dp))
+        Text(state.settingsSection.description, style = settingsTextStyle(MaterialTheme.typography.bodyLarge, 16f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         when (state.settingsSection) {
-            SettingsSection.Vehicle -> VehicleSettings(state)
-            SettingsSection.Volume -> VolumeSettings(state)
-            SettingsSection.Sound -> SoundSettings(state)
-            SettingsSection.Display -> DisplaySettings(state, onEvent)
-            SettingsSection.Connection -> ConnectionSettings(state)
-            SettingsSection.Assistant -> UnavailableSettings("理想同学服务")
-            SettingsSection.Mode -> ModeSettings(state)
-            SettingsSection.Accessories -> AccessoriesSettings(state)
-            SettingsSection.General -> GeneralSettings()
+            SettingsSection.TopBar -> TopBarSettings(state, onEvent)
+            SettingsSection.Lyrics -> LyricsSettings(state, onEvent)
+            SettingsSection.Artwork -> ArtworkSettings(state, onEvent)
+            SettingsSection.Media -> MediaSettings(state, onEvent)
+            SettingsSection.Layout -> LayoutSettings(state, onEvent)
+            SettingsSection.Interaction -> InteractionSettings(state, onEvent)
         }
     }
 }
 
 @Composable
-private fun VehicleSettings(state: ContentUiState) {
-    val controls = state.controls.entries.toList()
-    if (controls.isEmpty()) SettingsInfo("车辆状态", "暂未读取到车辆状态")
-    controls.forEach { (control, value) ->
-        SettingsValueRow(control.label, vehicleValue(control, value))
+private fun TopBarSettings(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+    SettingsGroup {
+        SettingsSwitchRow("显示星期", "在时间旁显示星期名称", state.showWeekday) { onEvent(ContentEvent.ShowWeekdayChanged(it)) }
+        SettingsSwitchRow("显示秒数", "时间显示为 HH:mm:ss", state.showSeconds) { onEvent(ContentEvent.ShowSecondsChanged(it)) }
+        SettingsSwitchRow("显示车内温度", "在有空间时显示实时车内温度", state.showIndoorTemperature) { onEvent(ContentEvent.ShowIndoorTemperatureChanged(it)) }
+        SettingsSwitchRow("显示电量图标", "保留顶栏右侧电池图标", state.showBattery) { onEvent(ContentEvent.ShowBatteryChanged(it)) }
+        SettingsSwitchRow("显示充电信息", "显示插枪、预约和充电状态文字", state.showChargingStatus) { onEvent(ContentEvent.ShowChargingStatusChanged(it)) }
     }
 }
 
 @Composable
-private fun AccessoriesSettings(state: ContentUiState) {
-    val accessories = state.controls.entries.filter { it.key != ControlId.Lock }
-    if (accessories.isEmpty()) SettingsInfo("配件状态", "暂未读取到车辆状态")
-    accessories.forEach { (control, value) -> SettingsValueRow(control.label, vehicleValue(control, value)) }
-}
-
-@Composable
-private fun VolumeSettings(state: ContentUiState) {
-    SettingsValueRow("媒体音量", if (state.volume.available) "${(state.volume.displayed * 100).toInt()}%" else "不可用")
-    SettingsProgress(state.volume.displayed, state.volume.available)
-    SettingsValueRow("屏幕亮度", if (state.brightness.available) "${(state.brightness.displayed * 100).toInt()}%" else "不可用")
-    SettingsProgress(state.brightness.displayed, state.brightness.available)
-}
-
-@Composable
-private fun SoundSettings(state: ContentUiState) {
-    SettingsValueRow("媒体来源", state.media.source.label)
-    SettingsValueRow("播放状态", when {
-        !state.media.available -> "未连接"
-        state.media.pending -> "待确认"
-        state.media.playing -> "正在播放"
-        else -> "已暂停"
-    })
-    SettingsValueRow("媒体会话", if (state.media.available) "已连接" else "未确认")
-}
-
-@Composable
-private fun DisplaySettings(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
-    SettingsSwitchRow("显示星期", state.showWeekday) { onEvent(ContentEvent.ShowWeekdayChanged(it)) }
-    SettingsSwitchRow("显示秒数", state.showSeconds) { onEvent(ContentEvent.ShowSecondsChanged(it)) }
-    SettingsValueRow("主题", if (state.dark) "深色（跟随地图）" else "浅色（跟随地图）")
-}
-
-@Composable
-private fun ConnectionSettings(state: ContentUiState) {
-    SettingsValueRow("车辆连接", if (state.controls.values.any { it.known }) "已连接" else "未确认")
-    SettingsValueRow("媒体连接", if (state.media.available) "已连接" else "未确认")
-    SettingsValueRow("充电状态", state.chargeStatus ?: "未充电")
-}
-
-@Composable
-private fun ModeSettings(state: ContentUiState) {
-    SettingsValueRow("当前页面", if (state.page == PanelPage.Lyrics) "歌词" else "快捷功能")
-    SettingsValueRow("内容区主题", if (state.dark) "深色" else "浅色")
-}
-
-@Composable
-private fun GeneralSettings() {
-    SettingsValueRow("状态提示", "从底部浮层显示3秒")
-    SettingsValueRow("设置页", "下拉手势关闭")
-}
-
-@Composable
-private fun UnavailableSettings(label: String) {
-    SettingsInfo(label, "当前车辆未接入")
-}
-
-@Composable
-private fun SettingsInfo(label: String, value: String) {
-    SettingsValueRow(label, value)
-}
-
-@Composable
-private fun SettingsValueRow(label: String, value: String) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun LyricsSettings(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+    SettingsGroup {
+        SettingsOptionRow("歌词字号", "同时调整当前行和普通行", when {
+            state.lyricsFontScale < .93f -> "小"
+            state.lyricsFontScale > 1.07f -> "大"
+            else -> "标准"
+        }, listOf("小", "标准", "大")) { value ->
+            onEvent(ContentEvent.LyricsFontScaleChanged(when (value) {
+                "小" -> .85f
+                "大" -> 1.15f
+                else -> 1.0f
+            }))
         }
-        HorizontalDivider(Modifier.padding(top = 10.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .6f))
+        SettingsOptionRow("行间距", "控制相邻歌词行之间的留白", when (state.lyricsLineSpacing.coerceIn(0, 2)) {
+            0 -> "紧凑"; 2 -> "宽松"; else -> "标准"
+        }, listOf("紧凑", "标准", "宽松")) { value ->
+            onEvent(ContentEvent.LyricsLineSpacingChanged(when (value) {
+                "紧凑" -> 0; "宽松" -> 2; else -> 1
+            }))
+        }
+        SettingsSwitchRow("按声部布局", "有声部信息时左右分配歌词", state.lyricsSpeakerLayout) { onEvent(ContentEvent.LyricsSpeakerLayoutChanged(it)) }
+        SettingsSwitchRow("强调当前行", "放大并突出正在跟随的歌词行", state.lyricsHighlight) { onEvent(ContentEvent.LyricsHighlightChanged(it)) }
     }
 }
 
 @Composable
-private fun SettingsSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-        Switch(checked = checked, onCheckedChange = onCheckedChange,
-            modifier = Modifier.semantics { contentDescription = label; role = Role.Switch; stateDescription = if (checked) "已开启" else "已关闭" })
+private fun ArtworkSettings(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+    SettingsGroup {
+        SettingsSwitchRow("显示模糊封面背景", "随歌曲封面显示柔和的动态背景", state.showAmbientArtwork) {
+            onEvent(ContentEvent.ShowAmbientArtworkChanged(it))
+        }
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .6f))
 }
 
 @Composable
-private fun SettingsProgress(value: Float, available: Boolean) {
-    androidx.compose.material3.LinearProgressIndicator(
-        progress = { if (available) value.coerceIn(0f, 1f) else 0f },
-        modifier = Modifier.fillMaxWidth().height(4.dp),
-        color = MaterialTheme.colorScheme.primary,
-        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-    )
+private fun MediaSettings(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+    SettingsGroup {
+        SettingsSwitchRow("显示来源切换入口", "控制媒体卡和歌词空态中的来源按钮", state.showMediaSourceSwitcher) {
+            onEvent(ContentEvent.ShowMediaSourceSwitcherChanged(it))
+        }
+    }
 }
 
-private fun vehicleValue(control: ControlId, value: ControlState): String = when {
-    value.pending -> "待确认"
-    !value.known || !control.isLevel(value.actual) -> "未确认"
-    control == ControlId.Lock -> if (value.actual == 1) "已锁定" else "已解锁"
-    control == ControlId.RearWiper -> if (value.actual == 1) "开启" else "关闭"
-    control == ControlId.RearWash -> if (value.actual == 1) "洗涤中" else "空闲"
-    control.isAutomatic(value.actual) -> "自动"
-    value.actual == 0 -> "关闭"
-    else -> "${value.actual}档"
+@Composable
+private fun LayoutSettings(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+    SettingsGroup {
+        SettingsOptionRow("Dock 显示按钮", "设置入口固定保留在最右侧", state.dockButtonCount.toString(), listOf("3", "4", "5", "6")) { value ->
+            onEvent(ContentEvent.DockButtonCountChanged(value.toInt()))
+        }
+    }
+}
+
+@Composable
+private fun InteractionSettings(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+    SettingsGroup {
+        SettingsSwitchRow("显示操作结果提示", "操作失败或状态未确认时显示提示", state.showActionFeedback) {
+            onEvent(ContentEvent.ShowActionFeedbackChanged(it))
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroup(content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+}
+
+@Composable
+private fun SettingsText(title: String, summary: String, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, style = settingsTextStyle(MaterialTheme.typography.titleLarge, 24f))
+        Text(summary, style = settingsTextStyle(MaterialTheme.typography.bodyMedium, 16f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    summary: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val row = Modifier.fillMaxWidth().heightIn(min = settingsMinimumSize(78.dp, 88f))
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .54f))
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .semantics(mergeDescendants = true) {
+                contentDescription = title
+                role = Role.Switch
+                stateDescription = if (checked) "已开启" else "已关闭"
+            }
+            .padding(horizontal = 18.dp, vertical = 12.dp)
+        if (maxWidth < 280.dp) {
+            Column(row, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SettingsText(title, summary)
+                Switch(checked = checked, onCheckedChange = null,
+                    modifier = Modifier.align(Alignment.End).testTag("settings-switch-$title"))
+            }
+        } else {
+            Row(row, verticalAlignment = Alignment.CenterVertically) {
+                SettingsText(title, summary, Modifier.weight(1f).padding(end = 16.dp))
+                Switch(checked = checked, onCheckedChange = null, modifier = Modifier.testTag("settings-switch-$title"))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsOptionRow(
+    title: String,
+    summary: String,
+    selected: String,
+    options: List<String>,
+    onSelected: (String) -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .54f))
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        SettingsText(title, summary)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val minimumColumn = settingsMinimumSize(64.dp, 64f)
+            val columns = ((maxWidth + 8.dp) / (minimumColumn + 8.dp)).toInt().coerceIn(1, options.size)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                options.chunked(columns).forEach { values ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        values.forEach { option ->
+                            val active = option == selected
+                            Surface(
+                                Modifier.weight(1f).heightIn(min = settingsMinimumSize(56.dp, 64f))
+                                    .testTag("settings-option-${title}-${option}")
+                                    .clickable(role = Role.RadioButton) { onSelected(option) }
+                                    .semantics { this.selected = active },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                            ) {
+                                Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                    Text(option, style = settingsTextStyle(MaterialTheme.typography.titleMedium, 22f),
+                                        color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
+                        }
+                        repeat(columns - values.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Keep the native density while guaranteeing readable pixels on low-DPI vehicle displays.
+@Composable
+private fun settingsTextStyle(style: TextStyle, minimumPixels: Float): TextStyle {
+    val density = LocalDensity.current
+    val minimumFontSize = with(density) { minimumPixels.toSp() }
+    return style.copy(fontSize = if (style.fontSize >= minimumFontSize) style.fontSize else minimumFontSize)
+}
+
+@Composable
+private fun settingsMinimumSize(minimumDp: Dp, minimumPixels: Float): Dp {
+    val density = LocalDensity.current
+    return maxOf(minimumDp, with(density) { minimumPixels.toDp() })
 }

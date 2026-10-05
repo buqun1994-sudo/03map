@@ -63,6 +63,9 @@ class WallpaperLyricsRenderTest {
         val density: Float = 1f,
         val widthPx: Int = 640,
         val heightPx: Int = 1080,
+        val fontScale: Float = 1f,
+        val lineSpacing: Int = 1,
+        val speakerLayout: Boolean = true,
     )
 
     private val state = mutableStateOf(RenderState(LyricsState()))
@@ -152,6 +155,152 @@ class WallpaperLyricsRenderTest {
         assertEquals(.5f, value(LyricGapProgress), .001f)
         assertFalse(value(LyricFrameRunning))
         assertInkBounded(captureHost(), 1f)
+    }
+
+    @Test
+    fun fontSizePreferenceChangesActualRowGeometryAndNativeInk() {
+        val initial = LyricsState(recordingKey = "font-preference", lines = listOf(
+            LyricLine(0, "合成字号", translation = "合成译文", romanization = "source lyrics")),
+            timelineReady = true, activeIndex = 0, scrollIndex = 0, positionMs = 1_500,
+            durationMs = 60_000, playbackSpeed = 0f)
+        mount(initial, fontScale = .85f)
+        assertEquals(34f, value(LyricFontPixels), .01f)
+        assertEquals(40.8f, value(LyricActiveFontPixels), .01f)
+        val smallHeight = value(LyricRowHeights).single()
+        val smallFrame = captureHost("font-preference-small")
+        val smallInk = inkBounds(smallFrame)!!
+
+        compose.runOnIdle { state.value = state.value.copy(fontScale = 1f) }
+        compose.waitForIdle()
+        assertEquals(40f, value(LyricFontPixels), .01f)
+        assertEquals(48f, value(LyricActiveFontPixels), .01f)
+        val standardHeight = value(LyricRowHeights).single()
+        assertTrue("font changes reach the measured native document", standardHeight > smallHeight)
+
+        compose.runOnIdle { state.value = state.value.copy(fontScale = 1.15f) }
+        compose.waitForIdle()
+        assertEquals(46f, value(LyricFontPixels), .01f)
+        assertEquals(55.2f, value(LyricActiveFontPixels), .01f)
+        assertTrue(value(LyricRowHeights).single() > standardHeight)
+        val largeFrame = captureHost("font-preference-large")
+        assertTrue("the real native glyphs grow, not just their semantics", inkBounds(largeFrame)!!.width() > smallInk.width())
+        assertTrue(changedPixels(smallFrame, largeFrame) > 100)
+        assertEquals("font preferences do not change the original margins", 48f, value(LyricTextInset), .01f)
+        assertSame(initial.lines, state.value.lyrics.lines)
+        assertInkBounded(largeFrame, 1f)
+    }
+
+    @Test
+    fun lineSpacingPreferenceMovesAdjacentMainOnlyRowsWithoutChangingTheirFont() {
+        val initial = LyricsState(recordingKey = "main-only-line-spacing", lines = listOf(
+            LyricLine(0, "合成第一句"), LyricLine(2_000, "合成第二句"), LyricLine(4_000, "合成第三句")),
+            timelineReady = true, activeIndex = 1, scrollIndex = 1, positionMs = 2_500,
+            durationMs = 60_000, playbackSpeed = 0f)
+        assertTrue("ordinary LRC has no subtracks whose spacing could mask this regression",
+            initial.lines.all { it.translation.isEmpty() && it.romanization.isEmpty() && it.backgroundWords.isEmpty() })
+        mount(initial, lineSpacing = 0)
+        val compactHeights = value(LyricRowHeights)
+        val compactTops = value(LyricRowTops)
+        val compactFrame = captureHost("main-only-spacing-compact")
+        compose.runOnIdle { state.value = state.value.copy(lineSpacing = 1) }
+        compose.waitForIdle()
+        val standardHeights = value(LyricRowHeights)
+        val standardTops = value(LyricRowTops)
+        assertTrue("normal row slots have more adjacent-line space than compact slots",
+            standardHeights.zip(compactHeights).all { (standard, compact) -> standard > compact })
+        assertTrue(standardTops[1] > compactTops[1])
+
+        compose.runOnIdle { state.value = state.value.copy(lineSpacing = 2) }
+        compose.waitForIdle()
+        val looseHeights = value(LyricRowHeights)
+        assertTrue("loose spacing reaches the actual main-only row slots",
+            looseHeights.zip(standardHeights).all { (loose, standard) -> loose > standard })
+        assertTrue(value(LyricRowTops)[1] > standardTops[1])
+        assertEquals(40f, value(LyricFontPixels), .01f)
+        assertEquals(48f, value(LyricActiveFontPixels), .01f)
+        assertEquals(1, value(LyricScrollAnchor))
+        assertSame(initial.lines, state.value.lyrics.lines)
+        assertTrue("adjacent native ink visibly moves with row spacing",
+            changedPixels(compactFrame, captureHost("main-only-spacing-loose")) > 100)
+    }
+
+    @Test
+    fun disablingSpeakerLayoutRestoresTheFullNativeTextWidthAndCanBeReenabled() {
+        val original = LyricLine(0, "默认歌词不会再提前换行", side = LyricSide.Trailing)
+        val initial = LyricsState(recordingKey = "speaker-preference", lines = listOf(original),
+            activeIndex = 0, scrollIndex = 0, timelineReady = true, positionMs = 1_000,
+            durationMs = 60_000, playbackSpeed = 0f)
+        mount(initial)
+        val laneHeights = value(LyricRowHeights)
+        val laneFrame = captureHost("speaker-preference-enabled")
+        val laneInk = inkBounds(laneFrame)!!
+        compose.runOnIdle { state.value = state.value.copy(speakerLayout = false) }
+        compose.waitForIdle()
+        assertTrue("disabling voices actually prevents an early native wrap", value(LyricRowHeights).single() < laneHeights.single())
+        val fullFrame = captureHost("speaker-preference-disabled")
+        val fullInk = inkBounds(fullFrame)!!
+        assertTrue("the trailing voice becomes the default physical left lane", laneInk.left > fullInk.left + 20)
+        assertTrue("the long default line uses the width between the original host margins", fullInk.left in 48..52 && fullInk.right > 544)
+        assertInkBounded(fullFrame, 1f)
+        assertEquals(48f, value(LyricActiveFontPixels), .01f)
+        assertEquals("presentation must not overwrite the source's real voice", LyricSide.Trailing, initial.lines.single().side)
+        assertSame(original, state.value.lyrics.lines.single())
+
+        compose.runOnIdle { state.value = state.value.copy(speakerLayout = true) }
+        compose.waitForIdle()
+        assertEquals(laneHeights, value(LyricRowHeights))
+        assertArrayEquals("returning to voice layout restores the actual native frame", pixels(laneFrame), pixels(captureHost()))
+    }
+
+    @Test
+    fun sameLinesWithSpeakerLayoutDisabledStillAcceptPausedPositionsAndNewScrollAnchors() {
+        val lines = listOf(
+            LyricLine(0, "合成第一句", words = listOf(LyricWord(0, 2_000, "合成第一句")), side = LyricSide.Leading),
+            LyricLine(4_000, "合成第二句", words = listOf(LyricWord(4_000, 6_000, "合成第二句")), side = LyricSide.Trailing),
+            LyricLine(8_000, "合成第三句", words = listOf(LyricWord(8_000, 10_000, "合成第三句")), side = LyricSide.Leading),
+        )
+        val initial = LyricsState(recordingKey = "speaker-disabled-live-source", lines = lines,
+            activeIndex = 0, activeIndices = listOf(0), scrollIndex = 0, timelineReady = true,
+            positionMs = 500, playbackSpeed = 0f, durationMs = 60_000, anchorRevision = 1)
+        mount(initial, speakerLayout = false)
+        val heights = value(LyricRowHeights)
+        val firstOffset = value(LyricScrollOffset)
+        assertEquals(.25f, value(LyricWordProgress), .001f)
+        val first = captureHost("speaker-disabled-before-seek")
+        project(initial.copy(positionMs = 1_500, anchorRevision = 2))
+        assertSame("only presentation lines may be cached; source snapshots keep the same immutable body", lines, state.value.lyrics.lines)
+        assertEquals(1_500L, value(LyricFramePosition))
+        assertEquals(.75f, value(LyricWordProgress), .001f)
+        assertEquals(heights, value(LyricRowHeights))
+        assertEquals(firstOffset, value(LyricScrollOffset), .01f)
+        assertTrue("a paused same-row seek changes actual word ink despite cached display lines",
+            changedPixels(first, captureHost("speaker-disabled-after-seek")) > 20)
+
+        project(initial.copy(positionMs = 8_500, activeIndex = 2, activeIndices = listOf(2), scrollIndex = 2, anchorRevision = 3))
+        assertSame(lines, state.value.lyrics.lines)
+        assertEquals(8_500L, value(LyricFramePosition))
+        assertEquals(2, value(ActiveLyric))
+        assertEquals(2, value(LyricScrollAnchor))
+        assertEquals(listOf(2), value(LyricEmphasizedRows))
+        assertEquals(.25f, value(LyricWordProgress), .001f)
+        assertEquals(heights, value(LyricRowHeights))
+        body().assertTextEquals(lines[2].text)
+        val newOffset = value(LyricScrollOffset)
+        assertTrue("the actual follow viewport admits the new Store cursor", newOffset < firstOffset)
+        assertEquals("the new follow row settles at the viewport anchor",
+            1080f * .41f, value(LyricRowTops)[2] + heights[2] / 2f + newOffset, .2f)
+        captureHost("speaker-disabled-new-anchor")
+
+        project(initial.copy(timelineReady = false, positionMs = -1, activeIndex = -1, activeIndices = emptyList(),
+            scrollIndex = -1, anchorRevision = 4))
+        assertEquals(-1L, value(LyricFramePosition))
+        assertEquals(-1, value(ActiveLyric))
+        assertEquals(newOffset, value(LyricScrollOffset), .01f)
+        assertFalse(value(LyricFrameRunning))
+        project(initial.copy(positionMs = 0, anchorRevision = 5))
+        assertEquals(0L, value(LyricFramePosition))
+        assertEquals(0, value(LyricScrollAnchor))
+        assertEquals(firstOffset, value(LyricScrollOffset), .2f)
     }
 
     @Test
@@ -536,8 +685,10 @@ class WallpaperLyricsRenderTest {
         positionMs = 2_500L, playbackSpeed = 0f, durationMs = 10_000L,
     )
 
-    private fun mount(lyrics: LyricsState, density: Float = 1f) {
-        state.value = RenderState(lyrics, density = density)
+    private fun mount(lyrics: LyricsState, density: Float = 1f, fontScale: Float = 1f,
+        lineSpacing: Int = 1, speakerLayout: Boolean = true) {
+        state.value = RenderState(lyrics, density = density, fontScale = fontScale,
+            lineSpacing = lineSpacing, speakerLayout = speakerLayout)
         compose.setContent {
             val current = state.value
             val view = LocalView.current
@@ -560,7 +711,8 @@ class WallpaperLyricsRenderTest {
                     Box(Modifier.fillMaxSize()) {
                         Box(Modifier.requiredSize((current.widthPx / current.density).dp, (current.heightPx / current.density).dp)
                             .clipToBounds().background(MaterialTheme.colorScheme.background).testTag(hostTag)) {
-                            WallpaperLyrics(current.lyrics, current.dark)
+                            WallpaperLyrics(current.lyrics, current.dark, fontScale = current.fontScale,
+                                lineSpacing = current.lineSpacing, speakerLayout = current.speakerLayout)
                         }
                     }
                 }

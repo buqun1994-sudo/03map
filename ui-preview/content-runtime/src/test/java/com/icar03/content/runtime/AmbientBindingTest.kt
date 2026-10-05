@@ -108,6 +108,63 @@ class AmbientBindingTest {
         } finally { binding.close(); store.destroy() }
     }
 
+    @Test fun ambientPreferenceStopsBakingKeepsTheMediaCoverAndRestoresOnlyTheLatestSong() {
+        val store = store()
+        store.setShowAmbientArtwork(false)
+        val calls = AtomicInteger()
+        val binding = ContentBinding(store, ambientFactory = { calls.incrementAndGet(); createAmbientField(it) })
+        val red = bitmap(Color.RED); val green = bitmap(Color.GREEN)
+        try {
+            binding.start()
+            store.acceptMediaSnapshot(song(1, "A", red)); awaitBake(binding)
+            assertSame(red, binding.artwork.value)
+            assertNull(binding.ambientArtwork.value)
+            assertEquals(0, calls.get())
+            binding.dispatch(com.icar03.content.ui.ContentEvent.ShowAmbientArtworkChanged(true)); awaitBake(binding)
+            val published = binding.ambientArtwork.value!!
+            assertEquals(1, calls.get())
+            store.setShowAmbientArtwork(false)
+            assertNull(binding.ambientArtwork.value)
+            assertFalse(published.base.isRecycled)
+            store.acceptMediaSnapshot(song(2, "B", green)); awaitBake(binding)
+            assertSame(green, binding.artwork.value)
+            assertEquals(1, calls.get())
+            binding.dispatch(com.icar03.content.ui.ContentEvent.ShowAmbientArtworkChanged(true)); awaitBake(binding)
+            val restored = binding.ambientArtwork.value!!
+            assertNotSame(published, restored)
+            assertTrue(Color.green(restored.base.getPixel(64, 64)) > Color.red(restored.base.getPixel(64, 64)))
+            assertEquals(2, calls.get())
+        } finally { binding.close(); store.destroy() }
+    }
+
+    @Test fun disablingAmbientRejectsAnAlreadyRunningNonCooperativeBake() {
+        val store = store()
+        val source = bitmap(Color.RED)
+        val stale = createAmbientField(source)!!
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        val binding = ContentBinding(store, ambientFactory = {
+            entered.countDown()
+            var released = false
+            while (!released) try { released = release.await(2, TimeUnit.SECONDS) } catch (_: InterruptedException) { }
+            stale
+        })
+        try {
+            binding.start()
+            store.acceptMediaSnapshot(song(1, "A", source))
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            store.setShowAmbientArtwork(false)
+            release.countDown()
+            val worker = ContentBinding::class.java.getDeclaredField("artworkWorker").apply { isAccessible = true }
+                .get(binding) as java.util.concurrent.ExecutorService
+            worker.submit {}.get(2, TimeUnit.SECONDS)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertNull(binding.ambientArtwork.value)
+            assertTrue(stale.base.isRecycled)
+            assertFalse(source.isRecycled)
+            assertSame(source, binding.artwork.value)
+        } finally { release.countDown(); binding.close(); store.destroy() }
+    }
+
     private fun awaitBake(binding: ContentBinding) {
         val job = ContentBinding::class.java.getDeclaredField("ambientJob").apply { isAccessible = true }.get(binding) as Future<*>?
         job?.get(2, TimeUnit.SECONDS)

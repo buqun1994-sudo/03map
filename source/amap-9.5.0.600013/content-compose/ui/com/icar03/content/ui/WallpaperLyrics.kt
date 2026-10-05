@@ -85,7 +85,9 @@ private class LyricPaintedFrame {
 @Composable
 internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modifier = Modifier,
     opacity: () -> Float = { 1f }, freezeMotion: Boolean = false, holdFollow: Boolean = false,
-    startAtFirstRow: Boolean = false, visibility: Boolean? = null, onLayoutReady: () -> Unit = {}) {
+    startAtFirstRow: Boolean = false, visibility: Boolean? = null,
+    fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
+    highlightCurrent: Boolean = true, onLayoutReady: () -> Unit = {}) {
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().testTag("wallpaper-lyrics")) {
         val density = LocalDensity.current
         val assets = LocalContext.current.assets
@@ -95,11 +97,17 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val width = with(density) { maxWidth.toPx() }.minus(inset * 2f).roundToInt().coerceAtLeast(1)
         val height = with(density) { maxHeight.toPx() }
         val requestedMetrics = with(density) {
-            LyricMetrics(LyricVisuals.MAIN_SP.sp.toPx(), LyricVisuals.CURRENT_SP.sp.toPx(), 22.sp.toPx(), 20.sp.toPx(),
-                14.dp.toPx(), 4.dp.toPx(), LyricVisuals.INACTIVE_BLUR_DP.dp.toPx(),
+            val safeScale = if (fontScale.isFinite()) fontScale.coerceIn(0.85f, 1.15f) else 1.0f
+            val gapScale = when (lineSpacing.coerceIn(0, 2)) { 0 -> .75f; 2 -> 1.35f; else -> 1f }
+            LyricMetrics(LyricVisuals.MAIN_SP.sp.toPx() * safeScale, LyricVisuals.CURRENT_SP.sp.toPx() * safeScale,
+                22.sp.toPx() * safeScale, 20.sp.toPx() * safeScale,
+                14.dp.toPx() * gapScale, 4.dp.toPx(), LyricVisuals.INACTIVE_BLUR_DP.dp.toPx(),
                 LyricVisuals.LIFT_DP.dp.toPx())
         }
-        val incoming = lyrics
+        val displayLines = remember(lyrics.lines, speakerLayout) {
+            if (speakerLayout) lyrics.lines else lyrics.lines.map { it.copy(side = LyricSide.Unspecified) }
+        }
+        val incoming = if (speakerLayout) lyrics else lyrics.copy(lines = displayLines)
         val presentationKey = lyricPresentationKey(incoming)
         val visible = visibility ?: rememberLyricVisibility()
         val workEnabled = visible && !freezeMotion
@@ -166,8 +174,8 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         // Presentation emphasis is the current follow row, not the first-word singing gate.
         // Keep overlapping actual voices emphasized too; waiting rows and song end have no new current line.
         val projectedEmphasis = remember(singing, lyrics.scrollIndex, lyrics.timelineReady, lyrics.timed, gap,
-            lyrics.atEnd || lyrics.durationMs > 0L && lyrics.positionMs >= lyrics.durationMs, lyrics.lines.size) {
-            lyricEmphasizedRows(lyrics, singing, gap)
+            lyrics.atEnd || lyrics.durationMs > 0L && lyrics.positionMs >= lyrics.durationMs, lyrics.lines.size, highlightCurrent) {
+            if (highlightCurrent) lyricEmphasizedRows(lyrics, singing, gap) else emptySet()
         }
         val emphasized = if (freezeMotion && painted.document === ready) painted.emphasized else projectedEmphasis
         val followTarget = if (!lyrics.timed) metrics.padding

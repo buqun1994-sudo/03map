@@ -132,6 +132,12 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
             showWeekday = state.showWeekday, showSeconds = state.showSeconds,
+            showIndoorTemperature = state.showIndoorTemperature, showBattery = state.showBattery,
+            showChargingStatus = state.showChargingStatus, lyricsFontScale = state.lyricsFontScale,
+            lyricsLineSpacing = state.lyricsLineSpacing, lyricsSpeakerLayout = state.lyricsSpeakerLayout,
+            lyricsHighlight = state.lyricsHighlight, showAmbientArtwork = state.showAmbientArtwork,
+            showMediaSourceSwitcher = state.showMediaSourceSwitcher, dockButtonCount = state.dockButtonCount,
+            showActionFeedback = state.showActionFeedback,
             temperature = if (realVehicle && state.temperatureC.isFinite()) "${format(state.temperatureC)}°C" else "--",
             time = "--:--", weekday = "",
             range = if (realVehicle && state.rangeRaw >= 0) state.rangeRaw.toString() else "--", rangeUnit = "km",
@@ -213,6 +219,12 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private fun sameShellFacts(a: ContentState, b: ContentState): Boolean =
         a.themeMode == b.themeMode && a.pageIndex == b.pageIndex &&
             a.showWeekday == b.showWeekday && a.showSeconds == b.showSeconds &&
+            a.showIndoorTemperature == b.showIndoorTemperature && a.showBattery == b.showBattery &&
+            a.showChargingStatus == b.showChargingStatus && a.lyricsFontScale.toBits() == b.lyricsFontScale.toBits() &&
+            a.lyricsLineSpacing == b.lyricsLineSpacing && a.lyricsSpeakerLayout == b.lyricsSpeakerLayout &&
+            a.lyricsHighlight == b.lyricsHighlight && a.showAmbientArtwork == b.showAmbientArtwork &&
+            a.showMediaSourceSwitcher == b.showMediaSourceSwitcher && a.dockButtonCount == b.dockButtonCount &&
+            a.showActionFeedback == b.showActionFeedback &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
             a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
             a.chargeState == b.chargeState && a.chargePowerKw.toBits() == b.chargePowerKw.toBits() && a.chargeRemainingMinutes == b.chargeRemainingMinutes &&
