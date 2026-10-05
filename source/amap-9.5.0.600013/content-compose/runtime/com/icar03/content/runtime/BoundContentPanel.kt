@@ -30,7 +30,10 @@ fun BoundContentPanel(
 
 /** The supplied binding is closed when this composition is disposed. */
 @Composable
-fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier) {
+fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier,
+    presentation: com.icar03.content.ui.ContentPresentation? = null,
+    onPresentationEvent: ((com.icar03.content.ui.ContentEvent) -> Unit)? = null,
+) {
     val owner = LocalLifecycleOwner.current
     val context = LocalContext.current
     DisposableEffect(binding, owner, context) {
@@ -49,11 +52,14 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier) {
     val active by binding.active.collectAsState()
     val bitmap = artwork?.takeUnless { it.isRecycled }?.asImageBitmap()
     ContentTheme(dark = state.dark) {
-        ContentPanel(state, binding::dispatch, modifier,
+        ContentPanel(state, { event ->
+            if (event == com.icar03.content.ui.ContentEvent.EnterLyricsImmersive || event == com.icar03.content.ui.ContentEvent.ExitLyricsImmersive)
+                onPresentationEvent?.invoke(event) else binding.dispatch(event)
+        }, modifier, presentation = presentation,
             artwork = bitmap?.let { image -> { Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } },
             ambientBackground = {
                 MediaAmbientBackground(ambient, state.dark, active = active && state.showAmbientArtwork,
-                animating = state.media.playing && state.showAmbientArtwork)
+                animating = state.media.playing && state.showAmbientArtwork, presentation = presentation)
             },
             clockText = { val text by binding.clock.collectAsState(); text },
             lyricsState = { val lyrics by binding.lyrics.collectAsState(); lyrics })

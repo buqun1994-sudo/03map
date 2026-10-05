@@ -76,6 +76,8 @@ open class SettingsSheetInteractionTest {
                         is ContentEvent.LyricsLineSpacingChanged -> state.value = state.value.copy(lyricsLineSpacing = event.value)
                         is ContentEvent.LyricsSpeakerLayoutChanged -> state.value = state.value.copy(lyricsSpeakerLayout = event.value)
                         is ContentEvent.LyricsHighlightChanged -> state.value = state.value.copy(lyricsHighlight = event.value)
+                        is ContentEvent.ImmersiveShowTopBarChanged -> state.value = state.value.copy(immersiveShowTopBar = event.value)
+                        is ContentEvent.ImmersiveShowDockChanged -> state.value = state.value.copy(immersiveShowDock = event.value)
                         is ContentEvent.ShowAmbientArtworkChanged -> state.value = state.value.copy(showAmbientArtwork = event.value)
                         is ContentEvent.ShowMediaSourceSwitcherChanged -> state.value = state.value.copy(showMediaSourceSwitcher = event.value)
                         is ContentEvent.DockButtonCountChanged -> state.value = state.value.copy(dockButtonCount = event.value)
@@ -88,6 +90,18 @@ open class SettingsSheetInteractionTest {
             }
         }
         compose.waitForIdle()
+    }
+
+    @Test fun immersiveVisibilityPreferencesUseRealLyricsSettingsSwitches() {
+        mount(open = true)
+        compose.onNodeWithTag("settings-menu-Lyrics").performClick()
+        compose.onNodeWithContentDescription("全屏时显示顶栏").performScrollTo().performClick()
+        assertFalse(state.value.immersiveShowTopBar)
+        assertTrue(state.value.immersiveShowDock)
+        compose.onNodeWithContentDescription("全屏时显示Dock").performScrollTo().performClick()
+        assertFalse(state.value.immersiveShowDock)
+        assertTrue(events.contains(ContentEvent.ImmersiveShowTopBarChanged(false)))
+        assertTrue(events.contains(ContentEvent.ImmersiveShowDockChanged(false)))
     }
 
     @Test fun entryAndExitKeepTheClipFixedAndNeverPaintOverDock() {

@@ -135,7 +135,9 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             showIndoorTemperature = state.showIndoorTemperature, showBattery = state.showBattery,
             showChargingStatus = state.showChargingStatus, lyricsFontScale = state.lyricsFontScale,
             lyricsLineSpacing = state.lyricsLineSpacing, lyricsSpeakerLayout = state.lyricsSpeakerLayout,
-            lyricsHighlight = state.lyricsHighlight, showAmbientArtwork = state.showAmbientArtwork,
+            lyricsHighlight = state.lyricsHighlight,
+            immersiveShowTopBar = state.immersiveShowTopBar, immersiveShowDock = state.immersiveShowDock,
+            showAmbientArtwork = state.showAmbientArtwork,
             showMediaSourceSwitcher = state.showMediaSourceSwitcher, dockButtonCount = state.dockButtonCount,
             showActionFeedback = state.showActionFeedback,
              uiOpacity = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f,
@@ -223,7 +225,9 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.showIndoorTemperature == b.showIndoorTemperature && a.showBattery == b.showBattery &&
             a.showChargingStatus == b.showChargingStatus && a.lyricsFontScale.toBits() == b.lyricsFontScale.toBits() &&
             a.lyricsLineSpacing == b.lyricsLineSpacing && a.lyricsSpeakerLayout == b.lyricsSpeakerLayout &&
-            a.lyricsHighlight == b.lyricsHighlight && a.showAmbientArtwork == b.showAmbientArtwork &&
+            a.lyricsHighlight == b.lyricsHighlight &&
+            a.immersiveShowTopBar == b.immersiveShowTopBar && a.immersiveShowDock == b.immersiveShowDock &&
+            a.showAmbientArtwork == b.showAmbientArtwork &&
             a.showMediaSourceSwitcher == b.showMediaSourceSwitcher && a.dockButtonCount == b.dockButtonCount &&
             a.showActionFeedback == b.showActionFeedback && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&

@@ -130,7 +130,9 @@ data class ContentUiState(
     val showIndoorTemperature: Boolean = true, val showBattery: Boolean = true,
     val showChargingStatus: Boolean = true, val lyricsFontScale: Float = 1.0f,
     val lyricsLineSpacing: Int = 1, val lyricsSpeakerLayout: Boolean = true,
-    val lyricsHighlight: Boolean = true, val showAmbientArtwork: Boolean = true,
+    val lyricsHighlight: Boolean = true,
+    val immersiveShowTopBar: Boolean = true, val immersiveShowDock: Boolean = true,
+    val showAmbientArtwork: Boolean = true,
     val showMediaSourceSwitcher: Boolean = true, val dockButtonCount: Int = 6,
     val showActionFeedback: Boolean = true, val uiOpacity: Float = 1.0f,
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
@@ -155,6 +157,10 @@ sealed interface ContentEvent {
     data object OpenSources : ContentEvent
     data object OpenScenarios : ContentEvent
     data object SettingsTapped : ContentEvent
+    data object OpenLyricsSettings : ContentEvent
+    // The map host consumes these intents through its existing presentation port.
+    data object EnterLyricsImmersive : ContentEvent
+    data object ExitLyricsImmersive : ContentEvent
     data class SettingsSectionSelected(val section: SettingsSection) : ContentEvent
     data object SettingsDismissed : ContentEvent
     data class ShowWeekdayChanged(val value: Boolean) : ContentEvent
@@ -166,6 +172,8 @@ sealed interface ContentEvent {
     data class LyricsLineSpacingChanged(val value: Int) : ContentEvent
     data class LyricsSpeakerLayoutChanged(val value: Boolean) : ContentEvent
     data class LyricsHighlightChanged(val value: Boolean) : ContentEvent
+    data class ImmersiveShowTopBarChanged(val value: Boolean) : ContentEvent
+    data class ImmersiveShowDockChanged(val value: Boolean) : ContentEvent
     data class ShowAmbientArtworkChanged(val value: Boolean) : ContentEvent
     data class ShowMediaSourceSwitcherChanged(val value: Boolean) : ContentEvent
     data class DockButtonCountChanged(val value: Int) : ContentEvent
@@ -176,12 +184,13 @@ sealed interface ContentEvent {
 
 /** Settings remains modal until its content-layer exit finishes. */
 fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
-    ContentEvent.SettingsTapped, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet,
+    ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet,
     is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged,
     is ContentEvent.ShowIndoorTemperatureChanged, is ContentEvent.ShowBatteryChanged,
     is ContentEvent.ShowChargingStatusChanged, is ContentEvent.LyricsFontScaleChanged,
     is ContentEvent.LyricsLineSpacingChanged, is ContentEvent.LyricsSpeakerLayoutChanged,
-    is ContentEvent.LyricsHighlightChanged, is ContentEvent.ShowAmbientArtworkChanged,
+    is ContentEvent.LyricsHighlightChanged, is ContentEvent.ImmersiveShowTopBarChanged,
+    is ContentEvent.ImmersiveShowDockChanged, is ContentEvent.ShowAmbientArtworkChanged,
     is ContentEvent.ShowMediaSourceSwitcherChanged, is ContentEvent.DockButtonCountChanged,
     is ContentEvent.ShowActionFeedbackChanged, is ContentEvent.UiOpacityChanged -> true
     else -> false

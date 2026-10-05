@@ -22,6 +22,9 @@ public final class ContentRuntime {
     private static volatile float lastDividerX = Float.NaN;
     private static volatile float lastExpandedDividerX;
     private static volatile float lastMapWidth;
+    private static int lastPanelPhase;
+    private static WeakReference<ViewGroup> presentationRoot = new WeakReference<>(null);
+    private static WeakReference<com.icar03.content.model.MapPresentationPort> presentationPort = new WeakReference<>(null);
     private static ContentRuntime activeRuntime;
 
     private final WeakReference<Activity> ownerActivity;
@@ -46,6 +49,27 @@ public final class ContentRuntime {
         Configuration config = new Configuration(original.getResources().getConfiguration());
         config.densityDpi = systemDpi;
         return original.createConfigurationContext(config);
+    }
+
+    public static void bindMapPresentation(ViewGroup root, com.icar03.content.model.MapPresentationPort port) {
+        synchronized (LOCK) {
+            presentationRoot = new WeakReference<>(root);
+            presentationPort = new WeakReference<>(port);
+            lastPanelPhase = 0;
+            lastDividerX = Float.NaN;
+            if (activeRuntime != null && root != null
+                    && activeRuntime.ownerActivity.get() == findActivity(root.getContext())) {
+                activeRuntime.renderer.bindMapPresentation(port);
+            }
+        }
+    }
+
+    public static void onPanelPhaseChanged(com.icar03.content.model.MapPresentationPort port, int phase) {
+        synchronized (LOCK) {
+            if (presentationPort.get() != port) return;
+            lastPanelPhase = phase;
+            if (activeRuntime != null) activeRuntime.renderer.updatePanelPhase(phase);
+        }
     }
 
     public static void attach(ViewGroup contentRoot) {
@@ -77,6 +101,10 @@ public final class ContentRuntime {
                 activeRuntime.destroy();
             }
             activeRuntime = new ContentRuntime(activity, host);
+            if (presentationRoot.get() == contentRoot) {
+                activeRuntime.renderer.bindMapPresentation(presentationPort.get());
+                activeRuntime.renderer.updatePanelPhase(lastPanelPhase);
+            }
             if (!Float.isNaN(lastDividerX)) {
                 activeRuntime.renderer.updateDivider(
                         lastDividerX, lastExpandedDividerX, lastMapWidth);
@@ -86,6 +114,12 @@ public final class ContentRuntime {
 
     public static void detach(Activity activity) {
         synchronized (LOCK) {
+            ViewGroup mapRoot = presentationRoot.get();
+            if (mapRoot != null && (activity == null || findActivity(mapRoot.getContext()) == activity)) {
+                presentationRoot.clear();
+                presentationPort.clear();
+                lastDividerX = Float.NaN;
+            }
             ViewGroup pending = pendingContentRoot.get();
             if (pending != null && (activity == null
                     || findActivity(pending.getContext()) == activity)) {
@@ -234,6 +268,14 @@ public final class ContentRuntime {
             }
         } catch (ReflectiveOperationException | LinkageError unavailable) {
             // Engine unavailable: preserve the last known Amap state.
+        }
+    }
+
+    public static void onMapDividerChanged(com.icar03.content.model.MapPresentationPort port,
+            float dividerX, float expandedDivider, float mapWidth) {
+        synchronized (LOCK) {
+            if (presentationPort.get() != port) return;
+            onDividerChanged(dividerX, expandedDivider, mapWidth);
         }
     }
 

@@ -7,7 +7,7 @@ import android.content.SharedPreferences;
 
 public final class ContentPreferenceStore {
     private static final String PREFERENCES_NAME = "content_preferences_v1";
-    private static final int PREFERENCES_VERSION = 3;
+    private static final int PREFERENCES_VERSION = 4;
     private static final String KEY_PREFERENCES_VERSION = "preferences_version";
     private static final String KEY_SHOW_WEEKDAY = "top_bar_show_weekday";
     private static final String KEY_SHOW_SECONDS = "top_bar_show_seconds";
@@ -18,6 +18,8 @@ public final class ContentPreferenceStore {
     private static final String KEY_LYRICS_LINE_SPACING = "lyrics_line_spacing";
     private static final String KEY_LYRICS_SPEAKER_LAYOUT = "lyrics_speaker_layout";
     private static final String KEY_LYRICS_HIGHLIGHT = "lyrics_highlight";
+    private static final String KEY_IMMERSIVE_SHOW_TOP_BAR = "lyrics_immersive_show_top_bar";
+    private static final String KEY_IMMERSIVE_SHOW_DOCK = "lyrics_immersive_show_dock";
     private static final String KEY_SHOW_AMBIENT_ARTWORK = "ambient_show_artwork";
     private static final String KEY_SHOW_MEDIA_SOURCE_SWITCHER = "media_show_source_switcher";
     private static final String KEY_DOCK_BUTTON_COUNT = "dock_button_count";
@@ -45,6 +47,8 @@ public final class ContentPreferenceStore {
         state.lyricsLineSpacing = clampLineSpacing(readInt(KEY_LYRICS_LINE_SPACING, 1));
         state.lyricsSpeakerLayout = readBoolean(KEY_LYRICS_SPEAKER_LAYOUT, true);
         state.lyricsHighlight = readBoolean(KEY_LYRICS_HIGHLIGHT, true);
+        state.immersiveShowTopBar = readBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, true);
+        state.immersiveShowDock = readBoolean(KEY_IMMERSIVE_SHOW_DOCK, true);
         state.showAmbientArtwork = readBoolean(KEY_SHOW_AMBIENT_ARTWORK, true);
         state.showMediaSourceSwitcher = readBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, true);
         state.dockButtonCount = clampDockButtonCount(readInt(KEY_DOCK_BUTTON_COUNT, 6));
@@ -81,6 +85,8 @@ public final class ContentPreferenceStore {
         editor.putInt(KEY_LYRICS_LINE_SPACING, clampLineSpacing(state.lyricsLineSpacing));
         editor.putBoolean(KEY_LYRICS_SPEAKER_LAYOUT, state.lyricsSpeakerLayout);
         editor.putBoolean(KEY_LYRICS_HIGHLIGHT, state.lyricsHighlight);
+        editor.putBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, state.immersiveShowTopBar);
+        editor.putBoolean(KEY_IMMERSIVE_SHOW_DOCK, state.immersiveShowDock);
         editor.putBoolean(KEY_SHOW_AMBIENT_ARTWORK, state.showAmbientArtwork);
         editor.putBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, state.showMediaSourceSwitcher);
         editor.putInt(KEY_DOCK_BUTTON_COUNT, clampDockButtonCount(state.dockButtonCount));

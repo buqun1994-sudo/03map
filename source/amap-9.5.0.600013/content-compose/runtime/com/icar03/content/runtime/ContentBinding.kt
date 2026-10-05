@@ -269,6 +269,15 @@ class ContentBinding(
                 }
                 publishShell()
             }
+            ContentEvent.OpenLyricsSettings -> {
+                sourcesOpen = false
+                settingsSection = SettingsSection.Lyrics
+                settingsOpen = true
+                replaceFeedback(null)
+                publishShell()
+            }
+            // Geometry and immersion requests are consumed by the map host, never a second Binding animator.
+            ContentEvent.EnterLyricsImmersive, ContentEvent.ExitLyricsImmersive -> Unit
             is ContentEvent.SettingsSectionSelected -> {
                 if (settingsOpen) {
                     settingsSection = event.section
@@ -289,6 +298,8 @@ class ContentBinding(
             is ContentEvent.LyricsLineSpacingChanged -> store.setLyricsLineSpacing(event.value)
             is ContentEvent.LyricsSpeakerLayoutChanged -> store.setLyricsSpeakerLayout(event.value)
             is ContentEvent.LyricsHighlightChanged -> store.setLyricsHighlight(event.value)
+            is ContentEvent.ImmersiveShowTopBarChanged -> store.setImmersiveShowTopBar(event.value)
+            is ContentEvent.ImmersiveShowDockChanged -> store.setImmersiveShowDock(event.value)
             is ContentEvent.ShowAmbientArtworkChanged -> store.setShowAmbientArtwork(event.value)
             is ContentEvent.ShowMediaSourceSwitcherChanged -> store.setShowMediaSourceSwitcher(event.value)
             is ContentEvent.DockButtonCountChanged -> store.setDockButtonCount(event.value)

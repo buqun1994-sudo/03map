@@ -290,6 +290,14 @@ public final class ContentStore {
         setBooleanPreference(PreferenceField.LYRICS_HIGHLIGHT, value);
     }
 
+    public void setImmersiveShowTopBar(boolean value) {
+        setBooleanPreference(PreferenceField.IMMERSIVE_SHOW_TOP_BAR, value);
+    }
+
+    public void setImmersiveShowDock(boolean value) {
+        setBooleanPreference(PreferenceField.IMMERSIVE_SHOW_DOCK, value);
+    }
+
     public void setShowAmbientArtwork(boolean value) {
         setBooleanPreference(PreferenceField.SHOW_AMBIENT_ARTWORK, value);
     }
@@ -320,8 +328,8 @@ public final class ContentStore {
 
     private enum PreferenceField {
         SHOW_INDOOR_TEMPERATURE, SHOW_BATTERY, SHOW_CHARGING_STATUS,
-        LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, SHOW_AMBIENT_ARTWORK,
-        SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK
+        LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, IMMERSIVE_SHOW_TOP_BAR, IMMERSIVE_SHOW_DOCK,
+        SHOW_AMBIENT_ARTWORK, SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK
     }
 
     private void setBooleanPreference(PreferenceField field, boolean value) {
@@ -332,6 +340,8 @@ public final class ContentStore {
                 case SHOW_CHARGING_STATUS: state.showChargingStatus = value; break;
                 case LYRICS_SPEAKER_LAYOUT: state.lyricsSpeakerLayout = value; break;
                 case LYRICS_HIGHLIGHT: state.lyricsHighlight = value; break;
+                case IMMERSIVE_SHOW_TOP_BAR: state.immersiveShowTopBar = value; break;
+                case IMMERSIVE_SHOW_DOCK: state.immersiveShowDock = value; break;
                 case SHOW_AMBIENT_ARTWORK: state.showAmbientArtwork = value; break;
                 case SHOW_MEDIA_SOURCE_SWITCHER: state.showMediaSourceSwitcher = value; break;
                 case SHOW_ACTION_FEEDBACK: state.showActionFeedback = value; break;

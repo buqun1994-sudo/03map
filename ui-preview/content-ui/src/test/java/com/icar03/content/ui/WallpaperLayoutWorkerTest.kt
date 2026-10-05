@@ -49,7 +49,10 @@ class WallpaperLayoutWorkerTest {
         compose.mainClock.advanceTimeBy(64); compose.waitForIdle()
     }
     private fun project(value: LyricsState) {
-        compose.runOnIdle { state.value = value }
+        compose.runOnIdle {
+            state.value = value
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
         compose.mainClock.advanceTimeBy(64); compose.waitForIdle()
     }
     private fun release() {

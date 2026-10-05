@@ -43,7 +43,7 @@ class ContentPreferenceContractTest {
             val expected = valuesOf(original)
             ContentPreferenceStore(app).save(original)
             assertStoredValues(expected, "round trip $index")
-            assertEquals(3, preferences.getInt(VERSION, -1))
+            assertEquals(4, preferences.getInt(VERSION, -1))
             val loaded = freshLoad()
             assertValues(expected, loaded, "round trip $index")
             assertLegacyValues(original, loaded, "round trip $index")
@@ -84,11 +84,37 @@ class ContentPreferenceContractTest {
             assertEquals("load must not eagerly rewrite v1", before, preferences.all)
 
             ContentPreferenceStore(app).save(migrated)
-            assertEquals(3, preferences.getInt(VERSION, -1))
-            assertStoredValues(expected, "v1 saved as v3")
+            assertEquals(4, preferences.getInt(VERSION, -1))
+            assertStoredValues(expected, "v1 saved as v4")
             val reloaded = freshLoad()
             assertValues(expected, reloaded, "v1 after migration save")
             assertLegacyValues(legacy, reloaded, "v1 after migration save")
+            assertEquals(4, reloaded.rememberedLevel(VehicleControl.Wiper))
+        }
+    }
+
+    @Test fun v2AndV3PreferencesKeepExistingValuesAndDefaultNewImmersivePreferencesOnLazyMigration() {
+        for (version in listOf(2, 3)) {
+            assertTrue(preferences.edit().clear().putInt(VERSION, version)
+                .putBoolean("top_bar_show_weekday", false)
+                .putFloat(OPACITY, .6f)
+                .putString(PAGE, ContentRegistry.Pages.SHORTCUTS)
+                .putInt("control_manual_level_front_wiper", 4).commit())
+            val before = preferences.all.toMap()
+            val loaded = freshLoad()
+            assertTrue(loaded.immersiveShowTopBar)
+            assertTrue(loaded.immersiveShowDock)
+            assertFalse(loaded.showWeekday)
+            assertEquals(.6f, loaded.uiOpacity, 0f)
+            assertEquals(0, loaded.pageIndex)
+            assertEquals(4, loaded.rememberedLevel(VehicleControl.Wiper))
+            assertEquals(before, preferences.all)
+            loaded.immersiveShowTopBar = false
+            ContentPreferenceStore(app).save(loaded)
+            assertEquals(4, preferences.getInt(VERSION, -1))
+            val reloaded = freshLoad()
+            assertFalse(reloaded.immersiveShowTopBar)
+            assertTrue(reloaded.immersiveShowDock)
             assertEquals(4, reloaded.rememberedLevel(VehicleControl.Wiper))
         }
     }
@@ -210,6 +236,8 @@ class ContentPreferenceContractTest {
         lyricsLineSpacing = 2
         lyricsSpeakerLayout = false
         lyricsHighlight = false
+        immersiveShowTopBar = false
+        immersiveShowDock = false
         showAmbientArtwork = false
         showMediaSourceSwitcher = false
         dockButtonCount = 3
@@ -234,6 +262,8 @@ class ContentPreferenceContractTest {
         LINE_SPACING to state.lyricsLineSpacing,
         "lyrics_speaker_layout" to state.lyricsSpeakerLayout,
         "lyrics_highlight" to state.lyricsHighlight,
+        "lyrics_immersive_show_top_bar" to state.immersiveShowTopBar,
+        "lyrics_immersive_show_dock" to state.immersiveShowDock,
         "ambient_show_artwork" to state.showAmbientArtwork,
         "media_show_source_switcher" to state.showMediaSourceSwitcher,
         DOCK_COUNT to state.dockButtonCount,
@@ -310,6 +340,8 @@ class ContentPreferenceContractTest {
             LINE_SPACING to 1,
             "lyrics_speaker_layout" to true,
             "lyrics_highlight" to true,
+            "lyrics_immersive_show_top_bar" to true,
+            "lyrics_immersive_show_dock" to true,
             "ambient_show_artwork" to true,
             "media_show_source_switcher" to true,
             DOCK_COUNT to 6,

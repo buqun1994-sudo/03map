@@ -35,6 +35,10 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                     message = null,
                 )
             }
+            ContentEvent.OpenLyricsSettings -> update { it.copy(settingsOpen = true, settingsSection = SettingsSection.Lyrics, sourcesOpen = false, scenariosOpen = false, message = null) }
+            ContentEvent.EnterLyricsImmersive, ContentEvent.ExitLyricsImmersive -> Unit
+            is ContentEvent.ImmersiveShowTopBarChanged -> update { it.copy(immersiveShowTopBar = event.value) }
+            is ContentEvent.ImmersiveShowDockChanged -> update { it.copy(immersiveShowDock = event.value) }
             ContentEvent.SettingsDismissed -> update { it.copy(settingsOpen = false, message = null) }
             is ContentEvent.SettingsSectionSelected -> update { if (it.settingsOpen) it.copy(settingsSection = event.section) else it }
             is ContentEvent.ShowWeekdayChanged -> update { it.copy(showWeekday = event.value) }

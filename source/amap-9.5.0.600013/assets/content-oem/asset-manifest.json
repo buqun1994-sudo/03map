@@ -3878,7 +3878,7 @@
       "phases": {
         "pulse": {
           "headStart": 0,
-          "headEnd": 22.0,
+          "headEnd": 22,
           "tailStart": 7.92,
           "tailEnd": 29.92,
           "finiteWindowPercent": 36,
@@ -3890,20 +3890,20 @@
           "waterVisible": false
         },
         "fill": {
-          "startFrame": 32.0,
-          "endFrame": 54.0,
+          "startFrame": 32,
+          "endFrame": 54,
           "behavior": "Tail stays at the bottom; head advances and fills the complete original dashed water graphic."
         },
         "hold": {
-          "startFrame": 54.0,
-          "endFrame": 60.0
+          "startFrame": 54,
+          "endFrame": 60
         }
       },
       "playbackRecommendation": {
         "source": "user v2 provenance recommendation; not an OEM rear-wash timing contract",
         "nominalSeconds": 2,
-        "speed": 2.0,
-        "secondsAtRecommendedSpeed": 1.0,
+        "speed": 2,
+        "secondsAtRecommendedSpeed": 1,
         "repeatCount": 0
       },
       "coloring": {
@@ -3939,6 +3939,40 @@
       },
       "staticFallback": "res/drawable/content_oem_ico_wash_rear.xml",
       "audit": "Actual user JSON SHA and pretty-object equivalence verified; all ten XML contours exactly equal scaled Lottie Beziers; all five OEM donor entry/source hashes verified; original matte stroke and trim easing retained; no expressions, effects, external assets or images. Existing v2 SDK28 render evidence was inspected; no new Android/vehicle rendering is claimed by this import."
+    },
+    {
+      "destination": "res/drawable/content_oem_ic_fullscreen.xml",
+      "sourcePackage": "com.android.systemui",
+      "sourceVersion": "10.2.1.361",
+      "sourceApkSha256": "c0506dc39f4a9f0eb33a2fb940f8bb40537d332ca025cbc936e38cf0ac92dc36",
+      "sourceApkEntry": "res/drawable/ic_action_fullscreen_r_o.xml",
+      "sourceSha256": "6010b476a4b280311dcfe500e3b99ce4c2ba428707c5cbd4818e38db7037d40f",
+      "format": "Vector",
+      "density": "default",
+      "states": "fullscreen:enter",
+      "deployedSha256": "6d1e7a8b6e3aedd1c98e68180b394f11091772d958fa519ca69e2cbf0255eeb4",
+      "intrinsicWidth": "48dp",
+      "intrinsicHeight": "48dp",
+      "viewportWidth": "48",
+      "viewportHeight": "48",
+      "textNormalization": "AAPT2 decoded static vector; original fill/path/fillType retained, neutral tint supplied by content theme; no animation."
+    },
+    {
+      "destination": "res/drawable/content_oem_ic_fullscreen_exit.xml",
+      "sourcePackage": "com.android.systemui",
+      "sourceVersion": "10.2.1.361",
+      "sourceApkSha256": "c0506dc39f4a9f0eb33a2fb940f8bb40537d332ca025cbc936e38cf0ac92dc36",
+      "sourceApkEntry": "res/drawable/ic_action_fullscreen_exit_r_o.xml",
+      "sourceSha256": "cdf396ac6931298fd3ab1b45f9fb65d3d6a009a9b9a262248951996265fbbb37",
+      "format": "Vector",
+      "density": "default",
+      "states": "fullscreen:exit",
+      "deployedSha256": "f27f852433805e970be822d77ba08a52595dded8cd8006cb1100cbb929061c0d",
+      "intrinsicWidth": "48dp",
+      "intrinsicHeight": "48dp",
+      "viewportWidth": "48",
+      "viewportHeight": "48",
+      "textNormalization": "AAPT2 decoded static vector; original fill/path/fillType retained, neutral tint supplied by content theme; no animation."
     }
   ]
 }

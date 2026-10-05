@@ -333,6 +333,12 @@ private fun LyricsSettings(state: ContentUiState, onEvent: (ContentEvent) -> Uni
         }
         SettingsSwitchRow("按声部布局", "有声部信息时左右分配歌词", state.lyricsSpeakerLayout) { onEvent(ContentEvent.LyricsSpeakerLayoutChanged(it)) }
         SettingsSwitchRow("强调当前行", "放大并突出正在跟随的歌词行", state.lyricsHighlight) { onEvent(ContentEvent.LyricsHighlightChanged(it)) }
+        SettingsSwitchRow("全屏时显示顶栏", "在封面上方保留时间和车辆信息", state.immersiveShowTopBar) {
+            onEvent(ContentEvent.ImmersiveShowTopBarChanged(it))
+        }
+        SettingsSwitchRow("全屏时显示Dock", "在封面下方保留底部快捷按钮", state.immersiveShowDock) {
+            onEvent(ContentEvent.ImmersiveShowDockChanged(it))
+        }
     }
 }
 

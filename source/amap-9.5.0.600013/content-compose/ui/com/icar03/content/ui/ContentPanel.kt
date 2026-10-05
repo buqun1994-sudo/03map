@@ -47,6 +47,12 @@ import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalView
 import android.view.SoundEffectConstants
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.layout.Layout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 internal val NaturalTextWidth = SemanticsPropertyKey<Float>("NaturalTextWidth")
+private val LocalPresentationInteractionEnabled = androidx.compose.runtime.staticCompositionLocalOf { true }
 internal val TemperatureVisible = SemanticsPropertyKey<Boolean>("TemperatureVisible")
 internal val PressActive = SemanticsPropertyKey<Boolean>("PressActive")
 internal val PressScale = SemanticsPropertyKey<Float>("PressScale")
@@ -83,6 +90,7 @@ fun ContentPanel(
         ClockText(if (state.showSeconds) state.time else state.time.take(5), if (state.showWeekday) state.weekday else "")
     },
     lyricsState: @Composable () -> LyricsState = { state.lyrics },
+    presentation: ContentPresentation? = null,
 ) {
     val view = LocalView.current
     val dockOverlay = remember { DockLevelOverlayState() }
@@ -93,7 +101,19 @@ fun ContentPanel(
     var retainedMessage by remember { androidx.compose.runtime.mutableStateOf(state.message.orEmpty()) }
     androidx.compose.runtime.SideEffect { state.message?.let { retainedMessage = it } }
     val latestEvent by rememberUpdatedState(onEvent)
+    var geometryReady by remember { mutableStateOf(true) }
+    var blankTapRevision by remember { mutableLongStateOf(0L) }
+    val pageMotion by remember(presentation) { derivedStateOf { presentation?.moving == true } }
+    val lyricsContent = remember {
+        movableContentOf<LyricPageSlot> { slot ->
+            LyricsPage(slot.state, slot.onEvent, slot.lyricsState,
+                presentationScale = if (slot.wide) 1.5f else 1f,
+                externalGestureActive = slot.gesturing, interactionEnabled = slot.interactive,
+                onGeometryReady = slot.onGeometryReady, presentationOpacity = slot.presentationOpacity)
+        }
+    }
     val dispatch: (ContentEvent) -> Unit = dispatch@{ event ->
+        if (pageMotion && event != ContentEvent.ExitLyricsImmersive) return@dispatch
         if (settingsActive && !event.isSettingsInteraction()) return@dispatch
         // Compose does not call View.performClick(): use the same system sound path
         // as the old Android buttons, respecting the user's sound-effects setting.
@@ -105,23 +125,41 @@ fun ContentPanel(
     Surface(modifier.fillMaxSize().graphicsLayer {
         alpha = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f
     }, color = MaterialTheme.colorScheme.background) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val compact = !state.previewMode && maxWidth < 600.dp
+        BoxWithConstraints(Modifier.fillMaxSize().observeUnconsumedPageTap(
+            state.page == PanelPage.Lyrics && contentInteractive && !pageMotion) { blankTapRevision++ }) {
+            val density = LocalDensity.current
+            val fullWidth = if (presentation?.geometryReady == true) with(density) { presentation.fullSize.width.toDp() } else maxWidth
+            val splitWidth = if (presentation?.geometryReady == true) with(density) { presentation.splitWidthPx.toDp() } else maxWidth
+            val lyricMode = state.page == PanelPage.Lyrics && presentation?.geometryReady == true
+            val wide by remember(presentation, lyricMode) { derivedStateOf { lyricMode && (presentation?.progress ?: 0f) >= .5f } }
+            val transitioning by remember(presentation, lyricMode) { derivedStateOf { lyricMode && presentation?.moving == true } }
+            val lyricOpacity = remember(presentation, lyricMode) { {
+                if (!lyricMode) 1f else if (geometryReady) lyricsTransitionAlpha(presentation?.progress ?: 0f) else 0f
+            } }
+            val leftWidth = if (lyricMode) fullWidth / 3 else maxWidth
+            val compact = !state.previewMode && leftWidth < 600.dp
             val edge = if (compact) 8.dp else 20.dp
-            val topBarHeight = if (compact) 48.dp else 59.dp
+            val topBarHeight = TopBarMetrics.height(compact)
             val dockHeight = if (compact) 72.dp else 112.dp
             val feedbackWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
+            val showTop = !wide || state.immersiveShowTopBar
+            val showDock = !wide || state.immersiveShowDock
             ambientBackground?.invoke()
-            CompositionLocalProvider(LocalQuickControlInteractionEnabled provides contentInteractive) {
-                Column(Modifier.fillMaxSize()) {
-                    PrototypeTopBar(state, clockText)
+            CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
+                LocalPresentationInteractionEnabled provides !pageMotion) {
+                Column(Modifier.width(if (wide) leftWidth else if (lyricMode) splitWidth else maxWidth).fillMaxHeight()) {
+                    if (showTop) PrototypeTopBar(state, clockText)
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                        if (state.previewMode) {
+                        if (wide) {
+                            ImmersiveMedia(state, dispatch, artwork, compact,
+                                Modifier.fillMaxSize().graphicsLayer { alpha = ((presentation?.progress ?: 1f) - .5f).times(2f).coerceIn(0f, 1f) })
+                        } else if (state.previewMode) {
                             if (state.page == PanelPage.Shortcuts) {
-                                Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) {
-                                    PrototypeGrid(state, dispatch)
-                                }
-                            } else LyricsPage(state, dispatch, lyricsState)
+                                Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                            } else Box(Modifier.fillMaxSize()) {
+                                lyricsContent(LyricPageSlot(state, dispatch, lyricsState, false, transitioning,
+                                    contentInteractive, { geometryReady = it }, lyricOpacity))
+                            }
                         } else {
                             val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
                             val currentPage by rememberUpdatedState(state.page)
@@ -135,23 +173,53 @@ fun ContentPanel(
                                     if (index != currentPage.ordinal) currentEvent(ContentEvent.PageSelected(PanelPage.entries[index]))
                                 }
                             }
-                            HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"), userScrollEnabled = contentInteractive) { index ->
+                            HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"), userScrollEnabled = contentInteractive && !transitioning) { index ->
                                 CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
                                     if (PanelPage.entries[index] == PanelPage.Shortcuts) {
-                                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) {
-                                            PrototypeGrid(state, dispatch)
-                                        }
-                                    } else LyricsPage(state, dispatch, lyricsState)
+                                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                    } else Box(Modifier.fillMaxSize()) {
+                                        lyricsContent(LyricPageSlot(state, dispatch, lyricsState, false,
+                                            transitioning || pager.isScrollInProgress, contentInteractive, { geometryReady = it }, lyricOpacity))
+                                    }
                                 }
                             }
                         }
                     }
-                    Box(Modifier.fillMaxWidth().height(if (compact) 80.dp else 136.dp)
-                        .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp)) {
+                    if (!wide) Box(Modifier.fillMaxWidth().height(if (compact) 80.dp else 136.dp)
+                        .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
+                            alpha = if (lyricMode) (1f - (presentation?.progress ?: 0f) * 2f).coerceIn(0f, 1f) else 1f
+                        }) {
                         PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
                             compact, state.showMediaSourceSwitcher)
                     }
-                    PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive)
+                    if (showDock) PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning, transparent = wide)
+                }
+                if (wide) {
+                    // This is measured only at the final wide endpoint. Map frames change clipping/alpha only.
+                    Layout(content = {
+                        lyricsContent(LyricPageSlot(state, dispatch, lyricsState, true, transitioning,
+                            contentInteractive && !transitioning, { geometryReady = it }, lyricOpacity))
+                    }, modifier = Modifier.fillMaxSize().testTag("immersive-lyrics-region")) { measurables, constraints ->
+                        val targetWidth = with(density) { (fullWidth * 2f / 3f).roundToPx() }
+                        val child = measurables.single().measure(androidx.compose.ui.unit.Constraints.fixed(targetWidth, constraints.maxHeight))
+                        layout(constraints.maxWidth, constraints.maxHeight) { child.place(with(density) { leftWidth.roundToPx() }, 0) }
+                    }
+                }
+            }
+            if (state.page == PanelPage.Lyrics) {
+                val overlayActions = if (wide) listOf(PageActionDescriptor("exit", "退出全屏", R.drawable.content_oem_ic_fullscreen_exit))
+                    else listOf(PageActionDescriptor("settings", "歌词设置", R.drawable.content_oem_ic_settings),
+                        PageActionDescriptor("enter", "全屏歌词", R.drawable.content_oem_ic_fullscreen, enabled = presentation?.geometryReady == true))
+                PageActionsOverlay(overlayActions, pageKey = "lyrics:$wide", blankTapRevision = blankTapRevision,
+                    enabled = contentInteractive && !transitioning, modalActive = settingsActive || state.sourcesOpen,
+                    compact = compact, modifier = Modifier.align(Alignment.TopEnd)
+                        .padding(top = if (wide) 16.dp else topBarHeight + 12.dp,
+                            end = 20.dp + with(density) { (presentation?.reservedGestureWidthPx ?: 0).toDp() }).zIndex(5f)) { id ->
+                    dispatch(when (id) {
+                        "settings" -> ContentEvent.OpenLyricsSettings
+                        "enter" -> ContentEvent.EnterLyricsImmersive
+                        else -> ContentEvent.ExitLyricsImmersive
+                    })
                 }
             }
             DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
@@ -161,19 +229,19 @@ fun ContentPanel(
                 visible = state.sourcesOpen,
                 enter = fadeIn(tween(240)) + slideInVertically(tween(240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { 24 },
                 exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { 24 },
-            ) { PrototypeSources(state, dispatch) }
+            ) { PrototypeSources(state, dispatch, anchorWidth = leftWidth.takeIf { wide }) }
             if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
             SettingsSheet(state, dispatch,
                 Modifier.align(Alignment.TopStart).fillMaxSize()
                     .padding(
                         start = if (compact) 8.dp else 12.dp,
                         end = if (compact) 8.dp else 12.dp,
-                        top = topBarHeight,
-                        bottom = dockHeight + if (compact) 8.dp else 16.dp,
+                        top = if (showTop) topBarHeight else 12.dp,
+                        bottom = if (showDock) dockHeight + if (compact) 8.dp else 16.dp else 12.dp,
                     ).zIndex(7f),
                 onVisibilityChanged = { settingsRetained = it })
             // Keep the moving feedback surface inside the same fixed content bounds.
-            Box(Modifier.fillMaxSize().padding(top = topBarHeight, bottom = dockHeight).clipToBounds().zIndex(10f)) {
+            Box(Modifier.fillMaxSize().padding(top = if (showTop) topBarHeight else 12.dp, bottom = dockHeight).clipToBounds().zIndex(10f)) {
                 AnimatedVisibility(
                     visible = state.message != null && state.showActionFeedback,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
@@ -206,19 +274,20 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val measurer = rememberTextMeasurer()
-        val compact = maxWidth < 600.dp
-        val style = MaterialTheme.typography.titleLarge
+        val compact = !state.previewMode && maxWidth < 600.dp
+        val style = MaterialTheme.typography.titleLarge.copy(fontSize = TopBarMetrics.textSize(maxWidth < 360.dp))
         val gap = if (compact) 4.dp else 8.dp
-        val batterySize = if (!state.showBattery) 0.dp else if (compact) 24.dp else 32.dp
+        val batterySize = if (!state.showBattery) 0.dp else TopBarMetrics.batterySize(compact)
         val availablePx = with(density) { (maxWidth - 24.dp - batterySize).toPx() }
         val gapPx = with(density) { gap.toPx() }
         fun width(text: String) = measurer.measure(AnnotatedString(text), style, softWrap = false, maxLines = 1).size.width.toFloat()
         val temperature = state.temperature.replace("°C", "°").replace("°", "°C")
         val range = state.range + state.rangeUnit
         fun timeWithWeekday(time: String, weekday: String) = time + if (weekday.isEmpty()) "" else " " + weekday
-        val fullTime = timeWithWeekday(clock.time, clock.weekday)
-        val minuteTime = timeWithWeekday(clock.time.take(5), clock.weekday)
-        val shortWeekdayTime = timeWithWeekday(clock.time.take(5), clock.weekday.replace("星期", "周"))
+        val weekday = clock.weekday.ifEmpty { state.weekday.takeIf { state.showWeekday }.orEmpty() }
+        val fullTime = timeWithWeekday(clock.time, weekday)
+        val minuteTime = timeWithWeekday(clock.time.take(5), weekday)
+        val shortWeekdayTime = timeWithWeekday(clock.time.take(5), weekday.replace("星期", "周"))
         val temperatureGap = gap + 4.dp
         val fullStatus = if (state.showChargingStatus) state.chargeStatus else null
         val statusParts = fullStatus?.split("·").orEmpty()
@@ -230,12 +299,11 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
             fullStatus.replace(" ", ""),
             compactDetail,
             powerStatus,
-            minutesStatus,
             when {
-                fullStatus.contains("待确认") -> "状态待确认"
-                fullStatus.contains("预约") -> "预约充电中"
-                state.charging || fullStatus.contains("kW") || fullStatus.contains("充电中") -> "充电中"
+                fullStatus.contains("待确认") -> "待确认"
+                fullStatus.contains("预约") -> "预约中"
                 fullStatus.contains("已插枪") -> "已插枪"
+                state.charging || fullStatus.contains("kW") || fullStatus.contains("充电中") -> "充电中"
                 else -> fullStatus
             },
         ).filterNotNull().distinct()
@@ -247,7 +315,8 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
         val times = listOf(fullTime, minuteTime, shortWeekdayTime).distinct()
         val choices = listOf(Triple(fullTime, statuses.first(), state.showIndoorTemperature)) +
             times.map { Triple(it, statuses.first(), false) } +
-            statuses.drop(1).flatMap { status -> times.map { Triple(it, status, false) } }
+            statuses.drop(1).flatMap { status -> times.map { Triple(it, status, false) } } +
+            statuses.asReversed().map { Triple(shortWeekdayTime, it, false) }
         val choice = choices.firstOrNull { required(it.first, it.second, it.third) <= availablePx }
             ?: Triple(shortWeekdayTime, statuses.last(), false)
         val time = choice.first
@@ -261,7 +330,7 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
                 R.drawable.content_oem_ico_battery_2, R.drawable.content_oem_ico_battery_3,
                 R.drawable.content_oem_ico_battery_4, R.drawable.content_oem_ico_battery_5)[(state.batteryPercent / 20).coerceIn(0, 5)]
         }
-        Row(Modifier.fillMaxWidth().height(if (compact) 48.dp else 59.dp).padding(horizontal = 12.dp)
+        Row(Modifier.fillMaxWidth().height(TopBarMetrics.height(compact)).padding(horizontal = 12.dp)
             .testTag("top-bar").semantics { this[TemperatureVisible] = showTemperature },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) {
             TopBarText(time, "top-time", style, width(time), description = fullTime)
@@ -535,6 +604,54 @@ private fun PrototypeMediaCard(
     }
 }
 
+@Composable
+private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Unit,
+    artwork: @Composable (() -> Unit)?, compact: Boolean, modifier: Modifier = Modifier,
+) {
+    val coverScale by animateFloatAsState(if (state.media.playing) 1f else .76f,
+        tween(350, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "immersive-cover")
+    BoxWithConstraints(modifier.padding(horizontal = if (compact) 16.dp else 28.dp)) {
+        val coverSize = minOf(maxWidth, (maxHeight - 176.dp).coerceAtLeast(48.dp))
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Box(Modifier.size(coverSize).testTag("immersive-cover-space"), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().graphicsLayer { scaleX = coverScale; scaleY = coverScale }
+                    .clip(RoundedCornerShape(14.dp)).testTag("immersive-cover")) {
+                    if (artwork != null) artwork() else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(72.dp), "音乐封面", animateOnPress = false, animateOnAction = false)
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            Column(Modifier.fillMaxWidth().height(68.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(state.media.title ?: "暂无媒体", Modifier.testTag("immersive-title"),
+                    style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.media.artist ?: "未连接", Modifier.testTag("immersive-artist"),
+                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            val media = state.media
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("immersive-media-controls"),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                RoundedPressButton(Modifier.size(64.dp), "immersive-play", if (media.playing) "暂停" else "播放",
+                    media.available && media.playbackAvailable && !media.pending, compact,
+                    onClick = { onEvent(ContentEvent.PlayPause) }) {
+                    OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f,
+                        Modifier.size(40.dp), animateOnAction = false)
+                }
+                Spacer(Modifier.width(12.dp))
+                RoundedPressButton(Modifier.size(56.dp), "immersive-next", "下一首", media.available && media.nextAvailable && !media.pending, compact,
+                    onClick = { onEvent(ContentEvent.NextTrack) }) { OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(36.dp)) }
+                if (state.showMediaSourceSwitcher) {
+                    Spacer(Modifier.width(12.dp))
+                    RoundedPressButton(Modifier.size(56.dp), "immersive-source", "选择来源", media.sourceAvailable, compact,
+                        onClick = { onEvent(ContentEvent.OpenSources) }) { OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(32.dp), tint = sourceTint()) }
+                }
+            }
+        }
+    }
+}
+
 internal fun dockItemsForCount(count: Int): List<ShortcutId> {
     val normalized = count.coerceIn(3, DockShortcuts.MAX_BUTTONS)
     val middle = DockShortcuts.items.drop(1).dropLast(1).take(normalized - 2)
@@ -543,13 +660,13 @@ internal fun dockItemsForCount(count: Int): List<ShortcutId> {
 
 @Composable
 private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit, compact: Boolean,
-    overlay: DockLevelOverlayState, interactive: Boolean) {
+    overlay: DockLevelOverlayState, interactive: Boolean, transparent: Boolean = false) {
     val colors = LocalContentColors.current
     val items = dockItemsForCount(state.dockButtonCount)
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
         Surface(
-            Modifier.fillMaxSize().testTag("floating-dock").downwardSoftShadow(colors.dockBase, state.dark), shape = RoundedCornerShape(12.dp),
-            color = colors.dockBase, shadowElevation = 0.dp,
+            Modifier.fillMaxSize().testTag("floating-dock").then(if (transparent) Modifier else Modifier.downwardSoftShadow(colors.dockBase, state.dark)), shape = RoundedCornerShape(12.dp),
+            color = if (transparent) Color.Transparent else colors.dockBase, shadowElevation = 0.dp,
         ) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val minDockWidth = if (compact) 48.dp * items.size
@@ -574,7 +691,7 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                                 onClick = { dockEvent(id, state)?.let(onEvent) }, rectangular = false,
                                 selected = selected && id != ShortcutId.Lock,
                                 selectedColor = colors.selectedSurface,
-                                baseColor = colors.dockBase,
+                                baseColor = if (transparent) Color.Transparent else colors.dockBase,
                                 rippleEnabled = rippleEnabled,
                                 rippleColor = if (selected && id != ShortcutId.Lock) colors.dockBase else colors.selectedSurface) {
                                 ShortcutOemIcon(id, state, shortcutIcon(id, state), Modifier.size(if (compact) 32.dp else 48.dp).testTag("dock-icon-${id.name}"))
@@ -598,9 +715,10 @@ private fun RoundedPressButton(
     content: @Composable () -> Unit,
 ) {
     val colors = LocalContentColors.current
+    val canInteract = enabled && LocalPresentationInteractionEnabled.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    val active = pressed && enabled
+    val active = pressed && canInteract
     var action by remember { mutableIntStateOf(0) }
     // Fixed RGB with animated opacity avoids interpolating Transparent's black RGB.
     val opacity by animateFloatAsState(if (active && rectangular) 1f else 0f,
@@ -610,11 +728,11 @@ private fun RoundedPressButton(
     val selectedSurface = selectedColor ?: colors.selectedSurface
     val rippleSurface = rippleColor ?: selectedSurface
     val base = if (selected) selectedSurface else baseColor ?: colors.mediaBase
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled && rippleEnabled && !rectangular, base, rippleSurface)
+    val feedback = rememberBoundaryPressFeedback(interactions, canInteract && rippleEnabled && !rectangular, base, rippleSurface)
     Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(tag)
         .then(feedback.touchCoordinates)
             .then(feedback.pointerDownLatch)
-        .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Button, onClick = { action++; onClick() })
+        .clickable(interactionSource = interactions, indication = null, enabled = canInteract, role = Role.Button, onClick = { action++; onClick() })
         .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong(); this[PressScale] = scale; this[PressFeedback] = if (rectangular || rippleEnabled) if (rectangular) "opacity-rectangle" else "touch-ripple" else "none" },
         contentAlignment = Alignment.Center) {
         val shape = RoundedCornerShape(if (compact) 12.dp else 16.dp)
@@ -630,7 +748,7 @@ private fun RoundedPressButton(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
+private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> Unit, anchorWidth: androidx.compose.ui.unit.Dp? = null) {
     BoxWithConstraints(Modifier.fillMaxSize().testTag("sources-overlay")) {
          val colors = LocalContentColors.current
         val compact = !state.previewMode && (maxWidth < 600.dp || maxHeight < 800.dp)
@@ -646,7 +764,9 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
             detectTapGestures { onEvent(ContentEvent.DismissSheet) }
         })
         Surface(
-            Modifier.align(Alignment.BottomEnd).padding(end = if (compact) 8.dp else 20.dp, bottom = if (compact) 152.dp else 264.dp)
+            Modifier.align(if (anchorWidth == null) Alignment.BottomEnd else Alignment.BottomStart).padding(
+                start = if (anchorWidth == null) 0.dp else (anchorWidth - menuWidth - if (compact) 8.dp else 20.dp).coerceAtLeast(8.dp),
+                end = if (compact) 8.dp else 20.dp, bottom = if (compact) 152.dp else 264.dp)
                 .width(menuWidth).testTag("sources-menu")
                 .downwardSoftShadow(colors.sourceBase, state.dark),
             shape = RoundedCornerShape(12.dp), color = colors.sourceBase,
@@ -697,12 +817,25 @@ private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) 
     }
 }
 
+private data class LyricPageSlot(
+    val state: ContentUiState, val onEvent: (ContentEvent) -> Unit,
+    val lyricsState: @Composable () -> LyricsState, val wide: Boolean,
+    val gesturing: Boolean, val interactive: Boolean, val onGeometryReady: (Boolean) -> Unit,
+    val presentationOpacity: () -> Float,
+)
+
 @Composable
-private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyricsState: @Composable () -> LyricsState) {
+private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyricsState: @Composable () -> LyricsState,
+    presentationScale: Float = 1f, externalGestureActive: Boolean = false,
+    interactionEnabled: Boolean = true, onGeometryReady: (Boolean) -> Unit = {},
+    presentationOpacity: () -> Float = { 1f },
+) {
     val lyrics = lyricsState()
     LyricsBodyTransition(lyrics, state.dark,
         fontScale = state.lyricsFontScale, lineSpacing = state.lyricsLineSpacing,
-        speakerLayout = state.lyricsSpeakerLayout, highlightCurrent = state.lyricsHighlight) {
+        speakerLayout = state.lyricsSpeakerLayout, highlightCurrent = state.lyricsHighlight,
+        presentationScale = presentationScale, externalGestureActive = externalGestureActive,
+        interactionEnabled = interactionEnabled, onGeometryReady = onGeometryReady, presentationOpacity = presentationOpacity) {
         if (lyrics.lines.isEmpty()) LyricsEmptyContent(state, onEvent, lyrics)
     }
 }

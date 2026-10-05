@@ -7,8 +7,10 @@
 .implements Landroid/animation/ValueAnimator$AnimatorUpdateListener;
 .implements Landroid/view/View$OnLayoutChangeListener;
 .implements Landroid/view/View$OnTouchListener;
+.implements Lcom/icar03/content/model/MapPresentationPort;
 
 # instance fields
+.field private requestedDurationMs:J
 .field private panelHost:Landroid/view/ViewGroup;
 
 .field private mapLayer:Landroid/view/ViewGroup;
@@ -281,12 +283,56 @@
 
     invoke-direct {v0, v1}, LSplitPanelController;-><init>(Landroid/view/ViewGroup;)V
 
+    invoke-static {p0, v0}, Lcom/autonavi/amapauto/content/ContentRuntime;->bindMapPresentation(Landroid/view/ViewGroup;Lcom/icar03/content/model/MapPresentationPort;)V
+
+    invoke-direct {v0}, LSplitPanelController;->updateGeometry()V
+
     return-object v0
 
     :stable_return_null
     const/4 v0, 0x0
 
     return-object v0
+.end method
+
+.method public settleToExpanded()V
+    .locals 3
+
+    const-wide/16 v0, 0x1e0
+    iput-wide v0, p0, LSplitPanelController;->requestedDurationMs:J
+    iget v2, p0, LSplitPanelController;->expandedDividerX:I
+    int-to-float v2, v2
+    invoke-direct {p0, v2}, LSplitPanelController;->animateTo(F)V
+    return-void
+.end method
+
+.method public settleToCollapsed()V
+    .locals 3
+
+    const-wide/16 v0, 0x1e0
+    iput-wide v0, p0, LSplitPanelController;->requestedDurationMs:J
+    iget v2, p0, LSplitPanelController;->screenWidth:I
+    int-to-float v2, v2
+    invoke-direct {p0, v2}, LSplitPanelController;->animateTo(F)V
+    return-void
+.end method
+
+.method public reservedGestureWidthPx()I
+    .locals 1
+
+    iget-object v0, p0, LSplitPanelController;->gestureNode:Landroid/view/ViewGroup;
+    invoke-virtual {v0}, Landroid/view/View;->getLayoutParams()Landroid/view/ViewGroup$LayoutParams;
+    move-result-object v0
+    iget v0, v0, Landroid/view/ViewGroup$LayoutParams;->width:I
+    return v0
+.end method
+
+.method private notifyPresentationPhase()V
+    .locals 1
+
+    iget v0, p0, LSplitPanelController;->panelState:I
+    invoke-static {p0, v0}, Lcom/autonavi/amapauto/content/ContentRuntime;->onPanelPhaseChanged(Lcom/icar03/content/model/MapPresentationPort;I)V
+    return-void
 .end method
 
 .method public getMapRatio()F
@@ -547,7 +593,7 @@
 
     int-to-float v4, v4
 
-    invoke-static {p1, v0, v4}, Lcom/autonavi/amapauto/content/ContentRuntime;->onDividerChanged(FFF)V
+    invoke-static {p0, p1, v0, v4}, Lcom/autonavi/amapauto/content/ContentRuntime;->onMapDividerChanged(Lcom/icar03/content/model/MapPresentationPort;FFF)V
 
     return-void
 .end method
@@ -618,12 +664,16 @@
 
     iput v3, p0, LSplitPanelController;->panelState:I
 
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
+
     goto :state_ready
 
     :settling_expanded
     const/4 v3, 0x4
 
     iput v3, p0, LSplitPanelController;->panelState:I
+
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
 
     :state_ready
     const/4 v3, 0x2
@@ -646,7 +696,14 @@
 
     iput-object v3, p0, LSplitPanelController;->panelAnimator:Landroid/animation/ValueAnimator;
 
+    iget-wide v4, p0, LSplitPanelController;->requestedDurationMs:J
+
+    const-wide/16 v6, 0x0
+    iput-wide v6, p0, LSplitPanelController;->requestedDurationMs:J
+    cmp-long v6, v4, v6
+    if-gtz v6, :duration_ready
     const-wide/16 v4, 0xc8
+    :duration_ready
 
     invoke-virtual {v3, v4, v5}, Landroid/animation/ValueAnimator;->setDuration(J)Landroid/animation/ValueAnimator;
 
@@ -912,12 +969,16 @@
 
     iput v2, p0, LSplitPanelController;->panelState:I
 
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
+
     return-void
 
     :stable_expanded
     const/4 v2, 0x0
 
     iput v2, p0, LSplitPanelController;->panelState:I
+
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
 
     return-void
 .end method
@@ -1148,6 +1209,8 @@
 
     iput-boolean v0, p0, LSplitPanelController;->geometryUpdating:Z
 
+    iget v9, p0, LSplitPanelController;->screenWidth:I
+
     iput v2, p0, LSplitPanelController;->screenWidth:I
 
     int-to-float v3, v2
@@ -1343,7 +1406,21 @@
     goto :geometry_done
 
     :preserve_divider
+    if-eq v9, v2, :preserve_raw_divider
+    iget v0, p0, LSplitPanelController;->panelState:I
+    if-eqz v0, :preserve_expanded_endpoint
+    const/4 v1, 0x1
+    if-ne v0, v1, :preserve_raw_divider
+    iget v0, p0, LSplitPanelController;->screenWidth:I
+    int-to-float v0, v0
+    goto :apply_preserved_divider
+    :preserve_expanded_endpoint
+    iget v0, p0, LSplitPanelController;->expandedDividerX:I
+    int-to-float v0, v0
+    goto :apply_preserved_divider
+    :preserve_raw_divider
     iget v0, p0, LSplitPanelController;->currentDividerX:F
+    :apply_preserved_divider
 
     invoke-direct {p0, v0}, LSplitPanelController;->applyDividerX(F)V
 
@@ -1389,12 +1466,16 @@
 
     iput v0, p0, LSplitPanelController;->panelState:I
 
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
+
     goto :animation_done
 
     :panel_expanded
     const/4 v0, 0x0
 
     iput v0, p0, LSplitPanelController;->panelState:I
+
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
 
     goto :animation_done
 
@@ -1555,6 +1636,8 @@
 
     iput v0, p0, LSplitPanelController;->panelState:I
 
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
+
     goto :return_true
 
     :action_move
@@ -1660,6 +1743,8 @@
 
     iput v6, p0, LSplitPanelController;->panelState:I
 
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
+
     iget v6, p0, LSplitPanelController;->downDividerX:F
 
     add-float/2addr v6, v2
@@ -1672,6 +1757,8 @@
     const/4 v6, 0x6
 
     iput v6, p0, LSplitPanelController;->panelState:I
+
+    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
 
     goto :return_true
 

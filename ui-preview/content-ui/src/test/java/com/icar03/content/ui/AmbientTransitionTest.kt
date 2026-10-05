@@ -27,13 +27,17 @@ class AmbientTransitionTest {
     )
     private fun frame(color: Int) = baker.prepare(artwork(color), false, 21f, size)!!
     private fun render(scene: AmbientTransition, fraction: Float, background: Int = Color.BLACK): Bitmap =
-        Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888).also {
+        renderAt(scene, fraction, size, background)
+    private fun renderAt(scene: AmbientTransition, fraction: Float, output: IntSize,
+        background: Int = Color.BLACK): Bitmap = Bitmap.createBitmap(output.width, output.height, Bitmap.Config.ARGB_8888).also {
             val canvas = Canvas(it)
             canvas.drawColor(background)
-            painter.drawTransition(canvas, size.width.toFloat(), size.height.toFloat(), scene, fraction)
+            painter.drawTransition(canvas, output.width.toFloat(), output.height.toFloat(), scene, fraction)
         }
     private fun assertSamePixels(a: Bitmap, b: Bitmap) {
-        for (y in 0 until size.height step 13) for (x in 0 until size.width step 11) {
+        val width = minOf(a.width, b.width)
+        val height = minOf(a.height, b.height)
+        for (y in 0 until height step 13) for (x in 0 until width step 11) {
             val before = a.getPixel(x, y); val after = b.getPixel(x, y)
             assertTrue(abs(Color.red(before) - Color.red(after)) <= 2)
             assertTrue(abs(Color.green(before) - Color.green(after)) <= 2)
@@ -209,6 +213,38 @@ class AmbientTransitionTest {
         val toGreen = AmbientTransition(toBlue.capture(painter, size, .43f), frame(Color.GREEN), startOpacity = 1f, endOpacity = 1f)
         assertSamePixels(visible, render(toGreen, 0f))
         assertEquals(Color.GREEN, render(toGreen, 1f).getPixel(64, 100))
+    }
+
+    @Test fun presentationEntryCapturesTheCurrentArrivalMixtureBeforeBuildingTheCompactBridge() {
+        val red = frame(Color.RED)
+        val blue = frame(Color.BLUE)
+        val renderer = AmbientRenderState()
+        val first = renderer.beginRequest(painter, size)
+        assertTrue(renderer.retarget(first, red, 0f, painter, size))
+        renderer.finish(first)
+        val second = renderer.beginRequest(painter, size)
+        assertTrue(renderer.retarget(second, blue, 0f, painter, size))
+        renderer.fraction = .43f
+        val frameSize = ambientFrameSize(size)
+        val visible = renderAt(renderer.transition, renderer.fraction, frameSize)
+        val captured = renderer.captureCurrent(painter, size, Color.BLACK)
+        assertNotSame("a mid-arrival capture differs from both endpoints", blue, captured)
+        assertNotNull(captured)
+        assertSamePixels(visible, renderAt(AmbientTransition(target = captured,
+            startOpacity = 1f, endOpacity = 1f), 1f, frameSize))
+    }
+
+    @Test fun presentationEntryRetainsPartialOpacityOverTheActualThemeBackground() {
+        val renderer = AmbientRenderState()
+        val request = renderer.beginRequest(painter, size)
+        assertTrue(renderer.retarget(request, frame(Color.BLUE), 0f, painter, size))
+        renderer.fraction = .43f
+        val background = Color.rgb(239, 240, 247)
+        val frameSize = ambientFrameSize(size)
+        val visible = renderAt(renderer.transition, renderer.fraction, frameSize, background)
+        val captured = renderer.captureCurrent(painter, size, background)
+        assertNotNull(captured)
+        assertSamePixels(visible, captured!!)
     }
 
     @Test fun interruptedDisappearAndAppearPreserveCurrentColourAndOpacity() {

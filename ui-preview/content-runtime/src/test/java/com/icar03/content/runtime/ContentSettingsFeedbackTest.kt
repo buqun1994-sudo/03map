@@ -11,6 +11,12 @@ import com.icar03.content.ui.ControlId
 import com.icar03.content.ui.MediaSource
 import com.icar03.content.ui.PanelPage
 import com.icar03.content.ui.SettingsSection
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,6 +54,54 @@ class ContentSettingsFeedbackTest {
         assertEquals("a closed sheet ignores menu selections", SettingsSection.Lyrics, binding.state.value.settingsSection)
         binding.dispatch(ContentEvent.SettingsTapped)
         assertEquals(SettingsSection.TopBar, binding.state.value.settingsSection)
+    }
+
+    @Test fun lyricsSettingsDeepLinkPublishesOnlyTheFinalLyricsSectionAndNeverTogglesItClosed() = withFixture { fixture ->
+        val binding = fixture.binding
+        binding.dispatch(ContentEvent.OpenSources)
+        assertTrue(binding.state.value.sourcesOpen)
+        val observed = mutableListOf<Pair<Boolean, SettingsSection>>()
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        try {
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                binding.state.collect { observed += it.settingsOpen to it.settingsSection }
+            }
+            observed.clear()
+            binding.dispatch(ContentEvent.OpenLyricsSettings)
+            assertEquals(listOf(true to SettingsSection.Lyrics), observed)
+            assertFalse(binding.state.value.sourcesOpen)
+
+            binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.TopBar))
+            observed.clear()
+            binding.dispatch(ContentEvent.OpenLyricsSettings)
+            assertEquals(listOf(true to SettingsSection.Lyrics), observed)
+            assertTrue(binding.state.value.settingsOpen)
+            binding.dispatch(ContentEvent.OpenLyricsSettings)
+            assertTrue("a deep link is not a toggle", binding.state.value.settingsOpen)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test fun immersivePreferencesInvalidateOnlyTheShellCacheAndPreserveIndependentLyricsProjection() {
+        val input = ContentState()
+        val mapper = ContentUiMapper()
+        val unavailable = ContentPorts.SystemSnapshot(false, 0)
+        val capabilities = RuntimeCapabilities()
+        val initial = mapper.mapShell(input, unavailable, unavailable, capabilities)
+        assertTrue(initial.immersiveShowTopBar)
+        assertTrue(initial.immersiveShowDock)
+        val lyrics = mapper.mapLyrics(input)
+        input.immersiveShowTopBar = false
+        val noTopBar = mapper.mapShell(input, unavailable, unavailable, capabilities)
+        assertFalse(noTopBar.immersiveShowTopBar)
+        assertTrue(noTopBar.immersiveShowDock)
+        assertNotSame(initial, noTopBar)
+        input.immersiveShowDock = false
+        val hidden = mapper.mapShell(input, unavailable, unavailable, capabilities)
+        assertFalse(hidden.immersiveShowDock)
+        assertSame(hidden, mapper.mapShell(input.copy(), unavailable, unavailable, capabilities))
+        assertSame(lyrics, mapper.mapLyrics(input))
     }
 
     @Test fun openSettingsRejectsPageMediaControlAndSystemIntentsButPersistsDisplayPreferences() = withFixture { fixture ->
@@ -107,6 +161,8 @@ class ContentSettingsFeedbackTest {
         binding.dispatch(ContentEvent.LyricsLineSpacingChanged(2))
         binding.dispatch(ContentEvent.LyricsSpeakerLayoutChanged(false))
         binding.dispatch(ContentEvent.LyricsHighlightChanged(false))
+        binding.dispatch(ContentEvent.ImmersiveShowTopBarChanged(false))
+        binding.dispatch(ContentEvent.ImmersiveShowDockChanged(false))
         binding.dispatch(ContentEvent.ShowAmbientArtworkChanged(false))
         binding.dispatch(ContentEvent.ShowMediaSourceSwitcherChanged(false))
         binding.dispatch(ContentEvent.DockButtonCountChanged(3))
@@ -122,6 +178,8 @@ class ContentSettingsFeedbackTest {
         assertEquals(2, binding.state.value.lyricsLineSpacing)
         assertFalse(binding.state.value.lyricsSpeakerLayout)
         assertFalse(binding.state.value.lyricsHighlight)
+        assertFalse(binding.state.value.immersiveShowTopBar)
+        assertFalse(binding.state.value.immersiveShowDock)
         assertFalse(binding.state.value.showAmbientArtwork)
         assertFalse(binding.state.value.showMediaSourceSwitcher)
         assertEquals(3, binding.state.value.dockButtonCount)
@@ -141,6 +199,8 @@ class ContentSettingsFeedbackTest {
         assertEquals(2, persisted.lyricsLineSpacing)
         assertFalse(persisted.lyricsSpeakerLayout)
         assertFalse(persisted.lyricsHighlight)
+        assertFalse(persisted.immersiveShowTopBar)
+        assertFalse(persisted.immersiveShowDock)
         assertFalse(persisted.showAmbientArtwork)
         assertFalse(persisted.showMediaSourceSwitcher)
         assertEquals(3, persisted.dockButtonCount)

@@ -3,10 +3,9 @@ package com.icar03.content.ui
 import android.graphics.Paint
 import android.graphics.Color as NativeColor
 import android.os.SystemClock
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -68,12 +67,17 @@ internal val LyricPresentationFrozen = SemanticsPropertyKey<Boolean>("LyricPrese
 internal val LyricEntryHolding = SemanticsPropertyKey<Boolean>("LyricEntryHolding")
 internal val LyricRecordingKey = SemanticsPropertyKey<String>("LyricRecordingKey")
 
+internal val LyricScrollRunning = SemanticsPropertyKey<Boolean>("LyricScrollRunning")
+internal val LyricScrollPhase = SemanticsPropertyKey<Float>("LyricScrollPhase")
+internal val LyricScrollMaximumDelay = SemanticsPropertyKey<Int>("LyricScrollMaximumDelay")
+
 /** Last painted facts, without Snapshot writes, screenshots or a second media clock. */
 private class LyricPaintedFrame {
     var document: LyricLayoutDocument? = null
     var source: LyricsState? = null
     var positionMs = -1L
     var offset = 0f
+    val scroll = LyricScrollSample()
     var focus = 0
     var emphasized: Set<Int> = emptySet()
     var cache: LyricInkCache? = null
@@ -81,28 +85,35 @@ private class LyricPaintedFrame {
     var fallback: List<LyricSliceAddress> = emptyList()
 }
 
+private data class LyricFollowCommand(val geometry: LyricGeometry, val target: Float, val focus: Int,
+    val browsing: Boolean, val canAnimate: Boolean, val paused: Boolean)
+private class LyricFollowHistory(var value: LyricFollowCommand? = null)
+
 /** Stable geometry and a byte-bounded ink cache; frame clocks are observed only in draw/semantics. */
 @Composable
 internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modifier = Modifier,
     opacity: () -> Float = { 1f }, freezeMotion: Boolean = false, holdFollow: Boolean = false,
     startAtFirstRow: Boolean = false, visibility: Boolean? = null,
     fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
-    highlightCurrent: Boolean = true, onLayoutReady: () -> Unit = {}) {
+    highlightCurrent: Boolean = true, onLayoutReady: () -> Unit = {},
+    presentationScale: Float = 1f, externalGestureActive: Boolean = false,
+    interactionEnabled: Boolean = true, onGeometryReady: (Boolean) -> Unit = {}) {
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().testTag("wallpaper-lyrics")) {
         val density = LocalDensity.current
         val assets = LocalContext.current.assets
         val face = remember(assets) { lyricTypeface(assets) }
         val cjk = remember(assets) { lyricCjkTypeface(assets) }
-        val inset = with(density) { 48.dp.toPx() }
-        val width = with(density) { maxWidth.toPx() }.minus(inset * 2f).roundToInt().coerceAtLeast(1)
+        val sceneScale = presentationScale.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val requestedInset = with(density) { 48.dp.toPx() } * sceneScale
+        val width = with(density) { maxWidth.toPx() }.minus(requestedInset * 2f).roundToInt().coerceAtLeast(1)
         val height = with(density) { maxHeight.toPx() }
         val requestedMetrics = with(density) {
-            val safeScale = if (fontScale.isFinite()) fontScale.coerceIn(0.85f, 1.15f) else 1.0f
+            val safeScale = (if (fontScale.isFinite()) fontScale.coerceIn(0.85f, 1.15f) else 1.0f) * sceneScale
             val gapScale = when (lineSpacing.coerceIn(0, 2)) { 0 -> .75f; 2 -> 1.35f; else -> 1f }
             LyricMetrics(LyricVisuals.MAIN_SP.sp.toPx() * safeScale, LyricVisuals.CURRENT_SP.sp.toPx() * safeScale,
                 22.sp.toPx() * safeScale, 20.sp.toPx() * safeScale,
-                14.dp.toPx() * gapScale, 4.dp.toPx(), LyricVisuals.INACTIVE_BLUR_DP.dp.toPx(),
-                LyricVisuals.LIFT_DP.dp.toPx())
+                14.dp.toPx() * gapScale * sceneScale, 4.dp.toPx() * sceneScale,
+                LyricVisuals.INACTIVE_BLUR_DP.dp.toPx() * sceneScale, LyricVisuals.LIFT_DP.dp.toPx() * sceneScale)
         }
         val displayLines = remember(lyrics.lines, speakerLayout) {
             if (speakerLayout) lyrics.lines else lyrics.lines.map { it.copy(side = LyricSide.Unspecified) }
@@ -112,7 +123,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val visible = visibility ?: rememberLyricVisibility()
         val workEnabled = visible && !freezeMotion
         val request = remember(incoming.lines, width, requestedMetrics, face, cjk) {
-            LyricLayoutRequest(incoming.lines, width, requestedMetrics, face, cjk, inset.roundToInt())
+            LyricLayoutRequest(incoming.lines, width, requestedMetrics, face, cjk, requestedInset)
         }
         var candidate by remember(presentationKey) { mutableStateOf<LyricLayoutDocument?>(null) }
         val admitted = remember(presentationKey) { LyricPresentationHolder() }
@@ -130,6 +141,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             candidate = result
         }
         SideEffect {
+            onGeometryReady(layoutReady)
             if (!freezeMotion && matching != null) {
                 admitted.value = LyricPresentation(matching, incoming)
                 onLayoutReady()
@@ -152,6 +164,8 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }
         val lyrics = if (layoutReady && !freezeMotion) incoming else heldSource
         val metrics = ready.request.metrics
+        val inset = ready.request.baseInset.toFloat()
+        val admittedScale = metrics.gap / with(density) { 4.dp.toPx() }
         val measured = ready.rows
         val active = lyrics.activeIndex.coerceIn(-1, lyrics.lines.lastIndex)
         val singing = remember(lyrics.activeIndices, active, lyrics.lines.size) {
@@ -162,7 +176,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             else max(0, if (lyrics.scrollIndex >= 0) lyrics.scrollIndex else active)
                 .coerceAtMost(max(0, lyrics.lines.lastIndex))
         val heights = remember(measured) { measured.map { it.height } }
-        val waitHeight = with(density) { 64.dp.toPx() }
+        val waitHeight = with(density) { 64.dp.toPx() } * admittedScale
         val flow = remember(heights, lyrics.waitRows, lyrics.timed, waitHeight) {
             lyricFlow(heights, if (lyrics.timed) lyrics.waitRows else emptyList(), waitHeight)
         }
@@ -185,43 +199,94 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val firstTarget = if (!lyrics.timed) metrics.padding
             else if (gapSlot >= 0 && flow.waitRows[gapSlot].afterIndex == -1) followTarget
             else if (measured.isEmpty()) 0f else height * .41f - tops[0] - heights[0] / 2f
-        val travel = remember(presentationKey) { Animatable(if (startAtFirstRow) firstTarget else followTarget) }
-        var committedCoordinates by remember(presentationKey) { mutableStateOf(LyricCoordinates(geometry, 0f)) }
+        val travel = remember(presentationKey) {
+            LyricScrollState(if (startAtFirstRow) firstTarget else followTarget).also { it.layoutKey = geometry }
+        }
+        var committedCoordinates by remember(presentationKey) {
+            mutableStateOf(LyricCoordinates(geometry, 0f, travel.value, travel.segment))
+        }
         val coordinates = remember(geometry, presentationKey) {
             val previous = committedCoordinates
-            LyricCoordinates(geometry, previous.origin + lyricGeometryShift(previous.geometry, geometry, previous.origin + travel.value))
+            if (previous.geometry === geometry) previous else {
+                val old = LyricScrollSample()
+                if (painted.document?.request?.lines === previous.geometry.lines) old.copyFrom(painted.scroll)
+                else travel.sampleInto(old, previous.origin)
+                val relativeBase = old.base - previous.origin
+                LyricCoordinates(geometry, previous.origin + lyricGeometryShift(previous.geometry, geometry, old.base, old),
+                    relativeBase, LyricScrollSegment.stationary(LyricRowPose.uniform(relativeBase)))
+            }
         }
         SideEffect { committedCoordinates = coordinates }
+        val origin = coordinates.origin
+        val readScroll = remember(travel, freezeMotion, ready, geometry, coordinates) {
+            { sample: LyricScrollSample ->
+                if (freezeMotion && painted.document === ready) sample.copyFrom(painted.scroll)
+                else if (travel.layoutKey !== geometry) sample.set(coordinates.rebase, 0f, origin)
+                else travel.sampleInto(sample, origin)
+            }
+        }
         val hasFollowAnchor = workEnabled && !lyricBodyAtEnd(lyrics) &&
             (!lyrics.timed || lyrics.timelineReady) && !holdFollow
         var browsingTravel by remember(presentationKey) { mutableStateOf<Float?>(null) }
         var dragging by remember(presentationKey) { mutableStateOf(false) }
-        // One delayed return, cancelled while hidden/frozen and restarted on resuming a timed viewport.
-        LaunchedEffect(workEnabled, holdFollow, lyrics.timed, browsingTravel, dragging) {
-            if (workEnabled && !holdFollow && lyrics.timed && browsingTravel != null && !dragging) {
+        var pointerDown by remember(presentationKey) { mutableStateOf(false) }
+        val paused = lyrics.playbackSpeed <= 0f || !lyrics.playbackSpeed.isFinite()
+        val scrollBlocked = !workEnabled || holdFollow || !layoutReady || pointerDown ||
+            externalGestureActive || !interactionEnabled
+        val commands = remember(presentationKey) { LyricFollowHistory() }
+        val commandSample = remember { LyricScrollSample() }
+        // One delayed return, cancelled during any gesture/modal and restarted on a timed viewport.
+        LaunchedEffect(workEnabled, holdFollow, lyrics.timed, browsingTravel, dragging, pointerDown,
+            externalGestureActive, interactionEnabled) {
+            if (workEnabled && !holdFollow && lyrics.timed && browsingTravel != null && !dragging && !pointerDown &&
+                !externalGestureActive && interactionEnabled) {
                 delay(4_000L)
                 browsingTravel = null
             }
         }
-        // Unknown progress does not observe travel in composition or invent a first-row destination.
-        LaunchedEffect(followTarget, coordinates.origin, hasFollowAnchor, browsingTravel, workEnabled, holdFollow) {
-            if (!workEnabled || holdFollow) return@LaunchedEffect
-            if (browsingTravel == null && !hasFollowAnchor) return@LaunchedEffect
-            val target = browsingTravel ?: (followTarget - coordinates.origin)
-            travel.animateTo(target, tween(if (browsingTravel == null) 450 else 0,
-                easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
-        }
-        val origin = coordinates.origin
-        val visualTravel = remember(travel, freezeMotion) {
-            if (freezeMotion) {
-                val stopped = if (painted.document === ready) painted.offset - origin else travel.value
-                { stopped }
-            } else { { travel.value } }
+        LaunchedEffect(followTarget, origin, geometry, hasFollowAnchor, browsingTravel != null, scrollBlocked, paused) {
+            val target = followTarget - origin
+            val previous = commands.value
+            val command = LyricFollowCommand(geometry, target, focus, browsingTravel != null,
+                !scrollBlocked && hasFollowAnchor, paused)
+            commands.value = command
+            if (travel.layoutKey !== geometry) {
+                travel.reset(coordinates.rebaseOffset)
+                travel.layoutKey = geometry
+                if (browsingTravel != null) browsingTravel = coordinates.rebaseOffset
+            }
+            val changed = previous == null || previous.target != target
+            // Pause always owns the stop boundary. A paused seek may still reposition, but it is
+            // a rigid move with no automatic group delay and never inherits the old wave.
+            if (paused) {
+                if (travel.running) travel.stop(painted.scroll.takeIf { painted.document === ready }, origin)
+                if (!changed && !previous.browsing && previous.canAnimate) return@LaunchedEffect
+            }
+            if (scrollBlocked || browsingTravel != null || !hasFollowAnchor) {
+                if (travel.running) travel.stop(painted.scroll.takeIf { painted.document === ready }, origin)
+                return@LaunchedEffect
+            }
+            if (travel.running) travel.stop(painted.scroll.takeIf { painted.document === ready }, origin)
+            travel.sampleInto(commandSample, origin)
+            val visibleRows = lyricFrameWindow(measured, tops, commandSample.base, height, metrics.lift, commandSample)
+                .map { it.row }.distinct()
+            val first = visibleRows.firstOrNull() ?: focus
+            val last = visibleRows.lastOrNull() ?: first
+            val stagger = !paused && lyrics.timed && previous != null && previous.geometry === geometry &&
+                previous.canAnimate && !previous.paused && (changed || previous.browsing) &&
+                kotlin.math.abs(focus - previous.focus) <= 1 &&
+                target < commandSample.minimum - origin - .001f &&
+                commandSample.maximum - origin - target <= height
+            travel.moveTo(target, first, last, stagger)
         }
         // This derived state changes only when a visual line enters/leaves the overscan window.
         // Cache hits survive active-row changes, theme changes and interrupted seeks.
-        val window by remember(measured, tops, height, origin, visualTravel) {
-            derivedStateOf(structuralEqualityPolicy()) { lyricSliceWindow(measured, tops, origin + visualTravel(), height) }
+        val windowSample = remember { LyricScrollSample() }
+        val window by remember(measured, tops, height, readScroll) {
+            derivedStateOf(structuralEqualityPolicy()) {
+                readScroll(windowSample)
+                lyricSliceWindow(measured, tops, windowSample.base, height, windowSample)
+            }
         }
         val targetWindow = remember(measured, tops, height, origin, browsingTravel, followTarget, hasFollowAnchor) {
             val destination = browsingTravel?.let { origin + it } ?: followTarget
@@ -269,17 +334,21 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val words = remember(emphasized, lyrics.lines) {
             emphasized.sorted().flatMap { index -> lyrics.lines[index].let { it.words + it.backgroundWords } }
         }
-        val radius = with(density) { LyricBodyVisuals.WAIT_RADIUS_DP.dp.toPx() }
+        val radius = with(density) { LyricBodyVisuals.WAIT_RADIUS_DP.dp.toPx() } * admittedScale
         // Travel can change which ink is visible; playback frames never observe this in composition.
-        val frameWindow by remember(measured, tops, height, origin, visualTravel, metrics.lift) {
+        val frameSample = remember { LyricScrollSample() }
+        val gapSample = remember { LyricScrollSample() }
+        val frameWindow by remember(measured, tops, height, readScroll, metrics.lift) {
             derivedStateOf(structuralEqualityPolicy()) {
-                lyricFrameWindow(measured, tops, origin + visualTravel(), height, metrics.lift)
+                readScroll(frameSample)
+                lyricFrameWindow(measured, tops, frameSample.base, height, metrics.lift, frameSample)
             }
         }
-        val frameGap by remember(gap, gapSlot, flow, waitHeight, height, origin, visualTravel, radius) {
+        val frameGap by remember(gap, gapSlot, flow, waitHeight, height, readScroll, radius) {
             derivedStateOf(structuralEqualityPolicy()) {
                 if (!gap) null else flow.waitRows[gapSlot].takeIf {
-                    val y = flow.waitTops[gapSlot] + origin + visualTravel() + waitHeight / 2f
+                    readScroll(gapSample)
+                    val y = flow.waitTops[gapSlot] + gapSample.offsetAt(it.afterIndex + 1) + waitHeight / 2f
                     y + radius > 0f && y - radius < height
                 }
             }
@@ -329,19 +398,38 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             }
         }
         val dotPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
-        val step = with(density) { LyricBodyVisuals.WAIT_STEP_DP.dp.toPx() }
+        val step = with(density) { LyricBodyVisuals.WAIT_STEP_DP.dp.toPx() } * admittedScale
         val rowTopList = remember(tops, measured.size) { tops.take(measured.size) }
         val waitTopList = remember(flow) { flow.waitTops.toList() }
-        Canvas(Modifier.fillMaxSize().pointerInput(presentationKey, tops, height, origin, freezeMotion, holdFollow) {
-            if (freezeMotion || holdFollow) return@pointerInput
+        val drawSample = remember { LyricScrollSample() }
+        val semanticSample = remember { LyricScrollSample() }
+        Canvas(Modifier.fillMaxSize().pointerInput(presentationKey, geometry, workEnabled, holdFollow,
+            interactionEnabled, externalGestureActive) {
+            if (!workEnabled || holdFollow || !interactionEnabled || externalGestureActive) return@pointerInput
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                travel.stop(painted.scroll.takeIf { painted.document === ready }, origin)
+                pointerDown = true
+                try {
+                    var pressed = true
+                    while (pressed) {
+                        pressed = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            .changes.any { it.pressed }
+                    }
+                } finally { pointerDown = false }
+            }
+        }.pointerInput(presentationKey, geometry, workEnabled, holdFollow, interactionEnabled, externalGestureActive) {
+            if (!workEnabled || holdFollow || !interactionEnabled || externalGestureActive) return@pointerInput
             detectVerticalDragGestures(
                 onDragStart = { dragging = true; browsingTravel = travel.value },
                 onDragEnd = { dragging = false }, onDragCancel = { dragging = false },
             ) { change, amount ->
                 change.consume()
                 val minimum = minOf(height * .41f - tops.last(), height * .41f)
-                browsingTravel = ((browsingTravel ?: travel.value) + amount)
+                val destination = ((browsingTravel ?: travel.value) + amount)
                     .coerceIn(minimum - origin, height * .52f - origin)
+                browsingTravel = destination
+                travel.dragTo(destination)
             }
         }.semantics {
             val now = latest.value
@@ -357,7 +445,11 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             this[LyricRowHeights] = heights
             this[LyricWordProgress] = words.firstOrNull()?.let { lyricWordFraction(it, position) } ?: 0f
             this[LyricScrollAnchor] = lyrics.scrollIndex
-            this[LyricScrollOffset] = origin + visualTravel()
+            readScroll(semanticSample)
+            this[LyricScrollOffset] = semanticSample.base
+            this[LyricScrollRunning] = travel.running && !scrollBlocked
+            this[LyricScrollPhase] = semanticSample.phaseMs
+            this[LyricScrollMaximumDelay] = semanticSample.segment.maximumDelayMs
             this[LyricActiveRows] = singing.sorted()
             this[LyricEmphasizedRows] = emphasized.sorted()
             this[LyricRowTops] = rowTopList
@@ -378,12 +470,15 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }) {
             val now = latest.value
             val position = lyricPositionAt(now, frameElapsed.longValue)
-            val offset = origin + visualTravel()
-            if (!freezeMotion) {
+            readScroll(drawSample)
+            val offset = drawSample.base
+            val frameAlpha = opacity().coerceIn(0f, 1f)
+            if (!freezeMotion && frameAlpha > 0f) {
                 painted.document = ready
                 painted.source = now
                 painted.positionMs = position
                 painted.offset = offset
+                painted.scroll.copyFrom(drawSample)
                 painted.focus = focus
                 painted.emphasized = emphasized
                 painted.cache = cache
@@ -396,14 +491,15 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
                 // Ink shaders carry the vertical edge fade: no viewport-sized offscreen DST_IN layer.
                 native.clipRect(inset, 0f, size.width - inset, size.height)
                 native.translate(inset, 0f)
-                painter.draw(native, slices, measured, tops, cache, offset, emphasized, focus, now, position, dark, fallback = missing, contentAlpha = opacity())
+                painter.draw(native, slices, measured, tops, cache, offset, emphasized, focus, now, position, dark,
+                    fallback = missing, contentAlpha = frameAlpha, scroll = drawSample)
                 native.restoreToCount(saved)
                 if (gap && position in lyrics.gapStartMs until lyrics.gapEndMs) {
                     val progress = lyricGapFraction(now, position)
-                    val y = flow.waitTops[gapSlot] + offset + waitHeight / 2f
+                    val y = flow.waitTops[gapSlot] + drawSample.offsetAt(flow.waitRows[gapSlot].afterIndex + 1) + waitHeight / 2f
                     dotPaint.color = if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
                     repeat(3) { index ->
-                        dotPaint.alpha = ((.35f + .55f * (progress * 3f - index).coerceIn(0f, 1f)) * opacity() * 255).roundToInt()
+                        dotPaint.alpha = ((.35f + .55f * (progress * 3f - index).coerceIn(0f, 1f)) * frameAlpha * 255).roundToInt()
                         native.drawCircle(inset + radius + step * index, y, radius, dotPaint)
                     }
                 }
@@ -493,18 +589,21 @@ internal fun lyricFrameSchedule(rows: List<NativeLyricRow>, emphasized: Set<Int>
 
 /** The actual clipped viewport, including the upward lift; no playback-clock observation. */
 internal fun lyricFrameWindow(rows: List<NativeLyricRow>, tops: FloatArray, offset: Float,
-    height: Float, lift: Float): List<LyricSliceAddress> {
+    height: Float, lift: Float, scroll: LyricScrollSample? = null): List<LyricSliceAddress> {
     if (rows.isEmpty() || height <= 0f) return emptyList()
+    val minimum = scroll?.minimum ?: offset
+    val maximum = scroll?.maximum ?: offset
     var low = 0; var high = rows.size
     while (low < high) {
         val middle = (low + high) ushr 1
-        if (tops[middle] + rows[middle].height + offset <= 0f) low = middle + 1 else high = middle
+        if (tops[middle] + rows[middle].height + maximum <= 0f) low = middle + 1 else high = middle
     }
     val result = ArrayList<LyricSliceAddress>()
     var row = low
-    while (row < rows.size && tops[row] + offset - lift < height) {
+    while (row < rows.size && tops[row] + minimum - lift < height) {
+        val actualOffset = scroll?.offsetAt(row) ?: offset
         rows[row].tracks.forEachIndexed { trackIndex, track ->
-            val y = tops[row] + offset + track.top
+            val y = tops[row] + actualOffset + track.top
             val first = track.layout.getLineForVertical((-y).toInt().coerceAtLeast(0))
             val last = track.layout.getLineForVertical((height + lift - y).toInt().coerceAtLeast(0))
             for (line in first..last) {
@@ -552,13 +651,16 @@ internal fun lyricFlow(heights: List<Int>, rows: List<LyricWaitRow>, waitHeight:
     return LyricFlow(lineTops, waits, waitTops)
 }
 internal data class LyricGeometry(val lines: List<LyricLine>, val tops: FloatArray, val heights: List<Int>, val viewportHeight: Float)
-private data class LyricCoordinates(val geometry: LyricGeometry, val origin: Float)
+private data class LyricCoordinates(val geometry: LyricGeometry, val origin: Float,
+    val rebaseOffset: Float, val rebase: LyricScrollSegment)
 
 /** Pure visible-layout migration, never a playback cursor. */
-internal fun lyricGeometryShift(previous: LyricGeometry, next: LyricGeometry, oldOffset: Float): Float {
+internal fun lyricGeometryShift(previous: LyricGeometry, next: LyricGeometry, oldOffset: Float,
+    scroll: LyricScrollSample? = null): Float {
     if (previous === next || previous.lines.isEmpty() || next.lines.isEmpty()) return 0f
     val oldIndex = previous.lines.indices.minBy {
-        kotlin.math.abs(previous.tops[it] + previous.heights[it] / 2f + oldOffset - previous.viewportHeight * .41f)
+        kotlin.math.abs(previous.tops[it] + previous.heights[it] / 2f +
+            (scroll?.offsetAt(it) ?: oldOffset) - previous.viewportHeight * .41f)
     }
     val oldLine = previous.lines[oldIndex]
     val exact = next.lines.indices.filter { next.lines[it].text == oldLine.text && next.lines[it].timeMs == oldLine.timeMs }
@@ -568,7 +670,7 @@ internal fun lyricGeometryShift(previous: LyricGeometry, next: LyricGeometry, ol
     }
     val newIndex = candidates.minByOrNull { kotlin.math.abs(next.lines[it].timeMs - oldLine.timeMs) }
         ?: oldIndex.coerceAtMost(next.lines.lastIndex)
-    val oldCenter = previous.tops[oldIndex] + previous.heights[oldIndex] / 2f + oldOffset
+    val oldCenter = previous.tops[oldIndex] + previous.heights[oldIndex] / 2f + (scroll?.offsetAt(oldIndex) ?: oldOffset)
     val newCenter = if (previous.viewportHeight > 0f) oldCenter * next.viewportHeight / previous.viewportHeight else oldCenter
     return newCenter - next.tops[newIndex] - next.heights[newIndex] / 2f - oldOffset
 }

@@ -46,6 +46,10 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
     }
     private val owners = Owners()
     private val binding = com.icar03.content.runtime.ContentBinding(store)
+    private val presentation = com.icar03.content.ui.ContentPresentation()
+    private var mapPresentation: com.icar03.content.model.MapPresentationPort? = null
+    private var expandedDivider = Float.NaN
+    private var mapWidth = Float.NaN
     private val view = ComposeView(context)
     private var destroyed = false
     private var divider = Float.NaN
@@ -62,7 +66,7 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         val fontScale = Resources.getSystem().configuration.fontScale.takeIf { it > 0f } ?: 1f
         view.setContent {
             CompositionLocalProvider(LocalDensity provides Density(density, fontScale)) {
-                BoundBindingPanel(binding)
+                BoundBindingPanel(binding, presentation = presentation, onPresentationEvent = ::dispatchPresentation)
             }
         }
         host.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -71,9 +75,44 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         applyViewport()
     }
 
+    fun bindMapPresentation(port: com.icar03.content.model.MapPresentationPort?) {
+        if (destroyed) return
+        if (mapPresentation !== port) presentation.cancelEntry()
+        mapPresentation = port
+        presentation.updateGestureWidth(port?.reservedGestureWidthPx() ?: 0)
+        presentation.onEntryReady = {
+            if (!destroyed && owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                binding.state.value.page == com.icar03.content.ui.PanelPage.Lyrics) mapPresentation?.settleToCollapsed()
+        }
+    }
+
+    private fun dispatchPresentation(event: com.icar03.content.ui.ContentEvent) {
+        if (destroyed) return
+        when (event) {
+            com.icar03.content.ui.ContentEvent.EnterLyricsImmersive -> {
+                if (binding.state.value.page != com.icar03.content.ui.PanelPage.Lyrics || mapPresentation == null) return
+                binding.dispatch(com.icar03.content.ui.ContentEvent.DismissSheet)
+                presentation.requestEnter()
+            }
+            com.icar03.content.ui.ContentEvent.ExitLyricsImmersive -> {
+                presentation.cancelEntry()
+                mapPresentation?.settleToExpanded()
+            }
+            else -> Unit
+        }
+    }
+
+    fun updatePanelPhase(phase: Int) {
+        if (destroyed) return
+        presentation.updatePhase(phase)
+        if (phase == 1 && binding.state.value.page != com.icar03.content.ui.PanelPage.Lyrics) mapPresentation?.settleToExpanded()
+    }
+
     fun updateDivider(dividerX: Float, expandedDivider: Float, mapWidth: Float) {
         if (destroyed || !dividerX.isFinite()) return
         divider = dividerX
+        this.expandedDivider = expandedDivider
+        this.mapWidth = mapWidth
         applyViewport()
     }
     private fun applyViewport() {
@@ -84,6 +123,7 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         val params = host.layoutParams
         if (params != null && params.width != width) { params.width = width; host.layoutParams = params }
         if (host.height > 0) host.clipBounds = Rect(0, 0, width, host.height)
+        presentation.updateGeometry(divider, expandedDivider, mapWidth, (host.parent as? android.view.View)?.height ?: host.height)
     }
     fun handleBack(): Boolean {
         if (destroyed) return false
@@ -92,15 +132,23 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
             binding.dispatch(com.icar03.content.ui.ContentEvent.SettingsDismissed)
             return true
         }
-        if (!current.sourcesOpen) return false
-        binding.dispatch(com.icar03.content.ui.ContentEvent.DismissSheet)
-        return true
+        if (current.sourcesOpen) {
+            binding.dispatch(com.icar03.content.ui.ContentEvent.DismissSheet)
+            return true
+        }
+        if (presentation.pendingEnter != 0L || presentation.progress > .001f) {
+            dispatchPresentation(com.icar03.content.ui.ContentEvent.ExitLyricsImmersive)
+            return true
+        }
+        return false
     }
-    fun pause() { if (!destroyed) owners.pause() }
+    fun pause() { if (!destroyed) { presentation.cancelEntry(); owners.pause() } }
     fun resume() { if (!destroyed) owners.resume() }
     fun destroy() {
         if (destroyed) return
         destroyed = true
+        presentation.stop()
+        mapPresentation = null
         owners.destroy()
         view.disposeComposition()
         binding.close()

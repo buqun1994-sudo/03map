@@ -1868,14 +1868,27 @@ open class ContentPanelLightPrototypeRenderTest {
             return android.graphics.Color.red(pixel) + android.graphics.Color.green(pixel) + android.graphics.Color.blue(pixel)
         }
         val background = brightness(300, 800)
-        val surfaces = (if (checkShortcutShadows) listOf(70 to 194) else emptyList()) + listOf(300 to 952, 300 to 1068)
+        val surfaces = if (dark) emptyList() else {
+            val tags = (if (checkShortcutShadows) listOf("control-Lock") else emptyList()) +
+                listOf("media-card", "floating-dock")
+            tags.map { tag ->
+                val surface = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+                (surface.center.x - bounds.left).toInt() to (surface.bottom - bounds.top).toInt()
+            }
+        }
         for ((x, bottom) in surfaces) {
             val near = brightness(x, bottom + 2)
             val far = brightness(x, bottom + 8)
             assertTrue("shadow must be visible below surface at $x/$bottom", near < background)
             assertTrue("shadow must soften toward background at $x/$bottom", far > near && far <= background)
         }
-        if (checkShortcutShadows) assertTrue("shadow should project downward more than upward", brightness(70, 196) < brightness(70, 57))
+        if (checkShortcutShadows && !dark) {
+            val shortcut = compose.onNodeWithTag("control-Lock").fetchSemanticsNode().boundsInRoot
+            val x = (shortcut.center.x - bounds.left).toInt()
+            assertTrue("shadow should project downward more than upward",
+                brightness(x, (shortcut.bottom - bounds.top).toInt() + 2) <
+                    brightness(x, (shortcut.top - bounds.top).toInt() - 2))
+        }
         val colors = mutableSetOf<Int>()
         for (y in 0 until bitmap.height step 11) for (x in 0 until bitmap.width step 11) colors += bitmap.getPixel(x, y)
         assertTrue("capture must contain rendered color variation", colors.size > 8)

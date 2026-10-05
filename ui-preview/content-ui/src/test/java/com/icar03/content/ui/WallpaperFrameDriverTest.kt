@@ -89,11 +89,12 @@ class WallpaperFrameDriverTest {
         projectToEndWithoutChangingTheSource(current)
         compose.runOnIdle {
             current.value = current.value.copy(positionMs = 0, capturedAtMs = SystemClock.elapsedRealtime())
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
         compose.mainClock.advanceTimeBy(64); compose.waitForIdle()
         assertEquals("first", current.value.recordingKey)
         assertEquals(1f, current.value.playbackSpeed, 0f)
-        assertTrue(value(LyricFrameRunning))
+        assertTrue("running=${value(LyricFrameRunning)} eligible=${value(LyricFrameEligible)} position=${value(LyricFramePosition)} word=${value(LyricWordProgress)} elapsed=${value(LyricFrameElapsed)}", value(LyricFrameRunning))
         assertTrue("seek restored the current real word interval", value(LyricWordProgress) < 1f)
         projectToEndWithoutChangingTheSource(current)
     }
@@ -101,12 +102,15 @@ class WallpaperFrameDriverTest {
     @Test fun projectedEndThenNewRecordingRestartsWithoutTogglingPlayback() {
         val current = mount()
         projectToEndWithoutChangingTheSource(current)
-        compose.runOnIdle { current.value = source("second") }
+        compose.runOnIdle {
+            current.value = source("second")
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
         compose.mainClock.advanceTimeBy(64); compose.waitForIdle()
         assertEquals("second", current.value.recordingKey)
         assertTrue(current.value.timelineReady)
         assertEquals(1f, current.value.playbackSpeed, 0f)
-        assertTrue(value(LyricFrameRunning))
+        assertTrue("running=${value(LyricFrameRunning)} eligible=${value(LyricFrameEligible)} position=${value(LyricFramePosition)} word=${value(LyricWordProgress)} elapsed=${value(LyricFrameElapsed)}", value(LyricFrameRunning))
         assertTrue(value(LyricWordProgress) < 1f)
     }
 
@@ -266,16 +270,19 @@ class WallpaperFrameDriverTest {
         assertFalse(value(LyricFrameRunning))
         compose.runOnIdle {
             current.value = current.value.copy(positionMs = 5_500, capturedAtMs = SystemClock.elapsedRealtime())
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
-        assertTrue("seek releases the former waiting boundary immediately", value(LyricFrameRunning))
+        assertTrue("running=${value(LyricFrameRunning)} eligible=${value(LyricFrameEligible)} position=${value(LyricFramePosition)} word=${value(LyricWordProgress)} elapsed=${value(LyricFrameElapsed)}", value(LyricFrameRunning))
         compose.runOnIdle {
             current.value = current.value.copy(positionMs = 2_000, capturedAtMs = SystemClock.elapsedRealtime())
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         assertFalse(value(LyricFrameRunning))
         compose.runOnIdle {
             current.value = current.value.copy(positionMs = 5_500, capturedAtMs = SystemClock.elapsedRealtime())
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         assertTrue(value(LyricFrameRunning))
@@ -320,6 +327,7 @@ class WallpaperFrameDriverTest {
         compose.runOnIdle {
             current.value = current.value.copy(positionMs = 2_000, playbackSpeed = 0f,
                 capturedAtMs = SystemClock.elapsedRealtime())
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         val pausedSample = value(LyricFrameElapsed)

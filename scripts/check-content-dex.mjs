@@ -59,7 +59,13 @@ for(const method of ['Lcom/autonavi/amapauto/content/ContentMediaListener;-><ini
   'Lcom/autonavi/amapauto/content/ContentRuntime;->onHostPaused(Landroid/app/Activity;)V',
   'Lcom/autonavi/amapauto/content/ContentRuntime;->onHostResumed(Landroid/app/Activity;)V',
   'Lcom/autonavi/amapauto/content/ContentRuntime;->onAmapThemeChanged(I)V',
-  'Lcom/autonavi/amapauto/content/ContentRuntime;->onDividerChanged(FFF)V']) {
+  'Lcom/autonavi/amapauto/content/ContentRuntime;->onDividerChanged(FFF)V',
+  'Lcom/autonavi/amapauto/content/ContentRuntime;->bindMapPresentation(Landroid/view/ViewGroup;Lcom/icar03/content/model/MapPresentationPort;)V',
+  'Lcom/autonavi/amapauto/content/ContentRuntime;->onPanelPhaseChanged(Lcom/icar03/content/model/MapPresentationPort;I)V',
+  'Lcom/autonavi/amapauto/content/ContentRuntime;->onMapDividerChanged(Lcom/icar03/content/model/MapPresentationPort;FFF)V',
+  'Lcom/icar03/content/model/MapPresentationPort;->settleToExpanded()V',
+  'Lcom/icar03/content/model/MapPresentationPort;->settleToCollapsed()V',
+  'Lcom/icar03/content/model/MapPresentationPort;->reservedGestureWidthPx()I']) {
   if(!methods.has(method))throw new Error(`External Compose ABI method missing: ${method}`);
 }
 if(types.includes('Ljavax/annotation/Nullable;'))throw new Error('Optional Okio JSR-305 metadata survived R8; keep executable closure strict');

@@ -495,21 +495,29 @@ internal class LyricInkCache(private val rows: List<NativeLyricRow>, private val
 internal data class LyricSliceAddress(val row: Int, val track: Int, val line: Int)
 
 /** Draw only the travel window, found by binary search rather than filtering all song rows every frame. */
-internal fun lyricSliceWindow(rows: List<NativeLyricRow>, tops: FloatArray, offset: Float, height: Float): List<LyricSliceAddress> {
+internal fun lyricSliceWindow(rows: List<NativeLyricRow>, tops: FloatArray, offset: Float, height: Float,
+    scroll: LyricScrollSample? = null): List<LyricSliceAddress> {
     if (rows.isEmpty()) return emptyList()
+    val minimum = scroll?.minimum ?: offset
+    val maximum = scroll?.maximum ?: offset
     var low = 0; var high = rows.size
     while (low < high) {
         val mid = (low + high) ushr 1
-        if (tops[mid] + rows[mid].height + offset < -height) low = mid + 1 else high = mid
+        if (tops[mid] + rows[mid].height + maximum < -height) low = mid + 1 else high = mid
     }
     val result = ArrayList<LyricSliceAddress>()
     var row = low
-    while (row < rows.size && tops[row] + offset <= height * 2f) {
+    while (row < rows.size && tops[row] + minimum <= height * 2f) {
+        val actualOffset = scroll?.offsetAt(row) ?: offset
         rows[row].tracks.forEachIndexed { trackIndex, track ->
-            val y = tops[row] + offset + track.top
+            val y = tops[row] + actualOffset + track.top
             val start = track.layout.getLineForVertical((-height - y).toInt().coerceAtLeast(0))
             val stop = track.layout.getLineForVertical((height * 2f - y).toInt().coerceAtLeast(0))
-            for (line in start..stop) result += LyricSliceAddress(row, trackIndex, line)
+            for (line in start..stop) {
+                val visual = track.visualLines[line]
+                if (scroll == null || (y + visual.bottom >= -height && y + visual.top <= height * 2f))
+                    result += LyricSliceAddress(row, trackIndex, line)
+            }
         }
         row++
     }
@@ -534,6 +542,16 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
         private set
     var motionTranslations = 0
         private set
+    private var scrollRow = Int.MIN_VALUE
+    private var scrollOffset = 0f
+    private fun offsetFor(row: Int, offset: Float, sample: LyricScrollSample?): Float {
+        if (sample == null) return offset
+        if (scrollRow != row) {
+            scrollRow = row
+            scrollOffset = sample.offsetAt(row)
+        }
+        return scrollOffset
+    }
 
     private fun emitBatch(canvas: Canvas) {
         if (!batchPending) return
@@ -559,8 +577,10 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
     }
     fun draw(canvas: Canvas, slices: List<PreparedLyricSlice>, rows: List<NativeLyricRow>, tops: FloatArray,
         cache: LyricInkCache, offset: Float, current: Set<Int>, focus: Int, lyrics: LyricsState, position: Long, dark: Boolean,
-        fallback: List<LyricSliceAddress> = emptyList(), contentAlpha: Float = 1f) {
+        fallback: List<LyricSliceAddress> = emptyList(), contentAlpha: Float = 1f,
+        scroll: LyricScrollSample? = null) {
         drawBatches = 0; sampledCells = 0; motionTranslations = 0
+        scrollRow = Int.MIN_VALUE
         val bodyAlpha = contentAlpha.coerceIn(0f, 1f)
         if (bodyAlpha <= 0f) return
         val tint = if (dark) this.dark else light
@@ -568,7 +588,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
         for (slice in slices) {
             paint.colorFilter = tint
             val track = slice.track
-            val y = tops[slice.row] + offset + track.top
+            val y = tops[slice.row] + offsetFor(slice.row, offset, scroll) + track.top
             @Suppress("DEPRECATION")
             if (canvas.quickReject(track.left, y + slice.visual.top - metrics.lift,
                     track.left + track.layout.width, y + slice.visual.bottom, Canvas.EdgeType.AA)) continue
@@ -617,7 +637,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
         for (address in fallback) {
             val track = rows[address.row].tracks[address.track]
             val visual = track.visualLines[address.line]
-            val y = tops[address.row] + offset + track.top
+            val y = tops[address.row] + offsetFor(address.row, offset, scroll) + track.top
             @Suppress("DEPRECATION")
             if (canvas.quickReject(track.left, y + visual.top, track.left + track.layout.width,
                     y + visual.bottom, Canvas.EdgeType.AA)) continue

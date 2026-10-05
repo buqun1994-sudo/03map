@@ -11,10 +11,12 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -63,12 +65,16 @@ internal val LocalAmbientPreparationDispatcher = staticCompositionLocalOf<Corout
 fun MediaAmbientBackground(
     texture: AmbientArtwork?, dark: Boolean, modifier: Modifier = Modifier,
     active: Boolean = true, animating: Boolean = true,
+    presentation: ContentPresentation? = null,
 ) {
     val renderer = remember { AmbientRenderState() }
     // Readiness changes only on arrival/withdrawal, not when motion publishes another frame.
     val preparedTarget by remember(renderer) { derivedStateOf(structuralEqualityPolicy()) { renderer.hasPreparedTarget } }
     val painter = remember { AmbientPainter() }
+    val presentationState = remember { AmbientPresentationState() }
+    val presentationPainter = remember { AmbientPresentationPainter() }
     val preparationDispatcher = LocalAmbientPreparationDispatcher.current
+    val background = MaterialTheme.colorScheme.background.toArgb()
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     val view = LocalView.current
     var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
@@ -176,6 +182,56 @@ fun MediaAmbientBackground(
             if (!published) prepared?.takeUnless { it.isRecycled }?.recycle()
         }
     }
+    LaunchedEffect(texture, dark, active, presentation?.fullSize, presentation?.splitWidthPx,
+        presentation?.phase, presentation?.pendingEnter, preparationDispatcher, background) {
+        val targetPresentation = presentation
+        if (!active || targetPresentation == null || !targetPresentation.geometryReady) {
+            if (!active) presentationState.clear()
+            return@LaunchedEffect
+        }
+        if (!targetPresentation.moving && targetPresentation.pendingEnter == 0L) return@LaunchedEffect
+        val fullSize = targetPresentation.fullSize
+        val compactSize = latestViewport.value
+        if (compactSize.width <= 0 || compactSize.height <= 0) return@LaunchedEffect
+        val key = AmbientPresentationKey(texture, dark, fullSize, compactSize)
+        val entryToken = targetPresentation.pendingEnter
+        if (presentationState.isPrepared(key)) {
+            targetPresentation.entryPrepared(entryToken)
+            return@LaunchedEffect
+        }
+        val fallback = renderer.captureCurrent(painter, compactSize, background)
+        val request = presentationState.begin(key, fallback)
+        val phase = renderer.publishedPhase
+        var bridge: Bitmap? = null
+        var wide: Bitmap? = null
+        var installed = false
+        try {
+            withContext(preparationDispatcher) {
+                ensureActive()
+                bridge = AmbientBridgeBaker().prepare(fallback, dark, fullSize, compactSize)
+                if (texture != null) {
+                    ensureActive()
+                    wide = AmbientSceneBaker().prepare(texture, dark, phase, fullSize)
+                }
+            }
+            ensureActive()
+            if (!presentationState.isCurrent(request)) return@LaunchedEffect
+            presentationState.install(request, key,
+                AmbientPresentationScene(bridge, wide, fullSize, compactSize, phase))
+            installed = true
+            targetPresentation.entryPrepared(entryToken)
+        } finally {
+            if (!installed) {
+                bridge?.takeUnless { it.isRecycled }?.recycle()
+                wide?.takeUnless { it.isRecycled }?.recycle()
+            }
+        }
+    }
+
+    DisposableEffect(presentation) {
+        onDispose { presentationState.clear() }
+    }
+
     Canvas(modifier.fillMaxSize().onSizeChanged { viewport = it }.testTag("media-ambient").semantics {
         this[AmbientPhase] = renderer.publishedPhase
         this[AmbientOpacity] = renderer.transition.opacity(renderer.fraction)
@@ -184,8 +240,26 @@ fun MediaAmbientBackground(
         this[AmbientPreparedSize] = renderer.transition.target?.let { IntSize(it.width, it.height) } ?: IntSize.Zero
         this[AmbientPreparedGeneration] = renderer.transition.target?.generationId ?: 0
     }) {
-        if (active && renderer.transition.hasContent) drawIntoCanvas {
-            painter.drawTransition(it.nativeCanvas, size.width, size.height, renderer.transition, renderer.fraction)
+        val targetPresentation = presentation
+        val scene = presentationState.scene
+        val inPresentation = active && targetPresentation != null && targetPresentation.geometryReady &&
+            (targetPresentation.moving || targetPresentation.pendingEnter != 0L)
+        if (inPresentation) {
+            targetPresentation?.let { target ->
+                drawIntoCanvas { canvas ->
+                    if (scene != null) {
+                        presentationPainter.draw(canvas.nativeCanvas, size.width, size.height, scene,
+                            target.progress)
+                    } else {
+                        presentationPainter.drawCompactFallback(canvas.nativeCanvas, size.width, size.height,
+                            presentationState.fallbackCompact, target.fullSize, viewport, dark)
+                    }
+                }
+            }
+        } else if (active && renderer.transition.hasContent) {
+            drawIntoCanvas { canvas ->
+                painter.drawTransition(canvas.nativeCanvas, size.width, size.height, renderer.transition, renderer.fraction)
+            }
         }
     }
 }
@@ -238,6 +312,17 @@ internal class AmbientRenderState {
         transition = transition.target?.let { AmbientTransition(target = it, startOpacity = 1f, endOpacity = 1f) }
             ?: AmbientTransition()
         fraction = 1f
+    }
+
+    fun captureCurrent(painter: AmbientPainter, viewport: IntSize, background: Int): Bitmap? {
+        if (!transition.hasContent || transition.opacity(fraction) <= 0f) return null
+        if (transition.opacity(fraction) >= 1f) return transition.capture(painter, viewport, fraction)
+        val size = ambientFrameSize(viewport)
+        return Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888).also { frame ->
+            val canvas = AndroidCanvas(frame)
+            canvas.drawColor(background)
+            painter.drawTransition(canvas, size.width.toFloat(), size.height.toFloat(), transition, fraction)
+        }
     }
 
     fun clear() {

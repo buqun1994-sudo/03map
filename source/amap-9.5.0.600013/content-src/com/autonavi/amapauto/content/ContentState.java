@@ -27,6 +27,8 @@ public final class ContentState {
     public int lyricsLineSpacing = 1;
     public boolean lyricsSpeakerLayout = true;
     public boolean lyricsHighlight = true;
+    public boolean immersiveShowTopBar = true;
+    public boolean immersiveShowDock = true;
     public boolean showAmbientArtwork = true;
     public boolean showMediaSourceSwitcher = true;
     public int dockButtonCount = 6;
@@ -170,6 +172,8 @@ public final class ContentState {
         copy.lyricsLineSpacing = lyricsLineSpacing;
         copy.lyricsSpeakerLayout = lyricsSpeakerLayout;
         copy.lyricsHighlight = lyricsHighlight;
+        copy.immersiveShowTopBar = immersiveShowTopBar;
+        copy.immersiveShowDock = immersiveShowDock;
         copy.showAmbientArtwork = showAmbientArtwork;
         copy.showMediaSourceSwitcher = showMediaSourceSwitcher;
         copy.dockButtonCount = dockButtonCount;

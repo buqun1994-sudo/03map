@@ -56,6 +56,34 @@ class AmbientUiTransitionTest {
         compose.waitForIdle()
     }
 
+    @Test fun aSecondEntryAcknowledgesItsOwnRequestWhenThePreparedSceneIsReused() {
+        val presentation = ContentPresentation().apply { updateGeometry(240f, 240f, 480f, 480) }
+        val texture = scene(Color.BLUE)
+        var entered = 0
+        presentation.onEntryReady = { entered++ }
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f),
+                LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
+                ContentTheme(true) {
+                    MediaAmbientBackground(texture, true, Modifier.requiredSize(240.dp, 480.dp),
+                        animating = false, presentation = presentation)
+                }
+            }
+        }
+        repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.mainClock.advanceTimeBy(640); compose.waitForIdle()
+        repeat(2) { index ->
+            compose.runOnIdle {
+                presentation.requestEnter()
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+            }
+            repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+            assertEquals("each entry request is acknowledged even with the same prepared scene", index + 1, entered)
+            assertEquals(0L, presentation.pendingEnter)
+        }
+    }
+
     @Test fun continuousResizePreservesTheArrivalDriverAndFrozenPhaseThenMotionSamplesLatestAspect() {
         val target = mutableStateOf(scene(Color.RED))
         val playing = mutableStateOf(false)

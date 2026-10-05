@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -29,7 +30,10 @@ private class LyricSourceHolder(var value: LyricsState? = null)
 internal fun LyricsBodyTransition(
     lyrics: LyricsState, dark: Boolean, modifier: Modifier = Modifier,
     fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
-    highlightCurrent: Boolean = true, emptyContent: @Composable () -> Unit = {},
+    highlightCurrent: Boolean = true, presentationScale: Float = 1f,
+    externalGestureActive: Boolean = false, interactionEnabled: Boolean = true,
+    presentationOpacity: () -> Float = { 1f }, onGeometryReady: (Boolean) -> Unit = {},
+    emptyContent: @Composable () -> Unit = {},
 ) {
     val visible = rememberLyricVisibility()
     val incoming = lyrics.takeIf { it.lines.isNotEmpty() && !lyricBodyAtEnd(it) && !it.changingTrack }
@@ -42,7 +46,10 @@ internal fun LyricsBodyTransition(
     var entering by remember { mutableStateOf(targetKey != null) }
     var fromStart by remember { mutableStateOf(false) }
     val opacity = remember { Animatable(if (targetKey == null) 1f else 0f) }
-    val alpha = remember(opacity) { { opacity.value } }
+    val latestPresentationOpacity = rememberUpdatedState(presentationOpacity)
+    val alpha = remember(opacity) { {
+        (opacity.value * latestPresentationOpacity.value().coerceIn(0f, 1f)).coerceIn(0f, 1f)
+    } }
     val exiting = displayedKey != null && displayedKey != targetKey
     val source = incoming?.takeIf { lyricPresentationKey(it) == displayedKey }
         ?: held.value?.takeIf { lyricPresentationKey(it) == displayedKey }
@@ -89,11 +96,18 @@ internal fun LyricsBodyTransition(
     Box(modifier.fillMaxSize()) {
         val displayed = if (frozenMotion) frozen else source
         if (displayedKey != null && displayed != null) key(displayedKey) {
-            WallpaperLyrics(displayed, dark, opacity = alpha, freezeMotion = frozenMotion,
+            WallpaperLyrics(displayed, dark, freezeMotion = frozenMotion,
                 holdFollow = entering, startAtFirstRow = fromStart, visibility = visible,
                 fontScale = fontScale, lineSpacing = lineSpacing, speakerLayout = speakerLayout,
+                presentationScale = presentationScale, externalGestureActive = externalGestureActive,
+                interactionEnabled = interactionEnabled, opacity = alpha, onGeometryReady = onGeometryReady,
                 highlightCurrent = highlightCurrent, onLayoutReady = { ready = true })
-        } else emptyContent()
+        } else {
+            SideEffect { onGeometryReady(true) }
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                this.alpha = latestPresentationOpacity.value().coerceIn(0f, 1f)
+            }) { emptyContent() }
+        }
     }
 }
 
