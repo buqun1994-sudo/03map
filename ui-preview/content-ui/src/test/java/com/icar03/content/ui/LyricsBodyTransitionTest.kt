@@ -179,7 +179,7 @@ class LyricsBodyTransitionTest {
         compose.onNodeWithTag("wallpaper-lyrics").assertDoesNotExist()
     }
 
-    @Test fun rapidRetargetAndFocusLossCannotReplayOrPublishAnAbandonedRecording() {
+    @Test fun rapidRetargetAndViewVisibilityLossCannotReplayOrPublishAnAbandonedRecording() {
         mount(source("A", 1, 15))
         project(source("B", 2))
         advance(48)
@@ -189,28 +189,28 @@ class LyricsBodyTransitionTest {
         assertFirstRowCentered()
         assertEquals("only one document owner is present", 1, compose.onAllNodesWithTag("wallpaper-lyrics").fetchSemanticsNodes().size)
         project(source("D", 4))
-        focus(false)
+        setLyricViewShown(compose, host, false)
         advance(64)
-        focus(true)
+        setLyricViewShown(compose, host, true)
         advance(128)
         assertEquals("D", value(LyricRecordingKey))
-        assertEquals("resuming does not replay a background fade", 1f, value(LyricOpacity), .001f)
+        assertEquals("showing the view does not replay a hidden fade", 1f, value(LyricOpacity), .001f)
         assertFalse(value(LyricPresentationFrozen))
         assertFalse(value(LyricFrameEligible)) // paused synthetic source
         project(source("D", 4, 18))
         advance(96)
-        focus(false)
+        setLyricViewShown(compose, host, false)
         advance(32)
         val hiddenOffset = value(LyricScrollOffset)
         advance(800)
-        assertEquals("hidden scroll animation stops as well as the media sampler", hiddenOffset, value(LyricScrollOffset), .01f)
+        assertEquals("hidden view stops scroll animation as well as the media sampler", hiddenOffset, value(LyricScrollOffset), .01f)
     }
 
-    @Test fun manualBrowseResumesItsSingleReturnAfterFocusOrSameSongBodyIsRestored() {
+    @Test fun manualBrowseResumesItsSingleReturnAfterViewVisibilityOrSameSongBodyIsRestored() {
         val a = source("A", 1, 15)
         mount(a)
         val follow = value(LyricScrollOffset)
-        for (suspension in listOf("focus", "body")) {
+        for (suspension in listOf("view", "body")) {
             val viewport = compose.onNode(SemanticsMatcher.keyIsDefined(LyricScrollOffset), useUnmergedTree = true)
             viewport.performTouchInput { down(androidx.compose.ui.geometry.Offset(width / 2f, height * .75f)) }
             advance(32)
@@ -220,10 +220,10 @@ class LyricsBodyTransitionTest {
             advance(64)
             assertTrue("fixture moved away during $suspension: follow=$follow actual=${value(LyricScrollOffset)} holding=${value(LyricEntryHolding)}",
                 value(LyricScrollOffset) < follow - 100)
-            if (suspension == "focus") focus(false)
+            if (suspension == "view") setLyricViewShown(compose, host, false)
             else project(a.copy(lines = emptyList(), loading = true))
             advance(5_000)
-            if (suspension == "focus") focus(true) else project(a)
+            if (suspension == "view") setLyricViewShown(compose, host, true) else project(a)
             advance(5_000)
             assertEquals("return is rescheduled after $suspension instead of leaving a permanent browse draft",
                 follow, value(LyricScrollOffset), .2f)

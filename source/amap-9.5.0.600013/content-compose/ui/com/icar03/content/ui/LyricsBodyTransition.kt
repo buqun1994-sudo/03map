@@ -100,22 +100,47 @@ internal fun lyricPresentationKey(lyrics: LyricsState): String =
 internal fun lyricBodyAtEnd(lyrics: LyricsState): Boolean = lyrics.atEnd ||
     (lyrics.timelineReady && lyrics.durationMs > 0L && lyrics.positionMs >= lyrics.durationMs)
 
+/** Visible lyrics keep working when another display owns input focus. */
 @Composable
 internal fun rememberLyricVisibility(): Boolean {
     val owner = LocalLifecycleOwner.current
     val view = LocalView.current
+    fun isShown() = view.isAttachedToWindow && view.windowVisibility == android.view.View.VISIBLE && view.isShown
     var started by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
-    var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
+    var shown by remember(view) { mutableStateOf(isShown()) }
     DisposableEffect(owner, view) {
-        val observer = LifecycleEventObserver { _, _ -> started = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) }
-        val tree = view.viewTreeObserver
-        val listener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { focused = it }
+        // Pre-draw observes window/ancestor visibility on API 28 too, without requesting a frame.
+        val listener = android.view.ViewTreeObserver.OnPreDrawListener {
+            shown = isShown()
+            true
+        }
+        var tree: android.view.ViewTreeObserver? = null
+        fun unbind() {
+            tree?.takeIf { it.isAlive }?.removeOnPreDrawListener(listener)
+            tree = null
+        }
+        fun bind() {
+            unbind()
+            tree = view.viewTreeObserver
+            tree?.addOnPreDrawListener(listener)
+        }
+        val attachment = object : android.view.View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: android.view.View) { bind(); shown = isShown() }
+            override fun onViewDetachedFromWindow(v: android.view.View) { shown = false; unbind() }
+        }
+        val observer = LifecycleEventObserver { _, _ ->
+            started = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            shown = isShown()
+        }
+        view.addOnAttachStateChangeListener(attachment)
         owner.lifecycle.addObserver(observer)
-        tree.addOnWindowFocusChangeListener(listener)
+        if (view.isAttachedToWindow) bind()
+        shown = isShown()
         onDispose {
             owner.lifecycle.removeObserver(observer)
-            if (tree.isAlive) tree.removeOnWindowFocusChangeListener(listener)
+            view.removeOnAttachStateChangeListener(attachment)
+            unbind()
         }
     }
-    return started && focused && LocalIconVisible.current
+    return started && shown && LocalIconVisible.current
 }

@@ -41,7 +41,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowSystemClock
 import java.io.File
+import java.time.Duration
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -477,11 +479,14 @@ class WallpaperLyricsRenderTest {
             project(playing)
             compose.mainClock.advanceTimeByFrame()
             compose.waitForIdle()
-            assertTrue("started, focused, visible timed media can request frames", value(LyricFrameRunning))
+            assertTrue("started, visible timed media can request frames", value(LyricFrameRunning))
+            val focusedSample = value(LyricFrameElapsed)
             dispatchFocus(false)
-            compose.mainClock.advanceTimeByFrame()
+            ShadowSystemClock.advanceBy(Duration.ofMillis(32))
+            compose.mainClock.advanceTimeBy(32)
             compose.waitForIdle()
-            assertFalse("window focus loss cancels media frames", value(LyricFrameRunning))
+            assertTrue("visible lyrics keep media frames after window focus loss", value(LyricFrameRunning))
+            assertTrue("window focus loss does not stop media frame sampling", value(LyricFrameElapsed) > focusedSample)
         } finally {
             compose.runOnIdle { state.value = state.value.copy(visible = false) }
             compose.mainClock.advanceTimeByFrame()

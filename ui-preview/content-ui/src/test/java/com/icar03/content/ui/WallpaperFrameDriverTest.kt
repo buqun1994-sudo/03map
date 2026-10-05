@@ -284,7 +284,7 @@ class WallpaperFrameDriverTest {
         assertTrue("the driver survives without another anchor effect", value(LyricFrameElapsed) > resumedSample)
     }
 
-    @Test fun pauseCancelsASleepingWaitAndFocusLossStopsTheResumedFrames() {
+    @Test fun pauseCancelsASleepingWaitAndViewVisibilityLossStopsTheResumedFrames() {
         val current = mount { separatedWords() }
         advancePosition(1_500)
         compose.runOnIdle {
@@ -306,13 +306,13 @@ class WallpaperFrameDriverTest {
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         assertTrue("the new trusted anchor is admitted", value(LyricFramePosition) >= 5_500)
         assertTrue("resume gate: layout=${value(LyricLayoutReady)}, position=${value(LyricFramePosition)}, eligible=${value(LyricFrameEligible)}, sample=${value(LyricFrameElapsed)}, clock=${SystemClock.elapsedRealtime()}, source=${current.value}", value(LyricFrameRunning))
-        dispatchFocus(false)
+        setLyricViewShown(compose, host, false)
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         val hiddenSample = value(LyricFrameElapsed)
         advancePosition(100, frames = 128)
         assertFalse(value(LyricFrameRunning))
         assertEquals(hiddenSample, value(LyricFrameElapsed))
-        dispatchFocus(true)
+        setLyricViewShown(compose, host, true)
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         assertTrue(value(LyricFrameRunning))
     }
@@ -359,14 +359,14 @@ class WallpaperFrameDriverTest {
         File(directory, "wallpaper-worker-fallback.png").outputStream().use {
             assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
         }
-        // Losing visibility cancels the held worker but does not withdraw the admitted body.
-        dispatchFocus(false)
+        // Hiding the view cancels the held worker but does not withdraw the admitted body.
+        setLyricViewShown(compose, host, false)
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         compose.runOnIdle { held.releaseCancelledTasks() }
         compose.waitForIdle()
         assertEquals(0, value(LyricRasterizations))
         assertTrue(value(LyricFallbackSliceCount) > 0)
-        dispatchFocus(true)
+        setLyricViewShown(compose, host, true)
         compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
         assertTrue("visibility return resumes only a bounded prepare", held.tasks.isNotEmpty())
         // Remove the owner before draining cancellations; never execute an admitted prepare.
