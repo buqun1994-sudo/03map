@@ -1,5 +1,6 @@
 package com.icar03.content.ui
 
+import android.annotation.SuppressLint
 import android.content.res.AssetManager
 import android.graphics.*
 import android.icu.text.BreakIterator
@@ -188,6 +189,15 @@ internal fun lyricVoiceInsets(side: LyricSide, width: Int, fontSize: Float): Pai
     }
 }
 
+/** Document shaping and worker raster copies must share one immutable paragraph policy. */
+@SuppressLint("InlinedApi") // BALANCED is inlined to 2; the Builder supports it since API 23.
+private fun lyricTextLayout(text: CharSequence, paint: TextPaint, width: Int,
+    alignment: Layout.Alignment): StaticLayout =
+    StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+        .setAlignment(alignment).setIncludePad(false)
+        // Font leading groups wrapped lines; row padding separately spaces source sentences.
+        .setLineSpacing(0f, 1f).setBreakStrategy(LineBreaker.BREAK_STRATEGY_BALANCED).build()
+
 internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics, face: Typeface,
     cjk: Typeface = face, baseInset: Int = 0): NativeLyricRow {
     val base = baseInset.coerceAtLeast(0)
@@ -201,13 +211,10 @@ internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics,
             color = Color.WHITE; textSize = fontSize; typeface = face
         }
         val shaped = lyricShapedText(text, cjk)
-        return StaticLayout.Builder.obtain(shaped, 0, shaped.length, paint,
-            (width - mainLeftInset - mainRightInset).coerceAtLeast(1))
-            .setAlignment(when (line.side) {
-                LyricSide.Trailing -> Layout.Alignment.ALIGN_OPPOSITE
-                else -> Layout.Alignment.ALIGN_NORMAL
-            }).setIncludePad(false).setLineSpacing(0f, 1.3f)
-            .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE).build()
+        return lyricTextLayout(shaped, paint, mainLayoutWidth, when (line.side) {
+            LyricSide.Trailing -> Layout.Alignment.ALIGN_OPPOSITE
+            else -> Layout.Alignment.ALIGN_NORMAL
+        })
     }
     val tracks = ArrayList<LyricTrack>()
     var top = metrics.padding
@@ -441,9 +448,8 @@ internal class LyricInkCache(private val rows: List<NativeLyricRow>, private val
     private fun workerLayout(track: LyricTrack): StaticLayout = workerLayouts.get(track) ?: run {
         val source = track.layout
         val paint = TextPaint(track.rasterPaint).apply { color = Color.WHITE }
-        StaticLayout.Builder.obtain(source.text, 0, source.text.length, paint, source.width)
-            .setAlignment(source.alignment).setIncludePad(false).setLineSpacing(0f, 1.3f)
-            .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE).build().also { workerLayouts.put(track, it) }
+        lyricTextLayout(source.text, paint, source.width, source.alignment)
+            .also { workerLayouts.put(track, it) }
     }
     var rasterizations = 0
         private set
