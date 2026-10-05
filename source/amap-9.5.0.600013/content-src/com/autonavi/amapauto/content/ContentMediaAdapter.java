@@ -159,6 +159,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private long avrcpDurationMs;
     private int avrcpPlaybackState = -1;
     private long avrcpElapsedRealtimeMs;
+    private long avrcpPositionElapsedRealtimeMs;
     private long avrcpSourceEpoch = -1L;
     private MediaSession.Token avrcpToken;
     private String avrcpRecordingKey = "";
@@ -564,6 +565,15 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         if (duration != null && duration >= 1000L) avrcpDurationMs = duration;
         if (playbackState != null) avrcpPlaybackState = playbackState;
         avrcpElapsedRealtimeMs = SystemClock.elapsedRealtime();
+        avrcpPositionElapsedRealtimeMs = avrcpElapsedRealtimeMs;
+        if (position != null && playback instanceof PlaybackState) {
+            PlaybackState sample = (PlaybackState) playback;
+            if (sample.getPosition() == position && sample.getLastPositionUpdateTime() > 0L) {
+                // Keep even an expired/future sample time: the timeline rejects it,
+                // rather than laundering an old position through a fresh receipt.
+                avrcpPositionElapsedRealtimeMs = sample.getLastPositionUpdateTime();
+            }
+        }
         sessionArbiter.observeBluetoothActivity(new ContentMediaSessionBluetoothActivity(
                 position, playbackState, avrcpElapsedRealtimeMs));
         avrcpEventSequence = ++nextAvrcpEventSequence;
@@ -579,6 +589,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         avrcpDurationMs = 0L;
         avrcpPlaybackState = -1;
         avrcpElapsedRealtimeMs = 0L;
+        avrcpPositionElapsedRealtimeMs = 0L;
         avrcpSourceEpoch = -1L;
         avrcpToken = null;
         avrcpRecordingKey = "";
@@ -1523,7 +1534,8 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L, artwork,
                 fields.mediaId, fields.album, duration, position, updateTime,
                 playing ? speed : 0f, fields.embeddedLyrics, songIdentity, playbackState,
-                avrcpEventSequence, avrcpPositionMs, avrcpPlaybackState, avrcpElapsedRealtimeMs);
+                avrcpEventSequence, avrcpPositionMs, avrcpPlaybackState, avrcpElapsedRealtimeMs,
+                avrcpPositionElapsedRealtimeMs);
     }
 
     private static boolean sameSnapshot(ContentPorts.MediaSnapshot first, ContentPorts.MediaSnapshot second) {
@@ -1539,7 +1551,8 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 && first.embeddedLyrics.equals(second.embeddedLyrics) && first.songIdentity == second.songIdentity
                 && first.playbackState == second.playbackState && first.avrcpEventSequence == second.avrcpEventSequence
                 && first.avrcpPositionMs == second.avrcpPositionMs && first.avrcpPlaybackState == second.avrcpPlaybackState
-                && first.avrcpElapsedRealtimeMs == second.avrcpElapsedRealtimeMs;
+                && first.avrcpElapsedRealtimeMs == second.avrcpElapsedRealtimeMs
+                && first.avrcpPositionElapsedRealtimeMs == second.avrcpPositionElapsedRealtimeMs;
     }
 
     private ContentPorts.MediaSongIdentity resolveSongIdentity(

@@ -40,7 +40,7 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
             val age = elapsedRealtime() - snapshot.avrcpElapsedRealtimeMs
             if (age in 0L..1_500L) {
                 if (snapshot.avrcpPositionMs >= 0L) timeline.onAvrcpPosition(
-                    snapshot.avrcpPositionMs, snapshot.avrcpElapsedRealtimeMs,
+                    snapshot.avrcpPositionMs, snapshot.avrcpPositionElapsedRealtimeMs,
                     "recording:${state.recordingGeneration}"
                 )
                 if (snapshot.avrcpPlaybackState >= 0) avrcpPlaybackState = snapshot.avrcpPlaybackState

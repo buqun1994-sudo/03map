@@ -108,6 +108,8 @@ data class LyricsState(
     // Stable identity from the existing recording tracker; transport metadata enrichment is not a new song.
     val recordingGeneration: Long = 0L,
     val changingTrack: Boolean = false,
+    // Shared sampling expression; the timeline alone admits/corrects position facts.
+    val playbackTrajectory: com.icar03.content.model.PlaybackTrajectory? = null,
 )
 /** Clock text is a separate presentation domain, not a media progress projection. */
 data class ClockText(val time: String = "--:--", val weekday: String = "")

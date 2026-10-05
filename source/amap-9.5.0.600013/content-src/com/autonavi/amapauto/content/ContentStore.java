@@ -565,28 +565,11 @@ public final class ContentStore {
             final long next = anchor.speed > 0f ? lyricsSemanticIndex.nextChangePosition(position)
                     : lyricsSemanticIndex.previousChangePosition(position);
             if (next >= 0L) {
-                commandHandler.postDelayed(advanceLyrics, lyricsBoundaryDelay(anchor, next, now));
+                final Long delay = anchor.trajectory.delayUntilSample(next, now);
+                if (delay != null) commandHandler.postDelayed(advanceLyrics, delay);
             }
         }
         return changed;
-    }
-
-    /** Convert an exact integer semantic boundary using the stable canonical pair. */
-    private static long lyricsBoundaryDelay(ContentPorts.LyricsPlaybackAnchor anchor,
-            long targetPosition, long now) {
-        final double offset = anchor.speed > 0f
-                ? Math.ceil((targetPosition - (double) anchor.basePositionMs) / anchor.speed)
-                : Math.floor((anchor.basePositionMs - ((double) targetPosition + 1.0)) / -anchor.speed) + 1.0;
-        final double deadline = anchor.capturedAtMs + offset;
-        if (deadline >= Long.MAX_VALUE) return Long.MAX_VALUE - now;
-        // A late delivery samples actual elapsed time and skips obsolete intermediate facts.
-        // Fractional speed rounding may land just before an integer boundary: recheck once.
-        long elapsedDeadline = Math.max(now + 1L, (long) deadline);
-        if ((anchor.speed > 0f && anchor.sampleAt(elapsedDeadline) < targetPosition)
-                || (anchor.speed < 0f && anchor.sampleAt(elapsedDeadline) > targetPosition)) {
-            if (elapsedDeadline < Long.MAX_VALUE) elapsedDeadline++;
-        }
-        return Math.max(1L, elapsedDeadline - now);
     }
 
     private boolean controlReadbackKnownLocked(VehicleControl control) {

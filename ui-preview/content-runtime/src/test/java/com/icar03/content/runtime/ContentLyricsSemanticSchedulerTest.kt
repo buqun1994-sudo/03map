@@ -30,6 +30,46 @@ class ContentLyricsSemanticSchedulerTest {
         })
     private fun idle(ms: Long) = main.idleFor(Duration.ofMillis(ms))
 
+    @Test fun finiteBluetoothCorrectionSchedulesRowBoundariesBeforeAndAfterTheRampWithoutCallbacks() {
+        val store = store()
+        fun bluetooth(position: Long, sequence: Long) = ContentPorts.MediaSnapshot(
+            true, false, "蓝牙音乐", true, 1, "Song", "Artist", true, true,
+            null, "", "Album", 30_000L, 0L, 0L, 0f, "", ContentPorts.MediaSongIdentity.SONG,
+            PlaybackState.STATE_PLAYING, sequence, position, -1, SystemClock.elapsedRealtime())
+        try {
+            store.startLyrics()
+            val initial = bluetooth(10_000, 1)
+            store.acceptMediaSnapshot(initial)
+            store.acceptLyricsSnapshot(lyrics(initial,
+                listOf(row(10_000, 11_000), row(11_000, 12_000), row(12_000, 13_000))))
+            idle(200)
+            val old = store.snapshot().lyricsAnchor
+            val before = old.sampleAt(SystemClock.elapsedRealtime())
+            store.acceptMediaSnapshot(bluetooth(10_120, 2))
+            val anchor = store.snapshot().lyricsAnchor
+            assertEquals(before, anchor.sampleAt(SystemClock.elapsedRealtime()))
+            assertEquals(-80.0, anchor.trajectory.correctionMs, 0.0)
+            assertEquals(1_000L, anchor.trajectory.correctionDurationMs)
+            val seen = mutableListOf<ContentState>()
+            store.addListener { seen.add(it) }; seen.clear()
+            for ((target, active) in listOf(11_000L to 1, 12_000L to 2)) {
+                val delay = requireNotNull(anchor.trajectory.delayUntilSample(target, SystemClock.elapsedRealtime()))
+                assertEquals(Duration.ofMillis(SystemClock.uptimeMillis() + delay), main.nextScheduledTaskTime)
+                idle(delay - 1)
+                assertTrue(seen.isEmpty())
+                assertTrue(anchor.sampleAt(SystemClock.elapsedRealtime()) < target)
+                idle(1)
+                assertEquals(1, seen.size)
+                assertEquals(active, store.snapshot().lyricsActiveIndex)
+                assertSame(anchor, store.snapshot().lyricsAnchor)
+                seen.clear()
+            }
+            assertEquals(1f, anchor.speed, 0f)
+            assertEquals(1_000L, anchor.sampleAt(SystemClock.elapsedRealtime() + 1_000) -
+                anchor.sampleAt(SystemClock.elapsedRealtime()))
+        } finally { store.destroy() }
+    }
+
     @Test fun tenSecondsOfOneStableLineHaveZeroTickPublicationsAndOneUnchangedAnchorAndDeadline() {
         val store = store()
         try {

@@ -97,6 +97,12 @@ internal class MediaSessionTimelineTracker(
     private var pendingAvrcpPosition: AvrcpPosition? = null
     private var supersededReportedPositionMs: Long? = null
     private var lastAvrcpCapturedAt: Long? = null
+    // A distinct event is not necessarily a distinct position sample. Keep the
+    // first capture of a same-value burst so duplicates cannot extend the window.
+    private var lastAvrcpPositionMs: Long? = null
+    private var lastAvrcpPositionCapturedAt: Long? = null
+    private var phaseCorrectionMs = 0.0
+    private var phaseCorrectionDurationMs = 0L
     private var ignoreReportedUntilAvrcp = false
     private var playbackAnchor = ContentPorts.LyricsPlaybackAnchor.unknown()
     private var anchorTrackKey = ""
@@ -151,11 +157,15 @@ internal class MediaSessionTimelineTracker(
             newestPublisherPositionTime = validPublisherTime ?: Long.MIN_VALUE
             lastSpeed = speed
             wasPlaying = playing
+            phaseCorrectionMs = 0.0
+            phaseCorrectionDurationMs = 0L
             timelineReady = trustedInitialPosition || avrcpPosition != null
             hasObservedTrack = true
             deferNextReportedPosition = false
             supersededReportedPositionMs = if (avrcpPosition != null && hasReportedPosition) reported else null
             lastAvrcpCapturedAt = avrcpPosition?.capturedAt
+            lastAvrcpPositionMs = avrcpPosition?.positionMs
+            lastAvrcpPositionCapturedAt = avrcpPosition?.capturedAt
             ignoreReportedUntilAvrcp = false
         } else {
             val currentPosition = positionAt(now)
@@ -182,12 +192,26 @@ internal class MediaSessionTimelineTracker(
             val playbackModeChanged = playing != wasPlaying
             val speedChanged = playing && speed != lastSpeed
 
-            if (avrcpPosition != null) {
-                basePositionMs = clamp(avrcpPosition.positionMs, durationMs)
-                capturedAtElapsedRealtime = avrcpPosition.capturedAt
+            val orderedAvrcp = avrcpPosition?.takeUnless {
+                lastAvrcpCapturedAt != null && it.capturedAt < lastAvrcpCapturedAt!!
+            }
+            if (orderedAvrcp != null) {
+                val sameValue = orderedAvrcp.positionMs == lastAvrcpPositionMs
+                val duplicate = sameValue && (playbackModeChanged || speedChanged ||
+                    lastAvrcpPositionCapturedAt?.let {
+                        orderedAvrcp.capturedAt - it in 0L..AVRCP_DUPLICATE_WINDOW_MS
+                    } == true)
+                if (!duplicate) {
+                    acceptPosition(orderedAvrcp.positionMs, orderedAvrcp.capturedAt, now,
+                        durationMs, speed, transport, playing)
+                    lastAvrcpPositionMs = orderedAvrcp.positionMs
+                    lastAvrcpPositionCapturedAt = orderedAvrcp.capturedAt
+                } else if (playbackModeChanged || speedChanged) {
+                    rebase(currentPosition, now)
+                }
                 timelineReady = true
                 supersededReportedPositionMs = if (hasReportedPosition) reported else null
-                lastAvrcpCapturedAt = avrcpPosition.capturedAt
+                lastAvrcpCapturedAt = orderedAvrcp.capturedAt
                 ignoreReportedUntilAvrcp = false
             } else if (!timelineReady) {
                 val freshPosition = !ignoreReportedPosition && hasReportedPosition && when (transport) {
@@ -198,20 +222,14 @@ internal class MediaSessionTimelineTracker(
                             reported != firstUntrustedPositionMs || usablePublisherChange
                 }
                 if (freshPosition) {
-                    basePositionMs = clamp(reported, durationMs)
-                    capturedAtElapsedRealtime = if (usablePublisherChange) {
-                        validPublisherTime!!
-                    } else {
-                        now
-                    }
+                    rebase(clamp(reported, durationMs), if (usablePublisherChange) validPublisherTime!! else now)
                     timelineReady = true
                 }
             } else if (reportedChanged) {
-                basePositionMs = clamp(reported, durationMs)
-                capturedAtElapsedRealtime = if (usablePublisherChange) validPublisherTime!! else now
+                acceptPosition(reported, if (usablePublisherChange) validPublisherTime!! else now,
+                    now, durationMs, speed, transport, playing)
             } else if (playbackModeChanged || speedChanged) {
-                basePositionMs = currentPosition
-                capturedAtElapsedRealtime = now
+                rebase(currentPosition, now)
             }
 
             if (hasReportedPosition && !stalePublisherPosition) {
@@ -258,8 +276,9 @@ internal class MediaSessionTimelineTracker(
     ): MediaSessionTimeline? {
         if (trackKey != this.trackKey || positionMs < 0L) return null
         val now = nowElapsedRealtime()
-        basePositionMs = clamp(positionMs, durationMs)
-        capturedAtElapsedRealtime = now
+        rebase(clamp(positionMs, durationMs), now)
+        lastAvrcpPositionMs = null
+        lastAvrcpPositionCapturedAt = null
         supersededReportedPositionMs = lastReportedPositionMs.takeIf { it >= 0L }
         deferNextReportedPosition = false
         timelineReady = true
@@ -295,9 +314,48 @@ internal class MediaSessionTimelineTracker(
         pendingAvrcpPosition = null
         supersededReportedPositionMs = null
         lastAvrcpCapturedAt = null
+        lastAvrcpPositionMs = null
+        lastAvrcpPositionCapturedAt = null
+        phaseCorrectionMs = 0.0
+        phaseCorrectionDurationMs = 0L
         ignoreReportedUntilAvrcp = false
         playbackAnchor = ContentPorts.LyricsPlaybackAnchor.unknown()
         anchorTrackKey = ""
+    }
+
+    /** Only admitted position facts may change the clock trajectory. */
+    private fun acceptPosition(positionMs: Long, capturedAt: Long, now: Long,
+        durationMs: Long, speed: Double, transport: MediaSessionTransport, playing: Boolean) {
+        val position = clamp(positionMs, durationMs)
+        val continuous = timelineReady && wasPlaying && playing && speed > 0.0 && speed == lastSpeed &&
+            transport == MediaSessionTransport.BLUETOOTH_AVRCP && positionMs != 0L
+        if (continuous) {
+            val current = clamp(positionAt(now), durationMs)
+            val target = clamp((position + max(0L, now - capturedAt) * speed).coerceAtLeast(0.0).toLong(), durationMs)
+            val error = (target - current).toDouble()
+            if (kotlin.math.abs(error) <= BLUETOOTH_PHASE_LIMIT_MS) {
+                // Start at the already visible position. The immutable trajectory
+                // repays this finite phase error at <=8% of nominal speed, then
+                // resumes nominal speed even if no further callback arrives.
+                rebase(current, now)
+                phaseCorrectionMs = error
+                phaseCorrectionDurationMs = if (error == 0.0) 0L else max(
+                    MIN_PHASE_DURATION_MS,
+                    kotlin.math.ceil(kotlin.math.abs(error) / (speed * MAX_PHASE_RATE_FRACTION)).toLong())
+                return
+            }
+        }
+        // Initialization, a real zero, significant seek, pause/resume and rate
+        // changes retain immediate positioning. Tiny seeks use finite correction:
+        // a position-only transport cannot distinguish them from sample noise.
+        rebase(position, capturedAt)
+    }
+
+    private fun rebase(positionMs: Long, capturedAt: Long) {
+        basePositionMs = positionMs
+        capturedAtElapsedRealtime = capturedAt
+        phaseCorrectionMs = 0.0
+        phaseCorrectionDurationMs = 0L
     }
 
     private fun refreshAnchor(durationMs: Long) {
@@ -310,10 +368,11 @@ internal class MediaSessionTimelineTracker(
         // Identical trajectories from actual callbacks are still the same fact. Keep
         // the original canonical pair as well as its published identity/revision.
         if (anchorTrackKey == trackKey && old.timelineReady && old.speed == speed &&
-            old.durationMs == durationMs &&
+            old.durationMs == durationMs && old.trajectory.correctionMs == phaseCorrectionMs &&
+            old.trajectory.correctionDurationMs == phaseCorrectionDurationMs &&
             (old.basePositionMs == basePositionMs && old.capturedAtMs == capturedAtElapsedRealtime ||
                 speed == 0f && old.basePositionMs == basePositionMs ||
-                speed != 0f && old.basePositionMs <= 9_007_199_254_740_991L &&
+                phaseCorrectionMs == 0.0 && speed != 0f && old.basePositionMs <= 9_007_199_254_740_991L &&
                     basePositionMs <= 9_007_199_254_740_991L &&
                     (basePositionMs - old.basePositionMs).toDouble() ==
                     (capturedAtElapsedRealtime - old.capturedAtMs).toDouble() * speed.toDouble())
@@ -323,17 +382,14 @@ internal class MediaSessionTimelineTracker(
             return
         }
         playbackAnchor = ContentPorts.LyricsPlaybackAnchor(
-            basePositionMs, capturedAtElapsedRealtime, speed, durationMs, true, ++anchorRevision
+            basePositionMs, capturedAtElapsedRealtime, speed, durationMs, true, ++anchorRevision,
+            phaseCorrectionMs, phaseCorrectionDurationMs
         )
         anchorTrackKey = trackKey
     }
 
-    private fun positionAt(now: Long): Long {
-        if (!timelineReady) return 0L
-        if (!wasPlaying) return basePositionMs
-        val elapsed = max(0L, now - capturedAtElapsedRealtime)
-        return (basePositionMs.toDouble() + elapsed * lastSpeed).coerceAtLeast(0.0).toLong()
-    }
+    private fun positionAt(now: Long): Long =
+        if (timelineReady) playbackAnchor.trajectory.rawPositionAt(now).coerceAtLeast(0.0).toLong() else 0L
 
     private fun clamp(position: Long, durationMs: Long): Long =
         if (durationMs > 0L) min(position.coerceAtLeast(0L), durationMs) else position.coerceAtLeast(0L)
@@ -355,5 +411,9 @@ internal class MediaSessionTimelineTracker(
     private companion object {
         const val INITIAL_POSITION_TRUST_LIMIT_MS = 2_500L
         const val AVRCP_EVENT_MAX_AGE_MS = 1_500L
+        const val AVRCP_DUPLICATE_WINDOW_MS = 350L
+        const val BLUETOOTH_PHASE_LIMIT_MS = 250.0
+        const val MIN_PHASE_DURATION_MS = 1_000L
+        const val MAX_PHASE_RATE_FRACTION = 0.08
     }
 }

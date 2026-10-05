@@ -190,6 +190,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             atEnd = duration > 0L && state.lyricsPositionMs >= duration,
             recordingGeneration = state.mediaRecordingGeneration,
             changingTrack = state.mediaNextPending,
+            playbackTrajectory = if (canonical) anchor.trajectory else null,
         ) else LyricsState()
         return lyrics
     }

@@ -140,7 +140,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val heldSource = remember(request, ready, freezeMotion) {
             val source = presentation.source
             source.copy(positionMs = if (freezeMotion && painted.document === ready) painted.positionMs
-                else lyricPositionAt(source, SystemClock.elapsedRealtime()), playbackSpeed = 0f)
+                else lyricPositionAt(source, SystemClock.elapsedRealtime()), playbackSpeed = 0f, playbackTrajectory = null)
         }
         val lyrics = if (layoutReady && !freezeMotion) incoming else heldSource
         val metrics = ready.request.metrics
@@ -312,7 +312,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
                 if (enabled && schedule.needsFramesAt(position)) {
                     withFrameNanos { frameElapsed.longValue = SystemClock.elapsedRealtime() }
                 } else {
-                    val waitMs = if (enabled) schedule.delayUntilNext(position, now.playbackSpeed, now.durationMs) else null
+                    val waitMs = if (enabled) schedule.delayUntilNext(now, elapsed) else null
                     if (waitMs == null) frameRequests.receive()
                     else withTimeoutOrNull(waitMs) { frameRequests.receive() }
                 }
@@ -436,6 +436,16 @@ internal class LyricFrameSchedule(intervals: List<LyricFrameInterval>) {
     fun hasRemainingAt(positionMs: Long, durationMs: Long = 0L): Boolean = nextInterval(positionMs)?.let {
         durationMs <= 0L || (positionMs < durationMs && it.startMs < durationMs.toDouble())
     } ?: false
+    fun delayUntilNext(lyrics: LyricsState, nowElapsedMs: Long): Long? {
+        val position = lyricPositionAt(lyrics, nowElapsedMs)
+        val trajectory = lyrics.playbackTrajectory
+            ?: return delayUntilNext(position, lyrics.playbackSpeed, lyrics.durationMs)
+        if (trajectory.speed <= 0f || !hasRemainingAt(position, lyrics.durationMs)) return null
+        val next = nextInterval(position) ?: return null
+        if (position.toDouble() >= next.startMs) return 0L
+        return trajectory.delayUntilSample(ceil(next.startMs).toLong(), nowElapsedMs)
+    }
+
     fun delayUntilNext(positionMs: Long, playbackSpeed: Float, durationMs: Long = 0L): Long? {
         if (playbackSpeed <= 0f || !playbackSpeed.isFinite() || !hasRemainingAt(positionMs, durationMs)) return null
         val next = nextInterval(positionMs) ?: return null
@@ -502,6 +512,7 @@ internal fun lyricFrameWindow(rows: List<NativeLyricRow>, tops: FloatArray, offs
 
 internal fun lyricPositionAt(lyrics: LyricsState, nowElapsedMs: Long): Long {
     if (!lyrics.timelineReady || lyrics.positionMs < 0L) return -1L
+    lyrics.playbackTrajectory?.let { return it.sampleAt(nowElapsedMs) }
     val elapsed = if ((lyrics.capturedAtMs > 0L || lyrics.anchorRevision > 0L) && nowElapsedMs > lyrics.capturedAtMs)
         nowElapsedMs - lyrics.capturedAtMs else 0L
     val speed = lyrics.playbackSpeed.takeIf { it.isFinite() } ?: 0f

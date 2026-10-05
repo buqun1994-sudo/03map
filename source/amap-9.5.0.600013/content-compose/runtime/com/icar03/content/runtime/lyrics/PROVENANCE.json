@@ -124,7 +124,8 @@
       "adaptations": [
         "Kotlin package relocated to map runtime",
         "Source attribution retained",
-        "Read-only current(durationMs) samples the established monotonic anchor; it never treats a UI wake-up as a publisher event"
+        "Read-only current(durationMs) samples the established monotonic anchor; it never treats a UI wake-up as a publisher event",
+        "Map-only Bluetooth position evidence deduplication and finite continuous phase correction; shared immutable PlaybackTrajectory is sampled by Store and UI without another clock or timer"
       ]
     },
     {

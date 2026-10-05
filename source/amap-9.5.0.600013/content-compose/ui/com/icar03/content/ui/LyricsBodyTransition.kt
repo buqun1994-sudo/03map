@@ -47,7 +47,8 @@ internal fun LyricsBodyTransition(lyrics: LyricsState, dark: Boolean, modifier: 
     val frozenMotion = exiting || awaitingBody
     // Freeze the old matching source, including its highlight, once at the boundary.
     val frozen = remember(displayedKey, frozenMotion) {
-        source?.let { it.copy(positionMs = lyricPositionAt(it, SystemClock.elapsedRealtime()), playbackSpeed = 0f) }
+        source?.let { it.copy(positionMs = lyricPositionAt(it, SystemClock.elapsedRealtime()),
+            playbackSpeed = 0f, playbackTrajectory = null) }
     }
     SideEffect { if (!frozenMotion && source != null) held.value = source }
 

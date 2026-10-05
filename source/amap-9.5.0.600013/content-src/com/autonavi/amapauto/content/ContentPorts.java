@@ -408,6 +408,8 @@ public final class ContentPorts {
         public final long avrcpPositionMs;
         public final int avrcpPlaybackState;
         public final long avrcpElapsedRealtimeMs;
+        /** Sample time, distinct from receipt time; legacy position-only events use receipt time. */
+        public final long avrcpPositionElapsedRealtimeMs;
 
         public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
                 boolean playing, int generation, String title, String artist,
@@ -475,6 +477,21 @@ public final class ContentPorts {
                 long positionElapsedRealtimeMs, float playbackSpeed, String embeddedLyrics,
                 MediaSongIdentity songIdentity, int playbackState, long avrcpEventSequence,
                 long avrcpPositionMs, int avrcpPlaybackState, long avrcpElapsedRealtimeMs) {
+            this(dataAvailable, preview, source, playing, generation, title, artist,
+                    playbackAvailable, nextAvailable, artwork, mediaId, album, durationMs,
+                    positionMs, positionElapsedRealtimeMs, playbackSpeed, embeddedLyrics,
+                    songIdentity, playbackState, avrcpEventSequence, avrcpPositionMs,
+                    avrcpPlaybackState, avrcpElapsedRealtimeMs, avrcpElapsedRealtimeMs);
+        }
+
+        public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
+                boolean playing, int generation, String title, String artist,
+                boolean playbackAvailable, boolean nextAvailable, Bitmap artwork,
+                String mediaId, String album, long durationMs, long positionMs,
+                long positionElapsedRealtimeMs, float playbackSpeed, String embeddedLyrics,
+                MediaSongIdentity songIdentity, int playbackState, long avrcpEventSequence,
+                long avrcpPositionMs, int avrcpPlaybackState, long avrcpElapsedRealtimeMs,
+                long avrcpPositionElapsedRealtimeMs) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.source = source;
@@ -502,6 +519,7 @@ public final class ContentPorts {
                     && avrcpPlaybackState <= android.media.session.PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM
                     ? avrcpPlaybackState : -1;
             this.avrcpElapsedRealtimeMs = Math.max(0L, avrcpElapsedRealtimeMs);
+            this.avrcpPositionElapsedRealtimeMs = avrcpPositionElapsedRealtimeMs;
         }
 
         /** True only for a classified song with usable current metadata. */
@@ -537,25 +555,30 @@ public final class ContentPorts {
         public final long durationMs;
         public final boolean timelineReady;
         public final long revision;
+        public final com.icar03.content.model.PlaybackTrajectory trajectory;
 
         public LyricsPlaybackAnchor(long basePositionMs, long capturedAtMs, float speed,
                 long durationMs, boolean timelineReady, long revision) {
+            this(basePositionMs, capturedAtMs, speed, durationMs, timelineReady, revision, 0.0, 0L);
+        }
+
+        public LyricsPlaybackAnchor(long basePositionMs, long capturedAtMs, float speed,
+                long durationMs, boolean timelineReady, long revision,
+                double correctionMs, long correctionDurationMs) {
             this.basePositionMs = Math.max(0L, basePositionMs);
             this.capturedAtMs = Math.max(0L, capturedAtMs);
             this.speed = Float.isNaN(speed) || Float.isInfinite(speed) ? 0f : speed;
             this.durationMs = Math.max(0L, durationMs);
             this.timelineReady = timelineReady;
             this.revision = revision;
+            this.trajectory = new com.icar03.content.model.PlaybackTrajectory(
+                    this.basePositionMs, this.capturedAtMs, this.speed, this.durationMs,
+                    correctionMs, correctionDurationMs);
         }
 
         /** Pure local sampling. Unknown is distinct from a verified seek to zero. */
         public long sampleAt(long elapsedRealtimeMs) {
-            if (!timelineReady) return -1L;
-            if (speed == 0f) return durationMs > 0L ? Math.min(basePositionMs, durationMs) : basePositionMs;
-            long elapsed = elapsedRealtimeMs > capturedAtMs ? elapsedRealtimeMs - capturedAtMs : 0L;
-            double position = Math.max(0.0, basePositionMs + elapsed * (double) speed);
-            long sampled = (long) position;
-            return durationMs > 0L ? Math.min(sampled, durationMs) : sampled;
+            return timelineReady ? trajectory.sampleAt(elapsedRealtimeMs) : -1L;
         }
 
         public static LyricsPlaybackAnchor unknown() {

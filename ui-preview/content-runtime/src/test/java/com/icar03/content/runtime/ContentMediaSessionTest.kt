@@ -375,6 +375,53 @@ class ContentMediaSessionTest {
         } finally { adapter.stop() }
     }
 
+    @Test fun trackParcelablePreservesSampleTimeWhilePositionOnlyAndConflictingFieldsUseReceipt() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("A"))
+        shadowOf(c).setPlaybackState(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0L, 0f, 0L).build())
+        add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
+        try {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+            val sampleAt = SystemClock.elapsedRealtime() - 100
+            val sample = PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 15_000L, 1f, sampleAt).build()
+            sendAvrcp(Intent(AVRCP_TRACK).putExtra(PROFILE_PLAYBACK, sample))
+            assertEquals(sampleAt, seen.last().avrcpPositionElapsedRealtimeMs)
+            assertEquals(SystemClock.elapsedRealtime(), seen.last().avrcpElapsedRealtimeMs)
+            val sequence = seen.last().avrcpEventSequence
+            sendAvrcp(Intent(AVRCP_POSITION).putExtra(PROFILE_POS, 15_000L))
+            assertTrue(seen.last().avrcpEventSequence > sequence)
+            assertEquals(seen.last().avrcpElapsedRealtimeMs, seen.last().avrcpPositionElapsedRealtimeMs)
+            sendAvrcp(Intent(AVRCP_PLAY_STATUS).putExtra(SONG_POS, 20_000L).putExtra(PROFILE_PLAYBACK, sample))
+            assertEquals(20_000L, seen.last().avrcpPositionMs)
+            assertEquals(seen.last().avrcpElapsedRealtimeMs, seen.last().avrcpPositionElapsedRealtimeMs)
+        } finally { adapter.stop() }
+    }
+
+    @Test fun expiredAndFutureParcelablePositionsRetainTheirTimeWithoutDiscardingPauseEvents() {
+        val c = controller("com.android.bluetooth")
+        shadowOf(c).setMetadata(metadata("A"))
+        shadowOf(c).setPlaybackState(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0L, 0f, 0L).build())
+        add(c)
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
+        try {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2_000))
+            val now = SystemClock.elapsedRealtime()
+            for (sampleAt in listOf(now - 1_501, now + 1)) {
+                val sample = PlaybackState.Builder().setState(PlaybackState.STATE_PAUSED, 15_000L, 0f, sampleAt).build()
+                sendAvrcp(Intent(AVRCP_TRACK).putExtra(PROFILE_PLAYBACK, sample))
+                assertEquals(sampleAt, seen.last().avrcpPositionElapsedRealtimeMs)
+                assertEquals(now, seen.last().avrcpElapsedRealtimeMs)
+                assertEquals(PlaybackState.STATE_PAUSED, seen.last().avrcpPlaybackState)
+                assertFalse(seen.last().playing)
+            }
+        } finally { adapter.stop() }
+    }
+
     @Test fun avrcpDecoderPreservesRealZeroAndRejectsMissingFractionalOrConflictingEvidence() {
         val c = controller("com.android.bluetooth")
         shadowOf(c).setMetadata(metadata("A")); shadowOf(c).setPlaybackState(playback(position = 0L)); add(c)
