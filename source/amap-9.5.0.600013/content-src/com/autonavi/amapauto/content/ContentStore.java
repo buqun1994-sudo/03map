@@ -310,6 +310,14 @@ public final class ContentStore {
         setBooleanPreference(PreferenceField.SHOW_ACTION_FEEDBACK, value);
     }
 
+    public void setUiOpacity(float value) {
+        synchronized (this) {
+            state.uiOpacity = Float.isFinite(value) ? Math.max(0.20f, Math.min(1.0f, value)) : 1.0f;
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
     private enum PreferenceField {
         SHOW_INDOOR_TEMPERATURE, SHOW_BATTERY, SHOW_CHARGING_STATUS,
         LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, SHOW_AMBIENT_ARTWORK,

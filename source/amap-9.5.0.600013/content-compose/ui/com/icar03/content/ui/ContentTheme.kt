@@ -9,11 +9,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * Semantic surfaces owned by the content panel.
- *
- * Fields intentionally remain independent even when two roles currently share an
- * RGB value. This keeps a later visual adjustment local to its owning surface and
- * prevents a Material color token from silently changing another role.
+ * Semantic surfaces owned by the content panel. Base, slider and feedback roles remain
+ * independent; all persistent selected surfaces consume selectedSurface.
  */
 internal data class ContentThemeColors(
     val shortcutBase: Color,
@@ -29,6 +26,7 @@ internal data class ContentThemeColors(
     val sourceBase: Color,
     val sourceSelected: Color,
     val sheetBase: Color,
+    val selectedSurface: Color = shortcutSelected,
 )
 
 private val LightContentColors = ContentThemeColors(
@@ -38,13 +36,14 @@ private val LightContentColors = ContentThemeColors(
     sliderFill = Color.White,
     sliderDivider = Color(0xFFD8D8D8),
     dockBase = Color.White,
-    dockSelected = Color(0xFFE9E9E9),
+    dockSelected = Color(0xFFE4E4E4),
     mediaBase = Color.White,
     mediaArtworkBase = Color(0xFFE9E9E9),
-    mediaPressed = Color(0xFFE9E9E9),
+    mediaPressed = Color(0xFFE4E4E4),
     sourceBase = Color.White,
-    sourceSelected = Color(0xFFE9E9E9),
+    sourceSelected = Color(0xFFE4E4E4),
     sheetBase = Color.White,
+    selectedSurface = Color(0xFFE4E4E4),
 )
 
 private val DarkContentColors = ContentThemeColors(
@@ -59,8 +58,9 @@ private val DarkContentColors = ContentThemeColors(
     mediaArtworkBase = Color(0xFF1A1A1A),
     mediaPressed = Color(0xFF303030),
     sourceBase = Color(0xFF1A1A1A),
-    sourceSelected = Color(0xFF484848),
+    sourceSelected = Color(0xFF303030),
     sheetBase = Color(0xFF1A1A1A),
+    selectedSurface = Color(0xFF303030),
 )
 
 /** Semantic content colors are kept separate from Material's generic surface roles. */

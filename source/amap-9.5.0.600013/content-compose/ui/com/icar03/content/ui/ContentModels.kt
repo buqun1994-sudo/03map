@@ -132,7 +132,7 @@ data class ContentUiState(
     val lyricsLineSpacing: Int = 1, val lyricsSpeakerLayout: Boolean = true,
     val lyricsHighlight: Boolean = true, val showAmbientArtwork: Boolean = true,
     val showMediaSourceSwitcher: Boolean = true, val dockButtonCount: Int = 6,
-    val showActionFeedback: Boolean = true,
+    val showActionFeedback: Boolean = true, val uiOpacity: Float = 1.0f,
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,
     val placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap(),
@@ -170,6 +170,7 @@ sealed interface ContentEvent {
     data class ShowMediaSourceSwitcherChanged(val value: Boolean) : ContentEvent
     data class DockButtonCountChanged(val value: Int) : ContentEvent
     data class ShowActionFeedbackChanged(val value: Boolean) : ContentEvent
+    data class UiOpacityChanged(val value: Float) : ContentEvent
     data object DismissSheet : ContentEvent
 }
 
@@ -182,7 +183,7 @@ fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
     is ContentEvent.LyricsLineSpacingChanged, is ContentEvent.LyricsSpeakerLayoutChanged,
     is ContentEvent.LyricsHighlightChanged, is ContentEvent.ShowAmbientArtworkChanged,
     is ContentEvent.ShowMediaSourceSwitcherChanged, is ContentEvent.DockButtonCountChanged,
-    is ContentEvent.ShowActionFeedbackChanged -> true
+    is ContentEvent.ShowActionFeedbackChanged, is ContentEvent.UiOpacityChanged -> true
     else -> false
 }
 

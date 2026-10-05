@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -101,7 +102,9 @@ fun ContentPanel(
         }
         latestEvent(event)
     }
-    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(modifier.fillMaxSize().graphicsLayer {
+        alpha = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f
+    }, color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val compact = !state.previewMode && maxWidth < 600.dp
             val edge = if (compact) 8.dp else 20.dp
@@ -162,7 +165,12 @@ fun ContentPanel(
             if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
             SettingsSheet(state, dispatch,
                 Modifier.align(Alignment.TopStart).fillMaxSize()
-                    .padding(top = topBarHeight, bottom = dockHeight).zIndex(7f),
+                    .padding(
+                        start = if (compact) 8.dp else 12.dp,
+                        end = if (compact) 8.dp else 12.dp,
+                        top = topBarHeight,
+                        bottom = dockHeight + if (compact) 8.dp else 16.dp,
+                    ).zIndex(7f),
                 onVisibilityChanged = { settingsRetained = it })
             // Keep the moving feedback surface inside the same fixed content bounds.
             Box(Modifier.fillMaxSize().padding(top = topBarHeight, bottom = dockHeight).clipToBounds().zIndex(10f)) {
@@ -565,10 +573,10 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                             RoundedPressButton(slot, "dock-${id.name}", id.label, enabled, compact,
                                 onClick = { dockEvent(id, state)?.let(onEvent) }, rectangular = false,
                                 selected = selected && id != ShortcutId.Lock,
-                                selectedColor = colors.dockSelected,
+                                selectedColor = colors.selectedSurface,
                                 baseColor = colors.dockBase,
                                 rippleEnabled = rippleEnabled,
-                                rippleColor = if (selected && id != ShortcutId.Lock) colors.dockBase else colors.dockSelected) {
+                                rippleColor = if (selected && id != ShortcutId.Lock) colors.dockBase else colors.selectedSurface) {
                                 ShortcutOemIcon(id, state, shortcutIcon(id, state), Modifier.size(if (compact) 32.dp else 48.dp).testTag("dock-icon-${id.name}"))
                             }
                         }
@@ -598,8 +606,8 @@ private fun RoundedPressButton(
     val opacity by animateFloatAsState(if (active && rectangular) 1f else 0f,
         tween(if (active) 200 else 240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "press-opacity")
     val scale by pressScale(active)
-    val background = if (opacity == 0f) Color.Transparent else colors.mediaPressed.copy(alpha = opacity)
-    val selectedSurface = selectedColor ?: colors.dockSelected
+    val background = if (opacity == 0f) Color.Transparent else colors.selectedSurface.copy(alpha = opacity)
+    val selectedSurface = selectedColor ?: colors.selectedSurface
     val rippleSurface = rippleColor ?: selectedSurface
     val base = if (selected) selectedSurface else baseColor ?: colors.mediaBase
     val feedback = rememberBoundaryPressFeedback(interactions, enabled && rippleEnabled && !rectangular, base, rippleSurface)
@@ -650,8 +658,8 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
                     val pressed by interactions.collectIsPressedAsState()
                     Row(
                         Modifier.fillMaxWidth().height(rowHeight).testTag("source-${source.name}")
-                            .background(if (selected) colors.sourceSelected else Color.Transparent, RoundedCornerShape(8.dp))
-                            .clickable(interactionSource = interactions, indication = ripple(color = colors.sourceSelected), enabled = (!state.previewMode || state.media.available) && state.media.sourceAvailable && !state.media.pending, role = Role.RadioButton) { onEvent(ContentEvent.SourceSelected(source)) }
+                            .background(if (selected) colors.selectedSurface else Color.Transparent, RoundedCornerShape(8.dp))
+                            .clickable(interactionSource = interactions, indication = ripple(color = colors.selectedSurface), enabled = (!state.previewMode || state.media.available) && state.media.sourceAvailable && !state.media.pending, role = Role.RadioButton) { onEvent(ContentEvent.SourceSelected(source)) }
                             .semantics { this.selected = selected }
                             .padding(start = groupInset),
                         verticalAlignment = Alignment.CenterVertically,

@@ -701,7 +701,7 @@ open class ContentPanelLightPrototypeRenderTest {
             val color = androidx.compose.ui.graphics.Color(play.fetchSemanticsNode().config[PressBackground].toULong())
             assertTrue("media opacity must rise monotonically", color.alpha >= previous)
             if (color.alpha > 0f) {
-                val rgb = if (dark) 48f / 255 else 233f / 255
+                val rgb = if (dark) 48f / 255 else 228f / 255
                 assertTrue("media fill RGB remains fixed instead of flashing black", kotlin.math.abs(color.red - rgb) < .005f && kotlin.math.abs(color.green - rgb) < .005f && kotlin.math.abs(color.blue - rgb) < .005f)
             }
             previous = color.alpha
@@ -746,7 +746,7 @@ open class ContentPanelLightPrototypeRenderTest {
         assertTrue("dynamic shortcut keeps its base while its icon expresses selection", sample("control-Ventilation") == normal)
         assertTrue("nonselected shortcut is darker", sample("control-Heating") == normal)
         val inner = compose.onNodeWithTag("dock-Ventilation-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("seat selected rectangle uses Dock selected token", frame.getPixel(inner.left.toInt()+5, inner.center.y.toInt()) == (if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(233,233,233)))
+        assertTrue("seat selected rectangle uses Dock selected token", frame.getPixel(inner.left.toInt()+5, inner.center.y.toInt()) == (if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(228,228,228)))
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Lock to ControlState(actual = 1))) }
         compose.onNodeWithTag("control-Lock").assertIsNotSelected()
         compose.onNodeWithTag("dock-Lock").assertIsNotSelected()
@@ -759,11 +759,11 @@ open class ContentPanelLightPrototypeRenderTest {
         val bounds = compose.onNodeWithTag("sources-menu").fetchSemanticsNode().boundsInRoot
         val row = compose.onNodeWithTag("source-Bluetooth").fetchSemanticsNode().boundsInRoot
         assertTrue("menu follows restored light and retained dark surface", menu.getPixel(bounds.left.toInt()+3, bounds.center.y.toInt()) == (if (dark) normal else android.graphics.Color.WHITE))
-        val sourceSelected = if (dark) android.graphics.Color.rgb(72,72,72) else android.graphics.Color.rgb(233,233,233)
+        val sourceSelected = if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(228,228,228)
         assertTrue("selected source follows theme layer", menu.getPixel(row.left.toInt()+4, row.center.y.toInt()) == sourceSelected)
     }
 
-    @Test fun semanticColorRolesAreIndependentlyConsumed() {
+    @Test fun semanticColorRolesKeepIndependentBaseAndSliderRolesButShareSelectedSurface() {
         val roles = ContentThemeColors(
             shortcutBase = androidx.compose.ui.graphics.Color(0xFF112233),
             shortcutSelected = androidx.compose.ui.graphics.Color(0xFF223344),
@@ -778,6 +778,7 @@ open class ContentPanelLightPrototypeRenderTest {
             sourceBase = androidx.compose.ui.graphics.Color(0xFF7788AA),
             sourceSelected = androidx.compose.ui.graphics.Color(0xFF8899AA),
             sheetBase = androidx.compose.ui.graphics.Color(0xFF99AACC),
+            selectedSurface = androidx.compose.ui.graphics.Color(0xFFAABBCC),
         )
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
             previewMode = false,
@@ -811,21 +812,21 @@ open class ContentPanelLightPrototypeRenderTest {
         }
         assertTrue("shortcut base has its own role", sample("control-Heating") == roles.shortcutBase.toArgb())
         assertTrue("dynamic selected icon keeps shortcut base", sample("control-Ventilation") == roles.shortcutBase.toArgb())
-        assertTrue("ordinary toggle selected has its own role", sample("control-RearWiper") == roles.shortcutSelected.toArgb())
+        assertTrue("ordinary toggle selected uses the shared selected surface", sample("control-RearWiper") == roles.selectedSurface.toArgb())
         assertTrue("Dock base has its own role", sample("dock-Lock") == roles.dockBase.toArgb())
         assertTrue("media base has its own role", frame.getPixel(
             compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot.center.x.toInt(),
             compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot.top.toInt() + 4,
         ) == roles.mediaBase.toArgb())
         val dockSelected = compose.onNodeWithTag("dock-Ventilation-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("Dock selected has its own role", frame.getPixel(dockSelected.left.toInt() + 5, dockSelected.center.y.toInt()) == roles.dockSelected.toArgb())
+        assertTrue("Dock selected uses the shared selected surface", frame.getPixel(dockSelected.left.toInt() + 5, dockSelected.center.y.toInt()) == roles.selectedSurface.toArgb())
 
         val artwork = compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot
         assertTrue("media artwork base has its own role", frame.getPixel(artwork.left.toInt() + 36, artwork.top.toInt() + 4) == roles.mediaArtworkBase.toArgb())
         val source = compose.onNodeWithTag("source-Bluetooth").fetchSemanticsNode().boundsInRoot
         val sourceMenu = compose.onNodeWithTag("sources-menu").fetchSemanticsNode().boundsInRoot
         assertTrue("source base has its own role", frame.getPixel(sourceMenu.center.x.toInt(), sourceMenu.top.toInt() + 4) == roles.sourceBase.toArgb())
-        assertTrue("source selected has its own role", frame.getPixel(source.left.toInt() + 4, source.center.y.toInt()) == roles.sourceSelected.toArgb())
+        assertTrue("source selected uses the shared selected surface", frame.getPixel(source.left.toInt() + 4, source.center.y.toInt()) == roles.selectedSurface.toArgb())
 
         compose.runOnIdle { state.value = state.value.copy(sourcesOpen = false) }
         compose.waitForIdle()
@@ -863,7 +864,7 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.waitForIdle()
         val pressed = captureHost("semantic-role-media-pressed", checkShortcutShadows = false)
         val pressArea = compose.onNodeWithTag("media-play-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("media pressed has its own role", pressed.getPixel(pressArea.left.toInt() + 5, pressArea.center.y.toInt()) == roles.mediaPressed.toArgb())
+        assertTrue("media pressed uses the shared selected surface", pressed.getPixel(pressArea.left.toInt() + 5, pressArea.center.y.toInt()) == roles.selectedSurface.toArgb())
         play.performTouchInput { cancel() }
         compose.mainClock.autoAdvance = true
     }
@@ -963,7 +964,7 @@ open class ContentPanelLightPrototypeRenderTest {
             assertTrue("no Ripple ink outside a rounded corner: $x/$y", held.getPixel(x, y) == baseline.getPixel(x, y))
         }
         val left = inner.left.toInt()+4; val right = inner.right.toInt()-5; val y = inner.center.y.toInt()
-        val wash = if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(233,233,233)
+        val wash = if (dark) android.graphics.Color.rgb(48,48,48) else android.graphics.Color.rgb(228,228,228)
         assertTrue("expanded Ripple is one uniform selected-color wash", held.getPixel(left,y) == wash && held.getPixel(right,y) == wash)
         node.performTouchInput { cancel() }
         compose.mainClock.advanceTimeBy(96)

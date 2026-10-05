@@ -133,9 +133,9 @@ private fun QuickControlButton(label: String, status: String, selected: Boolean,
     val pressed by interactions.collectIsPressedAsState()
     var action by remember { mutableIntStateOf(0) }
     val base = colors.shortcutBase
-    val idle = if (retainSelection && selected) colors.shortcutSelected else base
+    val idle = if (retainSelection && selected) colors.selectedSurface else base
     val feedback = rememberBoundaryPressFeedback(interactions, enabled && rippleEnabled, idle,
-        if (selected && retainSelection) base else colors.shortcutSelected)
+        if (selected && retainSelection) base else colors.selectedSurface)
     Box(modifier.fillMaxWidth().sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(tag)
         .downwardSoftShadow(base, MaterialTheme.colorScheme.background.luminance() < .2f)
         .clip(RoundedCornerShape(12.dp)).then(feedback.touchCoordinates).then(feedback.pointerDownLatch)

@@ -80,6 +80,7 @@ open class SettingsSheetInteractionTest {
                         is ContentEvent.ShowMediaSourceSwitcherChanged -> state.value = state.value.copy(showMediaSourceSwitcher = event.value)
                         is ContentEvent.DockButtonCountChanged -> state.value = state.value.copy(dockButtonCount = event.value)
                         is ContentEvent.ShowActionFeedbackChanged -> state.value = state.value.copy(showActionFeedback = event.value)
+                        is ContentEvent.UiOpacityChanged -> state.value = state.value.copy(uiOpacity = event.value)
                         else -> Unit
                     }
                 }, Modifier.testTag("settings-native-root"))
@@ -91,6 +92,7 @@ open class SettingsSheetInteractionTest {
 
     @Test fun entryAndExitKeepTheClipFixedAndNeverPaintOverDock() {
         mount()
+        val media = bounds("media-card")
         val dock = bounds("floating-dock")
         val original = capture("before-settings")
         compose.mainClock.autoAdvance = false
@@ -99,7 +101,9 @@ open class SettingsSheetInteractionTest {
             compose.mainClock.advanceTimeBy(elapsed)
             val host = bounds("settings-sheet-host")
             assertEquals(bounds("top-bar").bottom, host.top, 1f)
-            assertEquals(dock.top, host.bottom, 1f)
+            assertEquals(media.bottom, host.bottom, 1f)
+            assertEquals(dock.left, host.left, 1f)
+            assertEquals(dock.right, host.right, 1f)
             assertDockPixels(original, capture("entry-$elapsed"), dock)
         }
         compose.onNodeWithTag("settings-sheet").assertIsDisplayed()
@@ -241,7 +245,15 @@ open class SettingsSheetInteractionTest {
                 useUnmergedTree = true,
             ).assertDoesNotExist()
         }
-        assertTrue("the menu keeps enough width for the detail column", bounds("settings-menu").width <= 192f * density + 1f)
+        compose.onNodeWithTag("settings-title").assertTextEquals("设置")
+        compose.onNodeWithTag("settings-gesture-bar").assertExists()
+        compose.onNodeWithTag("settings-header-divider").assertExists()
+        compose.onNodeWithTag("settings-menu-divider").assertExists()
+        compose.onNodeWithTag("settings-menu-Interaction").performClick()
+        compose.onNodeWithTag("settings-option-界面透明度-60%").performScrollTo().performClick()
+        assertEquals(.6f, state.value.uiOpacity, .001f)
+        compose.onNodeWithTag("settings-option-界面透明度-20%").assertExists()
+        assertTrue("the menu keeps enough width for the detail column", bounds("settings-menu").width <= 160f * density + 1f)
     }
 
     @Test fun preferenceControlsHaveLargeTouchTargetsAndDoNotExposeShortcutActions() {

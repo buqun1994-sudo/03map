@@ -276,6 +276,22 @@ open class QuickControlsNativeTest {
         compose.mainClock.autoAdvance = true
     }
 
+    @Test fun ordinaryToggleSelectionUsesSharedSurfaceForAutoAndRearControls() {
+        compose.runOnIdle {
+            state.value = state.value.copy(controls = state.value.controls + mapOf(
+                ControlId.Wiper to ControlState(actual = ControlId.Wiper.automaticLevel),
+                ControlId.RearWiper to ControlState(actual = 1),
+                ControlId.RearWash to ControlState(actual = 1),
+            ))
+        }
+        mountPanel()
+        val selected = if (dark) Color(0xFF303030) else Color(0xFFE4E4E4)
+        for (tag in listOf("shortcut-AutoWiper", "control-RearWiper", "control-RearWash")) {
+            compose.onNodeWithTag(tag).assertIsSelected()
+                .assert(SemanticsMatcher.expectValue(ControlFill, selected.value.toLong()))
+        }
+    }
+
     @Test fun dockSamePointerAdjustsOneDraftAndPendingPreservesTheFadeTail() {
         compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
             (ControlId.Wiper to ControlState(actual = 1, rememberedLevel = 1))) }

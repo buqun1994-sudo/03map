@@ -43,7 +43,7 @@ class ContentPreferenceContractTest {
             val expected = valuesOf(original)
             ContentPreferenceStore(app).save(original)
             assertStoredValues(expected, "round trip $index")
-            assertEquals(2, preferences.getInt(VERSION, -1))
+            assertEquals(3, preferences.getInt(VERSION, -1))
             val loaded = freshLoad()
             assertValues(expected, loaded, "round trip $index")
             assertLegacyValues(original, loaded, "round trip $index")
@@ -84,8 +84,8 @@ class ContentPreferenceContractTest {
             assertEquals("load must not eagerly rewrite v1", before, preferences.all)
 
             ContentPreferenceStore(app).save(migrated)
-            assertEquals(2, preferences.getInt(VERSION, -1))
-            assertStoredValues(expected, "v1 saved as v2")
+            assertEquals(3, preferences.getInt(VERSION, -1))
+            assertStoredValues(expected, "v1 saved as v3")
             val reloaded = freshLoad()
             assertValues(expected, reloaded, "v1 after migration save")
             assertLegacyValues(legacy, reloaded, "v1 after migration save")
@@ -214,6 +214,7 @@ class ContentPreferenceContractTest {
         showMediaSourceSwitcher = false
         dockButtonCount = 3
         showActionFeedback = false
+        uiOpacity = .2f
         pageIndex = 0
         controlIndex = 1
         val dockDefaults = ContentRegistry.defaultDockItems()
@@ -237,6 +238,7 @@ class ContentPreferenceContractTest {
         "media_show_source_switcher" to state.showMediaSourceSwitcher,
         DOCK_COUNT to state.dockButtonCount,
         "interaction_show_action_feedback" to state.showActionFeedback,
+        OPACITY to state.uiOpacity,
     )
 
     private fun assertValues(expected: Map<String, Any>, actual: ContentState, context: String) {
@@ -281,6 +283,9 @@ class ContentPreferenceContractTest {
             { state, value -> state.lyricsLineSpacing = value as Int }),
         NumericPreference(DOCK_COUNT, listOf(3, 4, 5, 6), listOf(Int.MIN_VALUE, -1, 0, 2, 7, Int.MAX_VALUE),
             { state, value -> state.dockButtonCount = value as Int }),
+        NumericPreference(OPACITY, listOf(.20f, .5f, 1.0f),
+            listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, -Float.MAX_VALUE, -1f, 0f, .19f, 1.01f, Float.MAX_VALUE),
+            { state, value -> state.uiOpacity = value as Float }),
     )
 
     private val storedValues = listOf<Any>("unknown-id", true, 7, 7L, 7f, setOf("unknown-id"))
@@ -293,6 +298,7 @@ class ContentPreferenceContractTest {
         const val FONT_SCALE = "lyrics_font_scale"
         const val LINE_SPACING = "lyrics_line_spacing"
         const val DOCK_COUNT = "dock_button_count"
+        const val OPACITY = "ui_opacity"
 
         val DEFAULTS: Map<String, Any> = linkedMapOf(
             "top_bar_show_weekday" to true,
@@ -308,6 +314,7 @@ class ContentPreferenceContractTest {
             "media_show_source_switcher" to true,
             DOCK_COUNT to 6,
             "interaction_show_action_feedback" to true,
+            OPACITY to 1.0f,
         )
     }
 }

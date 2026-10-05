@@ -4,7 +4,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +20,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -54,13 +55,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * Preference-only settings surface. The vehicle, media and system controls stay on their
@@ -76,12 +77,12 @@ internal fun SettingsSheet(
     BoxWithConstraints(modifier.clipToBounds().testTag("settings-sheet-host")) {
         val compact = maxWidth < 520.dp
         val menuWidth = when {
-            maxWidth >= 720.dp -> 184.dp
-            maxWidth >= 520.dp -> 176.dp
-            else -> 128.dp
+            maxWidth >= 720.dp -> 152.dp
+            maxWidth >= 520.dp -> 144.dp
+            else -> 112.dp
         }
-        val contentGap = if (compact) 8.dp else 16.dp
-        val outerPadding = if (compact) 8.dp else 16.dp
+        val contentGap = if (compact) 8.dp else 12.dp
+        val outerPadding = if (compact) 8.dp else 12.dp
         val gestureZoneHeight = if (compact) 72.dp else 92.dp
         val density = LocalDensity.current
         val heightPx = with(density) { maxHeight.toPx() }
@@ -194,21 +195,37 @@ internal fun SettingsSheet(
                     translationY = if (dragging) dragPosition else offset.value
                 }.testTag("settings-sheet"),
                 color = LocalContentColors.current.sheetBase,
-                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                shape = RoundedCornerShape(18.dp),
                 tonalElevation = 2.dp,
             ) {
                 Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.fillMaxWidth().then(gestureBand), contentAlignment = Alignment.Center) {
-                        Box(Modifier.width(if (compact) 52.dp else 68.dp).height(5.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .42f)))
+                    Box(Modifier.fillMaxWidth().then(gestureBand)) {
+                        Text(
+                            "设置",
+                            modifier = Modifier.align(Alignment.Center).testTag("settings-title"),
+                            style = settingsTextStyle(if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall, 26f),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Box(
+                            Modifier.align(Alignment.TopCenter).padding(top = if (compact) 10.dp else 14.dp)
+                                .width(if (compact) 52.dp else 68.dp).height(5.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .42f))
+                                .testTag("settings-gesture-bar"),
+                        )
                     }
+                    Box(Modifier.fillMaxWidth().height(1.dp)
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = .55f))
+                        .testTag("settings-header-divider"))
                     Row(
                         Modifier.fillMaxSize().padding(start = outerPadding, end = outerPadding, bottom = outerPadding),
                         horizontalArrangement = Arrangement.spacedBy(contentGap),
                     ) {
                         SettingsMenu(state.settingsSection, currentEvent, compact,
                             Modifier.width(menuWidth).fillMaxHeight())
+                        Box(Modifier.fillMaxHeight().width(1.dp)
+                            .background(MaterialTheme.colorScheme.outline.copy(alpha = .5f))
+                            .testTag("settings-menu-divider"))
                         key(state.settingsSection) {
                             SettingsDetail(state, currentEvent,
                                 Modifier.weight(1f).fillMaxHeight(), compact)
@@ -229,7 +246,7 @@ private fun SettingsMenu(
 ) {
     val colors = LocalContentColors.current
     Column(
-        modifier.testTag("settings-menu").verticalScroll(rememberScrollState()),
+        modifier.testTag("settings-menu").selectableGroup().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
     ) {
         SettingsSection.entries.forEach { section ->
@@ -239,9 +256,9 @@ private fun SettingsMenu(
                     .fillMaxWidth()
                     .heightIn(min = settingsMinimumSize(if (compact) 44.dp else 64.dp, 72f))
                     .clip(RoundedCornerShape(if (compact) 12.dp else 16.dp))
-                    .background(if (active) colors.shortcutSelected else Color.Transparent)
+                    .background(if (active) colors.selectedSurface else Color.Transparent)
                     .testTag("settings-menu-${section.name}")
-                    .clickable(role = Role.Button) { onEvent(ContentEvent.SettingsSectionSelected(section)) },
+                    .selectable(selected = active, role = Role.RadioButton) { onEvent(ContentEvent.SettingsSectionSelected(section)) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -271,11 +288,6 @@ private fun SettingsDetail(
             .padding(end = if (compact) 4.dp else 12.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
     ) {
-        Text(state.settingsSection.label,
-            style = settingsTextStyle(if (compact) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium, 30f),
-            modifier = Modifier.padding(top = 2.dp))
-        Text(state.settingsSection.description, style = settingsTextStyle(MaterialTheme.typography.bodyLarge, 16f),
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
         when (state.settingsSection) {
             SettingsSection.TopBar -> TopBarSettings(state, onEvent)
             SettingsSection.Lyrics -> LyricsSettings(state, onEvent)
@@ -354,6 +366,11 @@ private fun LayoutSettings(state: ContentUiState, onEvent: (ContentEvent) -> Uni
 @Composable
 private fun InteractionSettings(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
     SettingsGroup {
+        val opacityOptions = listOf("20%", "40%", "60%", "80%", "100%")
+        val opacityLabel = "${((state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f) * 100f).roundToInt()}%"
+        SettingsOptionRow("界面透明度", "调整内容区整体不透明度，最低 20%", opacityLabel, opacityOptions) { value ->
+            onEvent(ContentEvent.UiOpacityChanged(value.removeSuffix("%").toFloat() / 100f))
+        }
         SettingsSwitchRow("显示操作结果提示", "操作失败或状态未确认时显示提示", state.showActionFeedback) {
             onEvent(ContentEvent.ShowActionFeedbackChanged(it))
         }
@@ -382,9 +399,10 @@ private fun SettingsSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val colors = LocalContentColors.current
         val row = Modifier.fillMaxWidth().heightIn(min = settingsMinimumSize(78.dp, 88f))
             .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .54f))
+            .background(if (checked) colors.selectedSurface else colors.shortcutBase)
             .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
             .semantics(mergeDescendants = true) {
                 contentDescription = title
@@ -415,14 +433,15 @@ private fun SettingsOptionRow(
     options: List<String>,
     onSelected: (String) -> Unit,
 ) {
+    val colors = LocalContentColors.current
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .54f))
+            .background(colors.shortcutBase)
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         SettingsText(title, summary)
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        BoxWithConstraints(Modifier.fillMaxWidth().selectableGroup()) {
             val minimumColumn = settingsMinimumSize(64.dp, 64f)
             val columns = ((maxWidth + 8.dp) / (minimumColumn + 8.dp)).toInt().coerceIn(1, options.size)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -433,14 +452,14 @@ private fun SettingsOptionRow(
                             Surface(
                                 Modifier.weight(1f).heightIn(min = settingsMinimumSize(56.dp, 64f))
                                     .testTag("settings-option-${title}-${option}")
-                                    .clickable(role = Role.RadioButton) { onSelected(option) }
-                                    .semantics { this.selected = active },
+                                    .selectable(selected = active, role = Role.RadioButton) { onSelected(option) },
+
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                color = if (active) colors.selectedSurface else colors.shortcutBase,
                             ) {
                                 Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
                                     Text(option, style = settingsTextStyle(MaterialTheme.typography.titleMedium, 22f),
-                                        color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                        color = MaterialTheme.colorScheme.onSurface)
                                 }
                             }
                         }

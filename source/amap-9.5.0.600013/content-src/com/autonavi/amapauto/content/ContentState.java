@@ -31,6 +31,7 @@ public final class ContentState {
     public boolean showMediaSourceSwitcher = true;
     public int dockButtonCount = 6;
     public boolean showActionFeedback = true;
+    public float uiOpacity = 1.0f;
     public long nowMillis;
     public boolean vehicleDataAvailable;
     public boolean vehiclePreview;
@@ -173,6 +174,7 @@ public final class ContentState {
         copy.showMediaSourceSwitcher = showMediaSourceSwitcher;
         copy.dockButtonCount = dockButtonCount;
         copy.showActionFeedback = showActionFeedback;
+        copy.uiOpacity = uiOpacity;
         copy.nowMillis = nowMillis;
         copy.vehicleDataAvailable = vehicleDataAvailable;
         copy.vehiclePreview = vehiclePreview;

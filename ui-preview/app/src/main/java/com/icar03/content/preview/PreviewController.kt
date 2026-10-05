@@ -50,6 +50,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.ShowMediaSourceSwitcherChanged -> update { it.copy(showMediaSourceSwitcher = event.value) }
             is ContentEvent.DockButtonCountChanged -> update { it.copy(dockButtonCount = event.value.coerceIn(3, 6)) }
             is ContentEvent.ShowActionFeedbackChanged -> update { it.copy(showActionFeedback = event.value, message = if (event.value) it.message else null) }
+             is ContentEvent.UiOpacityChanged -> update { it.copy(uiOpacity = if (event.value.isFinite()) event.value.coerceIn(.20f, 1.0f) else 1.0f) }
             ContentEvent.OpenScenarios -> update { it.copy(scenariosOpen = true, sourcesOpen = false) }
             ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false, settingsOpen = false) }
             is ContentEvent.ControlTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.nextLevel(control.actual) }

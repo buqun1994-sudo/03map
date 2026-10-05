@@ -138,6 +138,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             lyricsHighlight = state.lyricsHighlight, showAmbientArtwork = state.showAmbientArtwork,
             showMediaSourceSwitcher = state.showMediaSourceSwitcher, dockButtonCount = state.dockButtonCount,
             showActionFeedback = state.showActionFeedback,
+             uiOpacity = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f,
             temperature = if (realVehicle && state.temperatureC.isFinite()) "${format(state.temperatureC)}°C" else "--",
             time = "--:--", weekday = "",
             range = if (realVehicle && state.rangeRaw >= 0) state.rangeRaw.toString() else "--", rangeUnit = "km",
@@ -224,7 +225,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.lyricsLineSpacing == b.lyricsLineSpacing && a.lyricsSpeakerLayout == b.lyricsSpeakerLayout &&
             a.lyricsHighlight == b.lyricsHighlight && a.showAmbientArtwork == b.showAmbientArtwork &&
             a.showMediaSourceSwitcher == b.showMediaSourceSwitcher && a.dockButtonCount == b.dockButtonCount &&
-            a.showActionFeedback == b.showActionFeedback &&
+            a.showActionFeedback == b.showActionFeedback && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
             a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
             a.chargeState == b.chargeState && a.chargePowerKw.toBits() == b.chargePowerKw.toBits() && a.chargeRemainingMinutes == b.chargeRemainingMinutes &&

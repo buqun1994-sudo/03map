@@ -1,10 +1,10 @@
-## 当前正式内容区候选（2026-10-05，源码、回归、签名包与最小车机运行通过）
+## 当前正式内容区候选（2026-10-05，源码、回归、签名包通过；车机本轮未发现）
 
-设置偏好、歌词可见性、蓝牙歌词有限校时和内容区并行改动已在正式源码主链合并到同一候选。设置页只保留13项呈现偏好，左侧菜单改为六个居中标题并按车机密度适配；车辆状态、车控、音量、播放和来源选择继续由快捷页或媒体卡拥有。蓝牙时间线使用事件与位置证据分离、同值短窗口去重和有限连续校时；可见性门禁不再把窗口失焦当作歌词不可见。
+设置偏好、歌词可见性、蓝牙歌词有限校时和内容区并行改动已在正式源码主链合并到同一候选。设置页只保留14项呈现偏好，左侧菜单改为六个居中标题并按车机密度适配；车辆状态、车控、音量、播放和来源选择继续由快捷页或媒体卡拥有。蓝牙时间线使用事件与位置证据分离、同值短窗口去重和有限连续校时；可见性门禁不再把窗口失焦当作歌词不可见。
 
-正式源码前后指纹为 `628005fe4013d1edb7a4e51223631d8539b4d7510cc95cacefbc42f1e23da545`。签名候选 [signed.apk](<../apk-work/9.5.0.600013/source-build.YWEBPc/signed.apk>) SHA-256 为 `9401a01ae85aeca22d6874116c7d461b364fbc06d2f48f8145210debba56e82d`；[包级报告](<../apk-work/9.5.0.600013/host-package-test.epJrVc/report.json>)、UI／运行时／整合验证分别见[validation.pNhAq2](<../apk-work/validation.pNhAq2/report.json>)、[validation.HDemGM](<../apk-work/validation.HDemGM/report.json>)和[validation.nmHMzK](<../apk-work/validation.nmHMzK/report.json>)，均通过。
+正式源码前后指纹为 `61128186fddc82fa3f287193d167cdca769b005452711cccc7eceea4397c2537`。签名候选 [signed.apk](<../apk-work/9.5.0.600013/source-build.W7sVxL/signed.apk>) SHA-256 为 `13541c15df6688efaf4d5d9ce091ebb1934ff8124634bf3786bc6ecee6e83155`；[包级报告](<../apk-work/9.5.0.600013/host-package-test.uuKqit/report.json>)、源码与整合验证见[validation.QptEfD](<../apk-work/validation.QptEfD/report.json>)，均通过。
 
-该候选已在 `S56_HQX / SDK 28 / 1920×1080 / 141dpi` 上使用 `adb install -r` 覆盖安装，启动、设置打开／关闭、进程和日志 smoke 通过；[车机运行报告](<../.tmp/settings-device-700i8dx5/runtime-menu-refined/runtime-report.json>)无 `FATAL EXCEPTION`。尚未用真实蓝牙逐字歌词逐帧播放验证校时效果，也未完成长拖、详情滚动和13项偏好逐项重启保持；这些是明确的后续人工验收。
+本轮按发现脚本扫描253个地址的TCP 5555，未发现 `S56_HQX / SDK 28`，因此未安装或启动；长拖、详情滚动、14项偏好逐项重启保持及实机呈现仍需现场人工验收。
 ## 歌词失焦可见性修复（2026-10-05，隔离回归记录；当前候选状态见上节）
 
 歌词呈现门禁已从窗口焦点拆出，正式 `LyricsBodyTransition.rememberLyricVisibility()` 只依据宿主 `STARTED`、当前歌词页、View 附着、窗口 `VISIBLE` 和 `isShown`；API28 通过 `OnPreDrawListener` 采样真实可见性，失焦的新录音、重挂和播放继续准备／采样，窗口／祖先／页面真正隐藏时停工，恢复后重新工作。隔离 `f3e2ccf` 验证中 `LyricVisibilityTest` API28/34 共12项通过，项目文档、Skills、代码地图和编译检查通过；详细 owner 与边界见[失焦可见性修复记录](<testing/歌词失焦可见性修复验证记录-20261005.md>)。隔离阶段未打包／安装；当前候选已包含修复并完成最小启动／设置开关 smoke，歌词逐帧效果仍待人工播放确认。

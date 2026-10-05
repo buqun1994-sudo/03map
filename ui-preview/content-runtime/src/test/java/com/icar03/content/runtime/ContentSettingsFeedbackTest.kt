@@ -110,6 +110,7 @@ class ContentSettingsFeedbackTest {
         binding.dispatch(ContentEvent.ShowAmbientArtworkChanged(false))
         binding.dispatch(ContentEvent.ShowMediaSourceSwitcherChanged(false))
         binding.dispatch(ContentEvent.DockButtonCountChanged(3))
+        binding.dispatch(ContentEvent.UiOpacityChanged(.6f))
         binding.dispatch(ContentEvent.ShowActionFeedbackChanged(false))
         assertTrue(binding.state.value.settingsOpen)
         assertEquals(showWeekday, binding.state.value.showWeekday)
@@ -124,9 +125,11 @@ class ContentSettingsFeedbackTest {
         assertFalse(binding.state.value.showAmbientArtwork)
         assertFalse(binding.state.value.showMediaSourceSwitcher)
         assertEquals(3, binding.state.value.dockButtonCount)
+        assertEquals(.6f, binding.state.value.uiOpacity, .001f)
         assertFalse(binding.state.value.showActionFeedback)
         assertEquals(showWeekday, fixture.store.snapshot().showWeekday)
         assertEquals(showSeconds, fixture.store.snapshot().showSeconds)
+        assertEquals(.6f, fixture.store.snapshot().uiOpacity, .001f)
         val persisted = ContentState()
         ContentPreferenceStore(RuntimeEnvironment.getApplication()).load(persisted)
         assertEquals(showWeekday, persisted.showWeekday)
@@ -141,6 +144,7 @@ class ContentSettingsFeedbackTest {
         assertFalse(persisted.showAmbientArtwork)
         assertFalse(persisted.showMediaSourceSwitcher)
         assertEquals(3, persisted.dockButtonCount)
+        assertEquals(.6f, persisted.uiOpacity, .001f)
         assertFalse(persisted.showActionFeedback)
     }
 

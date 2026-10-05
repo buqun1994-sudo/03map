@@ -3496,7 +3496,7 @@
       "startFrame": "",
       "endFrame": "",
       "states": "front-wiper:automatic-switch:day",
-      "deployedSha256": "4298b1564a8e73a6d405ab44e989b9718ecc24c70f8f803216e501d573e89925",
+      "deployedSha256": "a6317ec9a6252cf0225b7479938d2ea3dd532bce33a80f44933892a69ad23203",
       "textNormalization": "Project-composed switch glyph: original windshield path plus original OEM circular A path; only A group transform and theme fillColor adapted",
       "intrinsicWidth": "48.0dp",
       "intrinsicHeight": "48.0dp",
@@ -3515,10 +3515,10 @@
           "decodedPath": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_skin_stwh_heat_auto_0_day.xml",
           "pathIndex": 0,
           "groupTransform": {
-            "scaleX": 0.5,
-            "scaleY": 0.5,
-            "translateX": 21.79775,
-            "translateY": -14.15
+            "scaleX": 1,
+            "scaleY": 1,
+            "translateX": 2.5955,
+            "translateY": 0.7
           }
         }
       ],
@@ -3527,7 +3527,7 @@
         "enabledByConsumer": "#3FA9FF"
       },
       "oemOwner": "Project ordinary AUTO-switch composition; no independent OEM wiper AUTO icon/animation owner found",
-      "audit": "Circular A copied from registered OEM steering AUTO icon, placed above/right of windshield; AUTO remains static Vector with ordinary switch press micro-motion."
+      "audit": "Circular A copied from registered OEM steering AUTO icon, enlarged and placed at the lower-right of the windshield; AUTO remains static Vector with ordinary switch press micro-motion."
     },
     {
       "destination": "res/drawable/content_oem_ico_wiper_auto_night.xml",
@@ -3546,7 +3546,7 @@
       "startFrame": "",
       "endFrame": "",
       "states": "front-wiper:automatic-switch:night",
-      "deployedSha256": "0d59e603dd376a37faab6945470aafed625c72619b6c7a4f8d57d7731775d15b",
+      "deployedSha256": "7413d5776dc9149a1f4949af40de07bff9b0aeff927f272d42f62f8ad24337f7",
       "textNormalization": "Project-composed switch glyph: original windshield path plus original OEM circular A path; only A group transform and theme fillColor adapted",
       "intrinsicWidth": "48.0dp",
       "intrinsicHeight": "48.0dp",
@@ -3565,10 +3565,10 @@
           "decodedPath": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_skin_stwh_heat_auto_0_day.xml",
           "pathIndex": 0,
           "groupTransform": {
-            "scaleX": 0.5,
-            "scaleY": 0.5,
-            "translateX": 21.79775,
-            "translateY": -14.15
+            "scaleX": 1,
+            "scaleY": 1,
+            "translateX": 2.5955,
+            "translateY": 0.7
           }
         }
       ],
@@ -3577,7 +3577,7 @@
         "enabledByConsumer": "#3FA9FF"
       },
       "oemOwner": "Project ordinary AUTO-switch composition; no independent OEM wiper AUTO icon/animation owner found",
-      "audit": "Circular A copied from registered OEM steering AUTO icon, placed above/right of windshield; AUTO remains static Vector with ordinary switch press micro-motion."
+      "audit": "Circular A copied from registered OEM steering AUTO icon, enlarged and placed at the lower-right of the windshield; AUTO remains static Vector with ordinary switch press micro-motion."
     },
     {
       "destination": "res/drawable/content_oem_ico_wash_rear.xml",

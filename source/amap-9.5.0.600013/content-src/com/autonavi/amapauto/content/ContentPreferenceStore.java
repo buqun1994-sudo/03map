@@ -7,7 +7,7 @@ import android.content.SharedPreferences;
 
 public final class ContentPreferenceStore {
     private static final String PREFERENCES_NAME = "content_preferences_v1";
-    private static final int PREFERENCES_VERSION = 2;
+    private static final int PREFERENCES_VERSION = 3;
     private static final String KEY_PREFERENCES_VERSION = "preferences_version";
     private static final String KEY_SHOW_WEEKDAY = "top_bar_show_weekday";
     private static final String KEY_SHOW_SECONDS = "top_bar_show_seconds";
@@ -22,6 +22,7 @@ public final class ContentPreferenceStore {
     private static final String KEY_SHOW_MEDIA_SOURCE_SWITCHER = "media_show_source_switcher";
     private static final String KEY_DOCK_BUTTON_COUNT = "dock_button_count";
     private static final String KEY_SHOW_ACTION_FEEDBACK = "interaction_show_action_feedback";
+    private static final String KEY_UI_OPACITY = "ui_opacity";
     private static final String KEY_PAGE_ID = "current_page_id";
     private static final String KEY_CONTROL_ID = "current_control_id";
     private static final String KEY_DOCK_SLOT_PREFIX = "dock_slot_";
@@ -48,12 +49,14 @@ public final class ContentPreferenceStore {
         state.showMediaSourceSwitcher = readBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, true);
         state.dockButtonCount = clampDockButtonCount(readInt(KEY_DOCK_BUTTON_COUNT, 6));
         state.showActionFeedback = readBoolean(KEY_SHOW_ACTION_FEEDBACK, true);
+        state.uiOpacity = clampUiOpacity(readFloat(KEY_UI_OPACITY, 1.0f));
         // Version 1 only knew the weekday/seconds fields; all new fields have safe defaults.
         // Writing the version on the next preference change completes the migration lazily.
         if (version > PREFERENCES_VERSION) {
             state.lyricsFontScale = 1.0f;
             state.lyricsLineSpacing = 1;
             state.dockButtonCount = 6;
+            state.uiOpacity = 1.0f;
         }
         String savedPageId = readString(KEY_PAGE_ID, ContentRegistry.Pages.LYRICS);
         state.pageIndex = indexOf(ContentRegistry.visiblePageIds(), savedPageId, 1);
@@ -82,6 +85,7 @@ public final class ContentPreferenceStore {
         editor.putBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, state.showMediaSourceSwitcher);
         editor.putInt(KEY_DOCK_BUTTON_COUNT, clampDockButtonCount(state.dockButtonCount));
         editor.putBoolean(KEY_SHOW_ACTION_FEEDBACK, state.showActionFeedback);
+        editor.putFloat(KEY_UI_OPACITY, clampUiOpacity(state.uiOpacity));
         String[] pageIds = ContentRegistry.visiblePageIds();
         if (state.pageIndex >= 0 && state.pageIndex < pageIds.length) {
             editor.putString(KEY_PAGE_ID, pageIds[state.pageIndex]);
@@ -130,6 +134,10 @@ public final class ContentPreferenceStore {
 
     private float clampFontScale(float value) {
         return Float.isFinite(value) && value >= 0.85f && value <= 1.15f ? value : 1.0f;
+    }
+
+    private float clampUiOpacity(float value) {
+        return Float.isFinite(value) && value >= 0.20f && value <= 1.0f ? value : 1.0f;
     }
 
     private int clampLineSpacing(int value) {
