@@ -119,8 +119,8 @@ internal fun DynamicIconSwitch(label: String, status: String, selected: Boolean,
 /** A normal toggle differs only by retaining the selected surface after its Ripple. */
 @Composable
 internal fun OrdinaryToggle(label: String, status: String, selected: Boolean, enabled: Boolean,
-    tag: String, modifier: Modifier = Modifier, onClick: () -> Unit, icon: @Composable (Modifier) -> Unit) {
-    QuickControlButton(label, status, selected, enabled, true, true,
+    rippleEnabled: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit, icon: @Composable (Modifier) -> Unit) {
+    QuickControlButton(label, status, selected, enabled, rippleEnabled, true,
         QuickControlType.OrdinaryToggle, tag, modifier, onClick, icon)
 }
 
@@ -154,6 +154,8 @@ private fun QuickControlButton(label: String, status: String, selected: Boolean,
     }
 }
 
+internal val LocalQuickControlInteractionEnabled = androidx.compose.runtime.staticCompositionLocalOf { true }
+
 /** Immediately invalidated from pause/focus callbacks, even without a recomposer frame. */
 internal class QuickControlGestureGate {
     var enabled by mutableStateOf(false)
@@ -171,7 +173,7 @@ internal fun rememberQuickControlGestureGate(available: Boolean, onLifecycleCanc
     val view = LocalView.current
     val cancel by rememberUpdatedState(onCancel)
     val lifecycleCancel by rememberUpdatedState(onLifecycleCancel ?: onCancel)
-    val availableNow by rememberUpdatedState(available)
+    val availableNow by rememberUpdatedState(available && LocalQuickControlInteractionEnabled.current)
     val pageVisible by rememberUpdatedState(LocalIconVisible.current)
     var resumed by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }

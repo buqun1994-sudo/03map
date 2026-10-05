@@ -637,8 +637,8 @@ open class ContentPanelLightPrototypeRenderTest {
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
             previewMode = false,
             sourcesOpen = true,
-            placeholderSwitches = mapOf(ShortcutId.RearWiper to true),
             controls = previewState().controls +
+                 (ControlId.RearWiper to ControlState(actual = 1)) +
                 (ControlId.Ventilation to ControlState(actual = 2)) +
                 (ControlId.Heating to ControlState(actual = 0)),
         ))
@@ -666,7 +666,7 @@ open class ContentPanelLightPrototypeRenderTest {
         }
         assertTrue("shortcut base has its own role", sample("control-Heating") == roles.shortcutBase.toArgb())
         assertTrue("dynamic selected icon keeps shortcut base", sample("control-Ventilation") == roles.shortcutBase.toArgb())
-        assertTrue("ordinary toggle selected has its own role", sample("shortcut-RearWiper") == roles.shortcutSelected.toArgb())
+        assertTrue("ordinary toggle selected has its own role", sample("control-RearWiper") == roles.shortcutSelected.toArgb())
         assertTrue("Dock base has its own role", sample("dock-Lock") == roles.dockBase.toArgb())
         assertTrue("media base has its own role", frame.getPixel(
             compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot.center.x.toInt(),
@@ -997,6 +997,7 @@ open class ContentPanelLightPrototypeRenderTest {
                 ControlId.SteeringHeat -> 1
                 ControlId.Lock -> 0
                 ControlId.Wiper -> 1
+                 ControlId.RearWiper, ControlId.RearWash -> 0
             })
         }))
         mountInteractionState(state)
@@ -1040,7 +1041,7 @@ open class ContentPanelLightPrototypeRenderTest {
             ControlId.PassengerHeating -> passenger
             ControlId.Ventilation -> ventilation
             ControlId.SteeringHeat -> steering
-            ControlId.Massage, ControlId.Wiper -> ControlState(actual = -1, available = false, known = false)
+            ControlId.Massage, ControlId.Wiper, ControlId.RearWiper, ControlId.RearWash -> ControlState(actual = -1, available = false, known = false)
         } }
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
             previewMode = false,

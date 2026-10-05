@@ -104,6 +104,13 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         val realMedia = state.mediaDataAvailable && !state.mediaPreview
         val controls = ControlId.entries.associateWith { id ->
             val actual = state.controlLevel(id)
+            val readbackKnown = when (id) {
+                ControlId.Wiper -> state.wiperKnown
+                ControlId.RearWiper -> state.rearWiperKnown
+                ControlId.RearWash -> state.rearWashKnown
+                ControlId.Lock -> state.lockKnown
+                else -> state.seatControlsKnown
+            }
             val target = if (state.pendingVehicleCommand != id.id) null else {
                 if (id == ControlId.Lock) if (state.pendingLocked) 1 else 0
                 else state.pendingSeatLevel.takeIf(id::isLevel)
@@ -113,10 +120,9 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 target = target,
                 available = vehicleIdle && realVehicle && if (id == ControlId.Lock) {
                     state.lockKnown && capabilities.lock
-                } else (if (id == ControlId.Wiper) state.wiperKnown else state.seatControlsKnown) &&
-                    id.id in capabilities.writableSeatControls &&
+                } else readbackKnown && id.id in capabilities.writableSeatControls &&
                     (id.isLevel(actual) || id == ControlId.Massage && state.massageSwitchKnown && state.massageActive),
-                known = realVehicle && id.isLevel(actual),
+                known = realVehicle && readbackKnown && id.isLevel(actual),
                 rememberedLevel = state.rememberedLevel(id),
             )
         }
@@ -125,6 +131,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         return ContentUiState(
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
+            showWeekday = state.showWeekday, showSeconds = state.showSeconds,
             temperature = if (realVehicle && state.temperatureC.isFinite()) "${format(state.temperatureC)}°C" else "--",
             time = "--:--", weekday = "",
             range = if (realVehicle && state.rangeRaw >= 0) state.rangeRaw.toString() else "--", rangeUnit = "km",
@@ -138,7 +145,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 ContentState.CHARGE_COMPLETE -> "充电完成"
                 ContentState.CHARGE_CHARGING -> buildList {
                     if (state.chargeRemainingMinutes >= 0) add("剩余${state.chargeRemainingMinutes}分钟")
-                    if (state.chargePowerKw.isFinite() && state.chargePowerKw > 0) add("${String.format(locale, "%.1f", state.chargePowerKw)}kW")
+                    if (state.chargePowerKw.isFinite() && state.chargePowerKw > 0) add("充电功率 ${String.format(locale, "%.1f", state.chargePowerKw)}kW")
                 }.joinToString("·").ifEmpty { "充电中" }
                 else -> "充电状态待确认"
             },
@@ -204,6 +211,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
 
     private fun sameShellFacts(a: ContentState, b: ContentState): Boolean =
         a.themeMode == b.themeMode && a.pageIndex == b.pageIndex &&
+            a.showWeekday == b.showWeekday && a.showSeconds == b.showSeconds &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
             a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
             a.chargeState == b.chargeState && a.chargePowerKw.toBits() == b.chargePowerKw.toBits() && a.chargeRemainingMinutes == b.chargeRemainingMinutes &&
@@ -214,7 +222,9 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.passengerHeatingLevel == b.passengerHeatingLevel && a.passengerHeatingAutoKnown == b.passengerHeatingAutoKnown &&
             a.passengerHeatingAutoActive == b.passengerHeatingAutoActive && a.steeringHeatLevel == b.steeringHeatLevel &&
             a.massageLevel == b.massageLevel && a.massageSwitchKnown == b.massageSwitchKnown && a.massageActive == b.massageActive &&
-            a.wiperLevel == b.wiperLevel && a.wiperKnown == b.wiperKnown && a.rememberedControlLevels == b.rememberedControlLevels &&
+            a.wiperLevel == b.wiperLevel && a.wiperKnown == b.wiperKnown &&
+             a.rearWiperLevel == b.rearWiperLevel && a.rearWiperKnown == b.rearWiperKnown &&
+             a.rearWashLevel == b.rearWashLevel && a.rearWashKnown == b.rearWashKnown && a.rememberedControlLevels == b.rememberedControlLevels &&
             a.mediaDataAvailable == b.mediaDataAvailable && a.mediaPreview == b.mediaPreview && a.mediaSource == b.mediaSource &&
             a.pendingSource == b.pendingSource && a.mediaPlaying == b.mediaPlaying && a.mediaSongIdentity == b.mediaSongIdentity &&
             a.mediaRecordingKey == b.mediaRecordingKey && a.mediaTitle == b.mediaTitle && a.mediaArtist == b.mediaArtist &&

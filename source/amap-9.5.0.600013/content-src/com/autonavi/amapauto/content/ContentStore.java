@@ -14,6 +14,11 @@ import java.util.concurrent.Executors;
 public final class ContentStore {
     private static final long VEHICLE_COMMAND_TIMEOUT_MS = 6000L;
     private static final long MEDIA_FEEDBACK_TIMEOUT_MS = 6000L;
+    private static final int COMMAND_DOMAIN_NONE = 0;
+    private static final int COMMAND_DOMAIN_MEDIA_PLAYBACK = 1;
+    private static final int COMMAND_DOMAIN_MEDIA_NEXT = 2;
+    private static final int COMMAND_DOMAIN_MEDIA_SOURCE = 3;
+    private static final int COMMAND_DOMAIN_VEHICLE = 4;
 
     public interface Listener {
         void onContentStateChanged(ContentState state);
@@ -28,24 +33,21 @@ public final class ContentStore {
     private final Handler commandHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService mediaCommandExecutor = Executors.newSingleThreadExecutor();
     private Runnable commandTimeout;
-    private final Runnable mediaFeedbackTimeout = new Runnable() {
-        @Override
-        public void run() {
-            synchronized (ContentStore.this) {
-                if (state.mediaPlaybackTarget < 0) {
-                    return;
-                }
-                state.mediaPlaybackTarget = -1;
-                pendingMediaRequestId = 0L;
-                recordCommandResultLocked(false, "媒体播放状态未确认，请检查媒体会话");
-            }
-            publish();
-        }
-    };
+    private Runnable mediaFeedbackTimeout;
     private long nextVehicleRequestId;
     private long pendingVehicleRequestId;
+    private int pendingRearExpectedLevel = -1;
+    private long pendingRearDeadlineUptimeMs;
+    private boolean pendingRearWashActivationObserved;
     private long nextMediaRequestId;
     private long pendingMediaRequestId;
+    private long lateMediaRequestId;
+    private int lateMediaPlaybackTarget = -1;
+    private int lateMediaGeneration = -1;
+    private String lateMediaRecordingKey = "";
+    private boolean mediaPlaybackRetriedAfterTimeout;
+    private int commandResultDomain = COMMAND_DOMAIN_NONE;
+    private int pendingCommandDomain = COMMAND_DOMAIN_NONE;
     private long nextTrackRequestId;
     private long pendingNextTrackRequestId;
     private Runnable nextTrackTimeout;
@@ -173,14 +175,17 @@ public final class ContentStore {
     }
 
     public void destroy() {
+        Runnable mediaTimeout;
         synchronized (this) {
             destroyed = true;
             clearNextTrackPendingLocked();
+            mediaTimeout = mediaFeedbackTimeout;
+            mediaFeedbackTimeout = null;
         }
         commandHandler.removeCallbacks(advanceLyrics);
         if (lyricsPort != null) lyricsPort.stop();
         if (commandTimeout != null) commandHandler.removeCallbacks(commandTimeout);
-        commandHandler.removeCallbacks(mediaFeedbackTimeout);
+        if (mediaTimeout != null) commandHandler.removeCallbacks(mediaTimeout);
         if (sourceTimeout != null) commandHandler.removeCallbacks(sourceTimeout);
         mediaCommandExecutor.shutdownNow();
         vehiclePort.stop();
@@ -286,6 +291,12 @@ public final class ContentStore {
             state.locked = snapshot.locked;
             state.wiperLevel = snapshot.wiperKnown ? VehicleControl.Wiper.normalizeLevel(snapshot.wiperLevel) : -1;
             state.wiperKnown = state.wiperLevel >= 0;
+            state.rearWiperLevel = snapshot.rearWiperKnown
+                    ? VehicleControl.RearWiper.normalizeLevel(snapshot.rearWiperLevel) : -1;
+            state.rearWiperKnown = state.rearWiperLevel >= 0;
+            state.rearWashLevel = snapshot.rearWashKnown
+                    ? VehicleControl.RearWash.normalizeLevel(snapshot.rearWashLevel) : -1;
+            state.rearWashKnown = state.rearWashLevel >= 0;
             rememberManualReadbackLocked();
             if (state.pendingVehicleCommand.length() != 0) {
                 if (!snapshot.dataAvailable || snapshot.preview || !vehiclePort.isAvailable()) {
@@ -308,6 +319,10 @@ public final class ContentStore {
             ContentState previous = state.copy();
             state.mediaSourceWriteAvailable = !destroyed && mediaPort.isSourceAvailable();
             boolean newRecording = !snapshot.recordingKey().equals(state.mediaRecordingKey);
+            if (newRecording) {
+                clearLateMediaPlaybackLocked();
+                mediaPlaybackRetriedAfterTimeout = false;
+            }
             latestMedia = snapshot;
             state.mediaSongIdentity = snapshot.songIdentity;
             if (newRecording || !snapshot.hasSongMetadata() || !snapshot.dataAvailable
@@ -357,18 +372,7 @@ public final class ContentStore {
                     && state.pendingSource.equals(mediaSource)) {
                 finishSourceCommandLocked(true, "");
             }
-            if (state.mediaPlaybackTarget >= 0) {
-                if (!snapshot.playbackAvailable) {
-                    state.mediaPlaybackTarget = -1;
-                    pendingMediaRequestId = 0L;
-                    commandHandler.removeCallbacks(mediaFeedbackTimeout);
-                    recordCommandResultLocked(false, "媒体会话不可用，请稍后重试");
-                } else if (snapshot.playing == (state.mediaPlaybackTarget == 1)) {
-                    state.mediaPlaybackTarget = -1;
-                    pendingMediaRequestId = 0L;
-                    commandHandler.removeCallbacks(mediaFeedbackTimeout);
-                }
-            }
+            handleMediaPlaybackSnapshotLocked(snapshot, previous);
             changed = mediaFactsChangedLocked(previous);
             changed = alignLyricsLocked(changed) || changed;
         }
@@ -380,7 +384,65 @@ public final class ContentStore {
         }
     }
 
-    /** Binding leases suspend requests/timeline work while the content host is stopped. */
+    private void handleMediaPlaybackSnapshotLocked(ContentPorts.MediaSnapshot snapshot,
+            ContentState previous) {
+        if (pendingMediaRequestId != 0L && state.mediaPlaybackTarget >= 0) {
+            final long requestId = pendingMediaRequestId;
+            final boolean targetPlaying = state.mediaPlaybackTarget == 1;
+            if (!snapshot.playbackAvailable) {
+                finishMediaPlaybackLocked(requestId, false, "媒体会话不可用，请稍后重试", false);
+            } else if (!snapshot.preview && snapshot.playing == targetPlaying) {
+                finishMediaPlaybackLocked(requestId, true, "", false);
+            }
+            return;
+        }
+        if (lateMediaRequestId == 0L || !snapshot.dataAvailable || snapshot.preview
+                || !snapshot.playbackAvailable || snapshot.playing != (lateMediaPlaybackTarget == 1)
+                || !snapshot.recordingKey().equals(lateMediaRecordingKey)
+                || previous.mediaPlaying == snapshot.playing
+                || snapshot.generation < lateMediaGeneration) {
+            return;
+        }
+        lateMediaRequestId = 0L;
+        lateMediaPlaybackTarget = -1;
+        lateMediaGeneration = -1;
+        lateMediaRecordingKey = "";
+        recordCommandResultLocked(true, "", COMMAND_DOMAIN_MEDIA_PLAYBACK);
+    }
+
+    private void finishMediaPlaybackLocked(long requestId, boolean accepted, String message,
+            boolean retainLateConfirmation) {
+        if (pendingMediaRequestId != requestId || state.mediaPlaybackTarget < 0) return;
+        final int target = state.mediaPlaybackTarget;
+        cancelMediaFeedbackTimeoutLocked();
+        state.mediaPlaybackTarget = -1;
+        pendingMediaRequestId = 0L;
+        if (retainLateConfirmation && !mediaPlaybackRetriedAfterTimeout) {
+            lateMediaRequestId = requestId;
+            lateMediaPlaybackTarget = target;
+            lateMediaGeneration = state.mediaGeneration;
+            lateMediaRecordingKey = state.mediaRecordingKey;
+        } else {
+            clearLateMediaPlaybackLocked();
+        }
+        mediaPlaybackRetriedAfterTimeout = false;
+        recordCommandResultLocked(accepted, message, COMMAND_DOMAIN_MEDIA_PLAYBACK);
+    }
+
+    private void cancelMediaFeedbackTimeoutLocked() {
+        if (mediaFeedbackTimeout != null) {
+            commandHandler.removeCallbacks(mediaFeedbackTimeout);
+            mediaFeedbackTimeout = null;
+        }
+    }
+
+    private void clearLateMediaPlaybackLocked() {
+        lateMediaRequestId = 0L;
+        lateMediaPlaybackTarget = -1;
+        lateMediaGeneration = -1;
+        lateMediaRecordingKey = "";
+    }
+
     public void startLyrics() {
         boolean changed;
         synchronized (this) {
@@ -528,14 +590,17 @@ public final class ContentStore {
     }
 
     private boolean controlReadbackKnownLocked(VehicleControl control) {
-        return control == VehicleControl.Wiper ? state.wiperKnown : state.seatControlsKnown;
+        if (control == VehicleControl.Wiper) return state.wiperKnown;
+        if (control == VehicleControl.RearWiper) return state.rearWiperKnown;
+        if (control == VehicleControl.RearWash) return state.rearWashKnown;
+        return state.seatControlsKnown;
     }
 
     private void rememberManualReadbackLocked() {
         if (!state.vehicleDataAvailable || state.vehiclePreview || !vehiclePort.isAvailable()) return;
         java.util.Map<String, Integer> updated = null;
         for (VehicleControl control : VehicleControl.values()) {
-            if (control == VehicleControl.Lock || !controlReadbackKnownLocked(control)) continue;
+            if (control == VehicleControl.Lock || control.isRearWindow() || !controlReadbackKnownLocked(control)) continue;
             int actual = state.controlLevel(control);
             if (!control.isManualLevel(actual) || state.rememberedLevel(control) == actual) continue;
             if (updated == null) updated = new java.util.HashMap<>(state.getRememberedControlLevels());
@@ -548,6 +613,7 @@ public final class ContentStore {
     /** Seat click availability retains its existing cycle policy. Wiper has explicit intents. */
     public synchronized boolean isControlAvailable(String controlId) {
         VehicleControl control = VehicleControl.fromId(controlId);
+        if (control == VehicleControl.RearWash) return canTriggerRearWashLocked();
         if (control != VehicleControl.Wiper) return isControlCycleAvailable(controlId);
         if (canSetControlLevelLocked(controlId,
                 control.powerToggleLevel(state.controlLevel(control), state.rememberedLevel(control)))
@@ -591,11 +657,12 @@ public final class ContentStore {
 
     private boolean canSetControlLevelLocked(String controlId, int targetLevel) {
         VehicleControl control = VehicleControl.fromId(controlId);
-        if (control == null || control == VehicleControl.Lock
+        if (control == null || control == VehicleControl.Lock || control == VehicleControl.RearWash
                 || destroyed || state.pendingVehicleCommand.length() != 0
                 || !control.isLevel(targetLevel)
                 || !state.vehicleDataAvailable || state.vehiclePreview || !controlReadbackKnownLocked(control)
-                || !vehiclePort.isAvailable() || !vehiclePort.isControlAvailable(controlId)) return false;
+                || !vehiclePort.isAvailable() || !vehiclePort.isControlAvailable(controlId)
+                || control.isRearWindow() && !vehiclePort.isRearWindowControlAvailable(controlId)) return false;
         int actualLevel = state.controlLevel(control);
         if (actualLevel == targetLevel) return false;
         if (actualLevel < 0 && !(control == VehicleControl.Massage
@@ -650,7 +717,56 @@ public final class ContentStore {
         }
         boolean accepted;
         try {
-            accepted = vehiclePort.requestControlLevel(controlId, targetLevel, requestId);
+            VehicleControl control = VehicleControl.fromId(controlId);
+            if (control == VehicleControl.RearWiper) {
+                int expected;
+                long deadline;
+                synchronized (this) {
+                    if (destroyed || pendingVehicleRequestId != requestId) return;
+                    expected = pendingRearExpectedLevel;
+                    deadline = pendingRearDeadlineUptimeMs;
+                }
+                accepted = vehiclePort.requestRearWindow(controlId, expected, targetLevel, requestId, deadline);
+            } else {
+                accepted = vehiclePort.requestControlLevel(controlId, targetLevel, requestId);
+            }
+        } catch (RuntimeException failure) {
+            accepted = false;
+        }
+        if (!accepted) {
+            synchronized (this) {
+                if (pendingVehicleRequestId != requestId) return;
+                finishVehicleCommandLocked(false, "车控命令未发送，请检查车机状态");
+            }
+            publish();
+        }
+    }
+
+    private boolean canTriggerRearWashLocked() {
+        return !destroyed && state.pendingVehicleCommand.length() == 0
+                && state.vehicleDataAvailable && !state.vehiclePreview && state.rearWashKnown
+                && state.rearWashLevel == 0 && vehiclePort.isAvailable()
+                && vehiclePort.isRearWindowControlAvailable(VehicleControl.RearWash.getId());
+    }
+
+    /** Rear wash is an action, never a persistent on/off level or a remembered mode. */
+    public void triggerControl(String controlId) {
+        if (!VehicleControl.RearWash.getId().equals(controlId)) return;
+        long requestId;
+        long deadline;
+        synchronized (this) {
+            if (!canTriggerRearWashLocked()) return;
+            requestId = ++nextVehicleRequestId;
+            beginVehicleCommandLocked(controlId, 1, false, requestId);
+            deadline = pendingRearDeadlineUptimeMs;
+        }
+        publish();
+        synchronized (this) {
+            if (destroyed || pendingVehicleRequestId != requestId) return;
+        }
+        boolean accepted;
+        try {
+            accepted = vehiclePort.requestRearWindow(controlId, 0, 1, requestId, deadline);
         } catch (RuntimeException failure) {
             accepted = false;
         }
@@ -700,48 +816,74 @@ public final class ContentStore {
     public void toggleMediaPlayback() {
         final boolean nextPlaying;
         final long requestId;
+        final Runnable timeout;
         synchronized (this) {
             if (destroyed || !state.mediaPlaybackAvailable) {
                 return;
             }
             nextPlaying = state.mediaPlaybackTarget < 0
                     ? !state.mediaPlaying : state.mediaPlaybackTarget == 0;
-            state.mediaPlaybackTarget = nextPlaying ? 1 : 0;
             requestId = ++nextMediaRequestId;
+            cancelMediaFeedbackTimeoutLocked();
+            mediaPlaybackRetriedAfterTimeout = mediaPlaybackRetriedAfterTimeout
+                    || lateMediaRequestId != 0L;
+            clearLateMediaPlaybackLocked();
+            clearCommandResultIfOwnedLocked(COMMAND_DOMAIN_MEDIA_PLAYBACK);
+            state.mediaPlaybackTarget = nextPlaying ? 1 : 0;
             pendingMediaRequestId = requestId;
-            commandHandler.removeCallbacks(mediaFeedbackTimeout);
-            commandHandler.postDelayed(mediaFeedbackTimeout, MEDIA_FEEDBACK_TIMEOUT_MS);
+            timeout = new Runnable() {
+                @Override public void run() {
+                    synchronized (ContentStore.this) {
+                        if (destroyed || pendingMediaRequestId != requestId
+                                || state.mediaPlaybackTarget != (nextPlaying ? 1 : 0)) return;
+                        finishMediaPlaybackLocked(requestId, false,
+                                "媒体播放状态未确认，请检查媒体会话", true);
+                    }
+                    publish();
+                }
+            };
+            mediaFeedbackTimeout = timeout;
+            commandHandler.postDelayed(timeout, MEDIA_FEEDBACK_TIMEOUT_MS);
         }
         publish();
-        mediaCommandExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                boolean accepted;
-                try {
-                    accepted = mediaPort.requestPlayback(nextPlaying);
-                } catch (RuntimeException error) {
-                    accepted = false;
-                }
-                if (accepted) {
-                    return;
-                }
-                commandHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        synchronized (ContentStore.this) {
-                            if (destroyed || pendingMediaRequestId != requestId) {
-                                return;
-                            }
-                            state.mediaPlaybackTarget = -1;
-                            pendingMediaRequestId = 0L;
-                            commandHandler.removeCallbacks(mediaFeedbackTimeout);
-                            recordCommandResultLocked(false, "媒体播放命令未发送，请检查媒体会话");
-                        }
-                        publish();
+        try {
+            mediaCommandExecutor.execute(new Runnable() {
+                @Override public void run() {
+                    synchronized (ContentStore.this) {
+                        if (destroyed || pendingMediaRequestId != requestId
+                                || state.mediaPlaybackTarget != (nextPlaying ? 1 : 0)) return;
                     }
-                });
+                    boolean accepted;
+                    try {
+                        accepted = mediaPort.requestPlayback(nextPlaying);
+                    } catch (RuntimeException error) {
+                        accepted = false;
+                    }
+                    if (accepted) return;
+                    commandHandler.post(new Runnable() {
+                        @Override public void run() {
+                            synchronized (ContentStore.this) {
+                                if (destroyed || pendingMediaRequestId != requestId
+                                        || state.mediaPlaybackTarget != (nextPlaying ? 1 : 0)) {
+                                    return;
+                                }
+                                finishMediaPlaybackLocked(requestId, false,
+                                        "媒体播放命令未发送，请检查媒体会话", false);
+                            }
+                            publish();
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            synchronized (this) {
+                if (destroyed || pendingMediaRequestId != requestId
+                        || state.mediaPlaybackTarget != (nextPlaying ? 1 : 0)) return;
+                finishMediaPlaybackLocked(requestId, false,
+                        "媒体播放命令未发送，请检查媒体会话", false);
             }
-        });
+            publish();
+        }
     }
 
     public void nextMediaTrack() {
@@ -752,6 +894,7 @@ public final class ContentStore {
             }
             requestId = ++nextTrackRequestId;
             pendingNextTrackRequestId = requestId;
+            clearCommandResultIfOwnedLocked(COMMAND_DOMAIN_MEDIA_NEXT);
             state.mediaNextPending = true;
             if (nextTrackTimeout != null) commandHandler.removeCallbacks(nextTrackTimeout);
             nextTrackTimeout = new Runnable() {
@@ -759,7 +902,8 @@ public final class ContentStore {
                     synchronized (ContentStore.this) {
                         if (destroyed || pendingNextTrackRequestId != requestId) return;
                         clearNextTrackPendingLocked();
-                        recordCommandResultLocked(false, "下一首状态未确认，请检查媒体会话");
+                        recordCommandResultLocked(false, "下一首状态未确认，请检查媒体会话",
+                                COMMAND_DOMAIN_MEDIA_NEXT);
                     }
                     publish();
                 }
@@ -791,6 +935,8 @@ public final class ContentStore {
                     || selectedSource.equals(state.pendingSource)) return;
             requestId = ++nextSourceRequestId;
             pendingSourceRequestId = requestId;
+            clearCommandResultIfOwnedLocked(COMMAND_DOMAIN_MEDIA_SOURCE);
+            pendingCommandDomain = COMMAND_DOMAIN_MEDIA_SOURCE;
             state.pendingSource = selectedSource;
             state.commandStatus = ContentState.COMMAND_PENDING;
             state.commandMessage = "";
@@ -834,7 +980,7 @@ public final class ContentStore {
         sourceTimeout = null;
         state.pendingSource = "";
         pendingSourceRequestId = 0L;
-        recordCommandResultLocked(confirmed, message);
+        recordCommandResultLocked(confirmed, message, COMMAND_DOMAIN_MEDIA_SOURCE);
     }
 
     public void replaceDockItem(int slot, String itemId) {
@@ -868,7 +1014,7 @@ public final class ContentStore {
                 @Override
                 public void run() {
                     synchronized (ContentStore.this) {
-                        if (destroyed) return;
+                        if (destroyed || pendingNextTrackRequestId != requestId) return;
                     }
                     boolean accepted;
                     try {
@@ -895,25 +1041,61 @@ public final class ContentStore {
             if (destroyed || pendingNextTrackRequestId != requestId) return;
             // Sending is not recording confirmation; retain the intent until actual readback.
             if (!accepted) clearNextTrackPendingLocked();
-            recordCommandResultLocked(accepted, failureMessage);
+            recordCommandResultLocked(accepted, failureMessage, COMMAND_DOMAIN_MEDIA_NEXT);
         }
         publish();
     }
 
-    private void recordCommandResultLocked(boolean accepted, String failureMessage) {
-        state.commandStatus = accepted ? ContentState.COMMAND_NONE : ContentState.COMMAND_FAILED;
+    private void clearCommandResultIfOwnedLocked(int domain) {
+        if (commandResultDomain != domain) return;
+        state.commandStatus = ContentState.COMMAND_NONE;
         state.commandSequence++;
-        state.commandMessage = accepted ? "" : failureMessage;
+        state.commandMessage = "";
+        commandResultDomain = COMMAND_DOMAIN_NONE;
+    }
+
+    private void recordCommandResultLocked(boolean accepted, String failureMessage, int domain) {
+        if (accepted) {
+            if (domain == COMMAND_DOMAIN_MEDIA_PLAYBACK) {
+                clearCommandResultIfOwnedLocked(domain);
+                return;
+            }
+            if (commandResultDomain != domain && pendingCommandDomain == domain) {
+                state.commandStatus = ContentState.COMMAND_NONE;
+                state.commandMessage = "";
+                pendingCommandDomain = COMMAND_DOMAIN_NONE;
+                return;
+            }
+            if (commandResultDomain != domain && pendingCommandDomain != domain) return;
+            state.commandStatus = ContentState.COMMAND_NONE;
+            state.commandSequence++;
+            state.commandMessage = "";
+            if (commandResultDomain == domain) commandResultDomain = COMMAND_DOMAIN_NONE;
+            if (pendingCommandDomain == domain) pendingCommandDomain = COMMAND_DOMAIN_NONE;
+            return;
+        }
+        state.commandStatus = ContentState.COMMAND_FAILED;
+        state.commandSequence++;
+        state.commandMessage = failureMessage;
+        commandResultDomain = domain;
+        if (pendingCommandDomain == domain) pendingCommandDomain = COMMAND_DOMAIN_NONE;
+        if (domain != COMMAND_DOMAIN_MEDIA_PLAYBACK) clearLateMediaPlaybackLocked();
     }
 
     private void beginVehicleCommandLocked(String command, int seatLevel, boolean locked,
             long requestId) {
+        clearCommandResultIfOwnedLocked(COMMAND_DOMAIN_VEHICLE);
+        pendingCommandDomain = COMMAND_DOMAIN_VEHICLE;
         state.pendingVehicleCommand = command;
         state.pendingSeatLevel = seatLevel;
         state.pendingLocked = locked;
         state.commandStatus = ContentState.COMMAND_PENDING;
         state.commandMessage = "";
         pendingVehicleRequestId = requestId;
+        VehicleControl control = VehicleControl.fromId(command);
+        pendingRearExpectedLevel = control != null && control.isRearWindow() ? state.controlLevel(control) : -1;
+        pendingRearDeadlineUptimeMs = android.os.SystemClock.uptimeMillis() + VEHICLE_COMMAND_TIMEOUT_MS;
+        pendingRearWashActivationObserved = false;
         commandTimeout = new Runnable() {
             @Override public void run() {
                 synchronized (ContentStore.this) {
@@ -933,6 +1115,17 @@ public final class ContentStore {
             return snapshot.lockKnown && snapshot.locked == state.pendingLocked;
         }
         VehicleControl control = VehicleControl.fromId(state.pendingVehicleCommand);
+        if (control != null && control.isRearWindow()) {
+            if (snapshot.rearReadbackRequestId != pendingVehicleRequestId
+                    || !state.pendingVehicleCommand.equals(snapshot.rearReadbackControlId)
+                    || android.os.SystemClock.uptimeMillis() >= pendingRearDeadlineUptimeMs
+                    || !controlReadbackKnownLocked(control)) return false;
+            if (control == VehicleControl.RearWiper) return state.rearWiperLevel == state.pendingSeatLevel;
+            if (snapshot.rearWashLevel == 1 || snapshot.rearWashActivationObserved) {
+                pendingRearWashActivationObserved = true;
+            }
+            return pendingRearWashActivationObserved && state.rearWashLevel == 0;
+        }
         if (control == null || !controlReadbackKnownLocked(control)
                 || actualControlLevelLocked(state.pendingVehicleCommand) != state.pendingSeatLevel) return false;
         return control != VehicleControl.Massage
@@ -942,11 +1135,22 @@ public final class ContentStore {
     private void finishVehicleCommandLocked(boolean confirmed, String failureMessage) {
         if (commandTimeout != null) commandHandler.removeCallbacks(commandTimeout);
         commandTimeout = null;
+        VehicleControl control = VehicleControl.fromId(state.pendingVehicleCommand);
+        if (control != null && control.isRearWindow()) {
+            try {
+                vehiclePort.cancelRearWindowRequest(pendingVehicleRequestId);
+            } catch (RuntimeException ignored) {
+                // Cancellation is local best effort; it must not erase the actual readback or result.
+            }
+        }
+        pendingRearExpectedLevel = -1;
+        pendingRearDeadlineUptimeMs = 0L;
+        pendingRearWashActivationObserved = false;
         state.pendingVehicleCommand = "";
         state.pendingSeatLevel = -1;
         state.pendingLocked = false;
         pendingVehicleRequestId = 0L;
-        recordCommandResultLocked(confirmed, failureMessage);
+        recordCommandResultLocked(confirmed, failureMessage, COMMAND_DOMAIN_VEHICLE);
     }
 
     private void failVehicleCommand(long requestId, String message) {

@@ -129,23 +129,25 @@ open class ContentPanelSystem141Test {
         val timeText = timeNode.config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
         assertTrue("weekday must survive adaptation: $timeText", timeText.contains("星期三") || timeText.contains("周三"))
         val tags = mutableListOf("top-time")
-        if (compose.onAllNodesWithTag("top-temperature").fetchSemanticsNodes().isNotEmpty()) tags += "top-temperature"
+        if (compose.onNodeWithTag("top-bar").fetchSemanticsNode().config[TemperatureVisible]) tags += "top-temperature"
         if (state.value.chargeStatus != null) tags += "charge-status"
         tags += "top-range"; tags += "top-battery"
-        val nodes = tags.map { compose.onNodeWithTag(it).fetchSemanticsNode() }.sortedBy { it.boundsInRoot.left }
+        val nodes = tags.map { tag ->
+            tag to compose.onNodeWithTag(tag).assertIsDisplayed().fetchSemanticsNode()
+        }.sortedBy { it.second.boundsInRoot.left }
         nodes.zipWithNext().forEach { (left, right) ->
-            assertTrue("top bar overlap", left.boundsInRoot.right <= right.boundsInRoot.left)
+            assertTrue("top bar overlap", left.second.boundsInRoot.right <= right.second.boundsInRoot.left)
         }
-        nodes.forEach { node ->
+        nodes.forEach { (tag, node) ->
             val bounds = node.boundsInRoot
-            assertTrue("top bar clipped: $bounds", bounds.left >= top.left && bounds.right <= top.right && bounds.top >= top.top && bounds.bottom <= top.bottom)
+            assertTrue("top bar clipped $tag state=${state.value.chargeStatus}: $bounds", bounds.left >= top.left && bounds.right <= top.right && bounds.top >= top.top && bounds.bottom <= top.bottom)
             val natural = node.config.getOrNull(NaturalTextWidth)
             if (natural != null) assertTrue("natural text width truncated: $bounds vs $natural", bounds.width + 1 >= natural)
         }
         val battery = compose.onNodeWithTag("top-battery").fetchSemanticsNode().boundsInRoot
         assertTrue("battery remains right aligned", kotlin.math.abs(battery.right - (640 - 12 * density)) <= 1)
         if (state.value.chargeStatus != null) {
-            val charge = compose.onNodeWithTag("charge-status").fetchSemanticsNode()
+            val charge = compose.onNodeWithTag("charge-status").assertIsDisplayed().fetchSemanticsNode()
             val range = compose.onNodeWithTag("top-range").fetchSemanticsNode().boundsInRoot
             assertTrue("state immediately precedes range", range.left - charge.boundsInRoot.right <= 8 * density + 1)
             assertEquals(state.value.chargeStatus, charge.config[androidx.compose.ui.semantics.SemanticsProperties.StateDescription])
@@ -154,12 +156,12 @@ open class ContentPanelSystem141Test {
     }
 
     @Test fun chargingLongStateRemainsSingleLineWithoutTimeRangeOverlap() {
-        state.value = state.value.copy(chargeStatus = "充电中 · 功率 123.5 kW · 剩余 999分钟", charging = true, time = "12:24:59", range = "9999", rangeUnit = "km")
+        state.value = state.value.copy(chargeStatus = "剩余999分钟·充电功率 123.5kW", charging = true, time = "12:24:59", range = "9999", rangeUnit = "km")
         mount()
         assertTopBar()
         val temperatureVisible = compose.onNodeWithTag("top-bar").fetchSemanticsNode().config[TemperatureVisible]
         val displayedStatus = compose.onNodeWithTag("charge-status").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
-        assertTrue("charging primary status must survive width adaptation", displayedStatus.contains("充电中"))
+        assertTrue("charging primary status must survive width adaptation", displayedStatus.contains("充电功率") || displayedStatus.contains("充电中"))
         assertFalse("power is kW, never kWh", displayedStatus.contains("kWh"))
         if (systemDpi >= 212) {
             assertFalse("optional temperature must yield to primary charging state", temperatureVisible)
@@ -170,13 +172,13 @@ open class ContentPanelSystem141Test {
     }
 
     @Test fun normalChargingDetailsRetainTemperatureWhenMeasuredSpaceAllows() {
-        state.value = state.value.copy(chargeStatus = "充电中 · 功率 78.5 kW · 剩余 35分钟", charging = true)
+        state.value = state.value.copy(chargeStatus = "剩余35分钟·充电功率 78.5kW", charging = true)
         mount()
         assertTopBar()
         val temperatureVisible = compose.onNodeWithTag("top-bar").fetchSemanticsNode().config[TemperatureVisible]
         if (systemDpi == 141) {
             assertTrue("normal charging details should all fit at actual 726dp", temperatureVisible)
-            compose.onNodeWithTag("charge-status").assertTextEquals("充电中 · 功率 78.5 kW · 剩余 35分钟")
+            compose.onNodeWithTag("charge-status").assertTextEquals("剩余35分钟·充电功率 78.5kW")
             val time = compose.onNodeWithTag("top-time").fetchSemanticsNode().boundsInRoot
             val temperature = compose.onNodeWithTag("top-temperature").fetchSemanticsNode().boundsInRoot
             val charge = compose.onNodeWithTag("charge-status").fetchSemanticsNode().boundsInRoot
@@ -188,7 +190,7 @@ open class ContentPanelSystem141Test {
 
     @Test fun everyChargingStateKeepsWeekdayAndPrimaryValues() {
         mount()
-        listOf("已插枪·等待充电", "预约等待中", "充电状态待确认", "充电中", "充电中 · 功率 123.5 kW", "充电中 · 剩余 999分钟").forEachIndexed { index, status ->
+        listOf("已插枪·等待充电", "预约等待中", "充电状态待确认", "充电中", "剩余999分钟·充电功率 123.5kW", "剩余999分钟").forEachIndexed { index, status ->
             compose.runOnIdle { state.value = state.value.copy(chargeStatus = status, charging = true, time = "12:24:59") }
             compose.waitForIdle()
             assertTopBar()

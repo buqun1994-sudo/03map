@@ -13,8 +13,9 @@ class VehicleControlTest {
             VehicleControl.PassengerHeating to listOf(0, 3, 2, 1, 4, 0),
             VehicleControl.Massage to listOf(0, 3, 2, 1, 0),
             VehicleControl.Wiper to listOf(0, 1, 2, 3, 4, 5, 0),
+            VehicleControl.RearWiper to listOf(0, 1, 0),
         )
-        assertEquals(VehicleControl.entries.toSet(), expected.keys)
+        assertEquals(VehicleControl.entries.filter { it != VehicleControl.RearWash }.toSet(), expected.keys)
         expected.forEach { (control, cycle) ->
             cycle.zipWithNext().forEach { (actual, next) -> assertEquals("${control.id} at $actual", next, control.nextLevel(actual)) }
             val boundary = cycle.zipWithNext().filter { (actual, next) -> (actual == 0) != (next == 0) }.map { it.first }.toSet()
@@ -45,7 +46,7 @@ class VehicleControlTest {
     }
 
     @Test fun manualMemoryAndAutomaticTargetsAreSharedAcrossControlFamilies() {
-        for (control in VehicleControl.entries.filter { it != VehicleControl.Lock }) {
+        for (control in VehicleControl.entries.filter { it != VehicleControl.Lock && !it.isRearWindow }) {
             assertEquals(1, control.defaultManualLevel)
             assertEquals(1, control.rememberedManualLevel(0))
             assertEquals(1, control.rememberedManualLevel(-1))
@@ -72,6 +73,14 @@ class VehicleControlTest {
         assertEquals("雨刮器", VehicleControl.Wiper.label)
         assertEquals(4, VehicleControl.Wiper.maxManualLevel)
         assertEquals(5, VehicleControl.Wiper.automaticLevel)
+        assertTrue(VehicleControl.RearWiper.isRearWindow)
+        assertFalse(VehicleControl.RearWiper.isTrigger)
+        assertEquals(1, VehicleControl.RearWiper.nextLevel(0))
+        assertEquals(0, VehicleControl.RearWiper.nextLevel(1))
+        assertTrue(VehicleControl.RearWash.isRearWindow)
+        assertTrue(VehicleControl.RearWash.isTrigger)
+        assertFalse(VehicleControl.RearWash.isManualLevel(1))
+        assertEquals(1, VehicleControl.RearWash.nextLevel(0))
     }
 
     @Test fun unknownAndForeignModesNeverFabricateAnAction() {

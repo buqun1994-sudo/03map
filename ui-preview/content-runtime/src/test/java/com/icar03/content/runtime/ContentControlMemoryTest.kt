@@ -112,7 +112,7 @@ class ContentControlMemoryTest {
     }
 
     @Test fun genericPowerAndAutomaticIntentsUseEachControlsOwnConfirmedMemoryWithoutChangingCycles() {
-        for (control in VehicleControl.entries.filter { it != VehicleControl.Lock }) {
+        for (control in VehicleControl.entries.filter { it != VehicleControl.Lock && !it.isRearWindow }) {
             val vehicle = Vehicle()
             val store = store(vehicle)
             val level = control.maxManualLevel
@@ -216,39 +216,15 @@ class ContentControlMemoryTest {
         assertEquals(3, vehicle.commands.last().level)
     }
 
-    @Test fun twoRearPlaceholdersToggleIndependentlyPersistThroughStopAndNeverCallVehiclePort() {
+    @Test fun legacyRearPlaceholderEventDoesNotMutateRealState() {
         val vehicle = Vehicle()
         val store = store(vehicle)
         store.acceptVehicleSnapshot(snapshot(wiper = 0))
         val binding = binding(store)
-        assertNull("no construction notice before a placeholder is tapped", binding.state.value.message)
-        val commandSequence = store.snapshot().commandSequence
-        val capabilityCalls = vehicle.capabilityCalls
         binding.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.RearWiper))
-        assertEquals(mapOf(ShortcutId.RearWiper to true), binding.state.value.placeholderSwitches)
-        assertEquals("后窗雨刮器仅为本地反馈，车控尚未接入", binding.state.value.message)
-        assertTrue(binding.state.value.message!!.contains("未接入"))
-        binding.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.RearWash))
-        assertEquals(true, binding.state.value.placeholderSwitches[ShortcutId.RearWash])
-        assertEquals("后窗洗涤仅为本地反馈，车控尚未接入", binding.state.value.message)
-        binding.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.RearWiper))
-        assertEquals(false, binding.state.value.placeholderSwitches[ShortcutId.RearWiper])
-        binding.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.Settings))
-        assertEquals(2, binding.state.value.placeholderSwitches.size)
-        assertEquals(capabilityCalls, vehicle.capabilityCalls)
+        assertTrue("legacy placeholder events must not mutate the real shell", binding.state.value.placeholderSwitches.isEmpty())
         assertTrue(vehicle.commands.isEmpty())
-        assertEquals(commandSequence, store.snapshot().commandSequence)
-        val placeholders = binding.state.value.placeholderSwitches
-        binding.stop()
-        assertEquals(placeholders, binding.state.value.placeholderSwitches)
-        binding.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.RearWash))
-        assertEquals(placeholders, binding.state.value.placeholderSwitches)
-        binding.start()
-        assertEquals(placeholders, binding.state.value.placeholderSwitches)
-        binding.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.RearWash))
-        assertEquals(false, binding.state.value.placeholderSwitches[ShortcutId.RearWash])
-        assertTrue(vehicle.commands.isEmpty())
-        assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+        binding.close()
     }
 
     @Test fun memoryChangesInvalidateOnlyShellProjectionAndMalformedPreferencesNeverBecomeTargets() {

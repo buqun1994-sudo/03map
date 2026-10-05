@@ -16,6 +16,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
     private fun update(transform: (ContentUiState) -> ContentUiState) { mutableState.value = transform(mutableState.value) }
 
     fun dispatch(event: ContentEvent) {
+        if (state.value.settingsOpen && !event.isSettingsInteraction()) return
         when (event) {
             is ContentEvent.ScenarioSelected -> {
                 cancelPending()
@@ -25,14 +26,21 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             ContentEvent.ToggleTheme -> update { it.copy(dark = !it.dark) }
             is ContentEvent.PageSelected -> update { it.copy(page = event.page) }
             ContentEvent.OpenSources -> update { it.copy(sourcesOpen = true, scenariosOpen = false) }
-            ContentEvent.SettingsTapped -> update { it.copy(message = "设置暂不可用") }
+            ContentEvent.SettingsTapped -> update { it.copy(settingsOpen = true, settingsSection = SettingsSection.Vehicle, sourcesOpen = false, scenariosOpen = false, message = null) }
+            ContentEvent.SettingsDismissed -> update { it.copy(settingsOpen = false, message = null) }
+            is ContentEvent.SettingsSectionSelected -> update { it.copy(settingsSection = event.section) }
+            is ContentEvent.ShowWeekdayChanged -> update { it.copy(showWeekday = event.value) }
+            is ContentEvent.ShowSecondsChanged -> update { it.copy(showSeconds = event.value) }
             ContentEvent.OpenScenarios -> update { it.copy(scenariosOpen = true, sourcesOpen = false) }
-            ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false) }
-            is ContentEvent.ControlTapped -> requestControl(event.id) { control -> event.id.nextLevel(control.actual) }
-            is ContentEvent.ControlPowerTapped -> requestControl(event.id) { control -> event.id.powerToggleLevel(control.actual, control.rememberedLevel) }
-            is ContentEvent.ControlAutomaticTapped -> requestControl(event.id) { control -> event.id.automaticToggleLevel(control.actual) }
+            ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false, settingsOpen = false) }
+            is ContentEvent.ControlTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.nextLevel(control.actual) }
+            is ContentEvent.ControlPowerTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.powerToggleLevel(control.actual, control.rememberedLevel) }
+            is ContentEvent.ControlAutomaticTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.automaticToggleLevel(control.actual) }
             is ContentEvent.ControlLevelChanged -> {
-                if (event.level in 0..event.id.maxManualLevel) requestControl(event.id) { event.level }
+                if (event.id != ControlId.RearWash && event.level in 0..event.id.maxManualLevel) requestControl(event.id) { event.level }
+            }
+            ContentEvent.RearWashTapped -> {
+                if (active) update { it.copy(message = "预览洗涤脉冲已触发 · 未执行真实操作") }
             }
             is ContentEvent.PlaceholderToggled -> {
                 if (active && event.id in listOf(ShortcutId.RearWiper, ShortcutId.RearWash)) update {
@@ -110,6 +118,6 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
     private fun cancelPending() {
         generation++
         jobs.values.forEach { it.cancel() }; jobs.clear()
-        update { s -> s.copy(controls = s.controls.mapValues { it.value.copy(target = null) }, brightness = s.brightness.copy(target = null), volume = s.volume.copy(target = null), media = s.media.copy(targetPlaying = null, targetSource = null), sourcesOpen = false, scenariosOpen = false) }
+        update { s -> s.copy(controls = s.controls.mapValues { it.value.copy(target = null) }, brightness = s.brightness.copy(target = null), volume = s.volume.copy(target = null), media = s.media.copy(targetPlaying = null, targetSource = null), sourcesOpen = false, scenariosOpen = false, settingsOpen = false, message = null) }
     }
 }

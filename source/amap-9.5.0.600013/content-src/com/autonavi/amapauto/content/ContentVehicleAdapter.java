@@ -22,6 +22,41 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private static final long REBIND_INTERVAL_MS = 3000L;
     private static final long BIND_TIMEOUT_MS = 5000L;
     private static final long MASSAGE_START_TIMEOUT_MS = 2000L;
+    private static final long REAR_READBACK_INTERVAL_MS = 250L;
+
+    private final class RearRequest {
+        final VehicleControl control;
+        final ContentVehicleProtocol.Write write;
+        final int expectedLevel;
+        final int targetLevel;
+        final long requestId;
+        final long deadlineUptimeMs;
+        final IBinder sourceBinder;
+        final Handler worker;
+        final long generation;
+        boolean washActivationObserved;
+        boolean writeAttempted;
+        boolean writeReturned;
+        final Runnable send = new Runnable() {
+            @Override public void run() { executeRearRequest(RearRequest.this); }
+        };
+        final Runnable readback = new Runnable() {
+            @Override public void run() { readRearRequest(RearRequest.this); }
+        };
+
+        RearRequest(VehicleControl control, int expectedLevel, int targetLevel, long requestId,
+                long deadlineUptimeMs, IBinder sourceBinder, Handler worker) {
+            this.control = control;
+            this.write = ContentVehicleProtocol.rearWindowWrite(control.getId());
+            this.expectedLevel = expectedLevel;
+            this.targetLevel = targetLevel;
+            this.requestId = requestId;
+            this.deadlineUptimeMs = deadlineUptimeMs;
+            this.sourceBinder = sourceBinder;
+            this.worker = worker;
+            this.generation = ++rearGeneration;
+        }
+    }
 
     private final Context context;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -83,6 +118,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                             if (!running || worker != workerHandler) {
                                 return;
                             }
+                            clearRearRequestLocked();
                             binder = service;
                             latestSnapshot = ContentPorts.VehicleSnapshot.unavailable();
                         }
@@ -105,6 +141,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         @Override
         public void onServiceDisconnected(ComponentName name) {
             synchronized (ContentVehicleAdapter.this) {
+                clearRearRequestLocked();
                 binder = null;
                 latestSnapshot = ContentPorts.VehicleSnapshot.unavailable();
                 if (workerHandler != null) {
@@ -133,6 +170,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private IBinder binder;
     private boolean serviceBound;
     private boolean running;
+    private RearRequest rearRequest;
+    private long rearGeneration;
     private ContentPorts.VehicleSnapshot latestSnapshot = ContentPorts.VehicleSnapshot.unavailable();
     private int lastChargeConnection = Integer.MIN_VALUE;
     private int lastChargeBms = Integer.MIN_VALUE;
@@ -154,8 +193,18 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
 
     @Override
     public synchronized boolean isControlAvailable(String controlId) {
+        VehicleControl control = VehicleControl.fromId(controlId);
+        if (control != null && control.isRearWindow()) return isRearWindowControlAvailable(controlId);
         return running && binder != null && workerHandler != null
                 && ContentVehicleProtocol.supportsLevelControl(controlId);
+    }
+
+    @Override
+    public synchronized boolean isRearWindowControlAvailable(String controlId) {
+        if (!running || binder == null || workerHandler == null || rearRequest != null) return false;
+        VehicleControl control = VehicleControl.fromId(controlId);
+        return control == VehicleControl.RearWiper ? latestSnapshot.rearWiperKnown
+                : control == VehicleControl.RearWash && latestSnapshot.rearWashKnown && latestSnapshot.rearWashLevel == 0;
     }
 
     @Override
@@ -174,6 +223,10 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 return latestSnapshot.steeringHeatLevel >= 0;
             case Wiper:
                 return latestSnapshot.wiperKnown && latestSnapshot.wiperLevel >= 0;
+            case RearWiper:
+                return latestSnapshot.rearWiperKnown && latestSnapshot.rearWiperLevel != level;
+            case RearWash:
+                return false;
             case Massage:
                 return latestSnapshot.massageLevel >= 0
                         || level == 0 && latestSnapshot.massageSwitchKnown && latestSnapshot.massageActive;
@@ -194,8 +247,155 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
 
     @Override
     public boolean requestControlLevel(String controlId, int level, long requestId) {
+        VehicleControl control = VehicleControl.fromId(controlId);
+        if (control != null && control.isRearWindow()) return false;
         if (!isControlLevelAvailable(controlId, level)) return false;
         return queueCommand(ContentVehicleProtocol.controlLevelWrite(controlId, level), requestId);
+    }
+
+    @Override
+    public synchronized boolean requestRearWindow(String controlId, int expectedLevel, int targetLevel,
+            long requestId, long deadlineUptimeMs) {
+        VehicleControl control = VehicleControl.fromId(controlId);
+        if (control == null || !control.isRearWindow() || !control.isLevel(expectedLevel)
+                || !control.isLevel(targetLevel) || requestId <= 0L
+                || deadlineUptimeMs <= android.os.SystemClock.uptimeMillis()
+                || expectedLevel == targetLevel
+                || control == VehicleControl.RearWash && (expectedLevel != 0 || targetLevel != 1)
+                || !isRearWindowControlAvailable(controlId)) return false;
+        RearRequest request = new RearRequest(control, expectedLevel, targetLevel, requestId,
+                deadlineUptimeMs, binder, workerHandler);
+        rearRequest = request;
+        if (request.worker.post(request.send)) return true;
+        rearRequest = null;
+        return false;
+    }
+
+    @Override
+    public synchronized void cancelRearWindowRequest(long requestId) {
+        if (rearRequest != null && rearRequest.requestId == requestId) clearRearRequestLocked();
+    }
+
+    private void clearRearRequestLocked() {
+        rearGeneration++;
+        if (rearRequest == null) return;
+        rearRequest.worker.removeCallbacks(rearRequest.send);
+        rearRequest.worker.removeCallbacks(rearRequest.readback);
+        rearRequest = null;
+    }
+
+    private boolean admitRearWork(RearRequest request) {
+        String failure = null;
+        synchronized (this) {
+            if (rearRequest != request) return false;
+            if (!running || binder != request.sourceBinder || workerHandler != request.worker) {
+                failure = "后窗车控连接中断，命令未确认";
+            } else if (android.os.SystemClock.uptimeMillis() >= request.deadlineUptimeMs) {
+                failure = "后窗请求已超时，请查看车机状态";
+            }
+        }
+        if (failure != null) failRearRequest(request, failure);
+        return failure == null;
+    }
+
+    private void failRearRequest(RearRequest request, String message) {
+        synchronized (this) {
+            if (rearRequest != request) return;
+            clearRearRequestLocked();
+        }
+        reportCommandFailure(request.requestId, message);
+        requestReadback(request.worker, request.sourceBinder);
+    }
+
+    private void executeRearRequest(RearRequest request) {
+        synchronized (this) {
+            if (request.writeAttempted) return;
+        }
+        if (!admitRearWork(request)) return;
+        try {
+            // Re-read immediately before the non-idempotent write. A changed or already reached
+            // target never causes a compensating toggle; the caller can inspect the new actual.
+            int level = ContentVehicleProtocol.normalizeRearWindowLevel(
+                    getData(request.sourceBinder, request.write.functionId, AREA_DRIVER));
+            if (!admitRearWork(request)) return;
+            publishRearState(request, level, 0L);
+            if (level != request.expectedLevel) {
+                failRearRequest(request, level < 0 ? "后窗状态未知，命令未发送" : "后窗状态已变化，命令未发送");
+                return;
+            }
+            if (!admitRearWork(request)) return;
+            synchronized (this) {
+                if (rearRequest != request || !running || binder != request.sourceBinder
+                        || workerHandler != request.worker || request.writeAttempted
+                        || android.os.SystemClock.uptimeMillis() >= request.deadlineUptimeMs) return;
+                // The write is now committed for this scope. Cancellation remains nonblocking;
+                // it cannot retract a synchronous transaction once admitted here.
+                request.writeAttempted = true;
+            }
+            sendData(request.sourceBinder, request.write.functionId, AREA_DRIVER, request.write.value);
+            synchronized (this) { request.writeReturned = true; }
+            if (admitRearWork(request)) request.worker.post(request.readback);
+        } catch (RemoteException | RuntimeException error) {
+            Log.w(TAG, "rear-window command failed", error);
+            failRearRequest(request, "后窗请求未确认，请查看车机状态");
+        }
+    }
+
+    private void readRearRequest(RearRequest request) {
+        synchronized (this) {
+            if (!request.writeReturned) return;
+        }
+        if (!admitRearWork(request)) return;
+        try {
+            int level = ContentVehicleProtocol.normalizeRearWindowLevel(
+                    getData(request.sourceBinder, request.write.functionId, AREA_DRIVER));
+            if (!admitRearWork(request)) return;
+            if (level < 0) {
+                publishRearState(request, -1, 0L);
+                failRearRequest(request, "后窗状态读取失败，请查看车机状态");
+                return;
+            }
+            if (request.control == VehicleControl.RearWash && level == 1) request.washActivationObserved = true;
+            publishRearState(request, level, request.requestId);
+            boolean complete = request.control == VehicleControl.RearWiper ? level == request.targetLevel
+                    : request.washActivationObserved && level == 0;
+            synchronized (this) {
+                if (rearRequest != request) return;
+                if (complete) {
+                    request.worker.removeCallbacks(request.readback);
+                    rearRequest = null;
+                } else request.worker.postDelayed(request.readback, Math.min(REAR_READBACK_INTERVAL_MS,
+                        Math.max(1L, request.deadlineUptimeMs - android.os.SystemClock.uptimeMillis())));
+            }
+        } catch (RemoteException | RuntimeException error) {
+            Log.w(TAG, "rear-window readback failed", error);
+            publishRearState(request, -1, 0L);
+            failRearRequest(request, "后窗状态读取失败，请查看车机状态");
+        }
+    }
+
+    private void publishRearState(RearRequest request, int level, long readbackRequestId) {
+        ContentPorts.VehicleSnapshot snapshot;
+        synchronized (this) {
+            if (rearRequest != request || !running || binder != request.sourceBinder
+                    || workerHandler != request.worker) return;
+            snapshot = latestSnapshot.withRearWindowReadback(request.control.getId(), level,
+                    readbackRequestId, request.washActivationObserved);
+            latestSnapshot = snapshot;
+        }
+        final ContentPorts.VehicleSnapshot posted = snapshot;
+        mainHandler.post(new Runnable() {
+            @Override public void run() {
+                ContentPorts.VehicleSnapshotListener currentListener;
+                synchronized (ContentVehicleAdapter.this) {
+                    currentListener = running && binder == request.sourceBinder && workerHandler == request.worker
+                            && rearGeneration == request.generation
+                            && (readbackRequestId == 0L || android.os.SystemClock.uptimeMillis() < request.deadlineUptimeMs)
+                            ? listener : null;
+                }
+                if (currentListener != null) currentListener.onVehicleSnapshot(posted);
+            }
+        });
     }
 
     @Override
@@ -235,6 +435,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
 
     @Override
     public synchronized void stop() {
+        clearRearRequestLocked();
         running = false;
         mainHandler.removeCallbacksAndMessages(null);
         if (serviceBound) {
@@ -290,6 +491,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
             if (!running) {
                 return;
             }
+            clearRearRequestLocked();
             binder = null;
             latestSnapshot = ContentPorts.VehicleSnapshot.unavailable();
             if (workerHandler != null) {
@@ -449,6 +651,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int wiperRaw = readInt(currentBinder, FRONT_WIPER, AREA_DRIVER);
         int wiper = ContentVehicleProtocol.normalizeWiperLevel(wiperRaw);
         boolean wiperKnown = wiper >= 0;
+        int rearWiper = ContentVehicleProtocol.normalizeRearWindowLevel(readInt(currentBinder, REAR_WIPER, AREA_DRIVER));
+        int rearWash = ContentVehicleProtocol.normalizeRearWindowLevel(readInt(currentBinder, REAR_WASH, AREA_DRIVER));
         int chargeState = resolveChargeState(connection, bms, schedule);
         // Completion is a product projection of exact full SOC + connected +
         // known idle BMS, not a newly guessed vendor enum or rounded battery value.
@@ -475,13 +679,14 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         boolean available = !Float.isNaN(temperature) || battery >= 0 || range >= 0
                 || connection >= 0 || bms >= 0 || schedule >= 0
                 || !Float.isNaN(chargePowerKw) || remainingMinutes >= 0
-                || seatKnown || lockKnown || wiperKnown;
+                || seatKnown || lockKnown || wiperKnown || rearWiper >= 0 || rearWash >= 0;
         ContentPorts.VehicleSnapshot snapshot = new ContentPorts.VehicleSnapshot(available, false,
                 temperature, battery, range, chargeState, connection, bms, schedule, chargePowerKw,
                 remainingMinutes, ventilation, heating, heatingAutoKnown, heatingAutoActive,
                 passengerHeating, passengerHeatingAutoKnown, passengerHeatingAutoActive, steering,
                 massage, massageModeRaw, massageSwitchKnown,
-                massageActive, seatKnown, lockKnown, ContentVehicleProtocol.isLocked(lockRaw), wiper, wiperKnown);
+                massageActive, seatKnown, lockKnown, ContentVehicleProtocol.isLocked(lockRaw), wiper, wiperKnown,
+                rearWiper, rearWiper >= 0, rearWash, rearWash >= 0, "", 0L, false);
         synchronized (this) {
             if (running && binder == currentBinder) latestSnapshot = snapshot;
         }

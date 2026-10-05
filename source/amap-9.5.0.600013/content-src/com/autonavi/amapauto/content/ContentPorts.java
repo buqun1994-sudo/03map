@@ -127,6 +127,23 @@ public final class ContentPorts {
             return requestSeatLevel(controlId, level, requestId);
         }
 
+        /** Non-idempotent rear-window actions never use the legacy level request path. */
+        default boolean isRearWindowControlAvailable(String controlId) {
+            return false;
+        }
+
+        /** Deadline uses SystemClock.uptimeMillis. expectedLevel is an actual-state precondition.
+         * RearWiper permits only the opposite target; RearWash permits only idle0 -> trigger1. */
+        default boolean requestRearWindow(String controlId, int expectedLevel, int targetLevel,
+                long requestId, long deadlineUptimeMs) {
+            return false;
+        }
+
+        /** Local cancellation only: invalidate unsent work and scoped reads, never write a restore.
+         * An already executing synchronous Binder call cannot be physically cancelled. */
+        default void cancelRearWindowRequest(long requestId) {
+        }
+
         boolean requestLock(boolean locked, long requestId);
 
         boolean requestSeatLevel(String seatId, int level, long requestId);
@@ -187,6 +204,14 @@ public final class ContentPorts {
         public final boolean locked;
         public final int wiperLevel;
         public final boolean wiperKnown;
+        public final int rearWiperLevel;
+        public final boolean rearWiperKnown;
+        public final int rearWashLevel;
+        public final boolean rearWashKnown;
+        /** Nonzero only for a fresh scoped read performed after this request's single write. */
+        public final String rearReadbackControlId;
+        public final long rearReadbackRequestId;
+        public final boolean rearWashActivationObserved;
 
         /**
          * Legacy 20-argument contract: levels are already normalized OFF/1/2/3 (0..3),
@@ -248,6 +273,27 @@ public final class ContentPorts {
                 int steeringHeatLevel, int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
                 boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked,
                 int wiperLevel, boolean wiperKnown) {
+            this(dataAvailable, preview, temperatureC, batteryPercent, rangeRaw, chargeState,
+                    chargeConnectionRaw, chargeBmsRaw, chargeScheduleRaw, chargePowerKw,
+                    chargeRemainingMinutes, ventilationLevel, heatingLevel, heatingAutoKnown, heatingAutoActive,
+                    passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive,
+                    steeringHeatLevel, massageLevel, massageModeRaw, massageSwitchKnown, massageActive,
+                    seatControlsKnown, lockKnown, locked, wiperLevel, wiperKnown,
+                    -1, false, -1, false, "", 0L, false);
+        }
+
+        /** Rear-window actuals and scoped post-write proof are independent from every seat/front-wiper. */
+        public VehicleSnapshot(boolean dataAvailable, boolean preview, float temperatureC,
+                int batteryPercent, int rangeRaw, int chargeState, int chargeConnectionRaw,
+                int chargeBmsRaw, int chargeScheduleRaw, float chargePowerKw,
+                int chargeRemainingMinutes, int ventilationLevel, int heatingLevel,
+                boolean heatingAutoKnown, boolean heatingAutoActive,
+                int passengerHeatingLevel, boolean passengerHeatingAutoKnown, boolean passengerHeatingAutoActive,
+                int steeringHeatLevel, int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
+                boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked,
+                int wiperLevel, boolean wiperKnown, int rearWiperLevel, boolean rearWiperKnown,
+                int rearWashLevel, boolean rearWashKnown, String rearReadbackControlId,
+                long rearReadbackRequestId, boolean rearWashActivationObserved) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.temperatureC = temperatureC;
@@ -277,6 +323,35 @@ public final class ContentPorts {
             this.locked = locked;
             this.wiperLevel = wiperKnown ? VehicleControl.Wiper.normalizeLevel(wiperLevel) : -1;
             this.wiperKnown = this.wiperLevel >= 0;
+            this.rearWiperLevel = rearWiperKnown ? VehicleControl.RearWiper.normalizeLevel(rearWiperLevel) : -1;
+            this.rearWiperKnown = this.rearWiperLevel >= 0;
+            this.rearWashLevel = rearWashKnown ? VehicleControl.RearWash.normalizeLevel(rearWashLevel) : -1;
+            this.rearWashKnown = this.rearWashLevel >= 0;
+            VehicleControl rearControl = VehicleControl.fromId(rearReadbackControlId);
+            this.rearReadbackControlId = rearReadbackRequestId > 0L && rearControl != null && rearControl.isRearWindow()
+                    ? rearReadbackControlId : "";
+            this.rearReadbackRequestId = this.rearReadbackControlId.length() == 0 ? 0L : rearReadbackRequestId;
+            this.rearWashActivationObserved = rearControl == VehicleControl.RearWash
+                    && this.rearReadbackRequestId > 0L && rearWashActivationObserved;
+        }
+
+        /** Copy cached unrelated facts while replacing one actually read rear property. */
+        public VehicleSnapshot withRearWindowReadback(String controlId, int level,
+                long requestId, boolean washActivationObserved) {
+            VehicleControl control = VehicleControl.fromId(controlId);
+            if (control == null || !control.isRearWindow()) throw new IllegalArgumentException("not a rear control");
+            boolean known = control.isLevel(level);
+            return new VehicleSnapshot(dataAvailable || known, preview, temperatureC, batteryPercent,
+                    rangeRaw, chargeState, chargeConnectionRaw, chargeBmsRaw, chargeScheduleRaw,
+                    chargePowerKw, chargeRemainingMinutes, ventilationLevel, heatingLevel,
+                    heatingAutoKnown, heatingAutoActive, passengerHeatingLevel, passengerHeatingAutoKnown,
+                    passengerHeatingAutoActive, steeringHeatLevel, massageLevel, massageModeRaw,
+                    massageSwitchKnown, massageActive, seatControlsKnown, lockKnown, locked, wiperLevel, wiperKnown,
+                    control == VehicleControl.RearWiper ? level : rearWiperLevel,
+                    control == VehicleControl.RearWiper ? known : rearWiperKnown,
+                    control == VehicleControl.RearWash ? level : rearWashLevel,
+                    control == VehicleControl.RearWash ? known : rearWashKnown,
+                    controlId, requestId, washActivationObserved);
         }
 
         /** Normalized-mode invariant, shared by Snapshot, Store, State copies and Mapper. */

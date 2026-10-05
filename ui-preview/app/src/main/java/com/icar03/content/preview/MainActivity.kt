@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
                 onDispose { lifecycle.removeObserver(observer); controller.close() }
             }
             val state by controller.state.collectAsStateWithLifecycle()
-            androidx.activity.compose.BackHandler(enabled = state.sourcesOpen || state.scenariosOpen) {
+            androidx.activity.compose.BackHandler(enabled = state.settingsOpen || state.sourcesOpen || state.scenariosOpen) {
                 controller.dispatch(com.icar03.content.ui.ContentEvent.DismissSheet)
             }
             ContentTheme(state.dark) { ContentPanel(state = state, onEvent = controller::dispatch) }

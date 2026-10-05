@@ -461,7 +461,8 @@ class ContentVehicleBinderStoreTest {
             assertFalse(store.snapshot().seatControlsKnown)
             assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
         }
-        assertFalse(service.calls.any { it.functionId in listOf(561, 609, 610, 671) })
+        assertFalse(service.calls.any { it.functionId in listOf(561, 671) })
+        assertFalse("front-wiper intents never write rear controls", service.writes.any { it.functionId in listOf(609, 610) })
         service.failReadFunction = 608
         pollVehicleCommandAdapter(adapter)
         assertFalse(store.snapshot().wiperKnown)
@@ -522,7 +523,8 @@ class ContentVehicleBinderStoreTest {
             assertNull(failed.target)
             assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
             assertEquals(listOf(VehiclePacket(5, 608, 0, 6)), service.writes)
-            assertFalse(service.calls.any { it.functionId in listOf(561, 609, 610, 671) })
+            assertFalse(service.calls.any { it.functionId in listOf(561, 671) })
+            assertFalse("failed front requests never trigger rear actions", service.writes.any { it.functionId in listOf(609, 610) })
         }
     }
 

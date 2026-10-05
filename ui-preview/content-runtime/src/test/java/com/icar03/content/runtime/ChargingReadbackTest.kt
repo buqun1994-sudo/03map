@@ -72,11 +72,11 @@ class ChargingReadbackTest {
         assertFalse(service.reads.contains(13 to 0x344))
         assertFalse(service.reads.contains(7 to 0x345))
         assertTrue(ui(first).charging)
-        assertEquals("剩余11分钟·72.0kW", ui(first).chargeStatus)
+        assertEquals("剩余11分钟·充电功率 72.0kW", ui(first).chargeStatus)
         service.minutes = 10; service.current = 184.8f
-        assertEquals("剩余10分钟·72.6kW", ui(snapshot(service)).chargeStatus)
+        assertEquals("剩余10分钟·充电功率 72.6kW", ui(snapshot(service)).chargeStatus)
         service.connection = 1; service.voltage = 380; service.current = 15.4f
-        assertEquals("剩余10分钟·5.9kW", ui(snapshot(service)).chargeStatus)
+        assertEquals("剩余10分钟·充电功率 5.9kW", ui(snapshot(service)).chargeStatus)
     }
 
     @Test fun invalidTypedFieldsAndNegativeCurrentNeverBecomeInventedPower() {
@@ -95,7 +95,7 @@ class ChargingReadbackTest {
         assertEquals(-1, snapshot(service).chargeRemainingMinutes)
         assertEquals("充电中", ui(snapshot(service)).chargeStatus)
         service.voltage = 393
-        assertEquals("72.0kW", ui(snapshot(service)).chargeStatus)
+        assertEquals("充电功率 72.0kW", ui(snapshot(service)).chargeStatus)
     }
 
     @Test fun stateTextUsesRawFullSocAndKnownIdleInsteadOfRoundedPercentOrUnknownBms() {
@@ -118,7 +118,7 @@ class ChargingReadbackTest {
             assertEquals("已插枪", ui(snapshot(service)).chargeStatus)
         }
         service.bms = 3; service.current = 183.2f
-        assertEquals("剩余11分钟·72.0kW", ui(snapshot(service)).chargeStatus)
+        assertEquals("剩余11分钟·充电功率 72.0kW", ui(snapshot(service)).chargeStatus)
         service.bms = 6; service.schedule = 1
         assertEquals("预约充电中", ui(snapshot(service)).chargeStatus)
         service.connection = 0; service.bms = 0; service.schedule = 0

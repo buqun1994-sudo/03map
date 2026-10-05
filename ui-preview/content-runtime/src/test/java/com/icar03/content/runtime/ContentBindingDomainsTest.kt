@@ -153,7 +153,7 @@ class ContentBindingDomainsTest {
         } finally { binding.close(); store.destroy() }
     }
 
-    @Test fun delayedSuccessfulConfirmationCannotClearANewerSettingsMessage() {
+    @Test fun delayedSuccessfulSystemConfirmationKeepsSettingsOpenWithoutFeedback() {
         var percent = 25
         val store = store(object : ContentPorts.SystemPort {
             override fun read(kind: Int) = ContentPorts.SystemSnapshot(true, percent)
@@ -168,11 +168,12 @@ class ContentBindingDomainsTest {
             percent = 90
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); drain(binding)
             assertEquals(.9f, binding.state.value.brightness.actual)
-            assertEquals("设置入口尚未接入", binding.state.value.message)
+            assertNull(binding.state.value.message)
+            assertTrue(binding.state.value.settingsOpen)
         } finally { binding.close(); store.destroy() }
     }
 
-    @Test fun aLateWriteCompletionCannotReplaceNewFeedbackOrReopenDismissedFeedback() {
+    @Test fun aLateWriteCompletionCannotRestoreDismissedFeedbackOrAlterSettingsVisibility() {
         for (action in listOf(ContentEvent.SettingsTapped, ContentEvent.DismissSheet)) {
             val entered = CountDownLatch(1)
             val release = CountDownLatch(1)
@@ -191,7 +192,8 @@ class ContentBindingDomainsTest {
                 assertTrue(entered.await(2, TimeUnit.SECONDS))
                 binding.dispatch(action)
                 release.countDown(); drain(binding)
-                assertEquals(if (action == ContentEvent.SettingsTapped) "设置入口尚未接入" else null, binding.state.value.message)
+                assertNull(binding.state.value.message)
+                assertEquals(action == ContentEvent.SettingsTapped, binding.state.value.settingsOpen)
                 assertEquals(.25f, binding.state.value.brightness.actual)
             } finally { release.countDown(); binding.close(); store.destroy() }
         }

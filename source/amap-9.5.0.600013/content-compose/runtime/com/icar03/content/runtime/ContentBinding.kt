@@ -53,10 +53,24 @@ class ContentBinding(
     private var brightness = ContentPorts.SystemSnapshot(false, 0)
     private var volume = ContentPorts.SystemSnapshot(false, 0)
     private var sourcesOpen = false
+    private var settingsOpen = false
+    private var settingsSection = SettingsSection.Vehicle
     private var placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap()
     private var feedback: String? = null
     private var feedbackRevision = 0L
-    private fun replaceFeedback(message: String?) { feedback = message; feedbackRevision++ }
+    private val feedbackTimeout = Runnable {
+        if (feedback != null) {
+            feedback = null
+            feedbackRevision++
+            publishShell()
+        }
+    }
+    private fun replaceFeedback(message: String?) {
+        handler.removeCallbacks(feedbackTimeout)
+        feedback = message?.takeIf { it.isNotBlank() }
+        feedbackRevision++
+        if (feedback != null && running) handler.postDelayed(feedbackTimeout, FEEDBACK_DURATION_MS)
+    }
     private var latestSnapshot = store.snapshot()
     private var commandSequence = latestSnapshot.commandSequence
     private val mutableState = MutableStateFlow(inactive(shell(latestSnapshot)))
@@ -169,6 +183,8 @@ class ContentBinding(
         handler.removeCallbacksAndMessages(null)
         synchronized(handler) { queuedProjectionEpoch = null }
         sourcesOpen = false
+        settingsOpen = false
+        settingsSection = SettingsSection.Vehicle
         replaceFeedback(null)
         mutableArtwork.value = null
         mutableAmbient.value = null
@@ -179,7 +195,7 @@ class ContentBinding(
     }
 
     private fun inactive(state: ContentUiState) = state.copy(
-        sourcesOpen = false, message = null,
+        sourcesOpen = false, settingsOpen = false, message = null,
         controls = state.controls.mapValues { it.value.copy(available = false) },
         brightness = state.brightness.copy(available = false, target = null), volume = state.volume.copy(available = false, target = null),
         media = state.media.copy(playbackAvailable = false, nextAvailable = false, sourceAvailable = false),
@@ -199,17 +215,10 @@ class ContentBinding(
     fun dispatch(event: ContentEvent) {
         checkMain()
         if (!running || closed) return
-        if (event is ContentEvent.PlaceholderToggled) {
-            if (event.id == ShortcutId.RearWiper || event.id == ShortcutId.RearWash) {
-                placeholderSwitches = placeholderSwitches + (event.id to (placeholderSwitches[event.id] != true))
-                replaceFeedback(event.id.label + "仅为本地反馈，车控尚未接入")
-                publishShell()
-            }
-            return
-        }
+        if (settingsOpen && !event.isSettingsInteraction()) return
         if (event is ContentEvent.ControlTapped || event is ContentEvent.ControlPowerTapped ||
             event is ContentEvent.ControlAutomaticTapped || event is ContentEvent.ControlLevelChanged ||
-            event == ContentEvent.PlayPause || event == ContentEvent.NextTrack ||
+            event == ContentEvent.PlayPause || event == ContentEvent.NextTrack || event == ContentEvent.RearWashTapped ||
             event is ContentEvent.SourceSelected || event is ContentEvent.BrightnessChanged || event is ContentEvent.VolumeChanged) replaceFeedback(null)
         // A fresh capability snapshot is a cached fact, never a synchronous service probe.
         project(store.snapshot())
@@ -233,6 +242,7 @@ class ContentBinding(
             is ContentEvent.VolumeChanged -> writeSystem(1, event.value)
             ContentEvent.PlayPause -> if (state.value.media.playbackAvailable) store.toggleMediaPlayback()
             ContentEvent.NextTrack -> if (state.value.media.nextAvailable) store.nextMediaTrack()
+            ContentEvent.RearWashTapped -> store.triggerControl(ControlId.RearWash.id)
             is ContentEvent.SourceSelected -> {
                 if (!state.value.media.sourceAvailable) return
                 sourcesOpen = false
@@ -241,8 +251,32 @@ class ContentBinding(
             }
             is ContentEvent.PageSelected -> store.setPageIndex(if (event.page == PanelPage.Lyrics) 1 else 0)
             ContentEvent.OpenSources -> { if (state.value.media.sourceAvailable) sourcesOpen = true; publishShell() }
-            ContentEvent.DismissSheet -> { sourcesOpen = false; replaceFeedback(null); publishShell() }
-            ContentEvent.SettingsTapped -> { replaceFeedback("设置入口尚未接入"); publishShell() }
+            ContentEvent.DismissSheet -> {
+                sourcesOpen = false
+                settingsOpen = false
+                replaceFeedback(null)
+                publishShell()
+            }
+            ContentEvent.SettingsTapped -> {
+                sourcesOpen = false
+                settingsOpen = true
+                settingsSection = SettingsSection.Vehicle
+                replaceFeedback(null)
+                publishShell()
+            }
+            is ContentEvent.SettingsSectionSelected -> {
+                if (settingsOpen) {
+                    settingsSection = event.section
+                    publishShell()
+                }
+            }
+            ContentEvent.SettingsDismissed -> {
+                settingsOpen = false
+                replaceFeedback(null)
+                publishShell()
+            }
+            is ContentEvent.ShowWeekdayChanged -> store.setShowWeekday(event.value)
+            is ContentEvent.ShowSecondsChanged -> store.setShowSeconds(event.value)
             else -> Unit
         }
     }
@@ -302,7 +336,7 @@ class ContentBinding(
                 if (systemKindSequence[kind] == requestSequence) systemTargets[kind] = null
                 val actual = if (kind == 0) light else sound
                 if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner) {
-                    feedback = if (accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) null else "系统状态未确认"
+                    replaceFeedback(if (accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) null else "系统状态未确认")
                 }
                 applySystem(observation, light, sound)
                 publishShell()
@@ -324,7 +358,7 @@ class ContentBinding(
             handler.post {
                 if (!running || generation != epoch) return@post
                 val actual = if (kind == 0) light else sound
-                if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner && accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) feedback = null
+                if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner && accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) replaceFeedback(null)
                 applySystem(observation, light, sound)
                 publishShell()
             }
@@ -336,13 +370,15 @@ class ContentBinding(
 
     private fun publishShell() {
         val projected = shell(latestSnapshot)
-        val message = feedback ?: projected.message
+        val message = feedback
+        val messageRevision = if (message == null) 0L else feedbackRevision
         val light = if (systemTargets[0] == null) projected.brightness else projected.brightness.copy(target = systemTargets[0])
         val sound = if (systemTargets[1] == null) projected.volume else projected.volume.copy(target = systemTargets[1])
-        val result = if (projected.sourcesOpen == sourcesOpen && projected.message == message &&
+        val result = if (projected.sourcesOpen == sourcesOpen && projected.settingsOpen == settingsOpen &&
+            projected.settingsSection == settingsSection && projected.message == message && projected.messageRevision == messageRevision &&
             light === projected.brightness && sound === projected.volume && projected.placeholderSwitches == placeholderSwitches) projected
-            else projected.copy(sourcesOpen = sourcesOpen, message = message, brightness = light, volume = sound,
-                placeholderSwitches = placeholderSwitches)
+            else projected.copy(sourcesOpen = sourcesOpen, settingsOpen = settingsOpen, settingsSection = settingsSection,
+                message = message, messageRevision = messageRevision, brightness = light, volume = sound, placeholderSwitches = placeholderSwitches)
         if (mutableState.value != result) mutableState.value = result
     }
 
@@ -359,7 +395,14 @@ class ContentBinding(
     private fun project(snapshot: ContentState) {
         val previous = latestSnapshot
         latestSnapshot = snapshot
-        if (snapshot.commandSequence != commandSequence) { commandSequence = snapshot.commandSequence; replaceFeedback(null) }
+        if (snapshot.commandSequence != commandSequence) {
+            commandSequence = snapshot.commandSequence
+            if (snapshot.commandStatus == ContentState.COMMAND_FAILED && snapshot.commandMessage.isNotBlank()) {
+                replaceFeedback(snapshot.commandMessage)
+            } else {
+                replaceFeedback(null)
+            }
+        }
         publishShell()
         mutableLyrics.value = mapper.mapLyrics(snapshot)
         if (snapshot.nowMillis != previous.nowMillis) {
@@ -441,5 +484,8 @@ class ContentBinding(
     }
 
     private fun checkMain() { check(Looper.myLooper() == Looper.getMainLooper()) { "ContentBinding must be used on the main thread" } }
-    private companion object { const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION" }
+    private companion object {
+        private const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
+        private const val FEEDBACK_DURATION_MS = 3_000L
+    }
 }

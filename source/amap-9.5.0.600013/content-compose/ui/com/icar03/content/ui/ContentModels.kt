@@ -17,8 +17,8 @@ enum class ShortcutId(
     PassengerHeating(ControlId.PassengerHeating), Massage(ControlId.Massage),
     Settings(type = QuickControlType.OrdinaryToggle, title = "设置"),
     AutoWiper(ControlId.Wiper, QuickControlType.OrdinaryToggle, title = "自动雨刮器"),
-    RearWiper(type = QuickControlType.OrdinaryToggle, placement = QuickControlPlacement.LowerToggles, title = "后窗雨刮器"),
-    RearWash(type = QuickControlType.OrdinaryToggle, placement = QuickControlPlacement.LowerToggles, title = "后窗洗涤"),
+    RearWiper(ControlId.RearWiper, QuickControlType.OrdinaryToggle, placement = QuickControlPlacement.LowerToggles, title = "后窗雨刮器"),
+    RearWash(ControlId.RearWash, QuickControlType.OrdinaryToggle, placement = QuickControlPlacement.LowerToggles, title = "后窗洗涤"),
     Wiper(ControlId.Wiper, QuickControlType.SteppedVertical, QuickControlPlacement.Vertical);
     val label: String get() = title ?: requireNotNull(control).label
 }
@@ -54,6 +54,10 @@ object DockShortcuts {
 }
 
 enum class PanelPage { Shortcuts, Lyrics }
+enum class SettingsSection(val label: String) {
+    Vehicle("车辆"), Volume("音量"), Sound("声音"), Display("显示"),
+    Connection("连接"), Assistant("理想同学"), Mode("模式"), Accessories("配件"), General("通用")
+}
 enum class PreviewScenario(val label: String) {
     Ready("日常预览"), NoData("无数据"), Unavailable("能力不可用"), Failure("失败回弹"), Pending("待确认"), Playing("正在播放"), SourceMenu("来源菜单")
 }
@@ -114,7 +118,9 @@ data class ContentUiState(
     val controls: Map<ControlId, ControlState> = ControlId.entries.associateWith { ControlState(if (it == ControlId.Lock) 1 else 0) },
     val brightness: LevelState = LevelState(.65f), val volume: LevelState = LevelState(.38f),
     val media: MediaState = MediaState(), val lyrics: LyricsState = LyricsState(), val sourcesOpen: Boolean = false,
-    val scenariosOpen: Boolean = false, val message: String? = null,
+    val scenariosOpen: Boolean = false, val message: String? = null, val messageRevision: Long = 0L,
+    val settingsOpen: Boolean = false, val settingsSection: SettingsSection = SettingsSection.Vehicle,
+    val showWeekday: Boolean = true, val showSeconds: Boolean = false,
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,
     val placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap(),
@@ -125,6 +131,7 @@ sealed interface ContentEvent {
     data class ControlAutomaticTapped(val id: ControlId) : ContentEvent
     data class ControlLevelChanged(val id: ControlId, val level: Int) : ContentEvent
     data class PlaceholderToggled(val id: ShortcutId) : ContentEvent
+    data object RearWashTapped : ContentEvent
     data class BrightnessChanged(val value: Float) : ContentEvent
     data class VolumeChanged(val value: Float) : ContentEvent
     data object PlayPause : ContentEvent
@@ -136,7 +143,18 @@ sealed interface ContentEvent {
     data object OpenSources : ContentEvent
     data object OpenScenarios : ContentEvent
     data object SettingsTapped : ContentEvent
+    data class SettingsSectionSelected(val section: SettingsSection) : ContentEvent
+    data object SettingsDismissed : ContentEvent
+    data class ShowWeekdayChanged(val value: Boolean) : ContentEvent
+    data class ShowSecondsChanged(val value: Boolean) : ContentEvent
     data object DismissSheet : ContentEvent
+}
+
+/** Settings remains modal until its content-layer exit finishes. */
+fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
+    ContentEvent.SettingsTapped, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet,
+    is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged -> true
+    else -> false
 }
 
 /** Fixtures are labeled preview data, never inferred vehicle state. */

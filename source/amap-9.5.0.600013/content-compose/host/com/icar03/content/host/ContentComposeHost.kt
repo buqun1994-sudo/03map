@@ -86,7 +86,13 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         if (host.height > 0) host.clipBounds = Rect(0, 0, width, host.height)
     }
     fun handleBack(): Boolean {
-        if (destroyed || !binding.state.value.sourcesOpen) return false
+        if (destroyed) return false
+        val current = binding.state.value
+        if (current.settingsOpen) {
+            binding.dispatch(com.icar03.content.ui.ContentEvent.SettingsDismissed)
+            return true
+        }
+        if (!current.sourcesOpen) return false
         binding.dispatch(com.icar03.content.ui.ContentEvent.DismissSheet)
         return true
     }

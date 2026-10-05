@@ -101,7 +101,7 @@ class ContentModelsTest {
         assertEquals(ControlId.Wiper, ShortcutId.AutoWiper.control)
         assertEquals(QuickControlType.OrdinaryToggle, ShortcutId.AutoWiper.type)
         assertTrue(SystemQuickControl.entries.all { it.type == QuickControlType.ContinuousVertical })
-        assertNull(ShortcutId.RearWiper.control); assertNull(ShortcutId.RearWash.control)
+        assertEquals(ControlId.RearWiper, ShortcutId.RearWiper.control); assertEquals(ControlId.RearWash, ShortcutId.RearWash.control)
         assertTrue(ContentUiState().placeholderSwitches.isEmpty())
         assertEquals(1, ControlState().rememberedLevel)
     }
@@ -150,7 +150,7 @@ class ContentModelsTest {
     }
 
     @Test fun sevenControlsAndFiveStableSourcesAreUnique() {
-        assertEquals(7, ControlId.entries.size)
+        assertEquals(9, ControlId.entries.size)
         assertEquals(5, MediaSource.entries.size)
         assertEquals(5, MediaSource.entries.map { it.label }.toSet().size)
     }

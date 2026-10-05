@@ -84,7 +84,7 @@ class ContentRuntimeTest {
         val valid = mapper.map(state)
         assertEquals(60, valid.batteryPercent)
         assertTrue(valid.charging)
-        assertEquals("剩余40分钟·12.5kW", valid.chargeStatus)
+        assertEquals("剩余40分钟·充电功率 12.5kW", valid.chargeStatus)
         for (percent in listOf(0, 100)) { state.batteryPercent = percent; assertEquals(percent, mapper.map(state).batteryPercent) }
         state.batteryPercent = 101; state.chargePowerKw = Float.NaN; state.chargeRemainingMinutes = -1
         assertNull(mapper.map(state).batteryPercent)
@@ -376,7 +376,7 @@ class ContentRuntimeTest {
         binding.dispatch(ContentEvent.PageSelected(PanelPage.Shortcuts))
         assertEquals(0, store.snapshot().pageIndex)
         binding.dispatch(ContentEvent.SettingsTapped)
-        assertNotNull(binding.state.value.message)
+        assertNull(binding.state.value.message)
     }
 
     @Test fun pendingBlocksOtherControlsAndFailedCommandSupersedesSettingsFeedback() {
@@ -389,6 +389,7 @@ class ContentRuntimeTest {
         assertNull(vehicle.lockTarget)
         store.acceptVehicleSnapshot(vehicleSnapshot(ventilation = 3))
         binding.dispatch(ContentEvent.SettingsTapped)
+        binding.dispatch(ContentEvent.SettingsDismissed)
         vehicle.accept = false
         binding.dispatch(ContentEvent.ControlTapped(ControlId.Lock))
         assertEquals("车锁命令未发送，请检查车机状态", binding.state.value.message)

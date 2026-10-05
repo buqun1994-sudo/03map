@@ -15,7 +15,13 @@ enum class VehicleControl(
     Heating("seat_heating", "主驾座椅加热", listOf(0, 3, 2, 1, 4), automaticLevel = 4),
     PassengerHeating("passenger_seat_heating", "副驾座椅加热", listOf(0, 3, 2, 1, 4), automaticLevel = 4),
     Massage("seat_massage", "座椅按摩", listOf(0, 3, 2, 1)),
-    Wiper("front_wiper", "雨刮器", listOf(0, 1, 2, 3, 4, 5), automaticLevel = 5);
+    Wiper("front_wiper", "雨刮器", listOf(0, 1, 2, 3, 4, 5), automaticLevel = 5),
+    RearWiper("rear_wiper", "后窗雨刮器", listOf(0, 1)),
+    /** Actual OFF/active only; this control accepts a trigger intent, never a persistent level set. */
+    RearWash("rear_wash", "后窗洗涤", listOf(0, 1));
+
+    val isRearWindow: Boolean get() = this == RearWiper || this == RearWash
+    val isTrigger: Boolean get() = this == RearWash
 
     val maxLevel: Int = cycle.max()
     val maxManualLevel: Int = cycle.filter { it != automaticLevel }.max()
@@ -23,7 +29,7 @@ enum class VehicleControl(
     fun isLevel(level: Int): Boolean = level in cycle
     fun normalizeLevel(level: Int): Int = if (isLevel(level)) level else -1
     fun isAutomatic(level: Int): Boolean = automaticLevel >= 0 && level == automaticLevel
-    fun isManualLevel(level: Int): Boolean = level > 0 && isLevel(level) && !isAutomatic(level)
+    fun isManualLevel(level: Int): Boolean = !isRearWindow && level > 0 && isLevel(level) && !isAutomatic(level)
     fun rememberedManualLevel(level: Int): Int = if (isManualLevel(level)) level else defaultManualLevel
 
     /** Power restores only confirmed manual memory; AUTO and OFF never replace it. */

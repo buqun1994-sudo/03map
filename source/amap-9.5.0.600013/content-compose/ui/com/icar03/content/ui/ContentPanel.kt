@@ -25,6 +25,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -40,6 +41,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalView
 import android.view.SoundEffectConstants
@@ -69,7 +71,7 @@ internal val PressFeedback = SemanticsPropertyKey<String>("PressFeedback")
 
 
 
-/** Stateless reusable preview panel. Geometry follows the supplied 640×1080 prototype. */
+/** Stateless panel. Page and overlay geometry follow the host viewport. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContentPanel(
@@ -81,9 +83,15 @@ fun ContentPanel(
 ) {
     val view = LocalView.current
     val dockOverlay = remember { DockLevelOverlayState() }
-    rememberQuickControlGestureGate(!state.sourcesOpen && !state.scenariosOpen) { dockOverlay.cancel() }
+    var settingsRetained by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val settingsActive = state.settingsOpen || settingsRetained
+    val contentInteractive = !state.sourcesOpen && !state.scenariosOpen && !settingsActive
+    rememberQuickControlGestureGate(contentInteractive) { dockOverlay.cancel() }
+    var retainedMessage by remember { androidx.compose.runtime.mutableStateOf(state.message.orEmpty()) }
+    androidx.compose.runtime.SideEffect { state.message?.let { retainedMessage = it } }
     val latestEvent by rememberUpdatedState(onEvent)
-    val dispatch: (ContentEvent) -> Unit = { event ->
+    val dispatch: (ContentEvent) -> Unit = dispatch@{ event ->
+        if (settingsActive && !event.isSettingsInteraction()) return@dispatch
         // Compose does not call View.performClick(): use the same system sound path
         // as the old Android buttons, respecting the user's sound-effects setting.
         if (event !is ContentEvent.PageSelected && event != ContentEvent.DismissSheet) {
@@ -93,61 +101,90 @@ fun ContentPanel(
     }
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = !state.previewMode && maxWidth < 600.dp
-        val edge = if (compact) 8.dp else 20.dp
-        ambientBackground?.invoke()
-        Column(Modifier.fillMaxSize()) {
-            PrototypeTopBar(state, clockText)
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (state.previewMode) {
-                    if (state.page == PanelPage.Shortcuts) {
-                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
-                    } else LyricsPage(state, dispatch, lyricsState)
-                } else {
-                    val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
-                    val currentPage by rememberUpdatedState(state.page)
-                    val currentEvent by rememberUpdatedState(dispatch)
-                    LaunchedEffect(state.page) {
-                        if (pager.currentPage != state.page.ordinal) pager.animateScrollToPage(state.page.ordinal,
-                            animationSpec = tween(700, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
-                    }
-                    LaunchedEffect(pager) {
-                        snapshotFlow { pager.settledPage }.collect { index ->
-                            if (index != currentPage.ordinal) currentEvent(ContentEvent.PageSelected(PanelPage.entries[index]))
-                        }
-                    }
-                    HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages")) { index ->
-                        CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
-                        if (PanelPage.entries[index] == PanelPage.Shortcuts) {
-                            Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) {
-                                PrototypeGrid(state, dispatch)
-                                if (state.message != null) Text(state.message,
-                                    Modifier.padding(vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val compact = !state.previewMode && maxWidth < 600.dp
+            val edge = if (compact) 8.dp else 20.dp
+            val topBarHeight = if (compact) 48.dp else 59.dp
+            val dockHeight = if (compact) 72.dp else 112.dp
+            val feedbackWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
+            ambientBackground?.invoke()
+            CompositionLocalProvider(LocalQuickControlInteractionEnabled provides contentInteractive) {
+                Column(Modifier.fillMaxSize()) {
+                    PrototypeTopBar(state, clockText)
+                    Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                        if (state.previewMode) {
+                            if (state.page == PanelPage.Shortcuts) {
+                                Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) {
+                                    PrototypeGrid(state, dispatch)
+                                }
+                            } else LyricsPage(state, dispatch, lyricsState)
+                        } else {
+                            val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
+                            val currentPage by rememberUpdatedState(state.page)
+                            val currentEvent by rememberUpdatedState(dispatch)
+                            LaunchedEffect(state.page) {
+                                if (pager.currentPage != state.page.ordinal) pager.animateScrollToPage(state.page.ordinal,
+                                    animationSpec = tween(700, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
                             }
-                        } else LyricsPage(state, dispatch, lyricsState)
+                            LaunchedEffect(pager) {
+                                snapshotFlow { pager.settledPage }.collect { index ->
+                                    if (index != currentPage.ordinal) currentEvent(ContentEvent.PageSelected(PanelPage.entries[index]))
+                                }
+                            }
+                            HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"), userScrollEnabled = contentInteractive) { index ->
+                                CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
+                                    if (PanelPage.entries[index] == PanelPage.Shortcuts) {
+                                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) {
+                                            PrototypeGrid(state, dispatch)
+                                        }
+                                    } else LyricsPage(state, dispatch, lyricsState)
+                                }
+                            }
                         }
+                    }
+                    Box(Modifier.fillMaxWidth().height(if (compact) 80.dp else 136.dp)
+                        .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp)) {
+                        PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable, compact)
+                    }
+                    PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive)
+                }
+            }
+            DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
+                VehicleControlOemIcon(control, state.controls.getValue(control).copy(target = level), state.dark, modifier)
+            }
+            AnimatedVisibility(
+                visible = state.sourcesOpen,
+                enter = fadeIn(tween(240)) + slideInVertically(tween(240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { 24 },
+                exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { 24 },
+            ) { PrototypeSources(state, dispatch) }
+            if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
+            SettingsSheet(state, dispatch,
+                Modifier.align(Alignment.TopStart).fillMaxSize()
+                    .padding(top = topBarHeight, bottom = dockHeight).zIndex(7f),
+                onVisibilityChanged = { settingsRetained = it })
+            // Keep the moving feedback surface inside the same fixed content bounds.
+            Box(Modifier.fillMaxSize().padding(top = topBarHeight, bottom = dockHeight).clipToBounds().zIndex(10f)) {
+                AnimatedVisibility(
+                    visible = state.message != null,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                    enter = fadeIn(tween(220)) + slideInVertically(tween(220, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
+                    exit = fadeOut(tween(200)) + slideOutVertically(tween(200, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
+                ) {
+                    Surface(
+                        Modifier.testTag("status-feedback").widthIn(max = feedbackWidth),
+                        shape = RoundedCornerShape(14.dp), color = LocalContentColors.current.sheetBase,
+                        tonalElevation = 4.dp,
+                    ) {
+                        Text(state.message ?: retainedMessage,
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
-            Box(Modifier.fillMaxWidth().height(if (compact) 80.dp else 136.dp).padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp)) {
-                PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable, compact)
-            }
-            PrototypeDock(state, dispatch, compact, dockOverlay)
-        }
-        DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
-            VehicleControlOemIcon(control, state.controls.getValue(control).copy(target = level), state.dark, modifier)
-        }
-        AnimatedVisibility(
-            visible = state.sourcesOpen,
-            enter = fadeIn(tween(240)) + slideInVertically(tween(240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { 24 },
-            exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { 24 },
-        ) { PrototypeSources(state, dispatch) }
-        if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
-        // This follows the Compose host's actual viewport, supplied by the divider
-        // owner. It never assumes 640px or modifies either map Surface.
-        Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp)
-            .background(MaterialTheme.colorScheme.outline.copy(alpha = .5f)).testTag("content-divider"))
+            // This follows the Compose host's actual viewport, supplied by the divider
+            // owner. It never assumes 640px or modifies either map Surface.
+            Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp)
+                .background(MaterialTheme.colorScheme.outline.copy(alpha = .5f)).testTag("content-divider"))
         }
     }
 }
@@ -173,10 +210,16 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
         val shortWeekdayTime = timeWithWeekday(clock.time.take(5), clock.weekday.replace("星期", "周"))
         val temperatureGap = gap + 4.dp
         val fullStatus = state.chargeStatus
+        val statusParts = fullStatus?.split("·").orEmpty()
+        val powerStatus = statusParts.firstOrNull { it.contains("充电功率") || it.contains("kW") }
+        val minutesStatus = statusParts.firstOrNull { it.contains("剩余") || it.contains("分钟") }
+        val compactDetail = listOf(minutesStatus, powerStatus).filterNotNull().joinToString("·").takeIf { it.isNotEmpty() }
         val statuses = if (fullStatus == null) listOf("") else listOf(
             fullStatus,
             fullStatus.replace(" ", ""),
-            fullStatus.replace(" ", "").replace("功率", "").replace("剩余", ""),
+            compactDetail,
+            powerStatus,
+            minutesStatus,
             when {
                 fullStatus.contains("待确认") -> "状态待确认"
                 fullStatus.contains("预约") -> "预约充电中"
@@ -184,14 +227,16 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
                 fullStatus.contains("已插枪") -> "已插枪"
                 else -> fullStatus
             },
-        ).distinct()
+        ).filterNotNull().distinct()
         fun required(time: String, status: String, showTemperature: Boolean): Float {
             val texts = listOf(time, status, range, if (showTemperature) temperature else "").filter { it.isNotEmpty() }
             return texts.sumOf { width(it).toDouble() }.toFloat() + gapPx * (texts.size + 1) + if (fullStatus != null && showTemperature) with(density) { 4.dp.toPx() } else 0f
         }
         // Optional temperature yields first, then seconds; weekday and primary values survive.
-        val choices = listOf(Triple(fullTime, statuses.first(), true), Triple(fullTime, statuses.first(), false)) +
-            statuses.flatMap { status -> listOf(Triple(minuteTime, status, false), Triple(shortWeekdayTime, status, false)) }
+        val times = listOf(fullTime, minuteTime, shortWeekdayTime).distinct()
+        val choices = listOf(Triple(fullTime, statuses.first(), true)) +
+            times.map { Triple(it, statuses.first(), false) } +
+            statuses.drop(1).flatMap { status -> times.map { Triple(it, status, false) } }
         val choice = choices.firstOrNull { required(it.first, it.second, it.third) <= availablePx }
             ?: Triple(shortWeekdayTime, statuses.last(), false)
         val time = choice.first
@@ -343,8 +388,18 @@ private fun ShortcutVertical(id: ShortcutId, state: ContentUiState, onEvent: (Co
 }
 
 private fun shortcutStatus(id: ShortcutId, state: ContentUiState): String {
-    if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) return if (state.placeholderSwitches[id] == true) "开启（本地反馈，车控未接入）" else "关闭（本地反馈，车控未接入）"
-    val control = id.control?.let { state.controls.getValue(it) } ?: return id.label
+    val control = id.control?.let { state.controls.getValue(it) }
+    if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) {
+        val value = control ?: return "状态未知"
+        return when {
+            value.pending -> "待确认"
+            !value.known -> "状态未知"
+            id == ShortcutId.RearWash && value.actual == 1 -> "喷洗中"
+            value.actual == 1 -> "开启"
+            else -> "关闭"
+        }
+    }
+    if (control == null) return id.label
     return when {
         control.pending -> "待确认"
         !control.known -> "状态未知"
@@ -361,8 +416,8 @@ private fun shortcutIcon(id: ShortcutId, state: ContentUiState): Int = when (id)
     ShortcutId.SteeringHeat -> steeringHeatIcon(state.controls.getValue(ControlId.SteeringHeat).displayed, state.dark)
     ShortcutId.Wiper -> vehicleControlIconRecipe(ControlId.Wiper, state.controls.getValue(ControlId.Wiper).manualWiperDisplayed, state.dark).resource
     ShortcutId.AutoWiper -> vehicleControlIconRecipe(ControlId.Wiper, ControlId.Wiper.automaticLevel, state.dark).resource
-    ShortcutId.RearWiper -> rearWiperIconRecipe(state.placeholderSwitches[id] == true, state.dark).resource
-    ShortcutId.RearWash -> R.drawable.content_oem_ico_wash_rear
+    ShortcutId.RearWiper -> state.controls.getValue(ControlId.RearWiper).let { rearWiperIconRecipe(it.displayed == 1, state.dark).resource }
+    ShortcutId.RearWash -> state.controls.getValue(ControlId.RearWash).let { rearWashIconRecipe(it.displayed == 1, state.dark).resource }
     ShortcutId.Settings -> R.drawable.content_oem_ic_settings
     else -> seatIcon(requireNotNull(id.control), state)
 }
@@ -383,7 +438,6 @@ private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color = when {
 private fun sourceTint(): Color = MaterialTheme.colorScheme.primary
 
 private fun shortcutSelected(id: ShortcutId, state: ContentUiState): Boolean {
-    if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) return state.placeholderSwitches[id] == true
     val control = id.control?.let { state.controls.getValue(it) } ?: return false
     if (id == ShortcutId.AutoWiper) return (control.known || control.pending) && ControlId.Wiper.isAutomatic(control.displayed)
     if (id == ShortcutId.Wiper) return (control.known || control.pending) && ControlId.Wiper.isManualLevel(control.manualWiperDisplayed)
@@ -393,8 +447,9 @@ private fun shortcutSelected(id: ShortcutId, state: ContentUiState): Boolean {
 private fun shortcutEvent(id: ShortcutId, state: ContentUiState): ContentEvent? = when (id) {
     ShortcutId.Wiper -> ContentEvent.ControlPowerTapped(ControlId.Wiper)
     ShortcutId.AutoWiper -> ContentEvent.ControlAutomaticTapped(ControlId.Wiper)
-    ShortcutId.RearWiper, ShortcutId.RearWash -> ContentEvent.PlaceholderToggled(id)
-    ShortcutId.Settings -> if (state.previewMode) ContentEvent.OpenScenarios else ContentEvent.SettingsTapped
+    ShortcutId.RearWiper -> ContentEvent.ControlTapped(ControlId.RearWiper)
+    ShortcutId.RearWash -> ContentEvent.RearWashTapped
+    ShortcutId.Settings -> ContentEvent.SettingsTapped
     else -> id.control?.let { ContentEvent.ControlTapped(it) }
 }
 
@@ -416,7 +471,8 @@ private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (Conten
         ShortcutOemIcon(id, state, shortcutIcon(id, state), modifier.testTag("shortcut-icon-${id.name}"))
     }
     if (id.type == QuickControlType.OrdinaryToggle) {
-        OrdinaryToggle(id.label, shortcutStatus(id, state), shortcutSelected(id, state), enabled, tag,
+        OrdinaryToggle(id.label, shortcutStatus(id, state), shortcutSelected(id, state), enabled,
+             shortcutRippleEnabled(id, state), tag,
             Modifier.height(height), onClick = { shortcutEvent(id, state)?.let(onEvent) }, icon = icon)
     } else {
         DynamicIconSwitch(id.label, shortcutStatus(id, state), shortcutSelected(id, state), enabled,
@@ -462,7 +518,8 @@ private fun PrototypeMediaCard(media: MediaState, onEvent: (ContentEvent) -> Uni
 }
 
 @Composable
-private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit, compact: Boolean, overlay: DockLevelOverlayState) {
+private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit, compact: Boolean,
+    overlay: DockLevelOverlayState, interactive: Boolean) {
      val colors = LocalContentColors.current
     val items = DockShortcuts.items
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
@@ -479,7 +536,8 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                         items.forEach { id ->
                             val control = id.control?.let { state.controls.getValue(it) }
                             val selected = shortcutSelected(id, state)
-                            val enabled = control == null || control.available && control.known && !control.pending && id.control!!.isLevel(control.actual)
+                            val enabled = (interactive || id == ShortcutId.Settings) &&
+                                (control == null || control.available && control.known && !control.pending && id.control!!.isLevel(control.actual))
                             val stepped = id.type == QuickControlType.SteppedVertical
                             val rippleEnabled = if (stepped) enabled else shortcutRippleEnabled(id, state)
                             val levelGesture = if (stepped) dockLevelGesture(id.control!!, control!!, overlay) {
@@ -707,12 +765,15 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
         return
     }
     if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) {
-        val selected = state.placeholderSwitches[id] == true
+        val rearControl = requireNotNull(control)
+        val value = state.controls.getValue(rearControl)
+        val selected = value.pending && value.target == 1 || !value.pending && value.actual == 1
         val recipe = if (id == ShortcutId.RearWiper) rearWiperIconRecipe(selected, state.dark, base)
             else rearWashIconRecipe(selected, state.dark, base)
         OemIcon(recipe.resource, modifier, tint = Color.Unspecified, pathColors = recipe.pathColors,
-            motionKey = selected, animationAsset = recipe.asset, animationFrames = recipe.frames,
-            animationColors = recipe.animationColors, animationStrokePathColors = recipe.animationStrokePathColors,
+            motionKey = if (value.known || value.pending) selected else "unknown", animationAsset = recipe.asset,
+            animationFrames = recipe.frames, animationColors = recipe.animationColors,
+            animationStrokePathColors = recipe.animationStrokePathColors,
             playbackSpeed = recipe.playbackSpeed, animateOnAction = false)
         return
     }

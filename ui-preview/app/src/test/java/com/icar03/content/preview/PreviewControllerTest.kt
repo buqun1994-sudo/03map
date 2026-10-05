@@ -39,7 +39,7 @@ class PreviewControllerTest {
         assertNull(controller.state.value.controls.getValue(ControlId.Wiper).target)
     }
 
-    @Test fun rearSwitchesGiveOnlyLocalFeedbackAndDoNotAlterAnyVehicleControl() = runTest {
+    @Test fun legacyPlaceholderEventsStayPreviewOnlyAndDoNotAlterVehicleFacts() = runTest {
         val controller = PreviewController(this)
         val controls = controller.state.value.controls
         controller.dispatch(ContentEvent.PlaceholderToggled(ShortcutId.RearWiper))
@@ -71,8 +71,9 @@ class PreviewControllerTest {
         val cycles = mapOf(ControlId.Lock to listOf(0, 1, 0), ControlId.Ventilation to listOf(0, 3, 2, 1, 0),
             ControlId.Massage to listOf(0, 3, 2, 1, 0), ControlId.Heating to listOf(0, 3, 2, 1, 4, 0),
             ControlId.PassengerHeating to listOf(0, 3, 2, 1, 4, 0),
-            ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0), ControlId.Wiper to listOf(0, 1, 2, 3, 4, 5, 0))
-        assertEquals(ControlId.entries.toSet(), cycles.keys)
+            ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0), ControlId.Wiper to listOf(0, 1, 2, 3, 4, 5, 0),
+            ControlId.RearWiper to listOf(0, 1, 0))
+        assertEquals(ControlId.entries.filter { it != ControlId.RearWash }.toSet(), cycles.keys)
         cycles.forEach { (id, levels) ->
             val initial = previewState()
             val controller = PreviewController(this, initial.copy(controls = initial.controls + (id to ControlState(actual = 0))))
@@ -130,7 +131,10 @@ class PreviewControllerTest {
         controller.dispatch(ContentEvent.VolumeChanged(.9f))
         controller.dispatch(ContentEvent.SourceSelected(MediaSource.Usb))
         runCurrent()
+        controller.dispatch(ContentEvent.SettingsTapped)
         controller.pause()
+        assertFalse(controller.state.value.settingsOpen)
+        assertNull(controller.state.value.message)
         controller.dispatch(ContentEvent.ControlTapped(ControlId.Lock))
         advanceUntilIdle()
         assertEquals(.38f, controller.state.value.volume.actual)

@@ -228,10 +228,10 @@ open class QuickControlsNativeTest {
     }
 
     @Test fun ordinaryToggleRetainsSelectionAfterRippleWhileDynamicReturnsToBase() {
-        mountPanel { event -> if (event is ContentEvent.PlaceholderToggled) state.value = state.value.copy(
-            placeholderSwitches = state.value.placeholderSwitches + (event.id to true)) }
+        mountPanel { event -> if (event is ContentEvent.ControlTapped && event.id == ControlId.RearWiper) state.value = state.value.copy(
+            controls = state.value.controls + (ControlId.RearWiper to ControlState(actual = 1))) }
         compose.mainClock.autoAdvance = false
-        val ordinary = compose.onNodeWithTag("shortcut-RearWiper")
+        val ordinary = compose.onNodeWithTag("control-RearWiper")
         ordinary.performTouchInput { down(Offset(12f, 12f)) }
         compose.mainClock.advanceTimeBy(240)
         ordinary.assert(SemanticsMatcher.expectValue(RippleRunning, true))
@@ -239,7 +239,7 @@ open class QuickControlsNativeTest {
         ordinary.performTouchInput { up() }
         compose.mainClock.advanceTimeBy(360)
         ordinary.assertIsSelected().assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,
-            "开启（本地反馈，车控未接入）"))
+            "开启"))
         val selected = if (dark) Color(0xFF303030) else Color(0xFFE4E4E4)
         val base = if (dark) Color(0xFF1A1A1A) else Color(0xFFE9E9E9)
         ordinary.assert(SemanticsMatcher.expectValue(ControlFill, selected.value.toLong()))
@@ -871,21 +871,26 @@ open class QuickControlsNativeTest {
         assertEquals("OFF opacity must resolve exactly its Lv1 stroke: $resolved", 1, resolved.size)
         assertTrue("Lv1 suppression must never target the white matte", resolved.single().toString().contains("Lv1") && !resolved.single().toString().contains("mask"))
         for (level in listOf(1, 2, 3, 4, 0)) {
-            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Wiper to ControlState(actual = level)),
-                placeholderSwitches = mapOf(ShortcutId.RearWiper to (level > 0), ShortcutId.RearWash to (level > 0))) }
+             compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Wiper to ControlState(actual = level)) +
+                 (ControlId.RearWiper to ControlState(actual = if (level > 0) 1 else 0)) +
+                 (ControlId.RearWash to ControlState(actual = if (level > 0) 1 else 0))) }
             advanceIconTo("native-front", .05f, .18f)
             val first = capture("wipers-$level-first")
             assertPalette(first, "native-front", level > 0)
             if (level == 0) assertFrontLevelMark(first, false)
             advanceIconTo("native-front", .32f, .50f)
             val middle = capture("wipers-$level-middle")
-            for (tag in listOf("native-front", "native-rear", "native-wash")) assertPalette(middle, tag, level > 0)
+            assertPalette(middle, "native-front", level > 0)
             if (level == 0) assertFrontLevelMark(middle, false)
             advanceIconToTail("native-front")
             val tail = capture("wipers-$level-tail")
             assertPalette(tail, "native-front", level > 0)
+            for (tag in listOf("native-rear", "native-wash")) {
+                assertPalette(first, tag, level > 0)
+                assertPalette(middle, tag, level > 0)
+                assertPalette(tail, tag, level > 0)
+            }
             assertFrontLevelMark(tail, level > 0)
-            for (tag in listOf("native-rear", "native-wash")) assertPalette(tail, tag, level > 0)
             compose.onNodeWithTag("native-front").assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
         }
         compose.mainClock.autoAdvance = true
@@ -894,7 +899,7 @@ open class QuickControlsNativeTest {
     @Test fun washUserCyclePlaysOnceThenFalseAndPauseKeepTheRealTailWithoutReplay() {
         mountActualIconAdapters()
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { state.value = state.value.copy(placeholderSwitches = mapOf(ShortcutId.RearWash to true)) }
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.RearWash to ControlState(actual = 1))) }
         advanceIconTo("native-wash", .05f, .18f)
         assertPalette(capture("wash-on-first"), "native-wash", true)
         advanceIconTo("native-wash", .32f, .50f)
@@ -911,10 +916,10 @@ open class QuickControlsNativeTest {
         val tail = capture("wash-on-tail")
         assertPalette(tail, "native-wash", true)
         assertWashWater(tail, true)
-        compose.runOnIdle { state.value = state.value.copy(time = "12:25", placeholderSwitches = state.value.placeholderSwitches.toMap()) }
+        compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
         compose.mainClock.advanceTimeBy(160)
         assertArrayEquals(iconPixels(tail, "native-wash"), iconPixels(capture("wash-on-held"), "native-wash"))
-        compose.runOnIdle { state.value = state.value.copy(placeholderSwitches = mapOf(ShortcutId.RearWash to false)) }
+        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.RearWash to ControlState(actual = 0))) }
         advanceIconTo("native-wash", .05f, .18f)
         assertPalette(capture("wash-off-first"), "native-wash", false)
         advanceIconTo("native-wash", .32f, .50f)

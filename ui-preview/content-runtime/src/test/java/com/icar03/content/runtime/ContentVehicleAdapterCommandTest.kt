@@ -425,7 +425,7 @@ class ContentVehicleAdapterCommandTest {
             assertFalse(write.ensureMassageOn)
         }
         assertTrue(service.calls.filter { it.functionId == 608 }.all { it.transaction == 7 && it.area == 0 })
-        assertFalse(service.calls.any { it.functionId in listOf(561, 609, 610, 671) })
+        assertFalse(service.calls.any { it.functionId in listOf(561, 671) })
         assertTrue(service.writes.isEmpty())
     }
 
@@ -449,7 +449,7 @@ class ContentVehicleAdapterCommandTest {
             actual = target
         }
         assertTrue(failures.isEmpty())
-        assertFalse(service.calls.any { it.functionId in listOf(561, 609, 610, 671) })
+        assertFalse(service.calls.any { it.functionId in listOf(561, 671) })
     }
 
     @Test fun frontWiperReadAndWritePermissionFailuresNeverBorrowSeatOrLockState() {

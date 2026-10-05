@@ -98,6 +98,10 @@ public final class ContentState {
     // Tail extensions: normalized domain modes, independent of seat readback.
     public int wiperLevel = -1;
     public boolean wiperKnown;
+    public int rearWiperLevel = -1;
+    public boolean rearWiperKnown;
+    public int rearWashLevel = -1;
+    public boolean rearWashKnown;
     private java.util.Map<String, Integer> rememberedControlLevels = java.util.Collections.emptyMap();
 
     public java.util.Map<String, Integer> getRememberedControlLevels() {
@@ -108,8 +112,13 @@ public final class ContentState {
     public void setRememberedControlLevels(java.util.Map<String, Integer> levels) {
         if (levels == null || levels.isEmpty()) {
             rememberedControlLevels = java.util.Collections.emptyMap();
-        } else if (!rememberedControlLevels.equals(levels)) {
-            rememberedControlLevels = java.util.Collections.unmodifiableMap(new java.util.HashMap<>(levels));
+        } else {
+            java.util.Map<String, Integer> manualLevels = new java.util.HashMap<>(levels);
+            manualLevels.remove(VehicleControl.RearWiper.getId());
+            manualLevels.remove(VehicleControl.RearWash.getId());
+            if (!rememberedControlLevels.equals(manualLevels)) {
+                rememberedControlLevels = java.util.Collections.unmodifiableMap(manualLevels);
+            }
         }
     }
 
@@ -129,6 +138,8 @@ public final class ContentState {
                     control, passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive);
             case SteeringHeat: return control.normalizeLevel(steeringHeatLevel);
             case Wiper: return wiperKnown ? control.normalizeLevel(wiperLevel) : -1;
+            case RearWiper: return rearWiperKnown ? control.normalizeLevel(rearWiperLevel) : -1;
+            case RearWash: return rearWashKnown ? control.normalizeLevel(rearWashLevel) : -1;
             case Massage: return ContentPorts.VehicleSnapshot.consistentMassageLevel(
                     massageLevel, massageSwitchKnown, massageActive);
             default: return -1;
@@ -217,6 +228,10 @@ public final class ContentState {
         copy.dockItems = dockItems.clone();
         copy.wiperLevel = wiperKnown ? VehicleControl.Wiper.normalizeLevel(wiperLevel) : -1;
         copy.wiperKnown = copy.wiperLevel >= 0;
+        copy.rearWiperLevel = rearWiperKnown ? VehicleControl.RearWiper.normalizeLevel(rearWiperLevel) : -1;
+        copy.rearWiperKnown = copy.rearWiperLevel >= 0;
+        copy.rearWashLevel = rearWashKnown ? VehicleControl.RearWash.normalizeLevel(rearWashLevel) : -1;
+        copy.rearWashKnown = copy.rearWashLevel >= 0;
         copy.rememberedControlLevels = rememberedControlLevels;
         return copy;
     }

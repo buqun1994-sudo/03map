@@ -40,6 +40,9 @@ public final class ContentVehicleProtocol {
     public static final int MASSAGE_STRENGTH = 0x243;
     public static final int MASSAGE_MODE = 0x245;
     public static final int FRONT_WIPER = 608;
+    public static final int REAR_WIPER = 609;
+    public static final int REAR_WASH = 610;
+    private static final int WRITE_REAR_TRIGGER = 2;
     private static final int WRITE_WIPER_OFF = 1;
     private static final int WRITE_WIPER_AUTO = 2;
     public static final int SWITCH_OFF = 1;
@@ -106,12 +109,29 @@ public final class ContentVehicleProtocol {
             case Wiper:
                 return new Write(FRONT_WIPER, level == 0 ? WRITE_WIPER_OFF
                         : control.isAutomatic(level) ? WRITE_WIPER_AUTO : level + 2, false);
+            case RearWiper:
+                return rearWindowWrite(controlId);
+            case RearWash:
+                return null; // A wash accepts only the explicit one-shot trigger contract.
             case Massage:
                 return level == 0 ? new Write(MASSAGE_SWITCH, SWITCH_OFF, false)
                         : new Write(MASSAGE_STRENGTH, level, true);
             default:
                 return null;
         }
+    }
+
+    /** Section22: both requests always send2. Rear wiper toggles; wash self-resets.
+     * RX1/RX2 are actual OFF/active, never a choice between write1 and write2. */
+    public static Write rearWindowWrite(String controlId) {
+        VehicleControl control = VehicleControl.fromId(controlId);
+        if (control == VehicleControl.RearWiper) return new Write(REAR_WIPER, WRITE_REAR_TRIGGER, false);
+        if (control == VehicleControl.RearWash) return new Write(REAR_WASH, WRITE_REAR_TRIGGER, false);
+        return null;
+    }
+
+    public static int normalizeRearWindowLevel(int raw) {
+        return raw == 1 ? 0 : raw == 2 ? 1 : -1;
     }
 
     /** Research section19: RX0=OFF, RX1=AUTO, RX2..5=manual1..4.
