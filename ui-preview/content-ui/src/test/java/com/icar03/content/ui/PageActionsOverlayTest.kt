@@ -98,6 +98,26 @@ open class PageActionsOverlayTest {
         assertEquals(listOf("fullscreen"), actions)
     }
 
+    @Test fun secondBlankTapHidesAndAnotherTapCanReverseTheFadeOut() {
+        mount()
+        reveal()
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { tapRevision++ }
+        settleTapRevision()
+        compose.mainClock.advanceTimeBy(80L)
+        compose.onNodeWithTag("page-action-fullscreen").assertIsNotEnabled()
+        compose.runOnIdle { tapRevision++ }
+        settleTapRevision()
+        compose.mainClock.advanceTimeBy(240L)
+        compose.onNodeWithTag("page-action-fullscreen").assertIsDisplayed().assertIsEnabled()
+        compose.runOnIdle { tapRevision++ }
+        settleTapRevision()
+        compose.mainClock.advanceTimeBy(240L)
+        compose.onNodeWithTag("page-actions-overlay").assertDoesNotExist()
+        assertTrue(actions.isEmpty())
+        compose.mainClock.autoAdvance = true
+    }
+
     @Test fun pageModalAndStoppedLifecycleClearOldRequestsWithoutReplayingOnResume() {
         mount()
         reveal()
@@ -119,6 +139,14 @@ open class PageActionsOverlayTest {
         compose.waitForIdle()
         compose.onNodeWithTag("page-actions-overlay").assertDoesNotExist()
         reveal()
+    }
+
+    private fun settleTapRevision() {
+        // The tap effect updates the lease after composition; drain Main between frame turns.
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
     }
 
     private class TestOwner : LifecycleOwner {

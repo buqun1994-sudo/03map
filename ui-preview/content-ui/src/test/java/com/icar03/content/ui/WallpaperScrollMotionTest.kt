@@ -95,11 +95,12 @@ class WallpaperScrollMotionTest {
     @Test fun onlyAutomaticFollowStaggersAndTheFinalDelayedGroupOwnsTheTail() {
         mount(); startWave()
         val delay = value(LyricScrollMaximumDelay)
+        assertEquals("the actual visible group span uses the shorter 18ms interval", 0, delay % 18)
         advance(464)
         assertTrue("first row finishing cannot terminate the delayed tail", value(LyricScrollRunning))
         assertTrue("phase=${value(LyricScrollPhase)} running=${value(LyricScrollRunning)} delay=${value(LyricScrollMaximumDelay)} offset=${value(LyricScrollOffset)}", value(LyricScrollPhase) >= 450f)
         assertTrue(value(LyricScrollPhase) < 450f + delay)
-        advance(600)
+        advance(delay.toLong() + 32L)
         assertSettledAt(21)
         val rasterizations = value(LyricRasterizations)
         val offset = value(LyricScrollOffset)

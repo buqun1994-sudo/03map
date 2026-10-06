@@ -186,7 +186,7 @@ open class ContentImmersiveHostTest {
         } finally { host.destroy(); store.destroy(); controller.pause().stop().destroy() }
     }
 
-    @Test fun gestureEligibilityAndReminderEdgesFollowPageEntryOnly() {
+    @Test fun gestureEligibilityKeepsLegacyReminderDisabledAndNeverRequestsVisualReminder() {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
         val activity = controller.get()
         val root = FrameLayout(activity)
@@ -202,45 +202,46 @@ open class ContentImmersiveHostTest {
             host.updateDivider(640f, 640f, 1280f)
             advanceHostFrames(root)
             assertFalse(port.calls.last().enabled)
-            val binding = hostBinding(host)
-            @Suppress("UNCHECKED_CAST")
-            val flow = binding.javaClass.getDeclaredField("mutableState").apply { isAccessible = true }.get(binding) as MutableStateFlow<ContentUiState>
+            assertTrue(port.calls.all { !it.remind })
+
             store.setPageIndex(1)
             advanceHostFrames(root)
             assertTrue(port.calls.last().enabled)
-            assertEquals(1, port.calls.count { it.remind })
+            assertFalse(port.calls.last().reminderEnabled)
+            assertTrue(port.calls.all { !it.remind })
 
-            val presentation = host.javaClass.getDeclaredField("presentation").apply { isAccessible = true }.get(host) as ContentPresentation
+            val presentation = host.javaClass.getDeclaredField("presentation").apply { isAccessible = true }
+                .get(host) as ContentPresentation
             presentation.updateModalActive(true)
             advanceHostFrames(root)
             assertFalse(port.calls.last().enabled)
+            assertTrue(port.calls.all { !it.remind })
             presentation.updateModalActive(false)
             advanceHostFrames(root)
             assertTrue(port.calls.last().enabled)
-            assertEquals(1, port.calls.count { it.remind })
+            assertTrue(port.calls.all { !it.remind })
 
-            presentation.updatePagerMotion(true)
-            advanceHostFrames(root)
-            presentation.updatePagerMotion(false)
-            advanceHostFrames(root)
-            assertEquals(1, port.calls.count { it.remind })
-
+            // The persisted compatibility flag may still change, but it has no visual consumer.
             store.setGestureBarReminder(false)
             advanceHostFrames(root)
+            assertFalse(port.calls.last().reminderEnabled)
+            assertTrue(port.calls.all { !it.remind })
             store.setGestureBarReminder(true)
             advanceHostFrames(root)
-            assertEquals(1, port.calls.count { it.remind })
+            assertFalse(port.calls.last().reminderEnabled)
+            assertTrue(port.calls.all { !it.remind })
 
             store.setPageIndex(0)
             advanceHostFrames(root)
             assertFalse(port.calls.last().enabled)
             store.setPageIndex(1)
             advanceHostFrames(root)
-            assertEquals(2, port.calls.count { it.remind })
+            assertTrue(port.calls.last().enabled)
+            assertTrue(port.calls.all { !it.remind })
         } finally { host.destroy(); store.destroy(); controller.pause().stop().destroy() }
     }
 
-    @Test fun resumeRearmsReminderForTheCurrentLyricsPageOnce() {
+    @Test fun resumePreservesEligibilityWithoutRearmingLegacyReminder() {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
         val activity = controller.get()
         val root = FrameLayout(activity)
@@ -255,21 +256,23 @@ open class ContentImmersiveHostTest {
             host.bindMapPresentation(port)
             host.updateDivider(640f, 640f, 1280f)
             advanceHostFrames(root)
-            val binding = hostBinding(host)
-            @Suppress("UNCHECKED_CAST")
-            val flow = binding.javaClass.getDeclaredField("mutableState").apply { isAccessible = true }.get(binding) as MutableStateFlow<ContentUiState>
             store.setPageIndex(1)
             advanceHostFrames(root)
-            assertEquals(1, port.calls.count { it.remind })
+            assertTrue(port.calls.last().enabled)
+            assertTrue(port.calls.all { !it.remind })
+
             host.pause()
             host.resume()
             advanceHostFrames(root)
-            assertEquals(2, port.calls.count { it.remind })
+            assertTrue(port.calls.last().enabled)
+            assertTrue(port.calls.all { !it.remind })
+
             host.pause()
             store.setPageIndex(0)
             host.resume()
             advanceHostFrames(root)
-            assertEquals(2, port.calls.count { it.remind })
+            assertFalse(port.calls.last().enabled)
+            assertTrue(port.calls.all { !it.remind })
         } finally { host.destroy(); store.destroy(); controller.pause().stop().destroy() }
     }
 }

@@ -74,6 +74,10 @@ internal class PageActionsLease(private val nowMillis: () -> Long) {
         revision++
     }
 
+    fun toggle() {
+        if (visible) clear() else reveal()
+    }
+
     fun press(id: String) {
         if (!visible || id in pressedIds) return
         pressedIds = pressedIds + id
@@ -146,8 +150,9 @@ fun PageActionsOverlay(
             consumedTapRevision = blankTapRevision
             lease.clear()
         } else if (blankTapRevision != consumedTapRevision) {
+            val taps = blankTapRevision - consumedTapRevision
             consumedTapRevision = blankTapRevision
-            lease.reveal()
+            if (taps and 1L != 0L) lease.toggle()
         }
     }
     // Press/tap/clear changes cancel this single delay before scheduling another deadline.
@@ -211,6 +216,7 @@ private fun PageActionButton(
             drawRect(colors.selectedSurface.copy(alpha = pressedOpacity.value))
         }
         .clickable(enabled = enabled, interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick)
+        .excludeDisabledActionTap(enabled)
         .semantics { contentDescription = action.label }
         .testTag("page-action-${action.id}"), contentAlignment = Alignment.Center) {
         OemIcon(action.iconRes, Modifier.size(if (compact) 32.dp else 36.dp),

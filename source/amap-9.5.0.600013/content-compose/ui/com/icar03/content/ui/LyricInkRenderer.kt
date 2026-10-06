@@ -1,12 +1,10 @@
 package com.icar03.content.ui
 
-import android.annotation.SuppressLint
 import android.content.res.AssetManager
 import android.graphics.*
 import android.icu.text.BreakIterator
 import android.text.Layout
 import android.text.StaticLayout
-import android.graphics.text.LineBreaker
 import android.text.TextPaint
 import android.text.SpannableString
 import android.text.Spanned
@@ -188,15 +186,6 @@ internal fun lyricVoiceInsets(side: LyricSide, width: Int, fontSize: Float): Pai
         LyricSide.Unspecified -> 0 to 0
     }
 }
-
-/** Document shaping and worker raster copies must share one immutable paragraph policy. */
-@SuppressLint("InlinedApi") // BALANCED is inlined to 2; the Builder supports it since API 23.
-private fun lyricTextLayout(text: CharSequence, paint: TextPaint, width: Int,
-    alignment: Layout.Alignment): StaticLayout =
-    StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
-        .setAlignment(alignment).setIncludePad(false)
-        // Font leading groups wrapped lines; row padding separately spaces source sentences.
-        .setLineSpacing(0f, 1f).setBreakStrategy(LineBreaker.BREAK_STRATEGY_BALANCED).build()
 
 internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics, face: Typeface,
     cjk: Typeface = face, baseInset: Int = 0): NativeLyricRow {

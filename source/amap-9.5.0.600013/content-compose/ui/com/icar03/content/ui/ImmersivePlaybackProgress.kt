@@ -83,7 +83,8 @@ internal fun ImmersivePlaybackProgress(
     }
     val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (compact) .20f else .24f)
     val fillColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .88f)
-    val labelStyle = MaterialTheme.typography.labelLarge.copy(fontSize = if (compact) 14.sp else 16.sp)
+    val labelStyle = MaterialTheme.typography.labelLarge.copy(
+        fontSize = if (compact) 18.sp else 20.sp, lineHeight = if (compact) 22.sp else 24.sp)
 
     Column(modifier.fillMaxWidth().testTag("immersive-progress"), verticalArrangement = Arrangement.spacedBy(0.dp)) {
         Box(

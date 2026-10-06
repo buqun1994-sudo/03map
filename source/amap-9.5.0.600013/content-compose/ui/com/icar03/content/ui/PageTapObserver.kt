@@ -27,3 +27,19 @@ internal fun Modifier.observeUnconsumedPageTap(enabled: Boolean, onTap: () -> Un
             if (!consumed && !moved && elapsed <= viewConfiguration.longPressTimeoutMillis) onTap()
         }
     }
+
+/** A disabled action is still a button region; consume only tap UP so parents keep their drags. */
+internal fun Modifier.excludeDisabledActionTap(enabled: Boolean): Modifier = pointerInput(enabled) {
+    if (enabled) return@pointerInput
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var moved = false
+        do {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            moved = moved || event.changes.size != 1 ||
+                (change.position - down.position).getDistance() > viewConfiguration.touchSlop
+            if (!change.pressed && !moved) change.consume()
+        } while (event.changes.any { it.pressed })
+    }
+}

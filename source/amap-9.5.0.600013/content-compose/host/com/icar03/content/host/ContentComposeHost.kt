@@ -62,18 +62,12 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
     private var destroyed = false
     private val gestureScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var gestureStateJob: Job? = null
-    private var gestureEligible = false
-    private var observedPage: PanelPage? = null
-    private var reminderPending = false
     private val attachListener = object : android.view.View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(v: android.view.View) {
-            armReminderForLifecycleEntry()
             refreshGestureState()
         }
         override fun onViewDetachedFromWindow(v: android.view.View) {
-            gestureEligible = false
-            reminderPending = false
-            mapPresentation?.updateGestureState(false, binding.state.value.dark, binding.state.value.gestureBarReminder, false)
+            mapPresentation?.updateGestureState(false, binding.state.value.dark, false, false)
         }
     }
     private var divider = Float.NaN
@@ -109,14 +103,11 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         if (destroyed) return
         val previous = mapPresentation
         if (previous !== port) {
-            previous?.updateGestureState(false, binding.state.value.dark, binding.state.value.gestureBarReminder, false)
+            previous?.updateGestureState(false, binding.state.value.dark, false, false)
             presentation.cancelEntry()
-            gestureEligible = false
-            reminderPending = false
         }
         mapPresentation = port
         presentation.updateGestureWidth(port?.reservedGestureWidthPx() ?: 0)
-        if (previous !== port) armReminderForLifecycleEntry()
         presentation.onEntryReady = {
             if (!destroyed && owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
                 binding.state.value.page == PanelPage.Lyrics) {
@@ -141,30 +132,9 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         if (destroyed) return
         val port = mapPresentation ?: return
         val current = binding.state.value
-        if (observedPage != current.page) {
-            observedPage = current.page
-            reminderPending = current.page == PanelPage.Lyrics
-        }
-        val modalActive = current.sourcesOpen || current.scenariosOpen || current.settingsOpen || presentation.modalActive
-        if (current.page != PanelPage.Lyrics || !current.gestureBarReminder || modalActive ||
-            presentation.buttonTransitionActive || presentation.pendingEnter != 0L) {
-            reminderPending = false
-        }
         val allowed = isMapGestureAllowed()
-        val remind = allowed && reminderPending && view.isAttachedToWindow
-        port.updateGestureState(allowed, current.dark, current.gestureBarReminder, remind)
-        if (remind) reminderPending = false
-        gestureEligible = allowed
+        port.updateGestureState(allowed, current.dark, false, false)
         port.ensureGestureOnTop()
-    }
-
-    private fun armReminderForLifecycleEntry() {
-        if (destroyed || binding.state.value.page != PanelPage.Lyrics) return
-        val current = binding.state.value
-        if (current.gestureBarReminder && !current.sourcesOpen && !current.scenariosOpen &&
-            !current.settingsOpen && !presentation.modalActive) {
-            reminderPending = true
-        }
     }
 
     private fun dispatchPresentation(event: com.icar03.content.ui.ContentEvent) {
@@ -227,16 +197,13 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
     fun pause() {
         if (!destroyed) {
             presentation.cancelEntry()
-            gestureEligible = false
-            reminderPending = false
-            mapPresentation?.updateGestureState(false, binding.state.value.dark, binding.state.value.gestureBarReminder, false)
+            mapPresentation?.updateGestureState(false, binding.state.value.dark, false, false)
             owners.pause()
         }
     }
     fun resume() {
         if (!destroyed) {
             owners.resume()
-            armReminderForLifecycleEntry()
             refreshGestureState()
         }
     }
@@ -244,7 +211,7 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         if (destroyed) return
         destroyed = true
         presentation.stop()
-        mapPresentation?.updateGestureState(false, binding.state.value.dark, binding.state.value.gestureBarReminder, false)
+        mapPresentation?.updateGestureState(false, binding.state.value.dark, false, false)
         mapPresentation = null
         gestureStateJob?.cancel()
         gestureScope.cancel()

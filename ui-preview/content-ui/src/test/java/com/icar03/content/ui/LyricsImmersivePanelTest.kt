@@ -45,6 +45,7 @@ open class LyricsImmersivePanelTest {
             lines = listOf("夜色慢慢铺开", "沿着风的方向", "让每一句歌词自由舒展", "把此刻留在路上", "等下一束光", "一起驶向远方")
                 .mapIndexed { index, text -> LyricLine(index * 2_000L, text) })))
     private val events = mutableListOf<ContentEvent>()
+    private var sounds = 0
     private var viewportWidth by mutableStateOf(1920.dp)
     private lateinit var nativeView: View
 
@@ -64,7 +65,8 @@ open class LyricsImmersivePanelTest {
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
             CompositionLocalProvider(LocalLyricGeometryDispatcher provides Dispatchers.Unconfined,
-                LocalLyricPreparationDispatcher provides Dispatchers.Unconfined) {
+                LocalLyricPreparationDispatcher provides Dispatchers.Unconfined,
+                LocalContentClickSound provides { sounds++ }) {
                 ContentTheme(state.dark) {
                     ContentPanel(state, { event ->
                         events += event
@@ -112,6 +114,9 @@ open class LyricsImmersivePanelTest {
         assertEquals(compose.onNodeWithTag("top-bar").fetchSemanticsNode().boundsInRoot.bottom, compactBounds.top, 1f)
         assertEquals(compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot.top, compactBounds.bottom, 1f)
 
+        val topPixels = nativePixels("top-bar")
+        val dockBounds = DockShortcuts.items.associateWith { compose.onNodeWithTag("dock-${it.name}").fetchSemanticsNode().boundsInRoot }
+        val dockInk = dockInkMask()
         // Each divider update must reach composition/measurement before the next one.
         // Applying both endpoints in one idle block would skip the former pager-to-root move.
         listOf(.34f, .49f, .5f, .51f, .66f, 1f, .66f, .51f, .5f, .49f, .34f, 0f).forEach { progress ->
@@ -123,6 +128,13 @@ open class LyricsImmersivePanelTest {
             }
             compose.mainClock.advanceTimeByFrame()
             compose.waitForIdle()
+            assertArrayEquals("top bar stays painted at progress=$progress", topPixels, nativePixels("top-bar"))
+            DockShortcuts.items.forEach { id ->
+                assertEquals("Dock target stays fixed at progress=$progress", dockBounds.getValue(id),
+                    compose.onNodeWithTag("dock-${id.name}").fetchSemanticsNode().boundsInRoot)
+            }
+            assertArrayEquals("Dock icon stays painted at progress=$progress", dockInk, dockInkMask())
+            if (progress in listOf(.34f, .5f, 1f)) capture("lyrics-chrome-$platform-${if (dark) "dark" else "light"}-$progress")
             compose.onAllNodesWithTag("wallpaper-lyrics", useUnmergedTree = true).assertCountEquals(1)
             assertEquals("lyric view is retained at progress=$progress", initialBody,
                 compose.onNodeWithTag("wallpaper-lyrics", useUnmergedTree = true).fetchSemanticsNode().id)
@@ -184,6 +196,34 @@ open class LyricsImmersivePanelTest {
         capture("lyrics-immersive-hidden-$platform-${if (dark) "dark" else "light"}")
     }
 
+    @Test fun blankTapToggleAndButtonsEachSoundOnceWhileCancelledGesturesStaySilent() {
+        mount()
+        val page = compose.onNodeWithTag("immersive-panel")
+        val blank = androidx.compose.ui.geometry.Offset(1850f, 100f)
+        page.performTouchInput { click(blank) }
+        compose.waitForIdle()
+        assertEquals(1, sounds)
+        compose.onNodeWithTag("page-action-settings").assertDoesNotExist()
+        page.performTouchInput { click(blank) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("page-actions-overlay").assertDoesNotExist()
+        assertEquals(2, sounds)
+        page.performTouchInput { click(blank) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("page-action-exit").performTouchInput { click(center) }
+        compose.waitForIdle()
+        assertEquals(4, sounds)
+        assertEquals(listOf(ContentEvent.ExitLyricsImmersive), events)
+        compose.onNodeWithTag("immersive-play").performTouchInput { down(center); cancel() }
+        compose.onNodeWithTag("wallpaper-lyrics").performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        assertEquals(4, sounds)
+        compose.runOnIdle { state = state.copy(media = state.media.copy(playbackAvailable = false)) }
+        compose.onNodeWithTag("immersive-play").performTouchInput { click(center) }
+        compose.waitForIdle()
+        assertEquals("a disabled media action must not sound", 4, sounds)
+    }
+
     @Test fun childControlsAndLyricDragDoNotBecomeBlankTaps() {
         mount()
         compose.onNodeWithTag("immersive-play").performTouchInput { click(center) }
@@ -193,6 +233,31 @@ open class LyricsImmersivePanelTest {
         compose.onNodeWithTag("wallpaper-lyrics").performTouchInput { swipeUp() }
         compose.waitForIdle()
         compose.onNodeWithTag("page-actions-overlay").assertDoesNotExist()
+    }
+
+    private fun nativePixels(tag: String): IntArray {
+        val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val bitmap = Bitmap.createBitmap(nativeView.width, nativeView.height, Bitmap.Config.ARGB_8888)
+        compose.runOnIdle { nativeView.draw(Canvas(bitmap)) }
+        val left = kotlin.math.ceil(bounds.left).toInt()
+        val top = kotlin.math.ceil(bounds.top).toInt()
+        val width = kotlin.math.floor(bounds.right).toInt() - left
+        val height = kotlin.math.floor(bounds.bottom).toInt() - top
+        return IntArray(width * height).also {
+            bitmap.getPixels(it, 0, width, left, top, width, height)
+            bitmap.recycle()
+        }
+    }
+
+    private fun dockInkMask(): BooleanArray {
+        val pixels = nativePixels("dock-icon-Settings")
+        return BooleanArray(pixels.size) { index ->
+            val pixel = pixels[index]
+            val red = android.graphics.Color.red(pixel)
+            val green = android.graphics.Color.green(pixel)
+            val blue = android.graphics.Color.blue(pixel)
+            if (dark) minOf(red, green, blue) > 210 else maxOf(red, green, blue) < 90
+        }.also { assertTrue("the Dock glyph must have actual ink", it.any { ink -> ink }) }
     }
 
     private fun capture(name: String) {

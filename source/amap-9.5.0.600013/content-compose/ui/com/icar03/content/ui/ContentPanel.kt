@@ -45,7 +45,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalView
-import android.view.SoundEffectConstants
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
@@ -93,6 +92,7 @@ fun ContentPanel(
     presentation: ContentPresentation? = null,
 ) {
     val view = LocalView.current
+    val clickSound = LocalContentClickSound.current
     val dockOverlay = remember { DockLevelOverlayState() }
     var settingsRetained by remember { androidx.compose.runtime.mutableStateOf(false) }
     val settingsActive = state.settingsOpen || settingsRetained
@@ -113,7 +113,7 @@ fun ContentPanel(
         // Compose does not call View.performClick(): use the same system sound path
         // as the old Android buttons, respecting the user's sound-effects setting.
         if (event !is ContentEvent.PageSelected && event != ContentEvent.DismissSheet) {
-            playClickSound(view)
+            clickSound(view)
         }
         latestEvent(event)
     }
@@ -121,23 +121,29 @@ fun ContentPanel(
         alpha = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f
     }, color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize().observeUnconsumedPageTap(
-            state.page == PanelPage.Lyrics && contentInteractive && !pageMotion) { blankTapRevision++ }) {
+            state.page == PanelPage.Lyrics && contentInteractive && !pageMotion) {
+            clickSound(view)
+            blankTapRevision++
+        }) {
             val density = LocalDensity.current
             val fullWidth = if (presentation?.geometryReady == true) with(density) { presentation.fullSize.width.toDp() } else maxWidth
             val splitWidth = if (presentation?.geometryReady == true) with(density) { presentation.splitWidthPx.toDp() } else maxWidth
             val lyricMode = state.page == PanelPage.Lyrics && presentation?.geometryReady == true
             val wide by remember(presentation, lyricMode) { derivedStateOf { lyricMode && (presentation?.progress ?: 0f) >= .5f } }
             val transitioning by remember(presentation, lyricMode) { derivedStateOf { lyricMode && presentation?.moving == true } }
-            val progress = presentation?.progress ?: 0f
-            val compactPresentationAlpha = if (lyricMode) presentationCompactAlpha(progress) else 1f
-            val widePresentationAlpha = if (lyricMode) presentationWideAlpha(progress) else 1f
+            val compactOpacity = remember(presentation, lyricMode) { {
+                if (lyricMode) presentationCompactAlpha(presentation?.progress ?: 0f) else 1f
+            } }
+            val wideOpacity = remember(presentation, lyricMode) { {
+                if (lyricMode) presentationWideAlpha(presentation?.progress ?: 0f) else 1f
+            } }
             if (state.previewMode || wide || state.page != PanelPage.Lyrics) {
                 SideEffect { presentation?.updatePagerMotion(false) }
             }
             val lyricOpacity = remember(presentation, lyricMode) { {
                 if (!lyricMode) 1f else if (geometryReady) lyricsTransitionAlpha(presentation?.progress ?: 0f) else 0f
             } }
-            val leftWidth = if (lyricMode) fullWidth / 3 else maxWidth
+            val leftWidth = if (lyricMode) splitWidth else maxWidth
             val compact = !state.previewMode && leftWidth < 600.dp
             val edge = if (compact) 8.dp else 20.dp
             val topBarHeight = TopBarMetrics.height(compact)
@@ -149,27 +155,31 @@ fun ContentPanel(
             ambientBackground?.invoke()
             CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
                 LocalPresentationInteractionEnabled provides !pageMotion) {
-                Column(Modifier.width(if (wide) leftWidth else if (lyricMode) splitWidth else maxWidth).fillMaxHeight()) {
-                    if (showTop) Box(Modifier.fillMaxWidth().graphicsLayer { alpha = if (wide) widePresentationAlpha else compactPresentationAlpha }) {
+                // Chrome keeps its split geometry; only the media and lyrics change endpoints.
+                Column(Modifier.width(if (lyricMode) splitWidth else maxWidth).fillMaxHeight()) {
+                    if (showTop) Box(Modifier.fillMaxWidth().graphicsLayer {
+                        alpha = if (state.immersiveShowTopBar) 1f else compactOpacity()
+                    }) {
                         PrototypeTopBar(state, clockText)
                     }
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                         if (wide) {
                             ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
-                                Modifier.fillMaxSize().graphicsLayer { alpha = widePresentationAlpha })
+                                Modifier.fillMaxSize().graphicsLayer { alpha = wideOpacity() })
                         }
                     }
                     if (!wide) Box(Modifier.fillMaxWidth().height(mediaHeight)
                         .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
-                            alpha = compactPresentationAlpha
+                            alpha = compactOpacity()
                         }) {
                         PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
                             compact, state.showMediaSourceSwitcher)
                     }
                     if (showDock) Box(Modifier.fillMaxWidth().graphicsLayer {
-                        alpha = if (wide) widePresentationAlpha else compactPresentationAlpha
+                        alpha = if (state.immersiveShowDock) 1f else compactOpacity()
                     }) {
-                        PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning, transparent = wide)
+                        PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning,
+                            backgroundOpacity = compactOpacity)
                     }
                 }
                 // The pager and its lyric page keep the same composition in both modes.
@@ -217,7 +227,7 @@ fun ContentPanel(
                     }
                 }, modifier = Modifier.fillMaxSize().then(if (wide) Modifier.testTag("immersive-lyrics-region") else Modifier)) { measurables, constraints ->
                     val pagesTop = if (wide) 0 else with(density) { topBarHeight.roundToPx() }.coerceAtMost(constraints.maxHeight)
-                    val targetWidth = if (wide) with(density) { (fullWidth * 2f / 3f).roundToPx() }
+                    val targetWidth = if (wide) with(density) { (fullWidth - leftWidth).roundToPx() }
                         else if (lyricMode) with(density) { splitWidth.roundToPx() } else constraints.maxWidth
                     val targetHeight = if (wide) constraints.maxHeight else
                         (constraints.maxHeight - pagesTop - with(density) { (mediaHeight + dockHeight).roundToPx() }).coerceAtLeast(0)
@@ -228,20 +238,15 @@ fun ContentPanel(
                 }
             }
             if (state.page == PanelPage.Lyrics) {
-                val overlayActions = if (wide) listOf(PageActionDescriptor("exit", "退出全屏", R.drawable.content_oem_ic_fullscreen_exit))
-                    else listOf(PageActionDescriptor("settings", "歌词设置", R.drawable.content_oem_ic_settings),
-                        PageActionDescriptor("enter", "全屏歌词", R.drawable.content_oem_ic_fullscreen, enabled = presentation?.geometryReady == true))
+                val overlayActions = if (wide) listOf(PageActionDescriptor("exit", "退出全屏", R.drawable.content_ic_fullscreen_exit))
+                    else listOf(PageActionDescriptor("enter", "全屏歌词", R.drawable.content_ic_fullscreen, enabled = presentation?.geometryReady == true))
                 PageActionsOverlay(overlayActions, pageKey = "lyrics:$wide", blankTapRevision = blankTapRevision,
                     enabled = contentInteractive && !transitioning, modalActive = settingsActive || state.sourcesOpen,
                     compact = compact, modifier = Modifier.align(if (wide) Alignment.TopStart else Alignment.TopEnd)
                         .padding(top = if (showTop) topBarHeight + 12.dp else 16.dp,
                             start = if (wide) 12.dp else 0.dp,
-                             end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = if (wide) widePresentationAlpha else compactPresentationAlpha }) { id ->
-                    dispatch(when (id) {
-                        "settings" -> ContentEvent.OpenLyricsSettings
-                        "enter" -> ContentEvent.EnterLyricsImmersive
-                        else -> ContentEvent.ExitLyricsImmersive
-                    })
+                             end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = if (wide) wideOpacity() else compactOpacity() }) { id ->
+                    dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
                 }
             }
             DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
@@ -632,55 +637,61 @@ private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Uni
     compact: Boolean, modifier: Modifier = Modifier,
 ) {
     val lyrics = lyricsState()
-    val coverScale by animateFloatAsState(if (state.media.playing) 1f else .76f,
+    val coverScale = animateFloatAsState(if (state.media.playing) 1f else .76f,
         tween(350, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "immersive-cover")
     BoxWithConstraints(modifier.padding(horizontal = if (compact) 16.dp else 28.dp)) {
-        val coverSize = minOf(maxWidth, (maxHeight - 300.dp).coerceAtLeast(48.dp))
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center) {
+        val mediaWidth = (maxWidth * .88f).coerceAtMost(560.dp)
+        val coverSize = minOf(mediaWidth * .9f, if (compact) 420.dp else 480.dp,
+            (maxHeight - 190.dp).coerceAtLeast(48.dp))
+        val buttonSize = if (mediaWidth < 360.dp) 48.dp else if (compact) 56.dp else 64.dp
+        val media = state.media
+        Column(Modifier.align(Alignment.Center).fillMaxWidth().testTag("immersive-media-group"),
+            horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(coverSize).testTag("immersive-cover-space"), contentAlignment = Alignment.Center) {
-                Box(Modifier.fillMaxSize().graphicsLayer { scaleX = coverScale; scaleY = coverScale }
+                Box(Modifier.fillMaxSize().graphicsLayer { scaleX = coverScale.value; scaleY = coverScale.value }
                     .clip(RoundedCornerShape(18.dp)).testTag("immersive-cover")) {
                     if (artwork != null) artwork() else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(84.dp), "音乐封面", animateOnPress = false, animateOnAction = false)
                     }
                 }
             }
-            Spacer(Modifier.height(if (compact) 14.dp else 18.dp))
-            Column(Modifier.fillMaxWidth().height(if (compact) 76.dp else 84.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(state.media.title ?: "暂无媒体", Modifier.testTag("immersive-title"),
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontSize = if (compact) 26.sp else 30.sp, fontWeight = FontWeight.SemiBold),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(state.media.artist ?: "未连接", Modifier.testTag("immersive-artist"),
-                    style = MaterialTheme.typography.titleLarge.copy(fontSize = if (compact) 18.sp else 20.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
-            ImmersivePlaybackProgress(lyrics, compact, Modifier.fillMaxWidth())
-            Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
-            val media = state.media
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("immersive-media-controls"),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                RoundedPressButton(Modifier.size(if (compact) 72.dp else 84.dp), "immersive-play", if (media.playing) "暂停" else "播放",
-                    media.available && media.playbackAvailable && !media.pending, compact,
-                    onClick = { onEvent(ContentEvent.PlayPause) }) {
-                    OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f,
-                        Modifier.size(if (compact) 46.dp else 54.dp), animateOnAction = false)
-                }
-                Spacer(Modifier.width(if (compact) 14.dp else 20.dp))
-                RoundedPressButton(Modifier.size(if (compact) 68.dp else 76.dp), "immersive-next", "下一首", media.available && media.nextAvailable && !media.pending, compact,
-                    onClick = { onEvent(ContentEvent.NextTrack) }) {
-                    OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(if (compact) 42.dp else 48.dp))
-                }
-                if (state.showMediaSourceSwitcher) {
-                    Spacer(Modifier.width(if (compact) 14.dp else 20.dp))
-                    RoundedPressButton(Modifier.size(if (compact) 68.dp else 76.dp), "immersive-source", "选择来源", media.sourceAvailable, compact,
-                        onClick = { onEvent(ContentEvent.OpenSources) }) {
-                        OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(if (compact) 38.dp else 44.dp), tint = sourceTint())
+            Spacer(Modifier.height(if (compact) 20.dp else 24.dp))
+            Column(Modifier.width(mediaWidth).testTag("immersive-media-details")) {
+                Row(Modifier.fillMaxWidth().testTag("immersive-media-header"), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(media.title ?: "暂无媒体", Modifier.testTag("immersive-title"),
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontSize = if (compact) 26.sp else 30.sp, fontWeight = FontWeight.SemiBold),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(media.artist ?: "未连接", Modifier.testTag("immersive-artist"),
+                            style = MaterialTheme.typography.titleLarge.copy(fontSize = if (compact) 22.sp else 24.sp),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .78f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Row(Modifier.testTag("immersive-media-controls"), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
+                        RoundedPressButton(Modifier.size(buttonSize), "immersive-play", if (media.playing) "暂停" else "播放",
+                            media.available && media.playbackAvailable && !media.pending, compact,
+                            onClick = { onEvent(ContentEvent.PlayPause) }) {
+                            OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f,
+                                Modifier.size(if (compact) 36.dp else 42.dp), animateOnAction = false)
+                        }
+                        RoundedPressButton(Modifier.size(buttonSize), "immersive-next", "下一首",
+                            media.available && media.nextAvailable && !media.pending, compact,
+                            onClick = { onEvent(ContentEvent.NextTrack) }) {
+                            OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(if (compact) 34.dp else 40.dp))
+                        }
+                        if (state.showMediaSourceSwitcher) {
+                            RoundedPressButton(Modifier.size(buttonSize), "immersive-source", "选择来源", media.sourceAvailable, compact,
+                                onClick = { onEvent(ContentEvent.OpenSources) }) {
+                                OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(if (compact) 32.dp else 38.dp), tint = sourceTint())
+                            }
+                        }
                     }
                 }
+                Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
+                ImmersivePlaybackProgress(lyrics, compact, Modifier.fillMaxWidth())
             }
         }
     }
@@ -694,14 +705,14 @@ internal fun dockItemsForCount(count: Int): List<ShortcutId> {
 
 @Composable
 private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit, compact: Boolean,
-    overlay: DockLevelOverlayState, interactive: Boolean, transparent: Boolean = false) {
+    overlay: DockLevelOverlayState, interactive: Boolean, backgroundOpacity: () -> Float = { 1f }) {
     val colors = LocalContentColors.current
     val items = dockItemsForCount(state.dockButtonCount)
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
-        Surface(
-            Modifier.fillMaxSize().testTag("floating-dock").then(if (transparent) Modifier else Modifier.downwardSoftShadow(colors.dockBase, state.dark)), shape = RoundedCornerShape(12.dp),
-            color = if (transparent) Color.Transparent else colors.dockBase, shadowElevation = 0.dp,
-        ) {
+        Box(Modifier.fillMaxSize().testTag("floating-dock")) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = backgroundOpacity() }
+                .testTag("dock-background").downwardSoftShadow(colors.dockBase, state.dark)
+                .background(colors.dockBase, RoundedCornerShape(12.dp)))
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val minDockWidth = if (compact) 48.dp * items.size
                     else 114.dp + 72.dp * (items.size - 1)
@@ -725,7 +736,7 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                                 onClick = { dockEvent(id, state)?.let(onEvent) }, rectangular = false,
                                 selected = selected && id != ShortcutId.Lock,
                                 selectedColor = colors.selectedSurface,
-                                baseColor = if (transparent) Color.Transparent else colors.dockBase,
+                                baseColor = Color.Transparent,
                                 rippleEnabled = rippleEnabled,
                                 rippleColor = if (selected && id != ShortcutId.Lock) colors.dockBase else colors.selectedSurface) {
                                 ShortcutOemIcon(id, state, shortcutIcon(id, state), Modifier.size(if (compact) 32.dp else 48.dp).testTag("dock-icon-${id.name}"))
@@ -767,6 +778,7 @@ private fun RoundedPressButton(
         .then(feedback.touchCoordinates)
             .then(feedback.pointerDownLatch)
         .clickable(interactionSource = interactions, indication = null, enabled = canInteract, role = Role.Button, onClick = { action++; onClick() })
+        .excludeDisabledActionTap(canInteract)
         .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong(); this[PressScale] = scale; this[PressFeedback] = if (rectangular || rippleEnabled) if (rectangular) "opacity-rectangle" else "touch-ripple" else "none" },
         contentAlignment = Alignment.Center) {
         val shape = RoundedCornerShape(if (compact) 12.dp else 16.dp)
@@ -985,16 +997,6 @@ internal fun VehicleControlOemIcon(control: ControlId, value: ControlState, dark
         animationColors = recipe.animationColors, animationFrames = recipe.frames,
         animationStrokePathColors = recipe.animationStrokePathColors,
         animationPathOpacities = recipe.animationPathOpacities, animateOnAction = false)
-}
-
-private fun playClickSound(view: android.view.View) {
-    if (!view.isSoundEffectsEnabled) return
-    val handled = try {
-        Class.forName("com.autonavi.amapauto.jni.GAdaAndroid")
-            .getMethod("playSystemClick").invoke(null) == true
-    } catch (_: ReflectiveOperationException) { false }
-      catch (_: LinkageError) { false }
-    if (!handled) view.playSoundEffect(SoundEffectConstants.CLICK)
 }
 
 @Preview(name = "原型浅色默认态", widthDp = 640, heightDp = 1080, locale = "zh")

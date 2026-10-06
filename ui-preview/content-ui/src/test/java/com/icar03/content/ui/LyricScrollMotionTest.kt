@@ -5,20 +5,20 @@ import org.junit.Test
 import kotlin.math.abs
 
 class LyricScrollMotionTest {
-    @Test fun visibleGroupsStartTwentyEightMillisecondsApartAndOffscreenDelayIsCapped() {
+    @Test fun visibleGroupsStartEighteenMillisecondsApartAndOffscreenDelayIsCapped() {
         val segment = LyricScrollSegment(LyricRowPose.uniform(120f), -240f, 10, 15, stagger = true)
         for (row in 10..15) {
-            val onset = (row - 10) * 28f
+            val onset = (row - 10) * 18f
             assertEquals(120f, segment.offsetAt(row, onset), 0f)
             assertTrue(segment.offsetAt(row, onset + 1f) < 120f)
             assertEquals(segment.offsetAt(10, 100f), segment.offsetAt(row, onset + 100f), .0001f)
         }
         assertEquals(0, segment.delayAt(0))
-        assertEquals(140, segment.delayAt(100_000))
-        assertEquals(590, segment.durationMs)
+        assertEquals(90, segment.delayAt(100_000))
+        assertEquals(540, segment.durationMs)
         assertEquals(-240f, segment.offsetAt(10, 450f), 0f)
         assertTrue("last visible group still moves after the first finishes", segment.offsetAt(15, 450f) > -240f)
-        for (row in listOf(0, 10, 12, 15, 100_000)) assertEquals(-240f, segment.offsetAt(row, 590f), 0f)
+        for (row in listOf(0, 10, 12, 15, 100_000)) assertEquals(-240f, segment.offsetAt(row, 540f), 0f)
     }
 
     @Test fun retargetAndNonStaggeredSeekTakeOverEveryActualVisibleOffsetContinuously() {

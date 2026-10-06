@@ -12,7 +12,7 @@ import kotlin.math.min
 
 internal object LyricScrollVisuals {
     const val TRAVEL_MS = 450
-    const val ROW_DELAY_MS = 28
+    const val ROW_DELAY_MS = 18
     val easing = CubicBezierEasing(.32f, .72f, 0f, 1f)
 }
 

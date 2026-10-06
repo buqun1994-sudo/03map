@@ -29,11 +29,8 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
     private var from = target
     private var base = target
     private var stateProgress = 1f
-    private var pulseProgress = 0f
-    private var pulse = 0f
     private var stateStartProgress = 1f
     private var stateWindowMs = 0L
-    private var pulseWindowMs = 0L
     private var frameElapsedMs = 0L
     private var animationWindowMs = 0L
     private var animator: ValueAnimator? = null
@@ -43,32 +40,29 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
         isClickable = false
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-        // The region is 22 x 272px, including the glow, rather than a window-sized layer.
+        // Keep the compact 22 x 272px host region around the original handle geometry.
         setWillNotDraw(false)
     }
 
     private var stateActive = false
-    private var pulseActive = false
 
+    /**
+     * The last two parameters are retained for the SplitPanelController ABI and legacy
+     * preference callers. The gesture bar no longer has a reminder visual or scheduler.
+     */
+    @Suppress("UNUSED_PARAMETER")
     fun updateGestureState(enabled: Boolean, dark: Boolean, reminderEnabled: Boolean, remind: Boolean) {
         val next = normalInk(enabled, dark)
-        if (next != target) {
-            from = base
-            target = next
-            stateProgress = 0f
-            stateActive = true
-        }
-        // The controller consumes admitted DOWN itself; rejected DOWN must pass through.
         touchOwner.isClickable = false
-        if (!enabled || !reminderEnabled) {
-            pulseActive = false
-            pulseProgress = 0f
-            pulse = 0f
-        } else if (remind && isAttachedToWindow) {
-            pulseActive = true
-            pulseProgress = 0f
-            pulse = 1f
+        if (next == target) {
+            if (!isAttachedToWindow) stopWork()
+            return
         }
+        from = base
+        target = next
+        stateProgress = 0f
+        stateActive = true
+        // The controller consumes admitted DOWN itself; rejected DOWN must pass through.
         if (!isAttachedToWindow) {
             stopWork()
             return
@@ -78,43 +72,26 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
     }
 
     private fun sample(playTimeMs: Long) {
-        if (stateActive) {
-            val t = (playTimeMs.toFloat() / stateWindowMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
-            stateProgress = stateStartProgress + (1f - stateStartProgress) * t
-            val eased = stateProgress * stateProgress * (3f - 2f * stateProgress)
-            base = from.towards(target, eased)
-            if (t >= 1f) {
-                stateProgress = 1f
-                base = target
-                stateActive = false
-            }
-        }
-        if (pulseActive) {
-            val t = (playTimeMs.toFloat() / pulseWindowMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
-            pulseProgress = t
-            val remaining = 1f - t
-            pulse = remaining * remaining * remaining
-            if (t >= 1f) {
-                pulseProgress = 1f
-                pulse = 0f
-                pulseActive = false
-            }
+        if (!stateActive) return
+        val t = (playTimeMs.toFloat() / stateWindowMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
+        stateProgress = stateStartProgress + (1f - stateStartProgress) * t
+        val eased = stateProgress * stateProgress * (3f - 2f * stateProgress)
+        base = from.towards(target, eased)
+        if (t >= 1f) {
+            stateProgress = 1f
+            base = target
+            stateActive = false
         }
     }
 
     private fun schedule() {
         stopAnimator()
-        val stateRemaining = if (stateActive) {
+        val remaining = if (stateActive) {
             max(1L, (STATE_DURATION_MS * (1f - stateProgress)).roundToInt().toLong())
         } else 0L
-        val pulseRemaining = if (pulseActive) {
-            max(1L, (PULSE_DURATION_MS * (1f - pulseProgress)).roundToInt().toLong())
-        } else 0L
-        val remaining = max(stateRemaining, pulseRemaining)
         if (remaining == 0L || !isAttachedToWindow) return
         stateStartProgress = stateProgress
-        stateWindowMs = stateRemaining
-        pulseWindowMs = pulseRemaining
+        stateWindowMs = remaining
         frameElapsedMs = 0L
         animationWindowMs = remaining
         val next = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -149,9 +126,6 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
         base = target
         stateProgress = 1f
         stateActive = false
-        pulseProgress = 1f
-        pulse = 0f
-        pulseActive = false
         animationWindowMs = 0L
         invalidate()
     }
@@ -172,9 +146,6 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
         from = target
         stateProgress = 1f
         stateActive = false
-        pulseProgress = 1f
-        pulseActive = false
-        pulse = 0f
         invalidate()
     }
 
@@ -187,31 +158,17 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
         super.onDraw(canvas)
         val top = (height - HANDLE_HEIGHT_PX) / 2f
         val left = (width - HANDLE_WIDTH_PX) / 2f
-        if (pulse > 0f) {
-            // Four nested rounded shapes make a soft local glow without blur/saveLayer.
-            for (ring in 4 downTo 1) {
-                val spread = ring * 2f
-                rect.set(left - spread, top - spread, left + HANDLE_WIDTH_PX + spread, top + HANDLE_HEIGHT_PX + spread)
-                paint.color = GLOW_COLOR
-                paint.alpha = (pulse * (5 - ring) * 11f).roundToInt().coerceIn(0, 255)
-                canvas.drawRoundRect(rect, HANDLE_WIDTH_PX / 2f + spread, HANDLE_WIDTH_PX / 2f + spread, paint)
-            }
-        }
-        val shown = base.towards(PEAK_INK, pulse)
-        paint.color = Color.rgb(shown.red.roundToInt(), shown.green.roundToInt(), shown.blue.roundToInt())
-        paint.alpha = (shown.alpha * 255f).roundToInt().coerceIn(0, 255)
+        paint.color = Color.rgb(base.red.roundToInt(), base.green.roundToInt(), base.blue.roundToInt())
+        paint.alpha = (base.alpha * 255f).roundToInt().coerceIn(0, 255)
         rect.set(left, top, left + HANDLE_WIDTH_PX, top + HANDLE_HEIGHT_PX)
         canvas.drawRoundRect(rect, HANDLE_WIDTH_PX / 2f, HANDLE_WIDTH_PX / 2f, paint)
     }
 
     companion object {
         private const val STATE_DURATION_MS = 240L
-        private const val PULSE_DURATION_MS = 420L
         private const val FRAME_STEP_MS = 16L
         private const val HANDLE_WIDTH_PX = 6
         private const val HANDLE_HEIGHT_PX = 256
-        private val GLOW_COLOR = Color.WHITE
-        private val PEAK_INK = Ink(255f, 255f, 255f, 1f)
 
         private fun normalInk(enabled: Boolean, dark: Boolean): Ink = when {
             enabled && dark -> Ink(228f, 237f, 247f, .88f)

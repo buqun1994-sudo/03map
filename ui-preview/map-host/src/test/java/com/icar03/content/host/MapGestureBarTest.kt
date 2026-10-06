@@ -87,7 +87,7 @@ open class MapGestureBarTest {
 
         fun pixels(): Bitmap = Bitmap.createBitmap(bar.width, bar.height, Bitmap.Config.ARGB_8888).also { bar.draw(Canvas(it)) }
         fun core(): Int = pixels().useBitmap { getPixel(width / 2, height / 2) }
-        fun halo(): Int = pixels().useBitmap { getPixel(2, height / 2) }
+        fun outsideBar(): Int = pixels().useBitmap { getPixel(2, height / 2) }
         fun rootPixel(x: Int, y: Int): Int = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888).useBitmap {
             root.draw(Canvas(this))
             getPixel(x, y)
@@ -230,82 +230,66 @@ open class MapGestureBarTest {
         }
     }
 
-    @Test fun explicitReminderUsesOnlyWhiteGlowInBothThemesAndReturnsToNormal() {
+    @Test fun legacyReminderArgumentsNeverAddGlowOrPeak() {
         for (dark in listOf(false, true)) Scene().use { scene ->
-            scene.bar.updateGestureState(true, dark, true, false)
+            scene.bar.updateGestureState(true, dark, false, false)
             scene.advance(320)
             val normal = scene.core()
-            assertEquals(0, Color.alpha(scene.halo()))
+            assertNull(currentAnimator(scene.bar))
+            assertEquals(0, Color.alpha(scene.outsideBar()))
+
             scene.bar.updateGestureState(true, dark, true, true)
-            val peak = scene.core()
-            val peakHalo = scene.halo()
-            assertEquals("reminder peak must be opaque white in both themes", Color.WHITE, peak)
-            assertTrue(Color.alpha(peakHalo) > 0)
-            assertWhiteRgb(peakHalo)
-            scene.advance(112)
-            assertBetween(Color.alpha(scene.core()), Color.alpha(normal), Color.alpha(peak))
-            val fadingHalo = scene.halo()
-            assertTrue(Color.alpha(fadingHalo) > 0)
-            assertTrue(Color.alpha(fadingHalo) < Color.alpha(peakHalo))
-            assertWhiteRgb(fadingHalo)
-            scene.advance(416)
             assertColorClose(normal, scene.core(), 1)
-            assertEquals(0, Color.alpha(scene.halo()))
             assertNull(currentAnimator(scene.bar))
-            scene.bar.updateGestureState(true, dark, true, false)
-            scene.advance(96)
-            assertEquals(0, Color.alpha(scene.halo()))
+            scene.advance(500)
             assertColorClose(normal, scene.core(), 1)
+            assertEquals(0, Color.alpha(scene.outsideBar()))
+
+            scene.bar.updateGestureState(true, dark, false, true)
+            assertColorClose(normal, scene.core(), 1)
+            assertNull(currentAnimator(scene.bar))
         }
     }
 
-    @Test fun disablingTheReminderImmediatelyRemovesGlowAndKeepsOrdinaryStateTransition() {
+    @Test fun repeatedStateUpdatesDoNotRestartOrScheduleAnotherFrame() {
         Scene().use { scene ->
-            scene.bar.updateGestureState(true, false, true, false)
-            scene.advance(320)
-            val light = scene.core()
             scene.bar.updateGestureState(true, true, true, true)
+            val firstAnimator = checkNotNull(currentAnimator(scene.bar))
             scene.advance(80)
-            assertTrue(Color.alpha(scene.halo()) > 0)
+            val beforeRepeat = scene.core()
             scene.bar.updateGestureState(true, true, false, false)
-            val withoutPulse = scene.core()
-            assertEquals(0, Color.alpha(scene.halo()))
-            assertTrue(Color.red(withoutPulse) > Color.red(light))
-            assertTrue(Color.red(withoutPulse) < 228)
-            assertNotNull(currentAnimator(scene.bar))
-            scene.advance(96)
-            assertTrue(Color.red(scene.core()) > Color.red(withoutPulse))
-            scene.advance(208)
-            val dark = scene.core()
-            assertClose(228, Color.red(dark), 1)
-            scene.bar.updateGestureState(true, true, false, true)
-            assertColorClose(dark, scene.core(), 1)
-            assertEquals(0, Color.alpha(scene.halo()))
+            assertSame("stable state must keep the current animation", firstAnimator, currentAnimator(scene.bar))
+            scene.advance(80)
+            assertNotEquals("a stable update must not restart the color transition", beforeRepeat, scene.core())
+            scene.advance(200)
             assertNull(currentAnimator(scene.bar))
+
+            val settled = scene.core()
+            scene.bar.updateGestureState(true, true, true, true)
+            assertEquals(settled, scene.core())
+            assertNull("stable state must not schedule a frame", currentAnimator(scene.bar))
         }
     }
 
-    @Test fun disabledGestureNeverPulsesAndCancelsAnExistingPulseImmediately() {
+    @Test fun disabledGestureKeepsOrdinaryStateTransitionWithoutAnyReminderVisual() {
         Scene().use { scene ->
-            scene.bar.updateGestureState(true, true, true, false)
-            scene.advance(320)
             scene.bar.updateGestureState(true, true, true, true)
-            assertTrue(Color.alpha(scene.halo()) > 0)
+            scene.advance(320)
             scene.bar.updateGestureState(false, true, true, true)
             assertFalse(scene.node.isClickable)
-            assertEquals(0, Color.alpha(scene.halo()))
+            assertEquals(0, Color.alpha(scene.outsideBar()))
             scene.advance(320)
             val disabled = scene.core()
             assertClose(89, Color.alpha(disabled), 1)
             scene.bar.updateGestureState(false, true, true, true)
             scene.advance(96)
             assertEquals(disabled, scene.core())
-            assertEquals(0, Color.alpha(scene.halo()))
+            assertEquals(0, Color.alpha(scene.outsideBar()))
             assertNull(currentAnimator(scene.bar))
         }
     }
 
-    @Test fun detachStopsTheAndroidAnimatorAndReattachDoesNotReplayTheReminder() {
+    @Test fun detachStopsTheAndroidAnimatorAndReattachKeepsSettledState() {
         Scene().use { scene ->
             scene.bar.updateGestureState(true, true, true, true)
             val running = checkNotNull(currentAnimator(scene.bar))
@@ -316,7 +300,7 @@ open class MapGestureBarTest {
             assertFalse(running.isStarted)
             assertNull(currentAnimator(scene.bar))
             val stopped = scene.core()
-            assertEquals(0, Color.alpha(scene.halo()))
+            assertEquals(0, Color.alpha(scene.outsideBar()))
             scene.advance(1000)
             assertEquals(stopped, scene.core())
             scene.bar.updateGestureState(true, true, true, true)
@@ -324,7 +308,7 @@ open class MapGestureBarTest {
             scene.divider(1920f)
             assertTrue(scene.bar.isAttachedToWindow)
             assertNull(currentAnimator(scene.bar))
-            assertEquals(0, Color.alpha(scene.halo()))
+            assertEquals(0, Color.alpha(scene.outsideBar()))
             assertColorClose(stopped, scene.core(), 1)
         }
     }
@@ -338,11 +322,6 @@ open class MapGestureBarTest {
 
     private fun assertClose(expected: Int, actual: Int, tolerance: Int) {
         assertTrue("Expected $actual within $tolerance of $expected", kotlin.math.abs(expected - actual) <= tolerance)
-    }
-
-    private fun assertWhiteRgb(color: Int) {
-        assertEquals("glow must remain neutral white as its alpha fades", Color.WHITE,
-            Color.rgb(Color.red(color), Color.green(color), Color.blue(color)))
     }
 
     private fun assertColorClose(expected: Int, actual: Int, tolerance: Int) {

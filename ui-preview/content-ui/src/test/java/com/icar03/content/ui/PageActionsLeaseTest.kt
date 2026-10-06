@@ -21,19 +21,24 @@ class PageActionsLeaseTest {
         assertEquals(0L, lease.deadlineMillis)
     }
 
-    @Test fun anotherBlankTapRenewsTheDeadlineWithoutRetainingTheOldExpiry() {
+    @Test fun anotherBlankTapHidesAndFreshTapCannotBeExpiredByTheOldCallback() {
         var now = 0L
         val lease = PageActionsLease { now }
-        lease.reveal()
+        lease.toggle()
         val first = lease.revision
         now = 2_800L
-        lease.reveal()
-        val replacement = lease.revision
-        assertEquals(5_800L, lease.deadlineMillis)
+        lease.toggle()
+        assertFalse(lease.visible)
+        assertEquals(0L, lease.deadlineMillis)
         now = 3_000L
         lease.expire(first)
+        assertFalse(lease.visible)
+        lease.toggle()
+        val replacement = lease.revision
+        assertEquals(6_000L, lease.deadlineMillis)
+        lease.expire(first)
         assertTrue(lease.visible)
-        now = 5_800L
+        now = 6_000L
         lease.expire(replacement)
         assertFalse(lease.visible)
     }
