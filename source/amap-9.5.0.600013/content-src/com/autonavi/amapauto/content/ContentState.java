@@ -25,6 +25,17 @@ public final class ContentState {
     public boolean showChargingStatus = true;
     public float lyricsFontScale = 1.0f;
     public int lyricsLineSpacing = 1;
+    // New independent lyric preferences. The legacy scale/spacing fields above remain for API compatibility.
+    public float lyricsFontSizeSp = 40.0f;
+    public float lyricsCurrentFontSizeSp = 48.0f;
+    public float lyricsLineGapDp = 28.0f;
+    public String lyricsAlignment = "left";
+    public String lyricsColorMode = "theme";
+    public int lyricsCustomColor = 0xFF5C66BF;
+    public String lyricsCurrentColorMode = "theme";
+    public int lyricsCurrentCustomColor = 0xFF5C66BF;
+    public float lyricsImmersiveFontSizeSp = 120.0f;
+    public float lyricsImmersiveLineGapDp = 84.0f;
     public boolean lyricsSpeakerLayout = true;
     public boolean lyricsHighlight = true;
     public boolean immersiveShowTopBar = true;
@@ -171,6 +182,16 @@ public final class ContentState {
         copy.showChargingStatus = showChargingStatus;
         copy.lyricsFontScale = lyricsFontScale;
         copy.lyricsLineSpacing = lyricsLineSpacing;
+        copy.lyricsFontSizeSp = lyricsFontSizeSp;
+        copy.lyricsCurrentFontSizeSp = lyricsCurrentFontSizeSp;
+        copy.lyricsLineGapDp = lyricsLineGapDp;
+        copy.lyricsAlignment = lyricsAlignment;
+        copy.lyricsColorMode = lyricsColorMode;
+        copy.lyricsCustomColor = lyricsCustomColor;
+        copy.lyricsCurrentColorMode = lyricsCurrentColorMode;
+        copy.lyricsCurrentCustomColor = lyricsCurrentCustomColor;
+        copy.lyricsImmersiveFontSizeSp = lyricsImmersiveFontSizeSp;
+        copy.lyricsImmersiveLineGapDp = lyricsImmersiveLineGapDp;
         copy.lyricsSpeakerLayout = lyricsSpeakerLayout;
         copy.lyricsHighlight = lyricsHighlight;
         copy.immersiveShowTopBar = immersiveShowTopBar;

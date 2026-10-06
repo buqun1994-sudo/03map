@@ -1,0 +1,103 @@
+{
+  "kind": "content-provider-icons",
+  "policy": "Official public provider favicon/logo assets were fetched over HTTPS and normalized to transparent 64x64 PNGs. No credentials, cookies, tokens, or private metadata are included.",
+  "generatedBy": "downloaded-and-normalized-with-Pillow",
+  "assets": [
+    {
+      "providerId": "lrclib",
+      "providerLabel": "LRCLIB",
+      "sourceUrl": "https://lrclib.net/favicon.ico",
+      "finalUrl": "https://lrclib.net/favicon.ico",
+      "sourceFormat": "ICO",
+      "sourceSize": [48, 48],
+      "sourceSha256": "b699a71b9ed4892e23193387d43ce96f71598196bcf4682b98325ccec33d226f",
+      "deployedPath": "res/drawable/content_provider_lrclib.png",
+      "deployedSize": [64, 64],
+      "deployedSha256": "acb61195e1c20cbb4b12103425b044002332249db9dbd32e391b86b520389f49"
+    },
+    {
+      "providerId": "qq",
+      "providerLabel": "QQ",
+      "sourceUrl": "https://y.qq.com/favicon.ico",
+      "finalUrl": "https://y.qq.com/favicon.ico",
+      "sourceFormat": "ICO",
+      "sourceSize": [32, 32],
+      "sourceSha256": "4c47f906dbe8c1fb52f2128b91b563b5f3f05ed153ac267f062a5b66e566756b",
+      "deployedPath": "res/drawable/content_provider_qq.png",
+      "deployedSize": [64, 64],
+      "deployedSha256": "8e244e3de3ad1ff84c3c28e9fcdf6573e1a73ab1c9cca177672176cb48005f9a"
+    },
+    {
+      "providerId": "netease",
+      "providerLabel": "网易",
+      "sourceUrl": "https://music.163.com/favicon.ico",
+      "finalUrl": "https://music.163.com/favicon.ico",
+      "sourceFormat": "ICO",
+      "sourceSize": [32, 32],
+      "sourceSha256": "90d4c1e2dcc6f2728a2627a6a625879e8305821bf1bb297a1041e6ccca0d13b1",
+      "deployedPath": "res/drawable/content_provider_netease.png",
+      "deployedSize": [64, 64],
+      "deployedSha256": "804962cd675eeb9b41e81c912437957dfb32d0b6688e9f2e4dd0d26c5a8459e5"
+    },
+    {
+      "providerId": "kugou",
+      "providerLabel": "酷狗",
+      "sourceUrl": "https://www.kugou.com/favicon.ico",
+      "finalUrl": "https://www.kugou.com/favicon.ico",
+      "sourceFormat": "ICO",
+      "sourceSize": [16, 16],
+      "sourceSha256": "78339bbc8393aea26d56c4285488b17a16d60ddc4a698e6b2cfc5d753c91ef24",
+      "deployedPath": "res/drawable/content_provider_kugou.png",
+      "deployedSize": [64, 64],
+      "deployedSha256": "b80b253e7544c1c1e4e30cf85d64023c51360700a1b4e2f0c7b6377c5edee0a5"
+    },
+    {
+      "providerId": "kuwo",
+      "providerLabel": "酷我",
+      "sourceUrl": "https://www.kuwo.cn/favicon.ico?v=1",
+      "finalUrl": "https://www.kuwo.cn/favicon.ico?v=1",
+      "sourceFormat": "PNG",
+      "sourceSize": [30, 30],
+      "sourceSha256": "5d4dc8f8e5c598656f1bb9527a62b82a336482e295c14dccab1591e7d3a67a92",
+      "deployedPath": "res/drawable/content_provider_kuwo.png",
+      "deployedSize": [64, 64],
+      "deployedSha256": "03ebb35c25b965dc1f24e2054510c8de5e596c617d1575ce195541bd4d03cc5e"
+    },
+    {
+      "providerId": "migu",
+      "providerLabel": "咪咕",
+      "sourceUrl": "https://music.migu.cn/v5/favicon.png",
+      "finalUrl": "https://music.migu.cn/v5/favicon.png",
+      "sourceFormat": "PNG",
+      "sourceSize": [192, 192],
+      "sourceSha256": "3cd00f3265617dfacf99e7d90ba863424bdf6c86f49597cfb8fd97a92706f7a2",
+      "deployedPath": "res/drawable/content_provider_migu.png",
+      "deployedSize": [64, 64],
+      "deployedSha256": "264ec22446899f992d1abe492944d2cf0eb1138ecd7a03e9ad0be910e41870eb"
+    },
+    {
+      "providerId": "soda",
+      "providerLabel": "汽水",
+      "sourceUrl": "https://lf-luna.qishui.com/obj/music-luna-fe/luna/home/1.0.0.274/favicon.png",
+      "finalUrl": "https://lf-luna.qishui.com/obj/music-luna-fe/luna/home/1.0.0.274/favicon.png",
+      "sourceFormat": "PNG",
+      "sourceSize": [165, 165],
+      "sourceSha256": "7404f5ab859a9e9ba34ad4928ab316a6d5c1fcb9f757eece8753a99502957d71",
+      "deployedPath": "res/drawable/content_provider_soda.png",
+      "deployedSize": [64, 64],
+      "deployedSha256": "f3d9c7d5e5e489ff06d3a2d6c771103b9c2c672b18e6994b6be2d16551419d30"
+    },
+    {
+      "providerId": "applemusic",
+      "providerLabel": "Apple Music",
+      "sourceUrl": "https://music.apple.com/assets/favicon/favicon-180.png",
+      "finalUrl": "https://music.apple.com/assets/favicon/favicon-180.png",
+      "sourceFormat": "PNG",
+      "sourceSize": [180, 180],
+      "sourceSha256": "9595edfa46d80814cbccad52f507315702218a7db1f2235401cad21ed99698e6",
+      "deployedPath": "res/drawable/content_provider_applemusic.png",
+      "deployedSize": [64, 64],
+      "deployedSha256": "ee169af287c7f19d555fa41a7d38d7b338d95f76d1963f94e8869c9f7b3ad308"
+    }
+  ]
+}

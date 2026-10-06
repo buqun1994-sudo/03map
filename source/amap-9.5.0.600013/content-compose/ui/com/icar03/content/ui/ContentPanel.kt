@@ -90,6 +90,8 @@ fun ContentPanel(
     },
     lyricsState: @Composable () -> LyricsState = { state.lyrics },
     presentation: ContentPresentation? = null,
+    appleMusicLogin: @Composable ((ContentEvent) -> Unit) -> Unit = {},
+    canDispatch: (ContentEvent) -> Boolean = { true },
 ) {
     val view = LocalView.current
     val clickSound = LocalContentClickSound.current
@@ -104,17 +106,26 @@ fun ContentPanel(
     var retainedMessage by remember { androidx.compose.runtime.mutableStateOf(state.message.orEmpty()) }
     androidx.compose.runtime.SideEffect { state.message?.let { retainedMessage = it } }
     val latestEvent by rememberUpdatedState(onEvent)
+    val latestCanDispatch by rememberUpdatedState(canDispatch)
     var geometryReady by remember { mutableStateOf(true) }
     var blankTapRevision by remember { mutableLongStateOf(0L) }
     val pageMotion by remember(presentation) { derivedStateOf { presentation?.moving == true } }
     val dispatch: (ContentEvent) -> Unit = dispatch@{ event ->
+        if (!latestCanDispatch(event)) return@dispatch
         if (pageMotion && event != ContentEvent.ExitLyricsImmersive) return@dispatch
         if (settingsActive && !event.isSettingsInteraction()) return@dispatch
         // Compose does not call View.performClick(): use the same system sound path
         // as the old Android buttons, respecting the user's sound-effects setting.
-        if (event !is ContentEvent.PageSelected && event != ContentEvent.DismissSheet) {
-            clickSound(view)
+        val audible = when (event) {
+            is ContentEvent.PageSelected, ContentEvent.DismissSheet,
+            is ContentEvent.LyricsFontSizeChanged, is ContentEvent.LyricsCurrentFontSizeChanged,
+            is ContentEvent.LyricsLineGapChanged, is ContentEvent.LyricsImmersiveFontSizeChanged,
+            is ContentEvent.LyricsImmersiveLineGapChanged -> false
+            is ContentEvent.LyricsCustomColorChanged -> !event.fromDrag
+            is ContentEvent.LyricsCurrentCustomColorChanged -> !event.fromDrag
+            else -> true
         }
+        if (audible) clickSound(view)
         latestEvent(event)
     }
     Surface(modifier.fillMaxSize().graphicsLayer {
@@ -258,15 +269,16 @@ fun ContentPanel(
                 exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { 24 },
             ) { PrototypeSources(state, dispatch, anchorWidth = leftWidth.takeIf { wide }) }
             if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
+            // Settings always belong to the original left content region, including full-screen lyrics.
             SettingsSheet(state, dispatch,
-                Modifier.align(Alignment.TopStart).fillMaxSize()
+                Modifier.align(Alignment.TopStart).width(splitWidth).fillMaxHeight()
                     .padding(
                         start = if (compact) 8.dp else 12.dp,
                         end = if (compact) 8.dp else 12.dp,
                         top = if (showTop) topBarHeight else 12.dp,
                         bottom = if (showDock) dockHeight + if (compact) 8.dp else 16.dp else 12.dp,
                     ).zIndex(7f),
-                onVisibilityChanged = { settingsRetained = it })
+                onVisibilityChanged = { settingsRetained = it }, appleMusicLogin = appleMusicLogin)
             // Keep the moving feedback surface inside the same fixed content bounds.
             Box(Modifier.fillMaxSize().padding(top = if (showTop) topBarHeight else 12.dp, bottom = dockHeight).clipToBounds().zIndex(10f)) {
                 AnimatedVisibility(
@@ -883,7 +895,8 @@ private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, l
     val lyrics = lyricsState()
     LyricsBodyTransition(lyrics, state.dark,
         fontScale = state.lyricsFontScale, lineSpacing = state.lyricsLineSpacing,
-        speakerLayout = state.lyricsSpeakerLayout, highlightCurrent = state.lyricsHighlight,
+        speakerLayout = state.lyricsSpeakerLayout, highlightCurrent = true,
+        renderStyle = lyricRenderStyle(state, immersive = presentationScale > 1f),
         presentationScale = presentationScale, externalGestureActive = externalGestureActive,
         interactionEnabled = interactionEnabled, onGeometryReady = onGeometryReady, presentationOpacity = presentationOpacity) {
         if (lyrics.lines.isEmpty()) LyricsEmptyContent(state, onEvent, lyrics)

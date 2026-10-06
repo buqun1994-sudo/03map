@@ -1,6 +1,7 @@
 package com.autonavi.amapauto.content;
 
 import com.icar03.content.model.VehicleControl;
+import com.icar03.content.model.LyricPreferenceRules;
 
 import android.content.Context;
 import android.os.Handler;
@@ -268,7 +269,13 @@ public final class ContentStore {
 
     public void setLyricsFontScale(float value) {
         synchronized (this) {
-            state.lyricsFontScale = Float.isFinite(value) ? Math.max(0.85f, Math.min(1.15f, value)) : 1.0f;
+            float scale = Float.isFinite(value) ? Math.max(0.85f, Math.min(1.15f, value)) : 1.0f;
+            state.lyricsFontScale = scale;
+            state.lyricsFontSizeSp = LyricPreferenceRules.fontSize(40.0f * scale);
+            state.lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(
+                    48.0f * scale, state.lyricsFontSizeSp);
+            state.lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(
+                    40.0f * scale * 3.0f);
             preferenceStore.save(state);
         }
         publish();
@@ -276,10 +283,106 @@ public final class ContentStore {
 
     public void setLyricsLineSpacing(int value) {
         synchronized (this) {
-            state.lyricsLineSpacing = Math.max(0, Math.min(2, value));
+            int spacing = Math.max(0, Math.min(2, value));
+            state.lyricsLineSpacing = spacing;
+            float gap = legacyLineGapDp(spacing);
+            state.lyricsLineGapDp = LyricPreferenceRules.lineGap(gap);
+            state.lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(gap * 3.0f);
             preferenceStore.save(state);
         }
         publish();
+    }
+
+    public void setLyricsFontSizeSp(float value) {
+        synchronized (this) {
+            state.lyricsFontSizeSp = LyricPreferenceRules.fontSize(value);
+            state.lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(
+                    state.lyricsCurrentFontSizeSp, state.lyricsFontSizeSp);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsCurrentFontSizeSp(float value) {
+        synchronized (this) {
+            state.lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(
+                    value, state.lyricsFontSizeSp);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsLineGapDp(float value) {
+        synchronized (this) {
+            state.lyricsLineGapDp = LyricPreferenceRules.lineGap(value);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsAlignment(String value) {
+        synchronized (this) {
+            state.lyricsAlignment = LyricPreferenceRules.alignment(value);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsColorMode(String value) {
+        synchronized (this) {
+            state.lyricsColorMode = LyricPreferenceRules.colorMode(value);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsCustomColor(int value) {
+        synchronized (this) {
+            state.lyricsCustomColor = LyricPreferenceRules.opaqueColor(value);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsCurrentColorMode(String value) {
+        synchronized (this) {
+            state.lyricsCurrentColorMode = LyricPreferenceRules.colorMode(value);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsCurrentCustomColor(int value) {
+        synchronized (this) {
+            state.lyricsCurrentCustomColor = LyricPreferenceRules.opaqueColor(value);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsImmersiveFontSizeSp(float value) {
+        synchronized (this) {
+            state.lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(value);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsImmersiveLineGapDp(float value) {
+        synchronized (this) {
+            state.lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(value);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    private float legacyLineGapDp(int value) {
+        switch (value) {
+            case 0: return 28.0f * 0.75f;
+            case 2: return 28.0f * 1.35f;
+            case 1:
+            default: return 28.0f;
+        }
     }
 
     public void setLyricsSpeakerLayout(boolean value) {

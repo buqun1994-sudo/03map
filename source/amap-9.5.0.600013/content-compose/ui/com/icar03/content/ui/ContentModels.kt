@@ -1,5 +1,7 @@
 package com.icar03.content.ui
 
+import com.icar03.content.model.LyricPreferenceRules
+
 /** Pure presentation contract: no Android, vendor IDs, permissions or business ports. */
 /** The shared domain definition also supplies stable presentation labels. */
 typealias ControlId = com.icar03.content.model.VehicleControl
@@ -55,11 +57,12 @@ object DockShortcuts {
 
 enum class PanelPage { Shortcuts, Lyrics }
 enum class SettingsSection(val label: String, val description: String) {
-    TopBar("顶栏", "时间、温度、电量和充电信息"),
+    Home("设置", "选择要调整的内容区域"),
+    TopBar("状态栏", "时间、温度、电量和充电信息"),
+    Layout("底栏", "底部快捷按钮的显示数量"),
     Lyrics("歌词", "字号、行距和声部呈现"),
-    Artwork("封面氛围", "歌曲封面背景的显示方式"),
+    Artwork("背景", "歌曲封面背景的显示方式"),
     Media("媒体", "媒体卡的附加入口"),
-    Layout("Dock", "底部快捷按钮的显示数量"),
     Interaction("交互", "操作结果提示")
 }
 enum class PreviewScenario(val label: String) {
@@ -125,11 +128,23 @@ data class ContentUiState(
     val brightness: LevelState = LevelState(.65f), val volume: LevelState = LevelState(.38f),
     val media: MediaState = MediaState(), val lyrics: LyricsState = LyricsState(), val sourcesOpen: Boolean = false,
     val scenariosOpen: Boolean = false, val message: String? = null, val messageRevision: Long = 0L,
-    val settingsOpen: Boolean = false, val settingsSection: SettingsSection = SettingsSection.TopBar,
+    val settingsOpen: Boolean = false, val settingsSection: SettingsSection = SettingsSection.Home,
     val showWeekday: Boolean = true, val showSeconds: Boolean = false,
     val showIndoorTemperature: Boolean = true, val showBattery: Boolean = true,
     val showChargingStatus: Boolean = true, val lyricsFontScale: Float = 1.0f,
-    val lyricsLineSpacing: Int = 1, val lyricsSpeakerLayout: Boolean = true,
+    val lyricsLineSpacing: Int = 1, val lyricsFontSizeSp: Float = LyricPreferenceRules.DEFAULT_FONT_SP,
+    val lyricsCurrentFontSizeSp: Float = LyricPreferenceRules.DEFAULT_CURRENT_SP,
+    val lyricsLineGapDp: Float = LyricPreferenceRules.DEFAULT_GAP_DP,
+    val lyricsAlignment: String = LyricPreferenceRules.DEFAULT_ALIGNMENT,
+    val lyricsColorMode: String = LyricPreferenceRules.DEFAULT_COLOR_MODE,
+    val lyricsCustomColor: Int = LyricPreferenceRules.DEFAULT_CUSTOM_COLOR,
+    val lyricsCurrentColorMode: String = LyricPreferenceRules.DEFAULT_COLOR_MODE,
+    val lyricsCurrentCustomColor: Int = LyricPreferenceRules.DEFAULT_CUSTOM_COLOR,
+    val lyricsImmersiveFontSizeSp: Float = LyricPreferenceRules.DEFAULT_IMMERSIVE_FONT_SP,
+    val lyricsImmersiveLineGapDp: Float = LyricPreferenceRules.DEFAULT_IMMERSIVE_GAP_DP,
+    val lyricsSystemAccentColor: Int = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR,
+    val lyricsProviderSettings: LyricsProviderUiState = LyricsProviderUiState(),
+    val lyricsSpeakerLayout: Boolean = true,
     val lyricsHighlight: Boolean = true,
     val immersiveShowTopBar: Boolean = true, val immersiveShowDock: Boolean = true,
     val showAmbientArtwork: Boolean = true,
@@ -157,6 +172,7 @@ sealed interface ContentEvent {
     data object OpenSources : ContentEvent
     data object OpenScenarios : ContentEvent
     data object SettingsTapped : ContentEvent
+    data object SettingsBack : ContentEvent
     data object OpenLyricsSettings : ContentEvent
     // The map host consumes these intents through its existing presentation port.
     data object EnterLyricsImmersive : ContentEvent
@@ -169,6 +185,16 @@ sealed interface ContentEvent {
     data class ShowBatteryChanged(val value: Boolean) : ContentEvent
     data class ShowChargingStatusChanged(val value: Boolean) : ContentEvent
     data class LyricsFontScaleChanged(val value: Float) : ContentEvent
+    data class LyricsFontSizeChanged(val value: Float) : ContentEvent
+    data class LyricsCurrentFontSizeChanged(val value: Float) : ContentEvent
+    data class LyricsLineGapChanged(val value: Float) : ContentEvent
+    data class LyricsAlignmentChanged(val value: String) : ContentEvent
+    data class LyricsColorModeChanged(val value: String) : ContentEvent
+    data class LyricsCustomColorChanged(val value: Int, val fromDrag: Boolean = false) : ContentEvent
+    data class LyricsCurrentColorModeChanged(val value: String) : ContentEvent
+    data class LyricsCurrentCustomColorChanged(val value: Int, val fromDrag: Boolean = false) : ContentEvent
+    data class LyricsImmersiveFontSizeChanged(val value: Float) : ContentEvent
+    data class LyricsImmersiveLineGapChanged(val value: Float) : ContentEvent
     data class LyricsLineSpacingChanged(val value: Int) : ContentEvent
     data class LyricsSpeakerLayoutChanged(val value: Boolean) : ContentEvent
     data class LyricsHighlightChanged(val value: Boolean) : ContentEvent
@@ -185,10 +211,17 @@ sealed interface ContentEvent {
 
 /** Settings remains modal until its content-layer exit finishes. */
 fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
-    ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet,
+    ContentEvent.SettingsTapped, ContentEvent.SettingsBack, ContentEvent.OpenLyricsSettings,
+    ContentEvent.SettingsDismissed, ContentEvent.DismissSheet,
+    is LyricsPlatformSelected, AppleMusicConnectRequested, AppleMusicLoginDismissed, AppleMusicDisconnectRequested,
     is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged,
     is ContentEvent.ShowIndoorTemperatureChanged, is ContentEvent.ShowBatteryChanged,
     is ContentEvent.ShowChargingStatusChanged, is ContentEvent.LyricsFontScaleChanged,
+    is ContentEvent.LyricsFontSizeChanged, is ContentEvent.LyricsCurrentFontSizeChanged,
+    is ContentEvent.LyricsLineGapChanged, is ContentEvent.LyricsAlignmentChanged,
+    is ContentEvent.LyricsColorModeChanged, is ContentEvent.LyricsCustomColorChanged,
+    is ContentEvent.LyricsCurrentColorModeChanged, is ContentEvent.LyricsCurrentCustomColorChanged,
+    is ContentEvent.LyricsImmersiveFontSizeChanged, is ContentEvent.LyricsImmersiveLineGapChanged,
     is ContentEvent.LyricsLineSpacingChanged, is ContentEvent.LyricsSpeakerLayoutChanged,
     is ContentEvent.LyricsHighlightChanged, is ContentEvent.ImmersiveShowTopBarChanged,
     is ContentEvent.ImmersiveShowDockChanged, is ContentEvent.ShowAmbientArtworkChanged,

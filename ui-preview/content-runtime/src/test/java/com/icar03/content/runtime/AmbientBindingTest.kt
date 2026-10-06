@@ -120,6 +120,7 @@ class AmbientBindingTest {
             assertSame(red, binding.artwork.value)
             assertNull(binding.ambientArtwork.value)
             assertEquals(0, calls.get())
+            binding.dispatch(com.icar03.content.ui.ContentEvent.SettingsTapped)
             binding.dispatch(com.icar03.content.ui.ContentEvent.ShowAmbientArtworkChanged(true)); awaitBake(binding)
             val published = binding.ambientArtwork.value!!
             assertEquals(1, calls.get())

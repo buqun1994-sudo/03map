@@ -1,13 +1,14 @@
 package com.autonavi.amapauto.content;
 
 import com.icar03.content.model.VehicleControl;
+import com.icar03.content.model.LyricPreferenceRules;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 
 public final class ContentPreferenceStore {
     private static final String PREFERENCES_NAME = "content_preferences_v1";
-    private static final int PREFERENCES_VERSION = 5;
+    private static final int PREFERENCES_VERSION = 6;
     private static final String KEY_PREFERENCES_VERSION = "preferences_version";
     private static final String KEY_SHOW_WEEKDAY = "top_bar_show_weekday";
     private static final String KEY_SHOW_SECONDS = "top_bar_show_seconds";
@@ -16,6 +17,16 @@ public final class ContentPreferenceStore {
     private static final String KEY_SHOW_CHARGING_STATUS = "top_bar_show_charging_status";
     private static final String KEY_LYRICS_FONT_SCALE = "lyrics_font_scale";
     private static final String KEY_LYRICS_LINE_SPACING = "lyrics_line_spacing";
+    private static final String KEY_LYRICS_FONT_SIZE_SP = "lyrics_font_size_sp";
+    private static final String KEY_LYRICS_CURRENT_FONT_SIZE_SP = "lyrics_current_font_size_sp";
+    private static final String KEY_LYRICS_LINE_GAP_DP = "lyrics_line_gap_dp";
+    private static final String KEY_LYRICS_ALIGNMENT = "lyrics_alignment";
+    private static final String KEY_LYRICS_COLOR_MODE = "lyrics_color_mode";
+    private static final String KEY_LYRICS_CUSTOM_COLOR = "lyrics_custom_color";
+    private static final String KEY_LYRICS_CURRENT_COLOR_MODE = "lyrics_current_color_mode";
+    private static final String KEY_LYRICS_CURRENT_CUSTOM_COLOR = "lyrics_current_custom_color";
+    private static final String KEY_LYRICS_IMMERSIVE_FONT_SIZE_SP = "lyrics_immersive_font_size_sp";
+    private static final String KEY_LYRICS_IMMERSIVE_LINE_GAP_DP = "lyrics_immersive_line_gap_dp";
     private static final String KEY_LYRICS_SPEAKER_LAYOUT = "lyrics_speaker_layout";
     private static final String KEY_LYRICS_HIGHLIGHT = "lyrics_highlight";
     private static final String KEY_IMMERSIVE_SHOW_TOP_BAR = "lyrics_immersive_show_top_bar";
@@ -44,8 +55,51 @@ public final class ContentPreferenceStore {
         state.showIndoorTemperature = readBoolean(KEY_SHOW_INDOOR_TEMPERATURE, true);
         state.showBattery = readBoolean(KEY_SHOW_BATTERY, true);
         state.showChargingStatus = readBoolean(KEY_SHOW_CHARGING_STATUS, true);
-        state.lyricsFontScale = clampFontScale(readFloat(KEY_LYRICS_FONT_SCALE, 1.0f));
-        state.lyricsLineSpacing = clampLineSpacing(readInt(KEY_LYRICS_LINE_SPACING, 1));
+        float legacyFontScale = clampFontScale(readFloat(KEY_LYRICS_FONT_SCALE, 1.0f));
+        int legacyLineSpacing = clampLineSpacing(readInt(KEY_LYRICS_LINE_SPACING, 1));
+        state.lyricsFontScale = legacyFontScale;
+        state.lyricsLineSpacing = legacyLineSpacing;
+        if (version <= 5) {
+            // Versions 1..5 had only scale/spacing. Keep those choices while introducing
+            // independent normal/current/full-screen fields in the same migration transaction.
+            state.lyricsFontSizeSp = LyricPreferenceRules.fontSize(40.0f * legacyFontScale);
+            state.lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(
+                    48.0f * legacyFontScale, state.lyricsFontSizeSp);
+            state.lyricsLineGapDp = LyricPreferenceRules.lineGap(legacyLineGapDp(legacyLineSpacing));
+            state.lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(
+                    40.0f * legacyFontScale * 3.0f);
+            state.lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(
+                    legacyLineGapDp(legacyLineSpacing) * 3.0f);
+            state.lyricsAlignment = LyricPreferenceRules.DEFAULT_ALIGNMENT;
+            state.lyricsColorMode = LyricPreferenceRules.DEFAULT_COLOR_MODE;
+            state.lyricsCustomColor = LyricPreferenceRules.DEFAULT_CUSTOM_COLOR;
+            state.lyricsCurrentColorMode = LyricPreferenceRules.DEFAULT_COLOR_MODE;
+            state.lyricsCurrentCustomColor = LyricPreferenceRules.DEFAULT_CUSTOM_COLOR;
+        } else {
+            state.lyricsFontSizeSp = LyricPreferenceRules.fontSize(
+                    readFloat(KEY_LYRICS_FONT_SIZE_SP, LyricPreferenceRules.DEFAULT_FONT_SP));
+            state.lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(
+                    readFloat(KEY_LYRICS_CURRENT_FONT_SIZE_SP, LyricPreferenceRules.DEFAULT_CURRENT_SP),
+                    state.lyricsFontSizeSp);
+            state.lyricsLineGapDp = LyricPreferenceRules.lineGap(
+                    readFloat(KEY_LYRICS_LINE_GAP_DP, LyricPreferenceRules.DEFAULT_GAP_DP));
+            state.lyricsAlignment = LyricPreferenceRules.alignment(
+                    readString(KEY_LYRICS_ALIGNMENT, LyricPreferenceRules.DEFAULT_ALIGNMENT));
+            state.lyricsColorMode = LyricPreferenceRules.colorMode(
+                    readString(KEY_LYRICS_COLOR_MODE, LyricPreferenceRules.DEFAULT_COLOR_MODE));
+            state.lyricsCustomColor = LyricPreferenceRules.opaqueColor(
+                    readInt(KEY_LYRICS_CUSTOM_COLOR, LyricPreferenceRules.DEFAULT_CUSTOM_COLOR));
+            state.lyricsCurrentColorMode = LyricPreferenceRules.colorMode(
+                    readString(KEY_LYRICS_CURRENT_COLOR_MODE, LyricPreferenceRules.DEFAULT_COLOR_MODE));
+            state.lyricsCurrentCustomColor = LyricPreferenceRules.opaqueColor(
+                    readInt(KEY_LYRICS_CURRENT_CUSTOM_COLOR, LyricPreferenceRules.DEFAULT_CUSTOM_COLOR));
+            state.lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(
+                    readFloat(KEY_LYRICS_IMMERSIVE_FONT_SIZE_SP,
+                            LyricPreferenceRules.DEFAULT_IMMERSIVE_FONT_SP));
+            state.lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(
+                    readFloat(KEY_LYRICS_IMMERSIVE_LINE_GAP_DP,
+                            LyricPreferenceRules.DEFAULT_IMMERSIVE_GAP_DP));
+        }
         state.lyricsSpeakerLayout = readBoolean(KEY_LYRICS_SPEAKER_LAYOUT, true);
         state.lyricsHighlight = readBoolean(KEY_LYRICS_HIGHLIGHT, true);
         state.immersiveShowTopBar = readBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, true);
@@ -86,6 +140,22 @@ public final class ContentPreferenceStore {
         editor.putBoolean(KEY_SHOW_CHARGING_STATUS, state.showChargingStatus);
         editor.putFloat(KEY_LYRICS_FONT_SCALE, clampFontScale(state.lyricsFontScale));
         editor.putInt(KEY_LYRICS_LINE_SPACING, clampLineSpacing(state.lyricsLineSpacing));
+        float normalFontSize = LyricPreferenceRules.fontSize(state.lyricsFontSizeSp);
+        editor.putFloat(KEY_LYRICS_FONT_SIZE_SP, normalFontSize);
+        editor.putFloat(KEY_LYRICS_CURRENT_FONT_SIZE_SP,
+                LyricPreferenceRules.currentFontSize(state.lyricsCurrentFontSizeSp, normalFontSize));
+        editor.putFloat(KEY_LYRICS_LINE_GAP_DP, LyricPreferenceRules.lineGap(state.lyricsLineGapDp));
+        editor.putString(KEY_LYRICS_ALIGNMENT, LyricPreferenceRules.alignment(state.lyricsAlignment));
+        editor.putString(KEY_LYRICS_COLOR_MODE, LyricPreferenceRules.colorMode(state.lyricsColorMode));
+        editor.putInt(KEY_LYRICS_CUSTOM_COLOR, LyricPreferenceRules.opaqueColor(state.lyricsCustomColor));
+        editor.putString(KEY_LYRICS_CURRENT_COLOR_MODE,
+                LyricPreferenceRules.colorMode(state.lyricsCurrentColorMode));
+        editor.putInt(KEY_LYRICS_CURRENT_CUSTOM_COLOR,
+                LyricPreferenceRules.opaqueColor(state.lyricsCurrentCustomColor));
+        editor.putFloat(KEY_LYRICS_IMMERSIVE_FONT_SIZE_SP,
+                LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp));
+        editor.putFloat(KEY_LYRICS_IMMERSIVE_LINE_GAP_DP,
+                LyricPreferenceRules.immersiveLineGap(state.lyricsImmersiveLineGapDp));
         editor.putBoolean(KEY_LYRICS_SPEAKER_LAYOUT, state.lyricsSpeakerLayout);
         editor.putBoolean(KEY_LYRICS_HIGHLIGHT, state.lyricsHighlight);
         editor.putBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, state.immersiveShowTopBar);
@@ -147,6 +217,15 @@ public final class ContentPreferenceStore {
             return preferences.getFloat(key, fallback);
         } catch (ClassCastException invalidStoredValue) {
             return fallback;
+        }
+    }
+
+    private float legacyLineGapDp(int value) {
+        switch (value) {
+            case 0: return 28.0f * 0.75f;
+            case 2: return 28.0f * 1.35f;
+            case 1:
+            default: return 28.0f;
         }
     }
 

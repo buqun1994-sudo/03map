@@ -19,6 +19,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.width
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -449,18 +450,29 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.waitForIdle()
         val defaultHeights = body.fetchSemanticsNode().config[LyricRowHeights]
         assertTrue("ContentPanel forwards voice preferences through LyricsBodyTransition", defaultHeights[0] < voiceHeights[0])
-        compose.runOnIdle { state.value = state.value.copy(lyricsLineSpacing = 2) }
+        compose.runOnIdle { state.value = state.value.copy(lyricsLineGapDp = 40f) }
         compose.waitForIdle()
         val looseHeights = body.fetchSemanticsNode().config[LyricRowHeights]
         assertTrue("the actual page changes main-only row spacing", looseHeights.zip(defaultHeights).all { (loose, normal) -> loose > normal })
-        compose.runOnIdle { state.value = state.value.copy(lyricsFontScale = .85f) }
+        compose.runOnIdle { state.value = state.value.copy(lyricsFontSizeSp = 34f, lyricsCurrentFontSizeSp = 42f) }
         compose.waitForIdle()
         assertEquals(34f, body.fetchSemanticsNode().config[LyricFontPixels], .01f)
-        assertEquals(40.8f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
+        assertEquals(42f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
         compose.runOnIdle { state.value = state.value.copy(lyricsHighlight = false) }
         compose.waitForIdle()
-        body.assert(SemanticsMatcher.expectValue(LyricEmphasizedRows, emptyList()))
+        body.assert(SemanticsMatcher.expectValue(LyricEmphasizedRows, listOf(0)))
+        assertEquals(34f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
         body.assert(SemanticsMatcher.expectValue(LyricScrollAnchor, 0))
+        val styleRows = body.fetchSemanticsNode().config[LyricRowHeights]
+        compose.runOnIdle { state.value = state.value.copy(lyricsColorMode = "custom", lyricsCustomColor = 0xFFDF5522.toInt(),
+            lyricsCurrentColorMode = "custom", lyricsCurrentCustomColor = 0xFF3377AA.toInt()) }
+        compose.waitForIdle()
+        body.assert(SemanticsMatcher.expectValue(LyricNormalColor, 0xFFDF5522.toInt()))
+        body.assert(SemanticsMatcher.expectValue(LyricCurrentColor, 0xFF3377AA.toInt()))
+        assertSame("changing colors does not replace the shaped body", styleRows, body.fetchSemanticsNode().config[LyricRowHeights])
+        compose.runOnIdle { state.value = state.value.copy(lyricsAlignment = "center") }
+        compose.waitForIdle()
+        body.assert(SemanticsMatcher.expectValue(LyricTextAlignment, "center"))
         assertTrue("the page retains its real immutable lyric source", state.value.lyrics.lines === lines)
     }
 

@@ -180,8 +180,12 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
     fun handleBack(): Boolean {
         if (destroyed) return false
         val current = binding.state.value
+        if (current.lyricsProviderSettings.appleLoginOpen) {
+            binding.dispatch(com.icar03.content.ui.AppleMusicLoginDismissed)
+            return true
+        }
         if (current.settingsOpen) {
-            binding.dispatch(com.icar03.content.ui.ContentEvent.SettingsDismissed)
+            binding.dispatch(com.icar03.content.ui.ContentEvent.SettingsBack)
             return true
         }
         if (current.sourcesOpen) {

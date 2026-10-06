@@ -54,8 +54,12 @@ class ContentBinding(
     private var volume = ContentPorts.SystemSnapshot(false, 0)
     private var sourcesOpen = false
     private var settingsOpen = false
-    private var settingsSection = SettingsSection.TopBar
+    private var settingsSection = SettingsSection.Home
+    private var lyricsSettings: LyricsSettingsBinding? = null
     private var placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap()
+    private var themeKey: Int? = null
+    private var lyricsSystemAccentColor: Int = IcarThemeAccent.DEFAULT_ACCENT
+    private var themeObserverRegistered = false
     private var feedback: String? = null
     private var feedbackRevision = 0L
     private val feedbackTimeout = Runnable {
@@ -98,6 +102,9 @@ class ContentBinding(
     private val brightnessObserver = object : ContentObserver(handler) {
         override fun onChange(selfChange: Boolean) { requestSystemRead() }
     }
+    private val themeColorObserver = object : ContentObserver(handler) {
+        override fun onChange(selfChange: Boolean) { refreshThemeAccent() }
+    }
     private val environmentReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (!running) return
@@ -123,13 +130,21 @@ class ContentBinding(
         val app = context.applicationContext
         if (environment === app) return
         detachObservers()
+        lyricsSettings?.close()
         environment = app
-        if (running) attachObservers()
+        lyricsSettings = LyricsSettingsBinding(app,
+            onChanged = { if (running && !closed) publishShell() },
+            onFeedback = { message ->
+                if (running && !closed) { replaceFeedback(message); publishShell() }
+            })
+        if (running) { lyricsSettings?.start(); attachObservers() }
     }
 
     internal fun clearEnvironment() {
         checkMain()
         detachObservers()
+        lyricsSettings?.close()
+        lyricsSettings = null
         environment = null
     }
 
@@ -156,6 +171,7 @@ class ContentBinding(
                 }
             }
         }.also(store::addListener)
+        lyricsSettings?.start()
         attachObservers()
         projectClock(System.currentTimeMillis())
         systemTick.run()
@@ -165,6 +181,7 @@ class ContentBinding(
         checkMain()
         if (!running) return
         running = false
+        lyricsSettings?.stop()
         mutableActive.value = false
         store.stopLyrics()
         generation++
@@ -180,11 +197,13 @@ class ContentBinding(
         listener?.let(store::removeListener)
         listener = null
         detachObservers()
+        themeKey = null
+        lyricsSystemAccentColor = IcarThemeAccent.DEFAULT_ACCENT
         handler.removeCallbacksAndMessages(null)
         synchronized(handler) { queuedProjectionEpoch = null }
         sourcesOpen = false
         settingsOpen = false
-        settingsSection = SettingsSection.TopBar
+        settingsSection = SettingsSection.Home
         replaceFeedback(null)
         mutableArtwork.value = null
         mutableAmbient.value = null
@@ -195,7 +214,10 @@ class ContentBinding(
     }
 
     private fun inactive(state: ContentUiState) = state.copy(
-        sourcesOpen = false, settingsOpen = false, message = null,
+        sourcesOpen = false, settingsOpen = false, settingsSection = SettingsSection.Home,
+        lyricsSystemAccentColor = IcarThemeAccent.DEFAULT_ACCENT, message = null,
+        lyricsProviderSettings = (lyricsSettings?.state ?: state.lyricsProviderSettings).copy(
+            available = false, appleLoginOpen = false, applePreparing = false),
         controls = state.controls.mapValues { it.value.copy(available = false) },
         brightness = state.brightness.copy(available = false, target = null), volume = state.volume.copy(available = false, target = null),
         media = state.media.copy(playbackAvailable = false, nextAvailable = false, sourceAvailable = false),
@@ -206,16 +228,46 @@ class ContentBinding(
         if (closed) return
         stop()
         closed = true
+        lyricsSettings?.close()
+        lyricsSettings = null
         environment = null
         artworkWorker.shutdownNow()
         systemWorker.shutdownNow()
         if (ownership == StoreOwnership.Owned) store.destroy()
     }
 
+    @androidx.compose.runtime.Composable
+    internal fun AppleMusicLoginContent(onEvent: (ContentEvent) -> Unit) {
+        lyricsSettings?.LoginContent(onEvent)
+    }
+
+    fun navigateBack(): Boolean {
+        checkMain()
+        if (!running || closed || !settingsOpen) return false
+        dispatch(ContentEvent.SettingsBack)
+        return true
+    }
+
+    internal fun canDispatch(event: ContentEvent): Boolean {
+        if (!running || closed) return false
+        if (!settingsOpen && event.isSettingsInteraction() && event !in setOf(
+                ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings, ContentEvent.SettingsBack,
+                ContentEvent.SettingsDismissed, ContentEvent.DismissSheet)) return false
+        if (settingsOpen && !event.isSettingsInteraction()) return false
+        if (lyricsSettings?.state?.appleLoginOpen == true && event !in setOf(
+                ContentEvent.SettingsBack, AppleMusicLoginDismissed, ContentEvent.SettingsDismissed,
+                ContentEvent.SettingsTapped, ContentEvent.DismissSheet)) return false
+        return true
+    }
+
     fun dispatch(event: ContentEvent) {
         checkMain()
-        if (!running || closed) return
-        if (settingsOpen && !event.isSettingsInteraction()) return
+        if (!canDispatch(event)) return
+        if (lyricsSettings?.state?.appleLoginOpen == true && event == ContentEvent.SettingsBack) {
+            lyricsSettings?.dispatch(AppleMusicLoginDismissed)
+            return
+        }
+        if (lyricsSettings?.dispatch(event) == true) { publishShell(); return }
         if (event is ContentEvent.ControlTapped || event is ContentEvent.ControlPowerTapped ||
             event is ContentEvent.ControlAutomaticTapped || event is ContentEvent.ControlLevelChanged ||
             event == ContentEvent.PlayPause || event == ContentEvent.NextTrack || event == ContentEvent.RearWashTapped ||
@@ -252,22 +304,30 @@ class ContentBinding(
             is ContentEvent.PageSelected -> store.setPageIndex(if (event.page == PanelPage.Lyrics) 1 else 0)
             ContentEvent.OpenSources -> { if (state.value.media.sourceAvailable) sourcesOpen = true; publishShell() }
             ContentEvent.DismissSheet -> {
+                lyricsSettings?.dispatch(AppleMusicLoginDismissed)
                 sourcesOpen = false
                 settingsOpen = false
                 replaceFeedback(null)
                 publishShell()
             }
             ContentEvent.SettingsTapped -> {
+                lyricsSettings?.dispatch(AppleMusicLoginDismissed)
                 sourcesOpen = false
-                if (settingsOpen) {
-                    settingsOpen = false
-                    replaceFeedback(null)
-                } else {
-                    settingsOpen = true
-                    settingsSection = SettingsSection.TopBar
-                    replaceFeedback(null)
-                }
+                settingsOpen = !settingsOpen
+                settingsSection = SettingsSection.Home
+                replaceFeedback(null)
                 publishShell()
+            }
+            ContentEvent.SettingsBack -> {
+                if (settingsOpen) {
+                    if (settingsSection == SettingsSection.Home) {
+                        settingsOpen = false
+                    } else {
+                        settingsSection = SettingsSection.Home
+                    }
+                    replaceFeedback(null)
+                    publishShell()
+                }
             }
             ContentEvent.OpenLyricsSettings -> {
                 sourcesOpen = false
@@ -285,6 +345,7 @@ class ContentBinding(
                 }
             }
             ContentEvent.SettingsDismissed -> {
+                lyricsSettings?.dispatch(AppleMusicLoginDismissed)
                 settingsOpen = false
                 replaceFeedback(null)
                 publishShell()
@@ -295,7 +356,17 @@ class ContentBinding(
             is ContentEvent.ShowBatteryChanged -> store.setShowBattery(event.value)
             is ContentEvent.ShowChargingStatusChanged -> store.setShowChargingStatus(event.value)
             is ContentEvent.LyricsFontScaleChanged -> store.setLyricsFontScale(event.value)
-            is ContentEvent.LyricsLineSpacingChanged -> store.setLyricsLineSpacing(event.value)
+            is ContentEvent.LyricsFontSizeChanged -> store.setLyricsFontSizeSp(event.value)
+             is ContentEvent.LyricsCurrentFontSizeChanged -> store.setLyricsCurrentFontSizeSp(event.value)
+             is ContentEvent.LyricsLineGapChanged -> store.setLyricsLineGapDp(event.value)
+             is ContentEvent.LyricsAlignmentChanged -> store.setLyricsAlignment(event.value)
+             is ContentEvent.LyricsColorModeChanged -> store.setLyricsColorMode(event.value)
+             is ContentEvent.LyricsCustomColorChanged -> store.setLyricsCustomColor(event.value)
+             is ContentEvent.LyricsCurrentColorModeChanged -> store.setLyricsCurrentColorMode(event.value)
+             is ContentEvent.LyricsCurrentCustomColorChanged -> store.setLyricsCurrentCustomColor(event.value)
+             is ContentEvent.LyricsImmersiveFontSizeChanged -> store.setLyricsImmersiveFontSizeSp(event.value)
+             is ContentEvent.LyricsImmersiveLineGapChanged -> store.setLyricsImmersiveLineGapDp(event.value)
+             is ContentEvent.LyricsLineSpacingChanged -> store.setLyricsLineSpacing(event.value)
             is ContentEvent.LyricsSpeakerLayoutChanged -> store.setLyricsSpeakerLayout(event.value)
             is ContentEvent.LyricsHighlightChanged -> store.setLyricsHighlight(event.value)
             is ContentEvent.ImmersiveShowTopBarChanged -> store.setImmersiveShowTopBar(event.value)
@@ -395,7 +466,8 @@ class ContentBinding(
     }
 
     private fun shell(snapshot: ContentState): ContentUiState = mapper.mapShell(snapshot, brightness, volume, RuntimeCapabilities(
-        snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, snapshot.mediaSourceWriteAvailable, snapshot.writableSeatControls))
+        snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, snapshot.mediaSourceWriteAvailable, snapshot.writableSeatControls),
+        lyricsSystemAccentColor).copy(lyricsProviderSettings = lyricsSettings?.state ?: LyricsProviderUiState())
 
     private fun publishShell() {
         val projected = shell(latestSnapshot)
@@ -424,6 +496,8 @@ class ContentBinding(
     private fun project(snapshot: ContentState) {
         val previous = latestSnapshot
         latestSnapshot = snapshot
+        lyricsSystemAccentColor = IcarThemeAccent.resolve(
+            themeKey, snapshot.themeMode == ContentState.THEME_DARK)
         if (!snapshot.showActionFeedback && previous.showActionFeedback) replaceFeedback(null)
         if (snapshot.commandSequence != commandSequence) {
             commandSequence = snapshot.commandSequence
@@ -495,28 +569,56 @@ class ContentBinding(
         ambientBitmapGeneration = 0
     }
 
+    private fun refreshThemeAccent() {
+        if (closed) return
+        themeKey = runCatching {
+            Settings.Global.getInt(
+                requireNotNull(environment).contentResolver,
+                IcarThemeAccent.GLOBAL_THEME_KEY,
+            )
+        }.getOrNull()
+        lyricsSystemAccentColor = IcarThemeAccent.resolve(
+            themeKey, latestSnapshot.themeMode == ContentState.THEME_DARK)
+        if (running) publishShell()
+    }
+
     @Suppress("DEPRECATION")
     private fun attachObservers() {
         val context = environment ?: return
-        if (observersRegistered) return
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_TIME_CHANGED)
-            addAction(Intent.ACTION_TIMEZONE_CHANGED)
-            addAction(Intent.ACTION_LOCALE_CHANGED)
-            addAction(VOLUME_CHANGED)
+        if (!observersRegistered) {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_TIME_CHANGED)
+                addAction(Intent.ACTION_TIMEZONE_CHANGED)
+                addAction(Intent.ACTION_LOCALE_CHANGED)
+                addAction(VOLUME_CHANGED)
+            }
+            if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(environmentReceiver, filter, Context.RECEIVER_EXPORTED)
+            else context.registerReceiver(environmentReceiver, filter)
+            context.contentResolver.registerContentObserver(
+                Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS), false, brightnessObserver)
+            observersRegistered = true
         }
-        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(environmentReceiver, filter, Context.RECEIVER_EXPORTED)
-        else context.registerReceiver(environmentReceiver, filter)
-        context.contentResolver.registerContentObserver(Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS), false, brightnessObserver)
-        observersRegistered = true
+        if (!themeObserverRegistered) {
+            runCatching {
+                context.contentResolver.registerContentObserver(
+                    Settings.Global.getUriFor(IcarThemeAccent.GLOBAL_THEME_KEY), false, themeColorObserver)
+                themeObserverRegistered = true
+            }
+        }
+        refreshThemeAccent()
     }
 
     private fun detachObservers() {
         val context = environment ?: return
-        if (!observersRegistered) return
-        context.unregisterReceiver(environmentReceiver)
-        context.contentResolver.unregisterContentObserver(brightnessObserver)
-        observersRegistered = false
+        if (observersRegistered) {
+            runCatching { context.unregisterReceiver(environmentReceiver) }
+            runCatching { context.contentResolver.unregisterContentObserver(brightnessObserver) }
+            observersRegistered = false
+        }
+        if (themeObserverRegistered) {
+            runCatching { context.contentResolver.unregisterContentObserver(themeColorObserver) }
+            themeObserverRegistered = false
+        }
     }
 
     private fun checkMain() { check(Looper.myLooper() == Looper.getMainLooper()) { "ContentBinding must be used on the main thread" } }

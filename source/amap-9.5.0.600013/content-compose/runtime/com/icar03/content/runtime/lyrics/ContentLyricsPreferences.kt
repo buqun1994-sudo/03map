@@ -22,9 +22,10 @@ class ContentLyricsPreferences(context: Context) {
     }
     init { prefs.registerOnSharedPreferenceChangeListener(listener) }
     val revision: Long get() = changes.get()
-    fun getPreferredPlatform(): Platform = Platform.values().firstOrNull {
-        it.providerId == prefs.getString("preferred_platform", "")
-    } ?: Platform.AUTO
+    fun getPreferredPlatform(): Platform {
+        val saved = prefs.all["preferred_platform"] as? String
+        return Platform.values().firstOrNull { it.providerId == saved } ?: Platform.AUTO
+    }
     fun setPreferredPlatform(platform: Platform) { prefs.edit().putString("preferred_platform", platform.providerId).apply() }
     internal fun preferredSources(): List<String> = listOf(getPreferredPlatform().providerId).filter(String::isNotBlank)
 }

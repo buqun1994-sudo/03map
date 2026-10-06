@@ -1,6 +1,7 @@
 package com.icar03.content.preview
 
 import com.icar03.content.ui.*
+import com.icar03.content.model.LyricPreferenceRules
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,9 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
     private fun update(transform: (ContentUiState) -> ContentUiState) { mutableState.value = transform(mutableState.value) }
 
     fun dispatch(event: ContentEvent) {
+        if (!state.value.settingsOpen && event.isSettingsInteraction() && event !in setOf(
+                ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings,
+                ContentEvent.SettingsBack, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet)) return
         if (state.value.settingsOpen && !event.isSettingsInteraction()) return
         when (event) {
             is ContentEvent.ScenarioSelected -> {
@@ -29,11 +33,16 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             ContentEvent.SettingsTapped -> update {
                 it.copy(
                     settingsOpen = !it.settingsOpen,
-                    settingsSection = SettingsSection.TopBar,
+                    settingsSection = SettingsSection.Home,
                     sourcesOpen = false,
                     scenariosOpen = false,
                     message = null,
                 )
+            }
+            ContentEvent.SettingsBack -> update {
+                if (!it.settingsOpen) it
+                else if (it.settingsSection == SettingsSection.Home) it.copy(settingsOpen = false, message = null)
+                else it.copy(settingsSection = SettingsSection.Home, message = null)
             }
             ContentEvent.OpenLyricsSettings -> update { it.copy(settingsOpen = true, settingsSection = SettingsSection.Lyrics, sourcesOpen = false, scenariosOpen = false, message = null) }
             ContentEvent.EnterLyricsImmersive, ContentEvent.ExitLyricsImmersive -> Unit
@@ -46,8 +55,59 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.ShowIndoorTemperatureChanged -> update { it.copy(showIndoorTemperature = event.value) }
             is ContentEvent.ShowBatteryChanged -> update { it.copy(showBattery = event.value) }
             is ContentEvent.ShowChargingStatusChanged -> update { it.copy(showChargingStatus = event.value) }
-            is ContentEvent.LyricsFontScaleChanged -> update { it.copy(lyricsFontScale = if (event.value.isFinite()) event.value.coerceIn(.85f, 1.15f) else 1f) }
-            is ContentEvent.LyricsLineSpacingChanged -> update { it.copy(lyricsLineSpacing = event.value.coerceIn(0, 2)) }
+            is ContentEvent.LyricsFontScaleChanged -> update {
+                val scale = if (event.value.isFinite()) event.value.coerceIn(.85f, 1.15f) else 1f
+                val normal = LyricPreferenceRules.fontSize(40f * scale)
+                it.copy(
+                    lyricsFontScale = scale,
+                    lyricsFontSizeSp = normal,
+                    lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(48f * scale, normal),
+                    lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(40f * scale * 3f),
+                )
+            }
+            is ContentEvent.LyricsFontSizeChanged -> update {
+                val normal = LyricPreferenceRules.fontSize(event.value)
+                it.copy(
+                    lyricsFontSizeSp = normal,
+                    lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(it.lyricsCurrentFontSizeSp, normal),
+                )
+            }
+            is ContentEvent.LyricsCurrentFontSizeChanged -> update {
+                it.copy(lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(event.value, it.lyricsFontSizeSp))
+            }
+            is ContentEvent.LyricsLineGapChanged -> update {
+                it.copy(lyricsLineGapDp = LyricPreferenceRules.lineGap(event.value))
+            }
+            is ContentEvent.LyricsAlignmentChanged -> update {
+                it.copy(lyricsAlignment = LyricPreferenceRules.alignment(event.value))
+            }
+            is ContentEvent.LyricsColorModeChanged -> update {
+                it.copy(lyricsColorMode = LyricPreferenceRules.colorMode(event.value))
+            }
+            is ContentEvent.LyricsCustomColorChanged -> update {
+                it.copy(lyricsCustomColor = LyricPreferenceRules.opaqueColor(event.value))
+            }
+            is ContentEvent.LyricsCurrentColorModeChanged -> update {
+                it.copy(lyricsCurrentColorMode = LyricPreferenceRules.colorMode(event.value))
+            }
+            is ContentEvent.LyricsCurrentCustomColorChanged -> update {
+                it.copy(lyricsCurrentCustomColor = LyricPreferenceRules.opaqueColor(event.value))
+            }
+            is ContentEvent.LyricsImmersiveFontSizeChanged -> update {
+                it.copy(lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(event.value))
+            }
+            is ContentEvent.LyricsImmersiveLineGapChanged -> update {
+                it.copy(lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(event.value))
+            }
+            is ContentEvent.LyricsLineSpacingChanged -> update {
+                val spacing = event.value.coerceIn(0, 2)
+                val gap = when (spacing) { 0 -> 28f * .75f; 2 -> 28f * 1.35f; else -> 28f }
+                it.copy(
+                    lyricsLineSpacing = spacing,
+                    lyricsLineGapDp = LyricPreferenceRules.lineGap(gap),
+                    lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(gap * 3f),
+                )
+            }
             is ContentEvent.LyricsSpeakerLayoutChanged -> update { it.copy(lyricsSpeakerLayout = event.value) }
             is ContentEvent.LyricsHighlightChanged -> update { it.copy(lyricsHighlight = event.value) }
             is ContentEvent.ShowAmbientArtworkChanged -> update { it.copy(showAmbientArtwork = event.value) }
@@ -57,6 +117,13 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.GestureBarReminderChanged -> update { it.copy(gestureBarReminder = event.value) }
               is ContentEvent.UiOpacityChanged -> update { it.copy(uiOpacity = if (event.value.isFinite()) event.value.coerceIn(.20f, 1.0f) else 1.0f) }
             ContentEvent.OpenScenarios -> update { it.copy(scenariosOpen = true, sourcesOpen = false) }
+            is LyricsPlatformSelected -> if (active && state.value.lyricsProviderSettings.available) update {
+                it.copy(lyricsProviderSettings = it.lyricsProviderSettings.copy(preferredPlatform = event.id))
+            }
+            AppleMusicConnectRequested, AppleMusicDisconnectRequested -> if (active) update {
+                it.copy(message = "预览不连接 Apple Music 账号 · 请使用正式地图设置")
+            }
+            AppleMusicLoginDismissed -> Unit
             ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false, settingsOpen = false) }
             is ContentEvent.ControlTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.nextLevel(control.actual) }
             is ContentEvent.ControlPowerTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.powerToggleLevel(control.actual, control.rememberedLevel) }
@@ -143,6 +210,6 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
     private fun cancelPending() {
         generation++
         jobs.values.forEach { it.cancel() }; jobs.clear()
-        update { s -> s.copy(controls = s.controls.mapValues { it.value.copy(target = null) }, brightness = s.brightness.copy(target = null), volume = s.volume.copy(target = null), media = s.media.copy(targetPlaying = null, targetSource = null), sourcesOpen = false, scenariosOpen = false, settingsOpen = false, message = null) }
+        update { s -> s.copy(controls = s.controls.mapValues { it.value.copy(target = null) }, brightness = s.brightness.copy(target = null), volume = s.volume.copy(target = null), media = s.media.copy(targetPlaying = null, targetSource = null), sourcesOpen = false, scenariosOpen = false, settingsOpen = false, settingsSection = SettingsSection.Home, message = null) }
     }
 }

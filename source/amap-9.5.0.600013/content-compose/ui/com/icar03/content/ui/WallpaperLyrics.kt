@@ -40,6 +40,10 @@ internal val ActiveLyric = SemanticsPropertyKey<Int>("ActiveLyric")
 internal val LyricTextInset = SemanticsPropertyKey<Float>("LyricTextInset")
 internal val LyricFontPixels = SemanticsPropertyKey<Float>("LyricFontPixels")
 internal val LyricActiveFontPixels = SemanticsPropertyKey<Float>("LyricActiveFontPixels")
+internal val LyricLineGapPixels = SemanticsPropertyKey<Float>("LyricLineGapPixels")
+internal val LyricNormalColor = SemanticsPropertyKey<Int>("LyricNormalColor")
+internal val LyricCurrentColor = SemanticsPropertyKey<Int>("LyricCurrentColor")
+internal val LyricTextAlignment = SemanticsPropertyKey<String>("LyricTextAlignment")
 internal val LyricRowHeights = SemanticsPropertyKey<List<Int>>("LyricRowHeights")
 internal val LyricWordProgress = SemanticsPropertyKey<Float>("LyricWordProgress")
 internal val LyricScrollAnchor = SemanticsPropertyKey<Int>("LyricScrollAnchor")
@@ -97,22 +101,31 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
     fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
     highlightCurrent: Boolean = true, onLayoutReady: () -> Unit = {},
     presentationScale: Float = 1f, externalGestureActive: Boolean = false,
-    interactionEnabled: Boolean = true, onGeometryReady: (Boolean) -> Unit = {}) {
+    interactionEnabled: Boolean = true, onGeometryReady: (Boolean) -> Unit = {},
+    renderStyle: LyricRenderStyle? = null, settingsPreview: Boolean = false) {
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().testTag("wallpaper-lyrics")) {
         val density = LocalDensity.current
         val assets = LocalContext.current.assets
         val face = remember(assets) { lyricTypeface(assets) }
         val cjk = remember(assets) { lyricCjkTypeface(assets) }
         val sceneScale = presentationScale.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val requestedInset = with(density) { 48.dp.toPx() } * sceneScale
+        val requestedInset = with(density) { (if (settingsPreview) 14.dp else 48.dp).toPx() } * sceneScale
+        val anchorFraction = if (settingsPreview) .5f else .41f
+        val textAlignment = renderStyle?.alignment ?: "left"
         val width = with(density) { maxWidth.toPx() }.minus(requestedInset * 2f).roundToInt().coerceAtLeast(1)
         val height = with(density) { maxHeight.toPx() }
         val requestedMetrics = with(density) {
             val safeScale = (if (fontScale.isFinite()) fontScale.coerceIn(0.85f, 1.15f) else 1.0f) * sceneScale
             val gapScale = when (lineSpacing.coerceIn(0, 2)) { 0 -> .75f; 2 -> 1.35f; else -> 1f }
-            LyricMetrics(LyricVisuals.MAIN_SP.sp.toPx() * safeScale, LyricVisuals.CURRENT_SP.sp.toPx() * safeScale,
-                22.sp.toPx() * safeScale, 20.sp.toPx() * safeScale,
-                14.dp.toPx() * gapScale * sceneScale, 4.dp.toPx() * sceneScale,
+            val typographyScale = if (renderStyle?.immersive == true) 1f else sceneScale
+            val normal = renderStyle?.normalSizeSp?.sp?.toPx()?.times(typographyScale)
+                ?: (LyricVisuals.MAIN_SP.sp.toPx() * safeScale)
+            val active = renderStyle?.currentSizeSp?.sp?.toPx()?.times(typographyScale)
+                ?: (LyricVisuals.CURRENT_SP.sp.toPx() * safeScale)
+            val rowPadding = renderStyle?.lineGapDp?.let { (it / 2f).dp.toPx() * typographyScale }
+                ?: (14.dp.toPx() * gapScale * sceneScale)
+            LyricMetrics(normal, active, normal * .55f, normal * .5f,
+                rowPadding, 4.dp.toPx() * sceneScale,
                 LyricVisuals.INACTIVE_BLUR_DP.dp.toPx() * sceneScale, LyricVisuals.LIFT_DP.dp.toPx() * sceneScale)
         }
         val displayLines = remember(lyrics.lines, speakerLayout) {
@@ -122,8 +135,8 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         val presentationKey = lyricPresentationKey(incoming)
         val visible = visibility ?: rememberLyricVisibility()
         val workEnabled = visible && !freezeMotion
-        val request = remember(incoming.lines, width, requestedMetrics, face, cjk) {
-            LyricLayoutRequest(incoming.lines, width, requestedMetrics, face, cjk, requestedInset)
+        val request = remember(incoming.lines, width, requestedMetrics, face, cjk, textAlignment) {
+            LyricLayoutRequest(incoming.lines, width, requestedMetrics, face, cjk, requestedInset, textAlignment)
         }
         var candidate by remember(presentationKey) { mutableStateOf<LyricLayoutDocument?>(null) }
         val admitted = remember(presentationKey) { LyricPresentationHolder() }
@@ -193,12 +206,12 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }
         val emphasized = if (freezeMotion && painted.document === ready) painted.emphasized else projectedEmphasis
         val followTarget = if (!lyrics.timed) metrics.padding
-            else if (gapSlot >= 0) height * .41f - flow.waitTops[gapSlot] - waitHeight / 2f
-            else if (measured.isEmpty()) 0f else height * .41f - tops[focus] - heights[focus] / 2f
+            else if (gapSlot >= 0) height * anchorFraction - flow.waitTops[gapSlot] - waitHeight / 2f
+            else if (measured.isEmpty()) 0f else height * anchorFraction - tops[focus] - heights[focus] / 2f
         val geometry = remember(lyrics.lines, tops, heights, height) { LyricGeometry(lyrics.lines, tops, heights, height) }
         val firstTarget = if (!lyrics.timed) metrics.padding
             else if (gapSlot >= 0 && flow.waitRows[gapSlot].afterIndex == -1) followTarget
-            else if (measured.isEmpty()) 0f else height * .41f - tops[0] - heights[0] / 2f
+            else if (measured.isEmpty()) 0f else height * anchorFraction - tops[0] - heights[0] / 2f
         val travel = remember(presentationKey) {
             LyricScrollState(if (startAtFirstRow) firstTarget else followTarget).also { it.layoutKey = geometry }
         }
@@ -246,6 +259,11 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }
         LaunchedEffect(followTarget, origin, geometry, hasFollowAnchor, browsingTravel != null, scrollBlocked, paused) {
             val target = followTarget - origin
+            if (settingsPreview && layoutReady) {
+                travel.reset(target)
+                travel.layoutKey = geometry
+                return@LaunchedEffect
+            }
             val previous = commands.value
             val command = LyricFollowCommand(geometry, target, focus, browsingTravel != null,
                 !scrollBlocked && hasFollowAnchor, paused)
@@ -425,7 +443,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
                 onDragEnd = { dragging = false }, onDragCancel = { dragging = false },
             ) { change, amount ->
                 change.consume()
-                val minimum = minOf(height * .41f - tops.last(), height * .41f)
+                val minimum = minOf(height * anchorFraction - tops.last(), height * anchorFraction)
                 val destination = ((browsingTravel ?: travel.value) + amount)
                     .coerceIn(minimum - origin, height * .52f - origin)
                 browsingTravel = destination
@@ -442,6 +460,10 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             this[LyricTextInset] = inset
             this[LyricFontPixels] = metrics.main
             this[LyricActiveFontPixels] = metrics.activeMain
+            this[LyricLineGapPixels] = metrics.padding * 2f
+            this[LyricNormalColor] = renderStyle?.normalColor ?: if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
+            this[LyricCurrentColor] = renderStyle?.currentColor ?: if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
+            this[LyricTextAlignment] = ready.request.alignment
             this[LyricRowHeights] = heights
             this[LyricWordProgress] = words.firstOrNull()?.let { lyricWordFraction(it, position) } ?: 0f
             this[LyricScrollAnchor] = lyrics.scrollIndex
@@ -492,12 +514,13 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
                 native.clipRect(inset, 0f, size.width - inset, size.height)
                 native.translate(inset, 0f)
                 painter.draw(native, slices, measured, tops, cache, offset, emphasized, focus, now, position, dark,
-                    fallback = missing, contentAlpha = frameAlpha, scroll = drawSample)
+                    fallback = missing, contentAlpha = frameAlpha, scroll = drawSample,
+                    normalColor = renderStyle?.normalColor, currentColor = renderStyle?.currentColor)
                 native.restoreToCount(saved)
                 if (gap && position in lyrics.gapStartMs until lyrics.gapEndMs) {
                     val progress = lyricGapFraction(now, position)
                     val y = flow.waitTops[gapSlot] + drawSample.offsetAt(flow.waitRows[gapSlot].afterIndex + 1) + waitHeight / 2f
-                    dotPaint.color = if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
+                    dotPaint.color = renderStyle?.currentColor ?: if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
                     repeat(3) { index ->
                         dotPaint.alpha = ((.35f + .55f * (progress * 3f - index).coerceIn(0f, 1f)) * frameAlpha * 255).roundToInt()
                         native.drawCircle(inset + radius + step * index, y, radius, dotPaint)

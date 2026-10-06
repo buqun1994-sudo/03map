@@ -3,6 +3,7 @@ package com.icar03.content.runtime
 import com.autonavi.amapauto.content.ContentPorts
 import com.autonavi.amapauto.content.ContentRegistry
 import com.autonavi.amapauto.content.ContentState
+import com.icar03.content.model.LyricPreferenceRules
 import com.icar03.content.runtime.lyrics.ContentLyricsCursor
 import com.icar03.content.ui.*
 import java.util.Locale
@@ -28,6 +29,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private var shellBrightness: ContentPorts.SystemSnapshot? = null
     private var shellVolume: ContentPorts.SystemSnapshot? = null
     private var shellCapabilities: RuntimeCapabilities? = null
+    private var shellLyricsSystemAccentColor: Int? = null
     private var shell: ContentUiState? = null
     private var lyricsSource: ContentState? = null
     private var lyrics: LyricsState = LyricsState()
@@ -80,9 +82,11 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         brightness: ContentPorts.SystemSnapshot = ContentPorts.SystemSnapshot(false, 0),
         volume: ContentPorts.SystemSnapshot = ContentPorts.SystemSnapshot(false, 0),
         capabilities: RuntimeCapabilities = RuntimeCapabilities(),
+        lyricsSystemAccentColor: Int = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR,
     ): ContentUiState {
         val text = clock(state)
-        return mapShell(state, brightness, volume, capabilities).copy(time = text.time, weekday = text.weekday, lyrics = mapLyrics(state))
+        return mapShell(state, brightness, volume, capabilities, lyricsSystemAccentColor)
+            .copy(time = text.time, weekday = text.weekday, lyrics = mapLyrics(state))
     }
 
     fun mapShell(
@@ -90,14 +94,17 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         brightness: ContentPorts.SystemSnapshot,
         volume: ContentPorts.SystemSnapshot,
         capabilities: RuntimeCapabilities,
+        lyricsSystemAccentColor: Int = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR,
     ): ContentUiState {
         val previous = shellSource
         if (previous != null && sameShellFacts(previous, state) &&
-            sameSystem(shellBrightness, brightness) && sameSystem(shellVolume, volume) && shellCapabilities == capabilities) return shell!!
+            sameSystem(shellBrightness, brightness) && sameSystem(shellVolume, volume) &&
+            shellCapabilities == capabilities && shellLyricsSystemAccentColor == lyricsSystemAccentColor) return shell!!
         shellSource = state.copy()
         shellBrightness = brightness
         shellVolume = volume
         shellCapabilities = capabilities.copy(writableSeatControls = capabilities.writableSeatControls.toSet())
+        shellLyricsSystemAccentColor = lyricsSystemAccentColor
         shellProjectionCount++
         val realVehicle = state.vehicleDataAvailable && !state.vehiclePreview
         val vehicleIdle = state.pendingVehicleCommand.isEmpty()
@@ -134,7 +141,18 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             showWeekday = state.showWeekday, showSeconds = state.showSeconds,
             showIndoorTemperature = state.showIndoorTemperature, showBattery = state.showBattery,
             showChargingStatus = state.showChargingStatus, lyricsFontScale = state.lyricsFontScale,
-            lyricsLineSpacing = state.lyricsLineSpacing, lyricsSpeakerLayout = state.lyricsSpeakerLayout,
+                         lyricsLineSpacing = state.lyricsLineSpacing, lyricsFontSizeSp = LyricPreferenceRules.fontSize(state.lyricsFontSizeSp),
+             lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(state.lyricsCurrentFontSizeSp, state.lyricsFontSizeSp),
+             lyricsLineGapDp = LyricPreferenceRules.lineGap(state.lyricsLineGapDp),
+             lyricsAlignment = LyricPreferenceRules.alignment(state.lyricsAlignment),
+             lyricsColorMode = LyricPreferenceRules.colorMode(state.lyricsColorMode),
+             lyricsCustomColor = LyricPreferenceRules.opaqueColor(state.lyricsCustomColor),
+             lyricsCurrentColorMode = LyricPreferenceRules.colorMode(state.lyricsCurrentColorMode),
+             lyricsCurrentCustomColor = LyricPreferenceRules.opaqueColor(state.lyricsCurrentCustomColor),
+             lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp),
+             lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(state.lyricsImmersiveLineGapDp),
+             lyricsSystemAccentColor = LyricPreferenceRules.opaqueColor(lyricsSystemAccentColor),
+             lyricsSpeakerLayout = state.lyricsSpeakerLayout,
             lyricsHighlight = state.lyricsHighlight,
             immersiveShowTopBar = state.immersiveShowTopBar, immersiveShowDock = state.immersiveShowDock,
             showAmbientArtwork = state.showAmbientArtwork,
@@ -225,7 +243,16 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.showWeekday == b.showWeekday && a.showSeconds == b.showSeconds &&
             a.showIndoorTemperature == b.showIndoorTemperature && a.showBattery == b.showBattery &&
             a.showChargingStatus == b.showChargingStatus && a.lyricsFontScale.toBits() == b.lyricsFontScale.toBits() &&
-            a.lyricsLineSpacing == b.lyricsLineSpacing && a.lyricsSpeakerLayout == b.lyricsSpeakerLayout &&
+            a.lyricsLineSpacing == b.lyricsLineSpacing &&
+             a.lyricsFontSizeSp.toBits() == b.lyricsFontSizeSp.toBits() &&
+             a.lyricsCurrentFontSizeSp.toBits() == b.lyricsCurrentFontSizeSp.toBits() &&
+             a.lyricsLineGapDp.toBits() == b.lyricsLineGapDp.toBits() &&
+             a.lyricsAlignment == b.lyricsAlignment && a.lyricsColorMode == b.lyricsColorMode &&
+             a.lyricsCustomColor == b.lyricsCustomColor && a.lyricsCurrentColorMode == b.lyricsCurrentColorMode &&
+             a.lyricsCurrentCustomColor == b.lyricsCurrentCustomColor &&
+             a.lyricsImmersiveFontSizeSp.toBits() == b.lyricsImmersiveFontSizeSp.toBits() &&
+             a.lyricsImmersiveLineGapDp.toBits() == b.lyricsImmersiveLineGapDp.toBits() &&
+             a.lyricsSpeakerLayout == b.lyricsSpeakerLayout &&
             a.lyricsHighlight == b.lyricsHighlight &&
             a.immersiveShowTopBar == b.immersiveShowTopBar && a.immersiveShowDock == b.immersiveShowDock &&
             a.showAmbientArtwork == b.showAmbientArtwork &&

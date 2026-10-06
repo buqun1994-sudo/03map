@@ -46,6 +46,14 @@ class ContentLyricsPreferencesTest {
         assertTrue(preferences.preferredSources().isEmpty())
     }
 
+    @Test fun wrongTypedPlatformFallsBackWithoutThrowingForUiOrResources() {
+        context.getSharedPreferences("content.lyrics.providers", Context.MODE_PRIVATE).edit()
+            .putInt("preferred_platform", 99).commit()
+        val preferences = ContentLyricsPreferences(context)
+        assertEquals(ContentLyricsPreferences.Platform.AUTO, preferences.getPreferredPlatform())
+        assertTrue(preferences.preferredSources().isEmpty())
+    }
+
     @Test fun registryContainsExactlyTheEightSupportedPlatforms() {
         val expected = setOf(SOURCE_LRCLIB, SOURCE_QQ, SOURCE_NETEASE, SOURCE_KUGOU,
             SOURCE_KUWO, SOURCE_MIGU, SOURCE_SODA, SOURCE_APPLE_MUSIC)

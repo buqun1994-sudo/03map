@@ -33,6 +33,7 @@ internal fun LyricsBodyTransition(
     highlightCurrent: Boolean = true, presentationScale: Float = 1f,
     externalGestureActive: Boolean = false, interactionEnabled: Boolean = true,
     presentationOpacity: () -> Float = { 1f }, onGeometryReady: (Boolean) -> Unit = {},
+    renderStyle: LyricRenderStyle? = null,
     emptyContent: @Composable () -> Unit = {},
 ) {
     val visible = rememberLyricVisibility()
@@ -101,7 +102,7 @@ internal fun LyricsBodyTransition(
                 fontScale = fontScale, lineSpacing = lineSpacing, speakerLayout = speakerLayout,
                 presentationScale = presentationScale, externalGestureActive = externalGestureActive,
                 interactionEnabled = interactionEnabled, opacity = alpha, onGeometryReady = onGeometryReady,
-                highlightCurrent = highlightCurrent, onLayoutReady = { ready = true })
+                highlightCurrent = highlightCurrent, onLayoutReady = { ready = true }, renderStyle = renderStyle)
         } else {
             SideEffect { onGeometryReady(true) }
             Box(Modifier.fillMaxSize().graphicsLayer {

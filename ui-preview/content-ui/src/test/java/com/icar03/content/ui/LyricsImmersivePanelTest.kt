@@ -79,6 +79,46 @@ open class LyricsImmersivePanelTest {
         compose.waitForIdle()
     }
 
+    @Test fun settingsKeepTheirLeftThirdWidthThroughEveryImmersiveEndpoint() {
+        presentation.updateGeometry(640f, 640f, 1280f, 1080)
+        presentation.updatePhase(0)
+        viewportWidth = 640.dp
+        state = state.copy(settingsOpen = true, settingsSection = SettingsSection.Lyrics)
+        mount()
+        compose.mainClock.advanceTimeBy(600)
+        val original = compose.onNodeWithTag("settings-sheet-host").fetchSemanticsNode().boundsInRoot
+        listOf(.34f, .5f, .66f, 1f, .66f, .5f, 0f).forEach { progress ->
+            compose.runOnIdle {
+                val divider = 640f + 1280f * progress
+                viewportWidth = divider.dp
+                presentation.updateGeometry(divider, 640f, 1280f, 1080)
+                presentation.updatePhase(when (progress) { 0f -> 0; 1f -> 1; else -> 2 })
+            }
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            val current = compose.onNodeWithTag("settings-sheet-host").fetchSemanticsNode().boundsInRoot
+            assertEquals("settings stay fixed at progress=$progress", original, current)
+            assertTrue(current.right <= 640f)
+            compose.onNodeWithTag("settings-lyrics-preview").assertIsDisplayed()
+            if (progress == 1f) capture("settings-left-third-$platform-${if (dark) "dark" else "light"}")
+        }
+    }
+
+    @Test fun independentImmersiveTypographyReachesTheActualNativeLyrics() {
+        state = state.copy(lyricsFontSizeSp = 32f, lyricsCurrentFontSizeSp = 48f, lyricsLineGapDp = 18f,
+            lyricsImmersiveFontSizeSp = 128f, lyricsImmersiveLineGapDp = 72f)
+        mount()
+        val body = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true)
+        assertEquals(128f, body.fetchSemanticsNode().config[LyricFontPixels], .01f)
+        assertEquals(192f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
+        assertEquals(72f, body.fetchSemanticsNode().config[LyricLineGapPixels], .01f)
+        compose.runOnIdle { state = state.copy(lyricsHighlight = false) }
+        compose.waitForIdle()
+        assertEquals(128f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
+        assertEquals(32f, state.lyricsFontSizeSp, .01f)
+        assertEquals(18f, state.lyricsLineGapDp, .01f)
+    }
+
     @Test fun finalGeometryKeepsMediaInLeftThirdAndLargeLyricsInRightTwoThirds() {
         mount()
         compose.onNodeWithTag("media-card").assertDoesNotExist()

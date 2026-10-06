@@ -62,6 +62,8 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier,
                 animating = state.media.playing && state.showAmbientArtwork, presentation = presentation)
             },
             clockText = { val text by binding.clock.collectAsState(); text },
-            lyricsState = { val lyrics by binding.lyrics.collectAsState(); lyrics })
+            lyricsState = { val lyrics by binding.lyrics.collectAsState(); lyrics },
+            appleMusicLogin = { dispatch -> binding.AppleMusicLoginContent(dispatch) },
+            canDispatch = binding::canDispatch)
     }
 }

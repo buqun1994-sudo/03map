@@ -188,7 +188,7 @@ internal fun lyricVoiceInsets(side: LyricSide, width: Int, fontSize: Float): Pai
 }
 
 internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics, face: Typeface,
-    cjk: Typeface = face, baseInset: Int = 0): NativeLyricRow {
+    cjk: Typeface = face, baseInset: Int = 0, alignment: String = "left"): NativeLyricRow {
     val base = baseInset.coerceAtLeast(0)
     val physicalWidth = (width + base * 2).coerceAtLeast(1)
     val (physicalLeft, physicalRight) = lyricVoiceInsets(line.side, physicalWidth, metrics.activeMain)
@@ -201,8 +201,13 @@ internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics,
         }
         val shaped = lyricShapedText(text, cjk)
         return lyricTextLayout(shaped, paint, mainLayoutWidth, when (line.side) {
+            LyricSide.Leading -> Layout.Alignment.ALIGN_NORMAL
             LyricSide.Trailing -> Layout.Alignment.ALIGN_OPPOSITE
-            else -> Layout.Alignment.ALIGN_NORMAL
+            LyricSide.Unspecified, LyricSide.Center -> when (alignment) {
+                "center" -> Layout.Alignment.ALIGN_CENTER
+                "right" -> Layout.Alignment.ALIGN_OPPOSITE
+                else -> Layout.Alignment.ALIGN_NORMAL
+            }
         })
     }
     val tracks = ArrayList<LyricTrack>()
@@ -220,8 +225,13 @@ internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics,
     val mainTrack = tracks.firstOrNull { it.isMain }
     val actualMainWidth = mainTrack?.layout?.width?.toFloat() ?: mainLayoutWidth.toFloat()
     val actualMainLeft = mainTrack?.left ?: mainLeftInset.toFloat()
+    val pivot = when (mainTrack?.layout?.alignment) {
+        Layout.Alignment.ALIGN_CENTER -> actualMainWidth / 2f
+        Layout.Alignment.ALIGN_OPPOSITE -> actualMainWidth
+        else -> 0f
+    }
     return NativeLyricRow(tracks, (top - metrics.gap + metrics.padding).roundToInt().coerceAtLeast(1),
-        actualMainLeft + if (line.side == LyricSide.Trailing) actualMainWidth else 0f)
+        actualMainLeft + pivot)
 }
 
 /** All string searches, caret queries, wrap segmentation and grapheme work happen once per immutable body. */
@@ -516,8 +526,10 @@ internal fun lyricSliceWindow(rows: List<NativeLyricRow>, tops: FloatArray, offs
 internal class LyricInkPainter(private val metrics: LyricMetrics) {
     // Glyph antialiasing lives in the texture. AA on adjacent quads would cut dark seams through ligatures.
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val light = PorterDuffColorFilter(Color.rgb(39, 48, 59), PorterDuff.Mode.SRC_IN)
-    private val dark = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
+    private var normalTint = Color.rgb(39, 48, 59)
+    private var currentTint = normalTint
+    private var normalFilter = PorterDuffColorFilter(normalTint, PorterDuff.Mode.SRC_IN)
+    private var currentFilter = PorterDuffColorFilter(currentTint, PorterDuff.Mode.SRC_IN)
     private val batchBounds = RectF()
     private var batchShader: Shader? = null
     private var batchFilter: ColorFilter? = null
@@ -567,21 +579,31 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
     fun draw(canvas: Canvas, slices: List<PreparedLyricSlice>, rows: List<NativeLyricRow>, tops: FloatArray,
         cache: LyricInkCache, offset: Float, current: Set<Int>, focus: Int, lyrics: LyricsState, position: Long, dark: Boolean,
         fallback: List<LyricSliceAddress> = emptyList(), contentAlpha: Float = 1f,
-        scroll: LyricScrollSample? = null) {
+        scroll: LyricScrollSample? = null, normalColor: Int? = null, currentColor: Int? = null) {
         drawBatches = 0; sampledCells = 0; motionTranslations = 0
         scrollRow = Int.MIN_VALUE
         val bodyAlpha = contentAlpha.coerceIn(0f, 1f)
         if (bodyAlpha <= 0f) return
-        val tint = if (dark) this.dark else light
-        paint.colorFilter = tint
+        val themeColor = if (dark) Color.WHITE else Color.rgb(39, 48, 59)
+        val nextNormal = normalColor ?: themeColor
+        val nextCurrent = currentColor ?: themeColor
+        if (normalTint != nextNormal) {
+            normalTint = nextNormal
+            normalFilter = PorterDuffColorFilter(nextNormal, PorterDuff.Mode.SRC_IN)
+        }
+        if (currentTint != nextCurrent) {
+            currentTint = nextCurrent
+            currentFilter = PorterDuffColorFilter(nextCurrent, PorterDuff.Mode.SRC_IN)
+        }
         for (slice in slices) {
-            paint.colorFilter = tint
             val track = slice.track
             val y = tops[slice.row] + offsetFor(slice.row, offset, scroll) + track.top
             @Suppress("DEPRECATION")
             if (canvas.quickReject(track.left, y + slice.visual.top - metrics.lift,
                     track.left + track.layout.width, y + slice.visual.bottom, Canvas.EdgeType.AA)) continue
             val emphasized = slice.row in current
+            val tint = if (emphasized) currentFilter else normalFilter
+            paint.colorFilter = tint
             val scale = if (track.isMain && !emphasized) metrics.main / metrics.activeMain else 1f
             val pivotY = (slice.visual.top + slice.visual.bottom) / 2f
             val saved = canvas.save()
@@ -649,7 +671,7 @@ internal class LyricInkPainter(private val metrics: LyricMetrics) {
             canvas.clipRect(0f, visual.top.toFloat(), track.layout.width.toFloat(), visual.bottom.toFloat())
             val textPaint = track.layout.paint
             val oldColor = textPaint.color; val oldAlpha = textPaint.alpha
-            textPaint.color = if (dark) Color.WHITE else Color.rgb(39, 48, 59)
+            textPaint.color = if (emphasized) nextCurrent else nextNormal
             textPaint.alpha = (opacity * track.alpha * singingOpacity * fade * bodyAlpha * 255).roundToInt()
             track.layout.draw(canvas)
             textPaint.color = oldColor; textPaint.alpha = oldAlpha
