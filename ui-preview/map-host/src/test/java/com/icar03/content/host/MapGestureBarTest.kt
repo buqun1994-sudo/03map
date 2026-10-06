@@ -230,25 +230,29 @@ open class MapGestureBarTest {
         }
     }
 
-    @Test fun explicitReminderStartsAtMaximumThenTheActualGlowReturnsToNormal() {
-        Scene().use { scene ->
-            scene.bar.updateGestureState(true, true, true, false)
+    @Test fun explicitReminderUsesOnlyWhiteGlowInBothThemesAndReturnsToNormal() {
+        for (dark in listOf(false, true)) Scene().use { scene ->
+            scene.bar.updateGestureState(true, dark, true, false)
             scene.advance(320)
             val normal = scene.core()
             assertEquals(0, Color.alpha(scene.halo()))
-            scene.bar.updateGestureState(true, true, true, true)
+            scene.bar.updateGestureState(true, dark, true, true)
             val peak = scene.core()
-            val peakHalo = Color.alpha(scene.halo())
-            assertEquals(255, Color.alpha(peak))
-            assertTrue(peakHalo > 0)
+            val peakHalo = scene.halo()
+            assertEquals("reminder peak must be opaque white in both themes", Color.WHITE, peak)
+            assertTrue(Color.alpha(peakHalo) > 0)
+            assertWhiteRgb(peakHalo)
             scene.advance(112)
             assertBetween(Color.alpha(scene.core()), Color.alpha(normal), Color.alpha(peak))
-            assertTrue(Color.alpha(scene.halo()) < peakHalo)
+            val fadingHalo = scene.halo()
+            assertTrue(Color.alpha(fadingHalo) > 0)
+            assertTrue(Color.alpha(fadingHalo) < Color.alpha(peakHalo))
+            assertWhiteRgb(fadingHalo)
             scene.advance(416)
             assertColorClose(normal, scene.core(), 1)
             assertEquals(0, Color.alpha(scene.halo()))
             assertNull(currentAnimator(scene.bar))
-            scene.bar.updateGestureState(true, true, true, false)
+            scene.bar.updateGestureState(true, dark, true, false)
             scene.advance(96)
             assertEquals(0, Color.alpha(scene.halo()))
             assertColorClose(normal, scene.core(), 1)
@@ -334,6 +338,11 @@ open class MapGestureBarTest {
 
     private fun assertClose(expected: Int, actual: Int, tolerance: Int) {
         assertTrue("Expected $actual within $tolerance of $expected", kotlin.math.abs(expected - actual) <= tolerance)
+    }
+
+    private fun assertWhiteRgb(color: Int) {
+        assertEquals("glow must remain neutral white as its alpha fades", Color.WHITE,
+            Color.rgb(Color.red(color), Color.green(color), Color.blue(color)))
     }
 
     private fun assertColorClose(expected: Int, actual: Int, tolerance: Int) {

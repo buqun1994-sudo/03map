@@ -4,8 +4,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -25,6 +24,10 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -35,7 +38,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,10 +48,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -60,7 +58,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
@@ -83,151 +80,85 @@ internal fun SettingsSheet(
         }
         val contentGap = if (compact) 8.dp else 12.dp
         val outerPadding = if (compact) 8.dp else 12.dp
-        val gestureZoneHeight = if (compact) 72.dp else 92.dp
+        val backButtonSize = settingsMinimumSize(if (compact) 48.dp else 56.dp, 64f)
+        val headerHeight = settingsMinimumSize(if (compact) 64.dp else 80.dp, 80f)
         val density = LocalDensity.current
         val heightPx = with(density) { maxHeight.toPx() }
-        val minimumFlingDistance = with(density) { 12.dp.toPx() }
-        val dismissVelocity = with(density) { 1_050.dp.toPx() }
-        val reverseVelocity = with(density) { 180.dp.toPx() }
         val offset = remember { Animatable(heightPx.coerceAtLeast(1f)) }
-        val scope = rememberCoroutineScope()
         var wasOpen by remember { mutableStateOf(false) }
-        var dragging by remember { mutableStateOf(false) }
-        var dragPosition by remember { mutableStateOf(0f) }
-        var releaseRevision by remember { mutableStateOf(0) }
-        var dismissOnRelease by remember { mutableStateOf(false) }
-        var gestureCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         val open = state.settingsOpen
         val currentEvent by rememberUpdatedState(onEvent)
+        val settingsEvent: (ContentEvent) -> Unit = { event -> if (open) currentEvent(event) }
 
-        LaunchedEffect(open, heightPx, releaseRevision) {
+        LaunchedEffect(open, heightPx) {
             if (heightPx <= 0f) return@LaunchedEffect
-            if (open && !wasOpen) {
-                offset.snapTo(heightPx)
-                dismissOnRelease = false
-                wasOpen = true
-            }
-            if (dragging) {
-                offset.snapTo(dragPosition.coerceIn(0f, heightPx))
-                dragging = false
-            }
             if (open) {
-                val dismiss = dismissOnRelease
-                dismissOnRelease = false
-                if (dismiss) {
-                    offset.animateTo(heightPx, tween(230, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
-                    currentEvent(ContentEvent.SettingsDismissed)
-                } else {
-                    offset.animateTo(0f, tween(320, easing = CubicBezierEasing(.2f, .8f, .2f, 1f)))
+                if (!wasOpen) {
+                    offset.snapTo(heightPx)
+                    wasOpen = true
                 }
+                offset.animateTo(0f, tween(320, easing = CubicBezierEasing(.2f, .8f, .2f, 1f)))
             } else if (wasOpen) {
                 offset.animateTo(heightPx, tween(250, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
                 wasOpen = false
             }
         }
+        // Retain the modal gate until the same exit animation has finished.
         androidx.compose.runtime.SideEffect { onVisibilityChanged(open || wasOpen) }
         if (!open && !wasOpen) return@BoxWithConstraints
 
-        // The whole upper band is the vertical gesture target. The visible handle is only a cue.
-        val gestureBand = Modifier
-            .fillMaxWidth()
-            .height(gestureZoneHeight)
-            .testTag("settings-gesture-handle")
-            .onGloballyPositioned { gestureCoordinates = it }
-            .pointerInput(open, heightPx, density) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    if (!open) return@awaitEachGesture
-                    fun rootPosition(position: androidx.compose.ui.geometry.Offset) =
-                        gestureCoordinates?.localToRoot(position) ?: position
-                    val tracker = VelocityTracker()
-                    tracker.addPosition(down.uptimeMillis, rootPosition(down.position))
-                    var currentDistance = offset.value.coerceIn(0f, heightPx)
-                    var completed = false
-                    scope.launch { offset.stop() }
-                    dragging = true
-                    dragPosition = currentDistance
-                    try {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Main)
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            tracker.addPosition(change.uptimeMillis, rootPosition(change.position))
-                            if (!change.pressed) {
-                                if (change.isConsumed) break
-                                currentDistance = (currentDistance + change.positionChange().y).coerceIn(0f, heightPx)
-                                dragPosition = currentDistance
-                                val velocityY = tracker.calculateVelocity().y
-                                dismissOnRelease = currentDistance >= heightPx * .24f && velocityY > -reverseVelocity ||
-                                    currentDistance >= minimumFlingDistance && velocityY >= dismissVelocity
-                                releaseRevision++
-                                change.consume()
-                                completed = true
-                                break
-                            }
-                            if (change.isConsumed || event.changes.any { it.id != down.id && it.pressed }) break
-                            val dy = change.positionChange().y
-                            if (dy > 0f || currentDistance > 0f) {
-                                currentDistance = (currentDistance + dy).coerceIn(0f, heightPx)
-                                dragPosition = currentDistance
-                                change.consume()
-                            }
-                        }
-                    } finally {
-                        if (!completed) {
-                            dismissOnRelease = false
-                            releaseRevision++
-                        }
-                    }
-                }
-            }
-        // Observe the sheet rectangle without consuming child clicks or the detail scroll.
-        val touchShield = Modifier.pointerInput(Unit) {
-            awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
-                do {
-                    val event = awaitPointerEvent(PointerEventPass.Final)
-                } while (event.changes.any { it.pressed })
-            }
-        }
-        Box(Modifier.fillMaxSize().then(touchShield)) {
+        Box(Modifier.fillMaxSize()) {
             Surface(
                 modifier = Modifier.fillMaxSize().graphicsLayer {
-                    translationY = if (dragging) dragPosition else offset.value
+                    translationY = offset.value
                 }.testTag("settings-sheet"),
                 color = LocalContentColors.current.sheetBase,
                 shape = RoundedCornerShape(18.dp),
                 tonalElevation = 2.dp,
             ) {
                 Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.fillMaxWidth().then(gestureBand)) {
+                    Box(Modifier.fillMaxWidth().height(headerHeight).testTag("settings-header")) {
+                        IconButton(
+                            onClick = { if (open) currentEvent(ContentEvent.SettingsDismissed) },
+                            enabled = open,
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = outerPadding)
+                                .size(backButtonSize).testTag("settings-back"),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回",
+                                modifier = Modifier.size(settingsMinimumSize(28.dp, 32f)),
+                            )
+                        }
                         Text(
                             "设置",
                             modifier = Modifier.align(Alignment.Center).testTag("settings-title"),
                             style = settingsTextStyle(if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall, 26f),
                             color = MaterialTheme.colorScheme.onSurface,
                         )
-                        Box(
-                            Modifier.align(Alignment.TopCenter).padding(top = if (compact) 10.dp else 14.dp)
-                                .width(if (compact) 52.dp else 68.dp).height(5.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .42f))
-                                .testTag("settings-gesture-bar"),
-                        )
                     }
                     Box(Modifier.fillMaxWidth().height(1.dp)
                         .background(MaterialTheme.colorScheme.outline.copy(alpha = .55f))
                         .testTag("settings-header-divider"))
                     Row(
-                        Modifier.fillMaxSize().padding(start = outerPadding, end = outerPadding, bottom = outerPadding),
+                        Modifier.fillMaxSize().padding(start = outerPadding, end = outerPadding, bottom = outerPadding).then(
+                            if (!open) Modifier.pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                                    }
+                                }
+                            } else Modifier
+                        ),
                         horizontalArrangement = Arrangement.spacedBy(contentGap),
                     ) {
-                        SettingsMenu(state.settingsSection, currentEvent, compact,
+                        SettingsMenu(state.settingsSection, settingsEvent, compact,
                             Modifier.width(menuWidth).fillMaxHeight())
                         Box(Modifier.fillMaxHeight().width(1.dp)
                             .background(MaterialTheme.colorScheme.outline.copy(alpha = .5f))
                             .testTag("settings-menu-divider"))
                         key(state.settingsSection) {
-                            SettingsDetail(state, currentEvent,
+                            SettingsDetail(state, settingsEvent,
                                 Modifier.weight(1f).fillMaxHeight(), compact)
                         }
                     }
@@ -379,9 +310,6 @@ private fun InteractionSettings(state: ContentUiState, onEvent: (ContentEvent) -
         }
         SettingsSwitchRow("显示操作结果提示", "操作失败或状态未确认时显示提示", state.showActionFeedback) {
             onEvent(ContentEvent.ShowActionFeedbackChanged(it))
-        }
-        SettingsSwitchRow("手势条提醒", "进入可全屏页面时，短暂高亮手势条", state.gestureBarReminder) {
-            onEvent(ContentEvent.GestureBarReminderChanged(it))
         }
     }
 }

@@ -48,7 +48,6 @@ import androidx.compose.ui.platform.LocalView
 import android.view.SoundEffectConstants
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -108,14 +107,6 @@ fun ContentPanel(
     var geometryReady by remember { mutableStateOf(true) }
     var blankTapRevision by remember { mutableLongStateOf(0L) }
     val pageMotion by remember(presentation) { derivedStateOf { presentation?.moving == true } }
-    val lyricsContent = remember {
-        movableContentOf<LyricPageSlot> { slot ->
-            LyricsPage(slot.state, slot.onEvent, slot.lyricsState,
-                presentationScale = if (slot.wide) 1.5f else 1f,
-                externalGestureActive = slot.gesturing, interactionEnabled = slot.interactive,
-                onGeometryReady = slot.onGeometryReady, presentationOpacity = slot.presentationOpacity)
-        }
-    }
     val dispatch: (ContentEvent) -> Unit = dispatch@{ event ->
         if (pageMotion && event != ContentEvent.ExitLyricsImmersive) return@dispatch
         if (settingsActive && !event.isSettingsInteraction()) return@dispatch
@@ -151,6 +142,7 @@ fun ContentPanel(
             val edge = if (compact) 8.dp else 20.dp
             val topBarHeight = TopBarMetrics.height(compact)
             val dockHeight = if (compact) 72.dp else 112.dp
+            val mediaHeight = if (compact) 80.dp else 136.dp
             val feedbackWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
             val showTop = !wide || state.immersiveShowTopBar
             val showDock = !wide || state.immersiveShowDock
@@ -163,46 +155,11 @@ fun ContentPanel(
                     }
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                         if (wide) {
-                            ImmersiveMedia(state, dispatch, artwork, compact,
+                            ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
                                 Modifier.fillMaxSize().graphicsLayer { alpha = widePresentationAlpha })
-                        } else if (state.previewMode) {
-                            if (state.page == PanelPage.Shortcuts) {
-                                Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
-                            } else Box(Modifier.fillMaxSize()) {
-                                lyricsContent(LyricPageSlot(state, dispatch, lyricsState, false, transitioning,
-                                    contentInteractive, { geometryReady = it }, lyricOpacity))
-                            }
-                        } else {
-                            val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
-                            val currentPage by rememberUpdatedState(state.page)
-                            val currentEvent by rememberUpdatedState(dispatch)
-                            LaunchedEffect(state.page) {
-                                if (pager.currentPage != state.page.ordinal) pager.animateScrollToPage(state.page.ordinal,
-                                    animationSpec = tween(700, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
-                            }
-                            LaunchedEffect(pager) {
-                                snapshotFlow { pager.isScrollInProgress }.collect { moving ->
-                                     presentation?.updatePagerMotion(moving)
-                                 }
-                             }
-                             LaunchedEffect(pager) {
-                                 snapshotFlow { pager.settledPage }.collect { index ->
-                                    if (index != currentPage.ordinal) currentEvent(ContentEvent.PageSelected(PanelPage.entries[index]))
-                                }
-                            }
-                            HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"), userScrollEnabled = contentInteractive && !transitioning) { index ->
-                                CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
-                                    if (PanelPage.entries[index] == PanelPage.Shortcuts) {
-                                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
-                                    } else Box(Modifier.fillMaxSize()) {
-                                        lyricsContent(LyricPageSlot(state, dispatch, lyricsState, false,
-                                            transitioning || pager.isScrollInProgress, contentInteractive, { geometryReady = it }, lyricOpacity))
-                                    }
-                                }
-                            }
                         }
                     }
-                    if (!wide) Box(Modifier.fillMaxWidth().height(if (compact) 80.dp else 136.dp)
+                    if (!wide) Box(Modifier.fillMaxWidth().height(mediaHeight)
                         .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
                             alpha = compactPresentationAlpha
                         }) {
@@ -215,15 +172,58 @@ fun ContentPanel(
                         PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning, transparent = wide)
                     }
                 }
-                if (wide) {
-                    // This is measured only at the final wide endpoint. Map frames change clipping/alpha only.
-                    Layout(content = {
-                        lyricsContent(LyricPageSlot(state, dispatch, lyricsState, true, transitioning,
-                            contentInteractive && !transitioning, { geometryReady = it }, lyricOpacity))
-                    }, modifier = Modifier.fillMaxSize().testTag("immersive-lyrics-region")) { measurables, constraints ->
-                        val targetWidth = with(density) { (fullWidth * 2f / 3f).roundToPx() }
-                        val child = measurables.single().measure(androidx.compose.ui.unit.Constraints.fixed(targetWidth, constraints.maxHeight))
-                        layout(constraints.maxWidth, constraints.maxHeight) { child.place(with(density) { leftWidth.roundToPx() }, 0) }
+                // The pager and its lyric page keep the same composition in both modes.
+                // Switch their measured endpoint only while map progress makes the lyrics transparent.
+                Layout(content = {
+                    if (state.previewMode) {
+                        if (state.page == PanelPage.Shortcuts) {
+                            Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                        } else Box(Modifier.fillMaxSize()) {
+                            LyricsPage(state, dispatch, lyricsState, presentationScale = if (wide) 3.0f else 1f,
+                                externalGestureActive = transitioning, interactionEnabled = contentInteractive && !transitioning,
+                                onGeometryReady = { geometryReady = it }, presentationOpacity = lyricOpacity)
+                        }
+                    } else {
+                        val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
+                        val currentPage by rememberUpdatedState(state.page)
+                        val currentEvent by rememberUpdatedState(dispatch)
+                        LaunchedEffect(state.page) {
+                            if (pager.currentPage != state.page.ordinal) pager.animateScrollToPage(state.page.ordinal,
+                                animationSpec = tween(700, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
+                        }
+                        LaunchedEffect(pager) {
+                            snapshotFlow { pager.isScrollInProgress }.collect { moving ->
+                                presentation?.updatePagerMotion(moving)
+                            }
+                        }
+                        LaunchedEffect(pager) {
+                            snapshotFlow { pager.settledPage }.collect { index ->
+                                if (index != currentPage.ordinal) currentEvent(ContentEvent.PageSelected(PanelPage.entries[index]))
+                            }
+                        }
+                        HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"),
+                            userScrollEnabled = contentInteractive && !transitioning && !wide) { index ->
+                            CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
+                                if (PanelPage.entries[index] == PanelPage.Shortcuts) {
+                                    Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                } else Box(Modifier.fillMaxSize()) {
+                                    LyricsPage(state, dispatch, lyricsState, presentationScale = if (wide) 3.0f else 1f,
+                                        externalGestureActive = transitioning || pager.isScrollInProgress,
+                                        interactionEnabled = contentInteractive && !transitioning,
+                                        onGeometryReady = { geometryReady = it }, presentationOpacity = lyricOpacity)
+                                }
+                            }
+                        }
+                    }
+                }, modifier = Modifier.fillMaxSize().then(if (wide) Modifier.testTag("immersive-lyrics-region") else Modifier)) { measurables, constraints ->
+                    val pagesTop = if (wide) 0 else with(density) { topBarHeight.roundToPx() }.coerceAtMost(constraints.maxHeight)
+                    val targetWidth = if (wide) with(density) { (fullWidth * 2f / 3f).roundToPx() }
+                        else if (lyricMode) with(density) { splitWidth.roundToPx() } else constraints.maxWidth
+                    val targetHeight = if (wide) constraints.maxHeight else
+                        (constraints.maxHeight - pagesTop - with(density) { (mediaHeight + dockHeight).roundToPx() }).coerceAtLeast(0)
+                    val child = measurables.single().measure(androidx.compose.ui.unit.Constraints.fixed(targetWidth.coerceAtLeast(1), targetHeight))
+                    layout(constraints.maxWidth, constraints.maxHeight) {
+                        child.place(if (wide) with(density) { leftWidth.roundToPx() } else 0, pagesTop)
                     }
                 }
             }
@@ -233,9 +233,10 @@ fun ContentPanel(
                         PageActionDescriptor("enter", "全屏歌词", R.drawable.content_oem_ic_fullscreen, enabled = presentation?.geometryReady == true))
                 PageActionsOverlay(overlayActions, pageKey = "lyrics:$wide", blankTapRevision = blankTapRevision,
                     enabled = contentInteractive && !transitioning, modalActive = settingsActive || state.sourcesOpen,
-                    compact = compact, modifier = Modifier.align(Alignment.TopEnd)
-                        .padding(top = if (wide) 16.dp else topBarHeight + 12.dp,
-                            end = 20.dp + with(density) { (presentation?.reservedGestureWidthPx ?: 0).toDp() }).zIndex(5f).graphicsLayer { alpha = if (wide) widePresentationAlpha else compactPresentationAlpha }) { id ->
+                    compact = compact, modifier = Modifier.align(if (wide) Alignment.TopStart else Alignment.TopEnd)
+                        .padding(top = if (showTop) topBarHeight + 12.dp else 16.dp,
+                            start = if (wide) 12.dp else 0.dp,
+                             end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = if (wide) widePresentationAlpha else compactPresentationAlpha }) { id ->
                     dispatch(when (id) {
                         "settings" -> ContentEvent.OpenLyricsSettings
                         "enter" -> ContentEvent.EnterLyricsImmersive
@@ -627,46 +628,58 @@ private fun PrototypeMediaCard(
 
 @Composable
 private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Unit,
-    artwork: @Composable (() -> Unit)?, compact: Boolean, modifier: Modifier = Modifier,
+    artwork: @Composable (() -> Unit)?, lyricsState: @Composable () -> LyricsState,
+    compact: Boolean, modifier: Modifier = Modifier,
 ) {
+    val lyrics = lyricsState()
     val coverScale by animateFloatAsState(if (state.media.playing) 1f else .76f,
         tween(350, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "immersive-cover")
     BoxWithConstraints(modifier.padding(horizontal = if (compact) 16.dp else 28.dp)) {
-        val coverSize = minOf(maxWidth, (maxHeight - 176.dp).coerceAtLeast(48.dp))
+        val coverSize = minOf(maxWidth, (maxHeight - 300.dp).coerceAtLeast(48.dp))
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center) {
             Box(Modifier.size(coverSize).testTag("immersive-cover-space"), contentAlignment = Alignment.Center) {
                 Box(Modifier.fillMaxSize().graphicsLayer { scaleX = coverScale; scaleY = coverScale }
-                    .clip(RoundedCornerShape(14.dp)).testTag("immersive-cover")) {
+                    .clip(RoundedCornerShape(18.dp)).testTag("immersive-cover")) {
                     if (artwork != null) artwork() else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(72.dp), "音乐封面", animateOnPress = false, animateOnAction = false)
+                        OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(84.dp), "音乐封面", animateOnPress = false, animateOnAction = false)
                     }
                 }
             }
-            Spacer(Modifier.height(20.dp))
-            Column(Modifier.fillMaxWidth().height(68.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Spacer(Modifier.height(if (compact) 14.dp else 18.dp))
+            Column(Modifier.fillMaxWidth().height(if (compact) 76.dp else 84.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(state.media.title ?: "暂无媒体", Modifier.testTag("immersive-title"),
-                    style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontSize = if (compact) 26.sp else 30.sp, fontWeight = FontWeight.SemiBold),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(state.media.artist ?: "未连接", Modifier.testTag("immersive-artist"),
-                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = if (compact) 18.sp else 20.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+            ImmersivePlaybackProgress(lyrics, compact, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
             val media = state.media
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("immersive-media-controls"),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                RoundedPressButton(Modifier.size(64.dp), "immersive-play", if (media.playing) "暂停" else "播放",
+                RoundedPressButton(Modifier.size(if (compact) 72.dp else 84.dp), "immersive-play", if (media.playing) "暂停" else "播放",
                     media.available && media.playbackAvailable && !media.pending, compact,
                     onClick = { onEvent(ContentEvent.PlayPause) }) {
                     OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f,
-                        Modifier.size(40.dp), animateOnAction = false)
+                        Modifier.size(if (compact) 46.dp else 54.dp), animateOnAction = false)
                 }
-                Spacer(Modifier.width(12.dp))
-                RoundedPressButton(Modifier.size(56.dp), "immersive-next", "下一首", media.available && media.nextAvailable && !media.pending, compact,
-                    onClick = { onEvent(ContentEvent.NextTrack) }) { OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(36.dp)) }
+                Spacer(Modifier.width(if (compact) 14.dp else 20.dp))
+                RoundedPressButton(Modifier.size(if (compact) 68.dp else 76.dp), "immersive-next", "下一首", media.available && media.nextAvailable && !media.pending, compact,
+                    onClick = { onEvent(ContentEvent.NextTrack) }) {
+                    OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(if (compact) 42.dp else 48.dp))
+                }
                 if (state.showMediaSourceSwitcher) {
-                    Spacer(Modifier.width(12.dp))
-                    RoundedPressButton(Modifier.size(56.dp), "immersive-source", "选择来源", media.sourceAvailable, compact,
-                        onClick = { onEvent(ContentEvent.OpenSources) }) { OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(32.dp), tint = sourceTint()) }
+                    Spacer(Modifier.width(if (compact) 14.dp else 20.dp))
+                    RoundedPressButton(Modifier.size(if (compact) 68.dp else 76.dp), "immersive-source", "选择来源", media.sourceAvailable, compact,
+                        onClick = { onEvent(ContentEvent.OpenSources) }) {
+                        OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(if (compact) 38.dp else 44.dp), tint = sourceTint())
+                    }
                 }
             }
         }
@@ -837,13 +850,6 @@ private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) 
         }
     }
 }
-
-private data class LyricPageSlot(
-    val state: ContentUiState, val onEvent: (ContentEvent) -> Unit,
-    val lyricsState: @Composable () -> LyricsState, val wide: Boolean,
-    val gesturing: Boolean, val interactive: Boolean, val onGeometryReady: (Boolean) -> Unit,
-    val presentationOpacity: () -> Float,
-)
 
 @Composable
 private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyricsState: @Composable () -> LyricsState,

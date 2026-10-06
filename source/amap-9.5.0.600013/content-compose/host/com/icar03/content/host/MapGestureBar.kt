@@ -210,8 +210,8 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
         private const val FRAME_STEP_MS = 16L
         private const val HANDLE_WIDTH_PX = 6
         private const val HANDLE_HEIGHT_PX = 256
-        private val GLOW_COLOR = Color.rgb(84, 245, 186)
-        private val PEAK_INK = Ink(210f, 255f, 234f, 1f)
+        private val GLOW_COLOR = Color.WHITE
+        private val PEAK_INK = Ink(255f, 255f, 255f, 1f)
 
         private fun normalInk(enabled: Boolean, dark: Boolean): Ink = when {
             enabled && dark -> Ink(228f, 237f, 247f, .88f)

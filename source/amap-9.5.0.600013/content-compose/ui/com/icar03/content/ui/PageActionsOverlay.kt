@@ -208,7 +208,6 @@ private fun PageActionButton(
         .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
         .clip(shape)
         .drawBehind {
-            drawRect(colors.mediaBase)
             drawRect(colors.selectedSurface.copy(alpha = pressedOpacity.value))
         }
         .clickable(enabled = enabled, interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick)

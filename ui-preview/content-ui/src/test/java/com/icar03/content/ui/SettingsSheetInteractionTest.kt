@@ -160,49 +160,92 @@ open class SettingsSheetInteractionTest {
         }
     }
 
-    @Test fun slowShortDragSettlesFromFingerAndLongDragClosesExactlyOnce() {
+    @Test fun backButtonClosesExactlyOnceAndReopeningInterruptsTheExit() {
         mount(open = true)
         compose.mainClock.autoAdvance = false
         val host = bounds("settings-sheet-host")
-        dragAndRelease(host.height * .10f)
+        compose.onNodeWithTag("settings-back").performTouchInput {
+            down(center); moveBy(Offset(1f, 1f)); up()
+        }
         compose.mainClock.advanceTimeByFrame()
-        assertTrue("short drag must settle from its release position", bounds("settings-sheet").top > host.top + host.height * .075f)
-        compose.mainClock.advanceTimeBy(500)
-        assertEquals(host.top, bounds("settings-sheet").top, 1f)
-        assertTrue(events.none { it == ContentEvent.SettingsDismissed })
-        dragAndRelease(host.height * .30f, cancelGesture = true)
-        compose.mainClock.advanceTimeByFrame()
-        compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(500)
-        assertEquals(host.top, bounds("settings-sheet").top, 1f)
-        assertTrue(events.none { it == ContentEvent.SettingsDismissed })
-        dragAndRelease(host.height * .30f)
-        compose.mainClock.advanceTimeByFrame()
-        assertTrue("dismiss must continue down from the finger, without jumping up", bounds("settings-sheet").top >= host.top + host.height * .29f)
-        compose.mainClock.advanceTimeUntil(1_000) { !state.value.settingsOpen }
+        assertFalse(state.value.settingsOpen)
         assertEquals(1, events.count { it == ContentEvent.SettingsDismissed })
-        compose.onNodeWithTag("dock-Settings").performClick()
+        compose.onNodeWithTag("settings-back").assertIsNotEnabled()
+        compose.onNodeWithTag("dock-Wiper").assertIsNotEnabled()
+        compose.mainClock.advanceTimeBy(64)
+        val exitingTop = bounds("settings-sheet").top
+        assertTrue("back starts the existing downward exit", exitingTop > host.top && exitingTop < host.bottom)
+        compose.onNodeWithTag("settings-back").performClick()
+        compose.onNodeWithTag("source-button").performClick()
+        compose.onNodeWithTag("control-Lock").performClick()
+        compose.onNodeWithText("显示星期").performSemanticsAction(SemanticsActions.OnClick) { it() }
+        compose.onNodeWithTag("settings-menu-Lyrics").performSemanticsAction(SemanticsActions.OnClick) { it() }
+        assertEquals("disabled back, background and retained settings semantics must not dispatch during exit", listOf(ContentEvent.SettingsDismissed), events)
+        assertEquals(SettingsSection.TopBar, state.value.settingsSection)
+        val handoffTop = bounds("settings-sheet").top
+        val remainingExit = host.bottom - handoffTop
+        assertTrue("the continuity sample precedes the hidden endpoint", remainingExit > 8f * density)
+        val handoffBudget = minOf(host.height * .08f, remainingExit * .5f)
+        val handoffTime = compose.mainClock.currentTime
+        compose.onNodeWithTag("dock-Settings").performSemanticsAction(SemanticsActions.OnClick) { it() }
+        assertEquals("semantic reopen itself does not inject touch time", handoffTime, compose.mainClock.currentTime)
+        compose.mainClock.advanceTimeByFrame()
+        assertTrue("a new Settings click interrupts the outgoing sheet", state.value.settingsOpen)
+        val reopenedTop = bounds("settings-sheet").top
+        assertTrue("reopening retains the current offset within one outgoing frame", reopenedTop <= handoffTop + handoffBudget + 1f)
+        compose.mainClock.advanceTimeBy(32)
+        assertTrue("the interrupted sheet immediately moves upward", bounds("settings-sheet").top < reopenedTop)
         compose.mainClock.advanceTimeBy(500)
-        assertTrue("a new Settings click must interrupt the outgoing sheet", state.value.settingsOpen)
         assertEquals(host.top, bounds("settings-sheet").top, 1f)
         assertEquals(1, events.count { it == ContentEvent.SettingsDismissed })
+        compose.onNodeWithTag("settings-back").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(2, events.count { it == ContentEvent.SettingsDismissed })
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("settings-sheet").assertDoesNotExist()
+        compose.onNodeWithTag("dock-Wiper").assertIsEnabled()
         compose.mainClock.autoAdvance = true
     }
 
-    @Test fun aShortDownwardFlingClosesWhileAnUpwardFlingDoesNot() {
+    @Test fun headerDragsAndFlingsNeverMoveOrDismissSettings() {
         mount(open = true)
+        compose.onNodeWithTag("settings-gesture-handle").assertDoesNotExist()
+        compose.onNodeWithTag("settings-gesture-bar").assertDoesNotExist()
+        compose.mainClock.autoAdvance = false
+        val host = bounds("settings-sheet-host")
+        dragHeader(host.height * .1f)
+        dragHeader(host.height * .3f)
+        dragHeader(host.height * .3f, cancelGesture = true)
         val root = compose.onNodeWithTag("settings-native-root")
-        val handle = bounds("settings-gesture-handle")
-        val origin = bounds("settings-native-root").topLeft
-        val start = handle.center - origin
-        root.performTouchInput { swipe(start, start - Offset(0f, 80f * density), durationMillis = 48) }
+        val start = bounds("settings-header").center - bounds("settings-native-root").topLeft
+        for (direction in listOf(-1f, 1f)) {
+            root.performTouchInput { swipe(start, start + Offset(0f, direction * 80f * density), durationMillis = 48) }
+            compose.mainClock.advanceTimeBy(500)
+            assertEquals(host.top, bounds("settings-sheet").top, 1f)
+            assertTrue(state.value.settingsOpen)
+        }
+        assertTrue(events.none { it == ContentEvent.SettingsDismissed })
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun backButtonHasTransparentFillAndCancelledPressDoesNotDismiss() {
+        mount(open = true)
+        val header = bounds("settings-header")
+        val back = bounds("settings-back")
+        compose.onNodeWithTag("settings-back").assertContentDescriptionEquals("返回").assertIsEnabled()
+        assertTrue("back keeps a car-sized touch target", back.width + 1f >= maxOf(48f * density, 64f))
+        assertTrue("back keeps a car-sized touch target", back.height + 1f >= maxOf(48f * density, 64f))
+        assertTrue(back.left >= header.left && back.right < header.center.x)
+        assertTrue(back.top >= header.top && back.bottom <= header.bottom)
+        val frame = capture("settings-transparent-back")
+        val sampleY = back.center.y.toInt()
+        assertEquals("the idle back button has no filled base",
+            frame.getPixel((header.right - 6f).toInt(), sampleY),
+            frame.getPixel((back.left + 3f).toInt(), sampleY))
+        compose.onNodeWithTag("settings-back").performTouchInput { down(center); cancel() }
         compose.waitForIdle()
         assertTrue(state.value.settingsOpen)
         assertTrue(events.none { it == ContentEvent.SettingsDismissed })
-        root.performTouchInput { swipe(start, start + Offset(0f, 80f * density), durationMillis = 48) }
-        compose.waitForIdle()
-        assertFalse(state.value.settingsOpen)
-        assertEquals(1, events.count { it == ContentEvent.SettingsDismissed })
     }
 
     @Test fun feedbackRetainsTextAndWidthUntilItsDownwardExitCompletes() {
@@ -261,19 +304,19 @@ open class SettingsSheetInteractionTest {
             ).assertDoesNotExist()
         }
         compose.onNodeWithTag("settings-title").assertTextEquals("设置")
-        compose.onNodeWithTag("settings-gesture-bar").assertExists()
+        compose.onNodeWithTag("settings-gesture-bar").assertDoesNotExist()
+        compose.onNodeWithTag("settings-gesture-handle").assertDoesNotExist()
+        compose.onNodeWithTag("settings-back").assertContentDescriptionEquals("返回").assertIsEnabled()
         compose.onNodeWithTag("settings-header-divider").assertExists()
         compose.onNodeWithTag("settings-menu-divider").assertExists()
         compose.onNodeWithTag("settings-menu-Interaction").performClick()
         compose.onNodeWithTag("settings-option-界面透明度-60%").performScrollTo().performClick()
         assertEquals(.6f, state.value.uiOpacity, .001f)
         compose.onNodeWithTag("settings-option-界面透明度-20%").assertExists()
-        val reminder = compose.onNodeWithContentDescription("手势条提醒").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("手势条提醒").assertDoesNotExist()
+        compose.onNodeWithText("进入可全屏页面时，短暂高亮手势条").assertDoesNotExist()
         assertTrue(state.value.gestureBarReminder)
-        compose.onNodeWithText("进入可全屏页面时，短暂高亮手势条").assertExists()
-        reminder.performClick()
-        assertFalse(state.value.gestureBarReminder)
-        assertTrue(events.contains(ContentEvent.GestureBarReminderChanged(false)))
+        assertTrue(events.none { it is ContentEvent.GestureBarReminderChanged })
         assertTrue("the menu keeps enough width for the detail column", bounds("settings-menu").width <= 160f * density + 1f)
     }
 
@@ -287,7 +330,7 @@ open class SettingsSheetInteractionTest {
         compose.onNodeWithTag("settings-menu-Layout").performScrollTo().performClick()
         compose.onNodeWithTag("settings-option-Dock 显示按钮-3").performClick()
         assertEquals(3, state.value.dockButtonCount)
-        assertTrue("top gesture band must be larger than the visible handle", bounds("settings-gesture-handle").height > 60f)
+        assertTrue("back is reachable beside the centered title", bounds("settings-back").width + 1f >= maxOf(48f * density, 64f))
         compose.onNode(hasText("车辆") and hasAnyAncestor(hasTestTag("settings-sheet"))).assertDoesNotExist()
         compose.onNode(hasText("媒体音量") and hasAnyAncestor(hasTestTag("settings-sheet"))).assertDoesNotExist()
     }
@@ -302,12 +345,11 @@ open class SettingsSheetInteractionTest {
         assertTrue(events.all { it == ContentEvent.SettingsTapped })
     }
 
-    @Test fun fullWidthTopBandAcceptsDragsAtTheEdgeAndDetailsScrollIndependently() {
+    @Test fun headerEdgesStayPassiveAndDetailsScrollIndependently() {
         mount(open = true)
         val host = bounds("settings-sheet-host")
-        val band = bounds("settings-gesture-handle")
-        assertEquals(host.width, band.width, 1f)
-        assertTrue(band.height + 1 >= 72f * density)
+        val header = bounds("settings-header")
+        assertEquals(host.width, header.width, 1f)
         val detail = compose.onNodeWithTag("settings-detail-scroll")
         val range = detail.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
         if (range.maxValue() > 0f) {
@@ -316,20 +358,17 @@ open class SettingsSheetInteractionTest {
             assertTrue("the content owns its vertical scroll", range.value() > before)
             assertEquals(host.top, bounds("settings-sheet").top, 1f)
             assertTrue(state.value.settingsOpen)
+            detail.performTouchInput { swipeDown(durationMillis = 48) }
+            assertEquals(host.top, bounds("settings-sheet").top, 1f)
+            assertTrue(state.value.settingsOpen)
             compose.onNodeWithContentDescription("显示星期").performScrollTo()
         }
         compose.mainClock.autoAdvance = false
-        dragAndRelease(host.height * .1f, relativeX = .05f)
-        compose.mainClock.advanceTimeByFrame()
-        assertTrue("left edge drag follows the finger", bounds("settings-sheet").top > host.top)
-        compose.mainClock.advanceTimeBy(500)
+        dragHeader(host.height * .3f, relativeX = .05f)
+        dragHeader(host.height * .3f, relativeX = .95f)
         assertEquals(host.top, bounds("settings-sheet").top, 1f)
+        assertTrue(state.value.settingsOpen)
         assertTrue(events.none { it == ContentEvent.SettingsDismissed })
-        dragAndRelease(host.height * .3f, relativeX = .95f)
-        compose.mainClock.advanceTimeByFrame()
-        assertTrue("edge drag dismiss continues from the finger", bounds("settings-sheet").top >= host.top + host.height * .29f)
-        compose.mainClock.advanceTimeUntil(1_000) { !state.value.settingsOpen }
-        assertEquals(1, events.count { it == ContentEvent.SettingsDismissed })
         compose.mainClock.autoAdvance = true
     }
 
@@ -367,22 +406,24 @@ open class SettingsSheetInteractionTest {
         assertTrue("$text has a readable font: $pixels", pixels + .05f >= minimum)
     }
 
-    private fun dragAndRelease(distance: Float, cancelGesture: Boolean = false, relativeX: Float = .5f) {
+    private fun dragHeader(distance: Float, cancelGesture: Boolean = false, relativeX: Float = .5f) {
         val host = bounds("settings-sheet-host")
         val origin = bounds("settings-native-root").topLeft
-        val band = bounds("settings-gesture-handle")
-        val point = Offset(band.left + band.width * relativeX, band.center.y) - origin
+        val header = bounds("settings-header")
+        val point = Offset(header.left + header.width * relativeX, header.center.y) - origin
         val root = compose.onNodeWithTag("settings-native-root")
         root.performTouchInput { down(point) }
         repeat(5) { index ->
             root.performTouchInput { moveTo(point + Offset(0f, distance * (index + 1) / 5), delayMillis = 120) }
             compose.mainClock.advanceTimeByFrame()
-            assertEquals("sheet follows root-space finger distance", host.top + distance * (index + 1) / 5,
-                bounds("settings-sheet").top, 2f)
+            assertEquals("header drags cannot translate the settings sheet", host.top, bounds("settings-sheet").top, 1f)
         }
         root.performTouchInput {
             if (cancelGesture) cancel() else { advanceEventTime(200); up() }
         }
+        compose.mainClock.advanceTimeBy(500)
+        assertEquals(host.top, bounds("settings-sheet").top, 1f)
+        assertTrue(state.value.settingsOpen)
     }
 
     private fun bounds(tag: String) = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot

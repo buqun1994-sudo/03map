@@ -7,6 +7,7 @@ import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -14,6 +15,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 import org.junit.Assert.*
@@ -43,6 +45,7 @@ open class LyricsImmersivePanelTest {
             lines = listOf("夜色慢慢铺开", "沿着风的方向", "让每一句歌词自由舒展", "把此刻留在路上", "等下一束光", "一起驶向远方")
                 .mapIndexed { index, text -> LyricLine(index * 2_000L, text) })))
     private val events = mutableListOf<ContentEvent>()
+    private var viewportWidth by mutableStateOf(1920.dp)
     private lateinit var nativeView: View
 
     private fun mount() {
@@ -63,7 +66,10 @@ open class LyricsImmersivePanelTest {
             CompositionLocalProvider(LocalLyricGeometryDispatcher provides Dispatchers.Unconfined,
                 LocalLyricPreparationDispatcher provides Dispatchers.Unconfined) {
                 ContentTheme(state.dark) {
-                    ContentPanel(state, { events += it }, Modifier.testTag("immersive-panel"),
+                    ContentPanel(state, { event ->
+                        events += event
+                        if (event is ContentEvent.PageSelected) state = state.copy(page = event.page)
+                    }, Modifier.width(viewportWidth).testTag("immersive-panel"),
                         artwork = { Box(Modifier.fillMaxSize().background(Color(0xFF99574D))) }, presentation = presentation)
                 }
             }
@@ -81,9 +87,85 @@ open class LyricsImmersivePanelTest {
         val lyrics = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true).fetchSemanticsNode()
         assertEquals(640f, lyrics.boundsInRoot.left, 1f)
         assertEquals(1280f, lyrics.boundsInRoot.width, 1f)
-        assertEquals(60f, lyrics.config[LyricFontPixels], .1f)
-        assertEquals(72f, lyrics.config[LyricActiveFontPixels], .1f)
+        assertEquals(120f, lyrics.config[LyricFontPixels], .1f)
+        assertEquals(144f, lyrics.config[LyricActiveFontPixels], .1f)
+        compose.onNodeWithTag("immersive-progress").assertIsDisplayed()
+        compose.onNodeWithTag("immersive-progress-fill").assertIsDisplayed()
+        compose.onNodeWithTag("immersive-progress-elapsed").assertTextEquals("0:05")
+        compose.onNodeWithTag("immersive-progress-duration").assertTextEquals("1:00")
         capture("lyrics-immersive-$platform-${if (dark) "dark" else "light"}")
+    }
+
+    @Test fun splitToImmersiveAndBackRetainsOneLyricViewAcrossRenderedFrames() {
+        presentation.updateGeometry(640f, 640f, 1280f, 1080)
+        presentation.updatePhase(0)
+        viewportWidth = 640.dp
+        mount()
+
+        val initialBody = compose.onNodeWithTag("wallpaper-lyrics", useUnmergedTree = true).fetchSemanticsNode().id
+        val initialFrame = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true).fetchSemanticsNode()
+        val compactBounds = initialFrame.boundsInRoot
+        assertEquals(40f, initialFrame.config[LyricFontPixels], .1f)
+        assertEquals(48f, initialFrame.config[LyricActiveFontPixels], .1f)
+        assertEquals(0f, compactBounds.left, 1f)
+        assertEquals(640f, compactBounds.width, 1f)
+        assertEquals(compose.onNodeWithTag("top-bar").fetchSemanticsNode().boundsInRoot.bottom, compactBounds.top, 1f)
+        assertEquals(compose.onNodeWithTag("media-card").fetchSemanticsNode().boundsInRoot.top, compactBounds.bottom, 1f)
+
+        // Each divider update must reach composition/measurement before the next one.
+        // Applying both endpoints in one idle block would skip the former pager-to-root move.
+        listOf(.34f, .49f, .5f, .51f, .66f, 1f, .66f, .51f, .5f, .49f, .34f, 0f).forEach { progress ->
+            compose.runOnIdle {
+                val divider = 640f + 1280f * progress
+                viewportWidth = divider.dp
+                presentation.updateGeometry(divider, 640f, 1280f, 1080)
+                presentation.updatePhase(when (progress) { 0f -> 0; 1f -> 1; else -> 2 })
+            }
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            compose.onAllNodesWithTag("wallpaper-lyrics", useUnmergedTree = true).assertCountEquals(1)
+            assertEquals("lyric view is retained at progress=$progress", initialBody,
+                compose.onNodeWithTag("wallpaper-lyrics", useUnmergedTree = true).fetchSemanticsNode().id)
+            val frame = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true).fetchSemanticsNode()
+            assertEquals("immersive-fixture", frame.config[LyricRecordingKey])
+            assertEquals(if (progress >= .5f) 120f else 40f, frame.config[LyricFontPixels], .1f)
+            assertEquals(if (progress >= .5f) 144f else 48f, frame.config[LyricActiveFontPixels], .1f)
+            if (progress == 1f) {
+                assertEquals(640f, frame.boundsInRoot.left, 1f)
+                assertEquals(0f, frame.boundsInRoot.top, 1f)
+                assertEquals(1280f, frame.boundsInRoot.width, 1f)
+                assertEquals(1080f, frame.boundsInRoot.height, 1f)
+                compose.onNodeWithTag("media-card").assertDoesNotExist()
+            }
+        }
+        val restored = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(compactBounds.left, restored.left, 1f)
+        assertEquals(compactBounds.top, restored.top, 1f)
+        assertEquals(compactBounds.width, restored.width, 1f)
+        assertEquals(compactBounds.height, restored.height, 1f)
+        compose.onNodeWithTag("media-card").assertIsDisplayed()
+
+        // Horizontal navigation must still receive gestures that start on the lyric view.
+        compose.onNodeWithTag("wallpaper-lyrics").performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        assertEquals(ContentEvent.PageSelected(PanelPage.Shortcuts), events.last())
+        compose.onNodeWithTag("runtime-pages").performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        assertEquals(ContentEvent.PageSelected(PanelPage.Lyrics), events.last())
+        compose.onAllNodesWithTag("wallpaper-lyrics", useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test fun visibleTopBarKeepsExitBelowClockAndAlignedToItsLeftMargin() {
+        mount()
+        val topBar = compose.onNodeWithTag("top-bar").fetchSemanticsNode().boundsInRoot
+        val clock = compose.onNodeWithTag("top-time").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("immersive-panel").performTouchInput { click(androidx.compose.ui.geometry.Offset(1850f, 100f)) }
+        compose.waitForIdle()
+        val exit = compose.onNodeWithTag("page-action-exit").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertEquals(clock.left, exit.left, 1f)
+        assertEquals(topBar.bottom + 12f, exit.top, 1f)
+        assertTrue("exit target cannot cover the top bar", exit.top >= topBar.bottom)
+        capture("lyrics-immersive-actions-$platform-${if (dark) "dark" else "light"}")
     }
 
     @Test fun hiddenChromeIsUnmeasuredAndEmptyTapAlwaysExposesExit() {
