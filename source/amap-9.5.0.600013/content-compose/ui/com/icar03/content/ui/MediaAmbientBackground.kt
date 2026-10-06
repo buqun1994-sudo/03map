@@ -183,23 +183,28 @@ fun MediaAmbientBackground(
         }
     }
     LaunchedEffect(texture, dark, active, presentation?.fullSize, presentation?.splitWidthPx,
-        presentation?.phase, presentation?.pendingEnter, preparationDispatcher, background) {
+        presentation?.phase, presentation?.pendingEnter, presentation?.sessionGeneration,
+        presentation?.buttonTransitionActive, preparationDispatcher, background) {
         val targetPresentation = presentation
         if (!active || targetPresentation == null || !targetPresentation.geometryReady) {
             if (!active) presentationState.clear()
             return@LaunchedEffect
         }
-        if (!targetPresentation.moving && targetPresentation.pendingEnter == 0L) return@LaunchedEffect
+        if (!targetPresentation.moving && targetPresentation.pendingEnter == 0L &&
+            !targetPresentation.buttonTransitionActive) {
+            presentationState.clear()
+            return@LaunchedEffect
+        }
         val fullSize = targetPresentation.fullSize
-        val compactSize = latestViewport.value
+        val compactSize = IntSize(targetPresentation.splitWidthPx, fullSize.height)
         if (compactSize.width <= 0 || compactSize.height <= 0) return@LaunchedEffect
-        val key = AmbientPresentationKey(texture, dark, fullSize, compactSize)
+        val key = AmbientPresentationKey(texture, dark, fullSize, compactSize, targetPresentation.sessionGeneration)
         val entryToken = targetPresentation.pendingEnter
         if (presentationState.isPrepared(key)) {
             targetPresentation.entryPrepared(entryToken)
             return@LaunchedEffect
         }
-        val fallback = renderer.captureCurrent(painter, compactSize, background)
+        val fallback = if (texture == null) null else renderer.captureCurrent(painter, compactSize, background)
         val request = presentationState.begin(key, fallback)
         val phase = renderer.publishedPhase
         var bridge: Bitmap? = null
@@ -243,13 +248,15 @@ fun MediaAmbientBackground(
         val targetPresentation = presentation
         val scene = presentationState.scene
         val inPresentation = active && targetPresentation != null && targetPresentation.geometryReady &&
-            (targetPresentation.moving || targetPresentation.pendingEnter != 0L)
+            (targetPresentation.moving || targetPresentation.pendingEnter != 0L ||
+                targetPresentation.buttonTransitionActive)
         if (inPresentation) {
             targetPresentation?.let { target ->
                 drawIntoCanvas { canvas ->
                     if (scene != null) {
-                        presentationPainter.draw(canvas.nativeCanvas, size.width, size.height, scene,
+                        val drawn = presentationPainter.draw(canvas.nativeCanvas, size.width, size.height, scene,
                             target.progress)
+                        if (drawn == 0) canvas.nativeCanvas.drawColor(if (dark) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
                     } else {
                         presentationPainter.drawCompactFallback(canvas.nativeCanvas, size.width, size.height,
                             presentationState.fallbackCompact, target.fullSize, viewport, dark)

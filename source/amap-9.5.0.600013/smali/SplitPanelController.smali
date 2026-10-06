@@ -21,6 +21,12 @@
 
 .field private gestureNode:Landroid/view/ViewGroup;
 
+.field private gestureBar:Lcom/icar03/content/host/MapGestureBar;
+
+.field private gestureEnabled:Z
+
+.field private gestureActive:Z
+
 .field private screenWidth:I
 
 .field private mapWidth:I
@@ -219,7 +225,7 @@
 
     move-result v2
 
-    const/4 v3, 0x2
+    const/4 v3, 0x1
 
     if-lt v2, v3, :stable_return_null
 
@@ -243,9 +249,7 @@
 
     if-lt v3, v4, :stable_return_null
 
-    const/4 v3, 0x1
-
-    invoke-virtual {v1, v3}, Landroid/view/ViewGroup;->getChildAt(I)Landroid/view/View;
+    invoke-static {v1}, Lcom/icar03/content/host/MapGestureBarHost;->findGestureLayer(Landroid/view/ViewGroup;)Landroid/view/ViewGroup;
 
     move-result-object v2
 
@@ -325,6 +329,60 @@
     move-result-object v0
     iget v0, v0, Landroid/view/ViewGroup$LayoutParams;->width:I
     return v0
+.end method
+
+.method public updateGestureState(ZZZZ)V
+    .locals 2
+
+    iput-boolean p1, p0, LSplitPanelController;->gestureEnabled:Z
+    iget-object v0, p0, LSplitPanelController;->gestureBar:Lcom/icar03/content/host/MapGestureBar;
+    invoke-virtual {v0, p1, p2, p3, p4}, Lcom/icar03/content/host/MapGestureBar;->updateGestureState(ZZZZ)V
+
+    if-nez p1, :gesture_state_done
+    iget-boolean v0, p0, LSplitPanelController;->gestureActive:Z
+    if-eqz v0, :gesture_state_done
+    invoke-direct {p0}, LSplitPanelController;->cancelGestureToExpanded()V
+
+    :gesture_state_done
+    invoke-virtual {p0}, LSplitPanelController;->ensureGestureOnTop()V
+    return-void
+.end method
+
+.method public ensureGestureOnTop()V
+    .locals 4
+
+    iget-object v0, p0, LSplitPanelController;->panelHost:Landroid/view/ViewGroup;
+    iget-object v1, p0, LSplitPanelController;->gestureLayer:Landroid/view/ViewGroup;
+    iget-object v2, p0, LSplitPanelController;->gestureNode:Landroid/view/ViewGroup;
+    iget v3, p0, LSplitPanelController;->currentDividerX:F
+    invoke-static {v0, v1, v2, v3}, Lcom/icar03/content/host/MapGestureBarHost;->ensureOnTop(Landroid/view/ViewGroup;Landroid/view/ViewGroup;Landroid/view/ViewGroup;F)V
+    return-void
+.end method
+
+.method private isGestureAllowed()Z
+    .locals 1
+
+    iget-boolean v0, p0, LSplitPanelController;->gestureEnabled:Z
+    if-eqz v0, :gesture_not_allowed
+    invoke-static {p0}, Lcom/autonavi/amapauto/content/ContentRuntime;->isMapGestureAllowed(Lcom/icar03/content/model/MapPresentationPort;)Z
+    move-result v0
+    return v0
+
+    :gesture_not_allowed
+    const/4 v0, 0x0
+    return v0
+.end method
+
+.method private cancelGestureToExpanded()V
+    .locals 1
+
+    const/4 v0, 0x0
+    iput-boolean v0, p0, LSplitPanelController;->gestureActive:Z
+    invoke-direct {p0}, LSplitPanelController;->dismissHint()V
+    iget v0, p0, LSplitPanelController;->expandedDividerX:I
+    int-to-float v0, v0
+    invoke-direct {p0, v0}, LSplitPanelController;->animateTo(F)V
+    return-void
 .end method
 
 .method private notifyPresentationPhase()V
@@ -460,13 +518,9 @@
 
     iput-object v3, p0, LSplitPanelController;->mapLayer:Landroid/view/ViewGroup;
 
-    const/4 v2, 0x1
-
-    invoke-virtual {p1, v2}, Landroid/view/ViewGroup;->getChildAt(I)Landroid/view/View;
+    invoke-static {p1}, Lcom/icar03/content/host/MapGestureBarHost;->findGestureLayer(Landroid/view/ViewGroup;)Landroid/view/ViewGroup;
 
     move-result-object v3
-
-    check-cast v3, Landroid/view/ViewGroup;
 
     iput-object v3, p0, LSplitPanelController;->gestureLayer:Landroid/view/ViewGroup;
 
@@ -518,6 +572,10 @@
 
     iput-object v5, p0, LSplitPanelController;->hintText:Landroid/widget/TextView;
 
+    invoke-static {v4}, Lcom/icar03/content/host/MapGestureBar;->attachTo(Landroid/view/ViewGroup;)Lcom/icar03/content/host/MapGestureBar;
+    move-result-object v5
+    iput-object v5, p0, LSplitPanelController;->gestureBar:Lcom/icar03/content/host/MapGestureBar;
+
     const/4 v3, 0x0
 
     invoke-virtual {p1, v3}, Landroid/view/ViewGroup;->setClipChildren(Z)V
@@ -541,6 +599,8 @@
     invoke-virtual {v2, p0}, Landroid/view/View;->setOnTouchListener(Landroid/view/View$OnTouchListener;)V
 
     invoke-virtual {p1, p0}, Landroid/view/View;->addOnLayoutChangeListener(Landroid/view/View$OnLayoutChangeListener;)V
+
+    invoke-virtual {p0}, LSplitPanelController;->ensureGestureOnTop()V
 
     invoke-virtual {p1}, Landroid/view/View;->getWidth()I
 
@@ -588,6 +648,8 @@
     iget-object v3, p0, LSplitPanelController;->panelHost:Landroid/view/ViewGroup;
 
     invoke-virtual {v3, v2}, Landroid/view/View;->setTranslationX(F)V
+
+    invoke-virtual {p0}, LSplitPanelController;->ensureGestureOnTop()V
 
     iget v4, p0, LSplitPanelController;->mapWidth:I
 
@@ -1011,160 +1073,11 @@
 .end method
 
 .method private showHint()V
-    .locals 15
+    .locals 0
 
+    # Reminders only come from the host's explicit entry request.
     invoke-direct {p0}, LSplitPanelController;->dismissHint()V
-
-    iget v0, p0, LSplitPanelController;->expandedDividerX:I
-
-    int-to-float v0, v0
-
-    iget v2, p0, LSplitPanelController;->mapWidth:I
-
-    int-to-float v2, v2
-
-    const/high16 v3, 0x3f000000
-
-    mul-float/2addr v2, v3
-
-    add-float/2addr v0, v2
-
-    iget v2, p0, LSplitPanelController;->currentDividerX:F
-
-    cmpg-float v3, v2, v0
-
-    if-ltz v3, :collapse_text
-
-    const-string v0, "split_hint_expand"
-
-    goto :text_name_ready
-
-    :collapse_text
-    const-string v0, "split_hint_collapse"
-
-    :text_name_ready
-    iget-object v1, p0, LSplitPanelController;->hintText:Landroid/widget/TextView;
-
-    invoke-virtual {v1}, Landroid/view/View;->getResources()Landroid/content/res/Resources;
-
-    move-result-object v2
-
-    invoke-virtual {v1}, Landroid/view/View;->getContext()Landroid/content/Context;
-
-    move-result-object v3
-
-    invoke-virtual {v3}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
-
-    move-result-object v3
-
-    const-string v4, "string"
-
-    invoke-virtual {v2, v0, v4, v3}, Landroid/content/res/Resources;->getIdentifier(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I
-
-    move-result v0
-
-    if-eqz v0, :text_ready
-
-    invoke-virtual {v1, v0}, Landroid/widget/TextView;->setText(I)V
-
-    :text_ready
-    const/4 v0, 0x0
-
-    invoke-virtual {v1, v0}, Landroid/view/View;->setTranslationX(F)V
-
-    invoke-virtual {v1, v0}, Landroid/view/View;->setAlpha(F)V
-
-    invoke-virtual {v1, v0}, Landroid/view/View;->setVisibility(I)V
-
-    const/16 v0, 0xb
-
-    new-array v2, v0, [F
-
-    fill-array-data v2, :translation_values
-
-    const-string v0, "translationX"
-
-    invoke-static {v1, v0, v2}, Landroid/animation/ObjectAnimator;->ofFloat(Ljava/lang/Object;Ljava/lang/String;[F)Landroid/animation/ObjectAnimator;
-
-    move-result-object v3
-
-    const/16 v0, 0xb
-
-    new-array v2, v0, [F
-
-    fill-array-data v2, :alpha_values
-
-    const-string v0, "alpha"
-
-    invoke-static {v1, v0, v2}, Landroid/animation/ObjectAnimator;->ofFloat(Ljava/lang/Object;Ljava/lang/String;[F)Landroid/animation/ObjectAnimator;
-
-    move-result-object v4
-
-    new-instance v5, Landroid/animation/AnimatorSet;
-
-    invoke-direct {v5}, Landroid/animation/AnimatorSet;-><init>()V
-
-    const/4 v0, 0x2
-
-    new-array v6, v0, [Landroid/animation/Animator;
-
-    const/4 v0, 0x0
-
-    aput-object v3, v6, v0
-
-    const/4 v0, 0x1
-
-    aput-object v4, v6, v0
-
-    invoke-virtual {v5, v6}, Landroid/animation/AnimatorSet;->playTogether([Landroid/animation/Animator;)V
-
-    const-wide/16 v6, 0x708
-
-    invoke-virtual {v5, v6, v7}, Landroid/animation/Animator;->setDuration(J)Landroid/animation/Animator;
-
-    new-instance v0, Landroid/view/animation/AccelerateDecelerateInterpolator;
-
-    invoke-direct {v0}, Landroid/view/animation/AccelerateDecelerateInterpolator;-><init>()V
-
-    invoke-virtual {v5, v0}, Landroid/animation/Animator;->setInterpolator(Landroid/animation/TimeInterpolator;)V
-
-    invoke-virtual {v5, p0}, Landroid/animation/Animator;->addListener(Landroid/animation/Animator$AnimatorListener;)V
-
-    iput-object v5, p0, LSplitPanelController;->hintAnimator:Landroid/animation/Animator;
-
-    invoke-virtual {v5}, Landroid/animation/Animator;->start()V
-
     return-void
-
-    :translation_values
-    .array-data 4
-        0x00000000
-        0x41000000
-        0x00000000
-        0xc1000000
-        0x00000000
-        0x40c00000
-        0x00000000
-        0xc0c00000
-        0x00000000
-        0x40800000
-        0x00000000
-    .end array-data
-
-    :alpha_values
-    .array-data 4
-        0x00000000
-        0x3f800000
-        0x3f800000
-        0x3f800000
-        0x3f800000
-        0x3f800000
-        0x3f800000
-        0x3f800000
-        0x3f800000
-        0x3f000000
-        0x00000000
-    .end array-data
 .end method
 
 .method private updateGeometry()V
@@ -1569,6 +1482,15 @@
 
     if-eq v0, v1, :action_down
 
+    iget-boolean v1, p0, LSplitPanelController;->gestureActive:Z
+    if-eqz v1, :return_false
+    invoke-direct {p0}, LSplitPanelController;->isGestureAllowed()Z
+    move-result v1
+    if-nez v1, :touch_still_allowed
+    invoke-direct {p0}, LSplitPanelController;->cancelGestureToExpanded()V
+    goto :return_true
+
+    :touch_still_allowed
     const/4 v1, 0x2
 
     if-eq v0, v1, :action_move
@@ -1592,6 +1514,11 @@
     goto :return_true
 
     :action_down
+    invoke-direct {p0}, LSplitPanelController;->isGestureAllowed()Z
+    move-result v0
+    if-eqz v0, :return_false
+    const/4 v0, 0x1
+    iput-boolean v0, p0, LSplitPanelController;->gestureActive:Z
     invoke-direct {p0}, LSplitPanelController;->cancelPanelAnimation()V
 
     invoke-direct {p0}, LSplitPanelController;->fadeOutHint()V
@@ -1781,12 +1708,15 @@
 
     :action_up
     const/4 v1, 0x0
+    iput-boolean v1, p0, LSplitPanelController;->gestureActive:Z
 
     invoke-direct {p0, p2, v1}, LSplitPanelController;->finishGesture(Landroid/view/MotionEvent;Z)V
 
     goto :return_true
 
     :action_cancel
+    const/4 v1, 0x0
+    iput-boolean v1, p0, LSplitPanelController;->gestureActive:Z
     const/4 v1, 0x1
 
     invoke-direct {p0, p2, v1}, LSplitPanelController;->finishGesture(Landroid/view/MotionEvent;Z)V
@@ -1794,5 +1724,9 @@
     :return_true
     const/4 v0, 0x1
 
+    return v0
+
+    :return_false
+    const/4 v0, 0x0
     return v0
 .end method

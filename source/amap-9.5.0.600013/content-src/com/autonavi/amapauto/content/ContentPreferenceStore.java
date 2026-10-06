@@ -7,7 +7,7 @@ import android.content.SharedPreferences;
 
 public final class ContentPreferenceStore {
     private static final String PREFERENCES_NAME = "content_preferences_v1";
-    private static final int PREFERENCES_VERSION = 4;
+    private static final int PREFERENCES_VERSION = 5;
     private static final String KEY_PREFERENCES_VERSION = "preferences_version";
     private static final String KEY_SHOW_WEEKDAY = "top_bar_show_weekday";
     private static final String KEY_SHOW_SECONDS = "top_bar_show_seconds";
@@ -24,6 +24,7 @@ public final class ContentPreferenceStore {
     private static final String KEY_SHOW_MEDIA_SOURCE_SWITCHER = "media_show_source_switcher";
     private static final String KEY_DOCK_BUTTON_COUNT = "dock_button_count";
     private static final String KEY_SHOW_ACTION_FEEDBACK = "interaction_show_action_feedback";
+    private static final String KEY_GESTURE_BAR_REMINDER = "interaction_gesture_bar_reminder";
     private static final String KEY_UI_OPACITY = "ui_opacity";
     private static final String KEY_PAGE_ID = "current_page_id";
     private static final String KEY_CONTROL_ID = "current_control_id";
@@ -37,7 +38,7 @@ public final class ContentPreferenceStore {
     }
 
     public void load(ContentState state) {
-        int version = readInt(KEY_PREFERENCES_VERSION, 1);
+        int version = readSchemaVersion();
         state.showWeekday = readBoolean(KEY_SHOW_WEEKDAY, true);
         state.showSeconds = readBoolean(KEY_SHOW_SECONDS, false);
         state.showIndoorTemperature = readBoolean(KEY_SHOW_INDOOR_TEMPERATURE, true);
@@ -53,6 +54,8 @@ public final class ContentPreferenceStore {
         state.showMediaSourceSwitcher = readBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, true);
         state.dockButtonCount = clampDockButtonCount(readInt(KEY_DOCK_BUTTON_COUNT, 6));
         state.showActionFeedback = readBoolean(KEY_SHOW_ACTION_FEEDBACK, true);
+        // Versions 1..4 predate this preference; migrate them to the default-on behavior without rewriting old entries.
+        state.gestureBarReminder = version <= 4 ? true : readBoolean(KEY_GESTURE_BAR_REMINDER, true);
         state.uiOpacity = clampUiOpacity(readFloat(KEY_UI_OPACITY, 1.0f));
         // Version 1 only knew the weekday/seconds fields; all new fields have safe defaults.
         // Writing the version on the next preference change completes the migration lazily.
@@ -91,6 +94,7 @@ public final class ContentPreferenceStore {
         editor.putBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, state.showMediaSourceSwitcher);
         editor.putInt(KEY_DOCK_BUTTON_COUNT, clampDockButtonCount(state.dockButtonCount));
         editor.putBoolean(KEY_SHOW_ACTION_FEEDBACK, state.showActionFeedback);
+        editor.putBoolean(KEY_GESTURE_BAR_REMINDER, state.gestureBarReminder);
         editor.putFloat(KEY_UI_OPACITY, clampUiOpacity(state.uiOpacity));
         String[] pageIds = ContentRegistry.visiblePageIds();
         if (state.pageIndex >= 0 && state.pageIndex < pageIds.length) {
@@ -104,6 +108,14 @@ public final class ContentPreferenceStore {
             editor.putString(KEY_DOCK_SLOT_PREFIX + slot, state.dockItems[slot]);
         }
         editor.apply();
+    }
+
+    private int readSchemaVersion() {
+        if (!preferences.contains(KEY_PREFERENCES_VERSION)) {
+            return 1;
+        }
+        Object stored = preferences.getAll().get(KEY_PREFERENCES_VERSION);
+        return stored instanceof Integer ? ((Integer) stored).intValue() : PREFERENCES_VERSION;
     }
 
     private String readString(String key, String fallback) {

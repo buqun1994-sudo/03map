@@ -47,6 +47,7 @@ import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalView
 import android.view.SoundEffectConstants
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -97,6 +98,9 @@ fun ContentPanel(
     var settingsRetained by remember { androidx.compose.runtime.mutableStateOf(false) }
     val settingsActive = state.settingsOpen || settingsRetained
     val contentInteractive = !state.sourcesOpen && !state.scenariosOpen && !settingsActive
+    SideEffect {
+        presentation?.updateModalActive(!contentInteractive)
+    }
     rememberQuickControlGestureGate(contentInteractive) { dockOverlay.cancel() }
     var retainedMessage by remember { androidx.compose.runtime.mutableStateOf(state.message.orEmpty()) }
     androidx.compose.runtime.SideEffect { state.message?.let { retainedMessage = it } }
@@ -133,6 +137,12 @@ fun ContentPanel(
             val lyricMode = state.page == PanelPage.Lyrics && presentation?.geometryReady == true
             val wide by remember(presentation, lyricMode) { derivedStateOf { lyricMode && (presentation?.progress ?: 0f) >= .5f } }
             val transitioning by remember(presentation, lyricMode) { derivedStateOf { lyricMode && presentation?.moving == true } }
+            val progress = presentation?.progress ?: 0f
+            val compactPresentationAlpha = if (lyricMode) presentationCompactAlpha(progress) else 1f
+            val widePresentationAlpha = if (lyricMode) presentationWideAlpha(progress) else 1f
+            if (state.previewMode || wide || state.page != PanelPage.Lyrics) {
+                SideEffect { presentation?.updatePagerMotion(false) }
+            }
             val lyricOpacity = remember(presentation, lyricMode) { {
                 if (!lyricMode) 1f else if (geometryReady) lyricsTransitionAlpha(presentation?.progress ?: 0f) else 0f
             } }
@@ -148,11 +158,13 @@ fun ContentPanel(
             CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
                 LocalPresentationInteractionEnabled provides !pageMotion) {
                 Column(Modifier.width(if (wide) leftWidth else if (lyricMode) splitWidth else maxWidth).fillMaxHeight()) {
-                    if (showTop) PrototypeTopBar(state, clockText)
+                    if (showTop) Box(Modifier.fillMaxWidth().graphicsLayer { alpha = if (wide) widePresentationAlpha else compactPresentationAlpha }) {
+                        PrototypeTopBar(state, clockText)
+                    }
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                         if (wide) {
                             ImmersiveMedia(state, dispatch, artwork, compact,
-                                Modifier.fillMaxSize().graphicsLayer { alpha = ((presentation?.progress ?: 1f) - .5f).times(2f).coerceIn(0f, 1f) })
+                                Modifier.fillMaxSize().graphicsLayer { alpha = widePresentationAlpha })
                         } else if (state.previewMode) {
                             if (state.page == PanelPage.Shortcuts) {
                                 Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
@@ -169,7 +181,12 @@ fun ContentPanel(
                                     animationSpec = tween(700, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
                             }
                             LaunchedEffect(pager) {
-                                snapshotFlow { pager.settledPage }.collect { index ->
+                                snapshotFlow { pager.isScrollInProgress }.collect { moving ->
+                                     presentation?.updatePagerMotion(moving)
+                                 }
+                             }
+                             LaunchedEffect(pager) {
+                                 snapshotFlow { pager.settledPage }.collect { index ->
                                     if (index != currentPage.ordinal) currentEvent(ContentEvent.PageSelected(PanelPage.entries[index]))
                                 }
                             }
@@ -187,12 +204,16 @@ fun ContentPanel(
                     }
                     if (!wide) Box(Modifier.fillMaxWidth().height(if (compact) 80.dp else 136.dp)
                         .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
-                            alpha = if (lyricMode) (1f - (presentation?.progress ?: 0f) * 2f).coerceIn(0f, 1f) else 1f
+                            alpha = compactPresentationAlpha
                         }) {
                         PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
                             compact, state.showMediaSourceSwitcher)
                     }
-                    if (showDock) PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning, transparent = wide)
+                    if (showDock) Box(Modifier.fillMaxWidth().graphicsLayer {
+                        alpha = if (wide) widePresentationAlpha else compactPresentationAlpha
+                    }) {
+                        PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning, transparent = wide)
+                    }
                 }
                 if (wide) {
                     // This is measured only at the final wide endpoint. Map frames change clipping/alpha only.
@@ -214,7 +235,7 @@ fun ContentPanel(
                     enabled = contentInteractive && !transitioning, modalActive = settingsActive || state.sourcesOpen,
                     compact = compact, modifier = Modifier.align(Alignment.TopEnd)
                         .padding(top = if (wide) 16.dp else topBarHeight + 12.dp,
-                            end = 20.dp + with(density) { (presentation?.reservedGestureWidthPx ?: 0).toDp() }).zIndex(5f)) { id ->
+                            end = 20.dp + with(density) { (presentation?.reservedGestureWidthPx ?: 0).toDp() }).zIndex(5f).graphicsLayer { alpha = if (wide) widePresentationAlpha else compactPresentationAlpha }) { id ->
                     dispatch(when (id) {
                         "settings" -> ContentEvent.OpenLyricsSettings
                         "enter" -> ContentEvent.EnterLyricsImmersive

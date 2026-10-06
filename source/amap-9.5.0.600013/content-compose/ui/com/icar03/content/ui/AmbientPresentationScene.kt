@@ -74,16 +74,19 @@ internal data class AmbientPresentationKey(
     val dark: Boolean,
     val fullSize: IntSize,
     val compactSize: IntSize,
+    val sessionGeneration: Long = 0L,
 ) {
     override fun equals(other: Any?): Boolean = other is AmbientPresentationKey &&
         texture === other.texture && dark == other.dark &&
-        fullSize == other.fullSize && compactSize == other.compactSize
+        fullSize == other.fullSize && compactSize == other.compactSize &&
+        sessionGeneration == other.sessionGeneration
 
     override fun hashCode(): Int {
         var result = System.identityHashCode(texture)
         result = 31 * result + dark.hashCode()
         result = 31 * result + fullSize.hashCode()
-        return 31 * result + compactSize.hashCode()
+        result = 31 * result + compactSize.hashCode()
+        return 31 * result + sessionGeneration.hashCode()
     }
 }
 
@@ -110,10 +113,14 @@ internal class AmbientBridgeBaker {
         val frame = Bitmap.createBitmap(output.width, output.height, Bitmap.Config.ARGB_8888)
         try {
             val canvas = AndroidCanvas(frame)
-            val compactWidth = compactDestinationWidth(output, fullSize, compactSize)
-            val edge = compact?.let(::edgeColour) ?: fallbackColour(dark)
             val theme = if (dark) Color.BLACK else Color.WHITE
-            if (compact != null && !compact.isRecycled && compactWidth > 0) {
+            if (compact == null || compact.isRecycled) {
+                canvas.drawColor(theme)
+                return frame
+            }
+            val compactWidth = compactDestinationWidth(output, fullSize, compactSize)
+            val edge = edgeColour(compact)
+            if (compactWidth > 0) {
                 source.set(0, 0, compact.width, compact.height)
                 compactBounds.set(0f, 0f, compactWidth.toFloat(), output.height.toFloat())
                 canvas.drawBitmap(compact, source, compactBounds, paint)
@@ -167,8 +174,6 @@ internal class AmbientBridgeBaker {
             (blue / count).toInt().coerceIn(0, 255),
         )
     }
-
-    private fun fallbackColour(dark: Boolean): Int = if (dark) Color.rgb(15, 15, 15) else Color.rgb(239, 240, 247)
 
     private fun blend(from: Int, to: Int, amount: Float): Int {
         val t = amount.coerceIn(0f, 1f)
@@ -237,9 +242,14 @@ internal class AmbientPresentationPainter {
             compactBounds.set(0f, 0f, visibleCompactWidth, height)
             canvas.drawBitmap(bitmap, source, compactBounds, compactPaint)
         }
+        if (bitmap == null) {
+            canvas.drawColor(if (dark) Color.BLACK else Color.WHITE)
+            return 0
+        }
+        val colour = edgeColour(bitmap)
+        val theme = if (dark) Color.BLACK else Color.WHITE
+        val end = blend(colour, theme, .72f)
         if (width > visibleCompactWidth) {
-            val colour = bitmap?.let(::edgeColour) ?: if (dark) Color.rgb(15, 15, 15) else Color.rgb(239, 240, 247)
-            val end = if (dark) Color.BLACK else Color.WHITE
             extensionBounds.set(visibleCompactWidth, 0f, width, height)
             edgePaint.shader = LinearGradient(
                 visibleCompactWidth, 0f, width, 0f, colour, end, Shader.TileMode.CLAMP,
@@ -247,7 +257,7 @@ internal class AmbientPresentationPainter {
             canvas.drawRect(extensionBounds, edgePaint)
             edgePaint.shader = null
         }
-        return if (bitmap == null) 0 else 1
+        return 1
     }
 
     private fun drawCanonical(
@@ -298,4 +308,17 @@ internal class AmbientPresentationPainter {
             (blue / count).toInt().coerceIn(0, 255),
         )
     }
+
+    private fun blend(from: Int, to: Int, amount: Float): Int {
+        val t = amount.coerceIn(0f, 1f)
+        return Color.argb(
+            lerp(Color.alpha(from), Color.alpha(to), t),
+            lerp(Color.red(from), Color.red(to), t),
+            lerp(Color.green(from), Color.green(to), t),
+            lerp(Color.blue(from), Color.blue(to), t),
+        )
+    }
+
+    private fun lerp(from: Int, to: Int, amount: Float): Int =
+        (from + (to - from) * amount).roundToInt()
 }

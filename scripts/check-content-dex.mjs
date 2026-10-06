@@ -40,7 +40,7 @@ const missing=types.filter(name=>library.test(name)&&!definitions.has(name)&&!ex
 const leaked=types.filter(name=>/^L(?:androidx\/|android\/support\/)/.test(name)&&!name.startsWith('Landroidx/graphics/path/'));
 const legacy=types.filter(name=>/Lcom\/autonavi\/amapauto\/content\/(?:ContentRenderer|ContentIconView|ContentSystemSlider|ContentTheme);/.test(name));
 for(const name of ['Lcom/autonavi/amapauto/content/ContentRuntime;','Lcom/autonavi/amapauto/content/ContentStore;',
-  'Lcom/icar03/content/host/ContentComposeHost;','Lcom/icar03/content/runtime/ContentBinding;',
+  'Lcom/icar03/content/host/ContentComposeHost;','Lcom/icar03/content/host/MapGestureBar;','Lcom/icar03/content/host/MapGestureBarHost;','Lcom/icar03/content/runtime/ContentBinding;',
   'Lcom/icar03/content/ui/ContentPanelKt;','Lcom/icar03/compose/androidx/compose/ui/platform/ComposeView;',
   'Lcom/icar03/compose/androidx/lifecycle/LifecycleRegistry;',
   'Lkotlinx/coroutines/android/AndroidDispatcherFactory;',
@@ -63,9 +63,16 @@ for(const method of ['Lcom/autonavi/amapauto/content/ContentMediaListener;-><ini
   'Lcom/autonavi/amapauto/content/ContentRuntime;->bindMapPresentation(Landroid/view/ViewGroup;Lcom/icar03/content/model/MapPresentationPort;)V',
   'Lcom/autonavi/amapauto/content/ContentRuntime;->onPanelPhaseChanged(Lcom/icar03/content/model/MapPresentationPort;I)V',
   'Lcom/autonavi/amapauto/content/ContentRuntime;->onMapDividerChanged(Lcom/icar03/content/model/MapPresentationPort;FFF)V',
+  'Lcom/autonavi/amapauto/content/ContentRuntime;->isMapGestureAllowed(Lcom/icar03/content/model/MapPresentationPort;)Z',
   'Lcom/icar03/content/model/MapPresentationPort;->settleToExpanded()V',
   'Lcom/icar03/content/model/MapPresentationPort;->settleToCollapsed()V',
-  'Lcom/icar03/content/model/MapPresentationPort;->reservedGestureWidthPx()I']) {
+  'Lcom/icar03/content/model/MapPresentationPort;->reservedGestureWidthPx()I',
+  'Lcom/icar03/content/model/MapPresentationPort;->updateGestureState(ZZZZ)V',
+  'Lcom/icar03/content/model/MapPresentationPort;->ensureGestureOnTop()V',
+  'Lcom/icar03/content/host/MapGestureBar;->attachTo(Landroid/view/ViewGroup;)Lcom/icar03/content/host/MapGestureBar;',
+  'Lcom/icar03/content/host/MapGestureBar;->updateGestureState(ZZZZ)V',
+  'Lcom/icar03/content/host/MapGestureBarHost;->findGestureLayer(Landroid/view/ViewGroup;)Landroid/view/ViewGroup;',
+  'Lcom/icar03/content/host/MapGestureBarHost;->ensureOnTop(Landroid/view/ViewGroup;Landroid/view/ViewGroup;Landroid/view/ViewGroup;F)V']) {
   if(!methods.has(method))throw new Error(`External Compose ABI method missing: ${method}`);
 }
 if(types.includes('Ljavax/annotation/Nullable;'))throw new Error('Optional Okio JSR-305 metadata survived R8; keep executable closure strict');

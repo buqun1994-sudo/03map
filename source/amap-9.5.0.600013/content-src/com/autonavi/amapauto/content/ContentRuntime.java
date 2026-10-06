@@ -53,6 +53,10 @@ public final class ContentRuntime {
 
     public static void bindMapPresentation(ViewGroup root, com.icar03.content.model.MapPresentationPort port) {
         synchronized (LOCK) {
+            com.icar03.content.model.MapPresentationPort previous = presentationPort.get();
+            if (previous != null && previous != port) {
+                previous.updateGestureState(false, false, false, false);
+            }
             presentationRoot = new WeakReference<>(root);
             presentationPort = new WeakReference<>(port);
             lastPanelPhase = 0;
@@ -116,6 +120,8 @@ public final class ContentRuntime {
         synchronized (LOCK) {
             ViewGroup mapRoot = presentationRoot.get();
             if (mapRoot != null && (activity == null || findActivity(mapRoot.getContext()) == activity)) {
+                com.icar03.content.model.MapPresentationPort oldPort = presentationPort.get();
+                if (oldPort != null) oldPort.updateGestureState(false, false, false, false);
                 presentationRoot.clear();
                 presentationPort.clear();
                 lastDividerX = Float.NaN;
@@ -287,6 +293,13 @@ public final class ContentRuntime {
             if (activeRuntime != null) {
                 activeRuntime.renderer.updateDivider(dividerX, expandedDivider, mapWidth);
             }
+        }
+    }
+
+    public static boolean isMapGestureAllowed(com.icar03.content.model.MapPresentationPort port) {
+        synchronized (LOCK) {
+            if (presentationPort.get() != port || activeRuntime == null) return false;
+            return activeRuntime.renderer.isMapGestureAllowed();
         }
     }
 

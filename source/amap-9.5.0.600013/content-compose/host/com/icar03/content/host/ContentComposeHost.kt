@@ -25,6 +25,14 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.autonavi.amapauto.content.ContentStore
 import com.icar03.content.runtime.BoundBindingPanel
+import com.icar03.content.ui.PanelPage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /** Supplies local owners to a plain map Activity without changing its inheritance. */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -52,10 +60,27 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
     private var mapWidth = Float.NaN
     private val view = ComposeView(context)
     private var destroyed = false
+    private val gestureScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var gestureStateJob: Job? = null
+    private var gestureEligible = false
+    private var observedPage: PanelPage? = null
+    private var reminderPending = false
+    private val attachListener = object : android.view.View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v: android.view.View) {
+            armReminderForLifecycleEntry()
+            refreshGestureState()
+        }
+        override fun onViewDetachedFromWindow(v: android.view.View) {
+            gestureEligible = false
+            reminderPending = false
+            mapPresentation?.updateGestureState(false, binding.state.value.dark, binding.state.value.gestureBarReminder, false)
+        }
+    }
     private var divider = Float.NaN
     private val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyViewport() }
 
     init {
+        presentation.onGestureStateChanged = { refreshGestureState() }
         view.setViewTreeLifecycleOwner(owners)
         view.setViewTreeSavedStateRegistryOwner(owners)
         view.setViewTreeViewModelStoreOwner(owners)
@@ -69,20 +94,76 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
                 BoundBindingPanel(binding, presentation = presentation, onPresentationEvent = ::dispatchPresentation)
             }
         }
+        view.addOnAttachStateChangeListener(attachListener)
+        gestureStateJob = gestureScope.launch {
+            binding.state.collect { refreshGestureState() }
+        }
         host.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         host.addOnLayoutChangeListener(layoutListener)
         owners.resume()
         applyViewport()
+        refreshGestureState()
     }
 
     fun bindMapPresentation(port: com.icar03.content.model.MapPresentationPort?) {
         if (destroyed) return
-        if (mapPresentation !== port) presentation.cancelEntry()
+        val previous = mapPresentation
+        if (previous !== port) {
+            previous?.updateGestureState(false, binding.state.value.dark, binding.state.value.gestureBarReminder, false)
+            presentation.cancelEntry()
+            gestureEligible = false
+            reminderPending = false
+        }
         mapPresentation = port
         presentation.updateGestureWidth(port?.reservedGestureWidthPx() ?: 0)
+        if (previous !== port) armReminderForLifecycleEntry()
         presentation.onEntryReady = {
             if (!destroyed && owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
-                binding.state.value.page == com.icar03.content.ui.PanelPage.Lyrics) mapPresentation?.settleToCollapsed()
+                binding.state.value.page == PanelPage.Lyrics) {
+                refreshGestureState()
+                mapPresentation?.settleToCollapsed()
+            }
+        }
+        refreshGestureState()
+    }
+
+    /** Called by the map controller on its UI-thread touch path. */
+    fun isMapGestureAllowed(): Boolean {
+        if (destroyed || !view.isAttachedToWindow || !owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return false
+        val current = binding.state.value
+        return current.page == PanelPage.Lyrics && !current.sourcesOpen && !current.scenariosOpen &&
+            !current.settingsOpen && !presentation.modalActive &&
+            !presentation.pagerMotion && !presentation.buttonTransitionActive &&
+            presentation.pendingEnter == 0L
+    }
+
+    private fun refreshGestureState() {
+        if (destroyed) return
+        val port = mapPresentation ?: return
+        val current = binding.state.value
+        if (observedPage != current.page) {
+            observedPage = current.page
+            reminderPending = current.page == PanelPage.Lyrics
+        }
+        val modalActive = current.sourcesOpen || current.scenariosOpen || current.settingsOpen || presentation.modalActive
+        if (current.page != PanelPage.Lyrics || !current.gestureBarReminder || modalActive ||
+            presentation.buttonTransitionActive || presentation.pendingEnter != 0L) {
+            reminderPending = false
+        }
+        val allowed = isMapGestureAllowed()
+        val remind = allowed && reminderPending && view.isAttachedToWindow
+        port.updateGestureState(allowed, current.dark, current.gestureBarReminder, remind)
+        if (remind) reminderPending = false
+        gestureEligible = allowed
+        port.ensureGestureOnTop()
+    }
+
+    private fun armReminderForLifecycleEntry() {
+        if (destroyed || binding.state.value.page != PanelPage.Lyrics) return
+        val current = binding.state.value
+        if (current.gestureBarReminder && !current.sourcesOpen && !current.scenariosOpen &&
+            !current.settingsOpen && !presentation.modalActive) {
+            reminderPending = true
         }
     }
 
@@ -124,6 +205,7 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         if (params != null && params.width != width) { params.width = width; host.layoutParams = params }
         if (host.height > 0) host.clipBounds = Rect(0, 0, width, host.height)
         presentation.updateGeometry(divider, expandedDivider, mapWidth, (host.parent as? android.view.View)?.height ?: host.height)
+        mapPresentation?.ensureGestureOnTop()
     }
     fun handleBack(): Boolean {
         if (destroyed) return false
@@ -142,13 +224,31 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         }
         return false
     }
-    fun pause() { if (!destroyed) { presentation.cancelEntry(); owners.pause() } }
-    fun resume() { if (!destroyed) owners.resume() }
+    fun pause() {
+        if (!destroyed) {
+            presentation.cancelEntry()
+            gestureEligible = false
+            reminderPending = false
+            mapPresentation?.updateGestureState(false, binding.state.value.dark, binding.state.value.gestureBarReminder, false)
+            owners.pause()
+        }
+    }
+    fun resume() {
+        if (!destroyed) {
+            owners.resume()
+            armReminderForLifecycleEntry()
+            refreshGestureState()
+        }
+    }
     fun destroy() {
         if (destroyed) return
         destroyed = true
         presentation.stop()
+        mapPresentation?.updateGestureState(false, binding.state.value.dark, binding.state.value.gestureBarReminder, false)
         mapPresentation = null
+        gestureStateJob?.cancel()
+        gestureScope.cancel()
+        view.removeOnAttachStateChangeListener(attachListener)
         owners.destroy()
         view.disposeComposition()
         binding.close()

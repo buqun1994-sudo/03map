@@ -380,6 +380,9 @@ private fun InteractionSettings(state: ContentUiState, onEvent: (ContentEvent) -
         SettingsSwitchRow("显示操作结果提示", "操作失败或状态未确认时显示提示", state.showActionFeedback) {
             onEvent(ContentEvent.ShowActionFeedbackChanged(it))
         }
+        SettingsSwitchRow("手势条提醒", "进入可全屏页面时，短暂高亮手势条", state.gestureBarReminder) {
+            onEvent(ContentEvent.GestureBarReminderChanged(it))
+        }
     }
 }
 

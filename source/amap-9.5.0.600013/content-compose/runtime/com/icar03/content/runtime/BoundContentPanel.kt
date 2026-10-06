@@ -58,7 +58,7 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier,
         }, modifier, presentation = presentation,
             artwork = bitmap?.let { image -> { Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } },
             ambientBackground = {
-                MediaAmbientBackground(ambient, state.dark, active = active && state.showAmbientArtwork,
+                MediaAmbientBackground(ambient?.takeIf { state.showAmbientArtwork }, state.dark, active = active,
                 animating = state.media.playing && state.showAmbientArtwork, presentation = presentation)
             },
             clockText = { val text by binding.clock.collectAsState(); text },

@@ -318,6 +318,10 @@ public final class ContentStore {
         setBooleanPreference(PreferenceField.SHOW_ACTION_FEEDBACK, value);
     }
 
+    public void setGestureBarReminder(boolean value) {
+        setBooleanPreference(PreferenceField.GESTURE_BAR_REMINDER, value);
+    }
+
     public void setUiOpacity(float value) {
         synchronized (this) {
             state.uiOpacity = Float.isFinite(value) ? Math.max(0.20f, Math.min(1.0f, value)) : 1.0f;
@@ -329,7 +333,7 @@ public final class ContentStore {
     private enum PreferenceField {
         SHOW_INDOOR_TEMPERATURE, SHOW_BATTERY, SHOW_CHARGING_STATUS,
         LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, IMMERSIVE_SHOW_TOP_BAR, IMMERSIVE_SHOW_DOCK,
-        SHOW_AMBIENT_ARTWORK, SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK
+        SHOW_AMBIENT_ARTWORK, SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK, GESTURE_BAR_REMINDER
     }
 
     private void setBooleanPreference(PreferenceField field, boolean value) {
@@ -345,6 +349,7 @@ public final class ContentStore {
                 case SHOW_AMBIENT_ARTWORK: state.showAmbientArtwork = value; break;
                 case SHOW_MEDIA_SOURCE_SWITCHER: state.showMediaSourceSwitcher = value; break;
                 case SHOW_ACTION_FEEDBACK: state.showActionFeedback = value; break;
+                case GESTURE_BAR_REMINDER: state.gestureBarReminder = value; break;
             }
             preferenceStore.save(state);
         }

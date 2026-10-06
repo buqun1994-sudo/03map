@@ -140,6 +140,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             showAmbientArtwork = state.showAmbientArtwork,
             showMediaSourceSwitcher = state.showMediaSourceSwitcher, dockButtonCount = state.dockButtonCount,
             showActionFeedback = state.showActionFeedback,
+            gestureBarReminder = state.gestureBarReminder,
              uiOpacity = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f,
             temperature = if (realVehicle && state.temperatureC.isFinite()) "${format(state.temperatureC)}°C" else "--",
             time = "--:--", weekday = "",
@@ -229,7 +230,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.immersiveShowTopBar == b.immersiveShowTopBar && a.immersiveShowDock == b.immersiveShowDock &&
             a.showAmbientArtwork == b.showAmbientArtwork &&
             a.showMediaSourceSwitcher == b.showMediaSourceSwitcher && a.dockButtonCount == b.dockButtonCount &&
-            a.showActionFeedback == b.showActionFeedback && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
+            a.showActionFeedback == b.showActionFeedback && a.gestureBarReminder == b.gestureBarReminder && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
             a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
             a.chargeState == b.chargeState && a.chargePowerKw.toBits() == b.chargePowerKw.toBits() && a.chargeRemainingMinutes == b.chargeRemainingMinutes &&

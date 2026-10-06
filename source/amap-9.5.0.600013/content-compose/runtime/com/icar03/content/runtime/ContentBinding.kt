@@ -304,6 +304,7 @@ class ContentBinding(
             is ContentEvent.ShowMediaSourceSwitcherChanged -> store.setShowMediaSourceSwitcher(event.value)
             is ContentEvent.DockButtonCountChanged -> store.setDockButtonCount(event.value)
             is ContentEvent.ShowActionFeedbackChanged -> store.setShowActionFeedback(event.value)
+            is ContentEvent.GestureBarReminderChanged -> store.setGestureBarReminder(event.value)
             is ContentEvent.UiOpacityChanged -> store.setUiOpacity(event.value)
             else -> Unit
         }

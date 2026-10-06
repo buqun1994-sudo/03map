@@ -82,6 +82,7 @@ open class SettingsSheetInteractionTest {
                         is ContentEvent.ShowMediaSourceSwitcherChanged -> state.value = state.value.copy(showMediaSourceSwitcher = event.value)
                         is ContentEvent.DockButtonCountChanged -> state.value = state.value.copy(dockButtonCount = event.value)
                         is ContentEvent.ShowActionFeedbackChanged -> state.value = state.value.copy(showActionFeedback = event.value)
+                        is ContentEvent.GestureBarReminderChanged -> state.value = state.value.copy(gestureBarReminder = event.value)
                         is ContentEvent.UiOpacityChanged -> state.value = state.value.copy(uiOpacity = event.value)
                         else -> Unit
                     }
@@ -267,6 +268,12 @@ open class SettingsSheetInteractionTest {
         compose.onNodeWithTag("settings-option-界面透明度-60%").performScrollTo().performClick()
         assertEquals(.6f, state.value.uiOpacity, .001f)
         compose.onNodeWithTag("settings-option-界面透明度-20%").assertExists()
+        val reminder = compose.onNodeWithContentDescription("手势条提醒").performScrollTo().assertIsDisplayed()
+        assertTrue(state.value.gestureBarReminder)
+        compose.onNodeWithText("进入可全屏页面时，短暂高亮手势条").assertExists()
+        reminder.performClick()
+        assertFalse(state.value.gestureBarReminder)
+        assertTrue(events.contains(ContentEvent.GestureBarReminderChanged(false)))
         assertTrue("the menu keeps enough width for the detail column", bounds("settings-menu").width <= 160f * density + 1f)
     }
 

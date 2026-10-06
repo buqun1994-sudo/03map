@@ -91,6 +91,11 @@ class ContentSettingsFeedbackTest {
         val initial = mapper.mapShell(input, unavailable, unavailable, capabilities)
         assertTrue(initial.immersiveShowTopBar)
         assertTrue(initial.immersiveShowDock)
+        assertTrue(initial.gestureBarReminder)
+        input.gestureBarReminder = false
+        val noReminder = mapper.mapShell(input, unavailable, unavailable, capabilities)
+        assertFalse(noReminder.gestureBarReminder)
+        assertNotSame(initial, noReminder)
         val lyrics = mapper.mapLyrics(input)
         input.immersiveShowTopBar = false
         val noTopBar = mapper.mapShell(input, unavailable, unavailable, capabilities)
@@ -152,6 +157,7 @@ class ContentSettingsFeedbackTest {
         val showTemperature = !originalStore.showIndoorTemperature
         val showBattery = !originalStore.showBattery
         val showCharging = !originalStore.showChargingStatus
+        val gestureBarReminder = !originalStore.gestureBarReminder
         binding.dispatch(ContentEvent.ShowWeekdayChanged(showWeekday))
         binding.dispatch(ContentEvent.ShowSecondsChanged(showSeconds))
         binding.dispatch(ContentEvent.ShowIndoorTemperatureChanged(showTemperature))
@@ -168,6 +174,7 @@ class ContentSettingsFeedbackTest {
         binding.dispatch(ContentEvent.DockButtonCountChanged(3))
         binding.dispatch(ContentEvent.UiOpacityChanged(.6f))
         binding.dispatch(ContentEvent.ShowActionFeedbackChanged(false))
+        binding.dispatch(ContentEvent.GestureBarReminderChanged(gestureBarReminder))
         assertTrue(binding.state.value.settingsOpen)
         assertEquals(showWeekday, binding.state.value.showWeekday)
         assertEquals(showSeconds, binding.state.value.showSeconds)
@@ -185,9 +192,11 @@ class ContentSettingsFeedbackTest {
         assertEquals(3, binding.state.value.dockButtonCount)
         assertEquals(.6f, binding.state.value.uiOpacity, .001f)
         assertFalse(binding.state.value.showActionFeedback)
+        assertEquals(gestureBarReminder, binding.state.value.gestureBarReminder)
         assertEquals(showWeekday, fixture.store.snapshot().showWeekday)
         assertEquals(showSeconds, fixture.store.snapshot().showSeconds)
         assertEquals(.6f, fixture.store.snapshot().uiOpacity, .001f)
+        assertEquals(gestureBarReminder, fixture.store.snapshot().gestureBarReminder)
         val persisted = ContentState()
         ContentPreferenceStore(RuntimeEnvironment.getApplication()).load(persisted)
         assertEquals(showWeekday, persisted.showWeekday)
@@ -206,6 +215,7 @@ class ContentSettingsFeedbackTest {
         assertEquals(3, persisted.dockButtonCount)
         assertEquals(.6f, persisted.uiOpacity, .001f)
         assertFalse(persisted.showActionFeedback)
+        assertEquals(gestureBarReminder, persisted.gestureBarReminder)
     }
 
     @Test fun playbackFailureExpiresAtThreeSecondsAndOrdinaryObservationsDoNotExtendIt() = withFixture { fixture ->

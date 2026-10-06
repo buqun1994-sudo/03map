@@ -43,7 +43,7 @@ class ContentPreferenceContractTest {
             val expected = valuesOf(original)
             ContentPreferenceStore(app).save(original)
             assertStoredValues(expected, "round trip $index")
-            assertEquals(4, preferences.getInt(VERSION, -1))
+            assertEquals(5, preferences.getInt(VERSION, -1))
             val loaded = freshLoad()
             assertValues(expected, loaded, "round trip $index")
             assertLegacyValues(original, loaded, "round trip $index")
@@ -84,17 +84,18 @@ class ContentPreferenceContractTest {
             assertEquals("load must not eagerly rewrite v1", before, preferences.all)
 
             ContentPreferenceStore(app).save(migrated)
-            assertEquals(4, preferences.getInt(VERSION, -1))
-            assertStoredValues(expected, "v1 saved as v4")
+            assertEquals(5, preferences.getInt(VERSION, -1))
+            assertStoredValues(expected, "v1 saved as v5")
             val reloaded = freshLoad()
             assertValues(expected, reloaded, "v1 after migration save")
             assertLegacyValues(legacy, reloaded, "v1 after migration save")
+            assertTrue(reloaded.gestureBarReminder)
             assertEquals(4, reloaded.rememberedLevel(VehicleControl.Wiper))
         }
     }
 
-    @Test fun v2AndV3PreferencesKeepExistingValuesAndDefaultNewImmersivePreferencesOnLazyMigration() {
-        for (version in listOf(2, 3)) {
+    @Test fun v2ToV4PreferencesKeepExistingValuesAndDefaultNewImmersiveAndGesturePreferencesOnLazyMigration() {
+        for (version in listOf(2, 3, 4)) {
             assertTrue(preferences.edit().clear().putInt(VERSION, version)
                 .putBoolean("top_bar_show_weekday", false)
                 .putFloat(OPACITY, .6f)
@@ -104,6 +105,7 @@ class ContentPreferenceContractTest {
             val loaded = freshLoad()
             assertTrue(loaded.immersiveShowTopBar)
             assertTrue(loaded.immersiveShowDock)
+            assertTrue(loaded.gestureBarReminder)
             assertFalse(loaded.showWeekday)
             assertEquals(.6f, loaded.uiOpacity, 0f)
             assertEquals(0, loaded.pageIndex)
@@ -111,10 +113,11 @@ class ContentPreferenceContractTest {
             assertEquals(before, preferences.all)
             loaded.immersiveShowTopBar = false
             ContentPreferenceStore(app).save(loaded)
-            assertEquals(4, preferences.getInt(VERSION, -1))
+            assertEquals(5, preferences.getInt(VERSION, -1))
             val reloaded = freshLoad()
             assertFalse(reloaded.immersiveShowTopBar)
             assertTrue(reloaded.immersiveShowDock)
+            assertTrue(reloaded.gestureBarReminder)
             assertEquals(4, reloaded.rememberedLevel(VehicleControl.Wiper))
         }
     }
@@ -242,6 +245,7 @@ class ContentPreferenceContractTest {
         showMediaSourceSwitcher = false
         dockButtonCount = 3
         showActionFeedback = false
+        gestureBarReminder = false
         uiOpacity = .2f
         pageIndex = 0
         controlIndex = 1
@@ -268,6 +272,7 @@ class ContentPreferenceContractTest {
         "media_show_source_switcher" to state.showMediaSourceSwitcher,
         DOCK_COUNT to state.dockButtonCount,
         "interaction_show_action_feedback" to state.showActionFeedback,
+        "interaction_gesture_bar_reminder" to state.gestureBarReminder,
         OPACITY to state.uiOpacity,
     )
 
@@ -346,7 +351,8 @@ class ContentPreferenceContractTest {
             "media_show_source_switcher" to true,
             DOCK_COUNT to 6,
             "interaction_show_action_feedback" to true,
-            OPACITY to 1.0f,
+            "interaction_gesture_bar_reminder" to true,
+             OPACITY to 1.0f,
         )
     }
 }
