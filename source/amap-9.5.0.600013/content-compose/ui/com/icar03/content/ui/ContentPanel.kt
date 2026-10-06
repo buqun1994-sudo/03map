@@ -641,13 +641,12 @@ private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Uni
         tween(350, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "immersive-cover")
     BoxWithConstraints(modifier.padding(horizontal = if (compact) 16.dp else 28.dp)) {
         val mediaWidth = (maxWidth * .88f).coerceAtMost(560.dp)
-        val coverSize = minOf(mediaWidth * .9f, if (compact) 420.dp else 480.dp,
-            (maxHeight - 190.dp).coerceAtLeast(48.dp))
-        val buttonSize = if (mediaWidth < 360.dp) 48.dp else if (compact) 56.dp else 64.dp
+        val coverGap = if (compact) 32.dp else 40.dp
+        val buttonSize = if (maxWidth < 360.dp || maxHeight < 500.dp) 52.dp else if (compact) 72.dp else 84.dp
+        val iconSize = buttonSize * (2f / 3f)
         val media = state.media
-        Column(Modifier.align(Alignment.Center).fillMaxWidth().testTag("immersive-media-group"),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(coverSize).testTag("immersive-cover-space"), contentAlignment = Alignment.Center) {
+        Layout(modifier = Modifier.align(Alignment.Center).fillMaxWidth().testTag("immersive-media-group"), content = {
+            Box(Modifier.testTag("immersive-cover-space"), contentAlignment = Alignment.Center) {
                 Box(Modifier.fillMaxSize().graphicsLayer { scaleX = coverScale.value; scaleY = coverScale.value }
                     .clip(RoundedCornerShape(18.dp)).testTag("immersive-cover")) {
                     if (artwork != null) artwork() else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -655,43 +654,54 @@ private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                     }
                 }
             }
-            Spacer(Modifier.height(if (compact) 20.dp else 24.dp))
-            Column(Modifier.width(mediaWidth).testTag("immersive-media-details")) {
-                Row(Modifier.fillMaxWidth().testTag("immersive-media-header"), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp)) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(media.title ?: "暂无媒体", Modifier.testTag("immersive-title"),
-                            style = MaterialTheme.typography.headlineMedium.copy(
-                                fontSize = if (compact) 26.sp else 30.sp, fontWeight = FontWeight.SemiBold),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(media.artist ?: "未连接", Modifier.testTag("immersive-artist"),
-                            style = MaterialTheme.typography.titleLarge.copy(fontSize = if (compact) 22.sp else 24.sp),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .78f),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Row(Modifier.testTag("immersive-media-controls"), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
-                        RoundedPressButton(Modifier.size(buttonSize), "immersive-play", if (media.playing) "暂停" else "播放",
-                            media.available && media.playbackAvailable && !media.pending, compact,
-                            onClick = { onEvent(ContentEvent.PlayPause) }) {
-                            OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f,
-                                Modifier.size(if (compact) 36.dp else 42.dp), animateOnAction = false)
-                        }
-                        RoundedPressButton(Modifier.size(buttonSize), "immersive-next", "下一首",
-                            media.available && media.nextAvailable && !media.pending, compact,
-                            onClick = { onEvent(ContentEvent.NextTrack) }) {
-                            OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(if (compact) 34.dp else 40.dp))
-                        }
-                        if (state.showMediaSourceSwitcher) {
-                            RoundedPressButton(Modifier.size(buttonSize), "immersive-source", "选择来源", media.sourceAvailable, compact,
-                                onClick = { onEvent(ContentEvent.OpenSources) }) {
-                                OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(if (compact) 32.dp else 38.dp), tint = sourceTint())
-                            }
-                        }
-                    }
+            Column(Modifier.fillMaxWidth().testTag("immersive-media-details")) {
+                Column(Modifier.fillMaxWidth().testTag("immersive-media-header"),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(media.title ?: "暂无媒体", Modifier.testTag("immersive-title"),
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontSize = if (compact) 26.sp else 30.sp, fontWeight = FontWeight.SemiBold),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(media.artist ?: "未连接", Modifier.testTag("immersive-artist"),
+                        style = MaterialTheme.typography.titleLarge.copy(fontSize = if (compact) 22.sp else 24.sp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .78f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
                 ImmersivePlaybackProgress(lyrics, compact, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(if (compact) 16.dp else 20.dp))
+                Row(Modifier.align(Alignment.CenterHorizontally).testTag("immersive-media-controls"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 14.dp else 20.dp)) {
+                    RoundedPressButton(Modifier.size(buttonSize), "immersive-play", if (media.playing) "暂停" else "播放",
+                        media.available && media.playbackAvailable && !media.pending, compact, pressAreaSize = buttonSize,
+                        onClick = { onEvent(ContentEvent.PlayPause) }) {
+                        OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f,
+                            Modifier.size(iconSize), animateOnAction = false)
+                    }
+                    RoundedPressButton(Modifier.size(buttonSize), "immersive-next", "下一首",
+                        media.available && media.nextAvailable && !media.pending, compact, pressAreaSize = buttonSize,
+                        onClick = { onEvent(ContentEvent.NextTrack) }) {
+                        OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(iconSize))
+                    }
+                    if (state.showMediaSourceSwitcher) {
+                        RoundedPressButton(Modifier.size(buttonSize), "immersive-source", "选择来源", media.sourceAvailable, compact, pressAreaSize = buttonSize,
+                            onClick = { onEvent(ContentEvent.OpenSources) }) {
+                            OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(iconSize), tint = sourceTint())
+                        }
+                    }
+                }
+            }
+        }) { measurables, constraints ->
+            // Fit one shared square width before measuring either child; playback scale stays in the layer.
+            val gap = coverGap.roundToPx()
+            val detailsHeight = measurables[1].minIntrinsicHeight(mediaWidth.roundToPx())
+            val sharedWidth = minOf(mediaWidth.roundToPx(), (constraints.maxHeight - detailsHeight - gap).coerceAtLeast(0))
+            val cover = measurables[0].measure(androidx.compose.ui.unit.Constraints.fixed(sharedWidth, sharedWidth))
+            val details = measurables[1].measure(androidx.compose.ui.unit.Constraints.fixedWidth(sharedWidth))
+            layout(constraints.maxWidth, cover.height + gap + details.height) {
+                val left = (constraints.maxWidth - sharedWidth) / 2
+                cover.place(left, 0)
+                details.place(left, cover.height + gap)
             }
         }
     }
@@ -752,6 +762,7 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
 @Composable
 private fun RoundedPressButton(
     modifier: Modifier, tag: String, description: String, enabled: Boolean, compact: Boolean,
+    pressAreaSize: androidx.compose.ui.unit.Dp? = null,
     onClick: () -> Unit, rectangular: Boolean = true, selected: Boolean = false,
     baseColor: Color? = null,
     selectedColor: Color? = null,
@@ -782,7 +793,7 @@ private fun RoundedPressButton(
         .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong(); this[PressScale] = scale; this[PressFeedback] = if (rectangular || rippleEnabled) if (rectangular) "opacity-rectangle" else "touch-ripple" else "none" },
         contentAlignment = Alignment.Center) {
         val shape = RoundedCornerShape(if (compact) 12.dp else 16.dp)
-        val pressArea = Modifier.size(if (compact) 48.dp else 72.dp)
+        val pressArea = Modifier.size(pressAreaSize ?: if (compact) 48.dp else 72.dp)
             .clip(shape)
             .then(if (rectangular) Modifier.background(background, shape) else feedback.area(base))
             .testTag("$tag-press-area")

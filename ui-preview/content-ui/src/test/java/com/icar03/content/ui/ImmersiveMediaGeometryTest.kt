@@ -89,24 +89,39 @@ open class ImmersiveMediaGeometryTest {
         val controls = bounds("immersive-media-controls")
         val progress = bounds("immersive-progress")
         val compact = 640f / density < 600f
-        assertEquals("cover + gap + media are vertically centred at $dpi dpi",
+        val expectedButtonDp = if (!compact) 84f else if (density >= 2f) 52f else 72f
+        assertEquals("cover and media area share one square width at $dpi dpi",
+            details.width.toDouble(), cover.width.toDouble(), 1.0)
+        assertEquals(320f, cover.center.x, 1f)
+        assertEquals(details.center.x, cover.center.x, 1f)
+        assertEquals("cover + enlarged gap + media are vertically centred at $dpi dpi",
             (top.bottom + dock.top) / 2f, group.center.y, 1f)
         assertTrue(group.top >= top.bottom && group.bottom <= dock.top)
-        assertEquals(320f, cover.center.x, 1f)
-        assertEquals(320f, details.center.x, 1f)
-        assertTrue("cover leaves more lateral space", cover.width < 640f * .8f)
-        assertTrue("media row is narrower than the left region", details.width < 640f * .9f)
-        assertEquals((if (compact) 20f else 24f) * density, header.top - cover.bottom, 1f)
-        assertTrue(title.right <= controls.left && artist.right <= controls.left)
+        assertEquals((if (compact) 32f else 40f) * density, details.top - cover.bottom, 1f)
+        assertEquals(header.left, details.left, 1f)
+        assertEquals(header.right, details.right, 1f)
+        assertTrue(title.right <= details.right && artist.right <= details.right)
         assertTrue(artist.top >= title.bottom)
-        assertEquals(details.right, controls.right, 1f)
-        assertTrue(progress.top > maxOf(controls.bottom, artist.bottom))
+        assertTrue("controls are below the progress row", controls.top >= progress.bottom)
+        assertEquals((if (compact) 16f else 20f) * density, controls.top - progress.bottom, 1f)
+        assertEquals(details.center.x, controls.center.x, 1f)
         assertEquals(details.left, progress.left, 1f)
         assertEquals(details.right, progress.right, 1f)
+        val play = bounds("immersive-play")
+        val next = bounds("immersive-next")
+        val source = bounds("immersive-source")
+        assertEquals("play/next/source use one button size", play.width.toDouble(), next.width.toDouble(), 1.0)
+        assertEquals("play/source use one button size", play.width.toDouble(), source.width.toDouble(), 1.0)
+        assertEquals(expectedButtonDp * density, play.width, 1f)
+        assertEquals((if (compact) 14f else 20f) * density, next.left - play.right, 1f)
+        assertEquals((if (compact) 14f else 20f) * density, source.left - next.right, 1f)
         for (tag in listOf("immersive-play", "immersive-next", "immersive-source")) {
             val button = bounds(tag)
             assertTrue("$tag keeps at least 48 system dp", button.width + 1f >= 48f * density && button.height + 1f >= 48f * density)
-            assertTrue(button.left >= details.left && button.right <= details.right && button.bottom < progress.top)
+            assertTrue("$tag remains inside the shared media width", button.left >= details.left && button.right <= details.right)
+            val pressArea = bounds("$tag-press-area")
+            assertEquals("$tag visible press area follows its outer size", button.width.toDouble(), pressArea.width.toDouble(), 1.0)
+            assertEquals(button.height.toDouble(), pressArea.height.toDouble(), 1.0)
         }
         val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
         compose.onNodeWithTag("immersive-artist").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
@@ -118,7 +133,12 @@ open class ImmersiveMediaGeometryTest {
         compose.runOnIdle { state = state.copy(showMediaSourceSwitcher = false) }
         settleLayout()
         compose.onNodeWithTag("immersive-source").assertDoesNotExist()
-        assertEquals(details.right, bounds("immersive-media-controls").right, 1f)
+        val noSourceCover = bounds("immersive-cover-space")
+        val noSourceDetails = bounds("immersive-media-details")
+        val noSourceControls = bounds("immersive-media-controls")
+        assertEquals(noSourceDetails.width.toDouble(), noSourceCover.width.toDouble(), 1.0)
+        assertEquals(noSourceDetails.center.x, noSourceControls.center.x, 1f)
+        assertTrue(noSourceControls.width < noSourceDetails.width)
         assertEquals("the complete group remains centred without the source button",
             (bounds("top-bar").bottom + bounds("floating-dock").top) / 2f,
             bounds("immersive-media-group").center.y, 1f)
