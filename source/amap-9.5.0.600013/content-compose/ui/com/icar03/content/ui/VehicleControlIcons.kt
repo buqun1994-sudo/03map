@@ -14,6 +14,8 @@ internal data class VehicleControlIconRecipe(
     val playbackSpeed: Float = 1f,
 )
 
+internal val OemHeatingAutoBadgeColor = Color(0xFFFF6526)
+
 /**
  * Launcher DockAcButton -> BaseDockAcButton.setSkinSrc owns these 30fps segments.
  * AUTO here represents the selected automatic mode/A, not a guessed actual heat level:
@@ -34,7 +36,7 @@ internal fun vehicleControlIconRecipe(
     val side = if (passenger) "r" else "l"
     val suffix = if (dark) "wh" else "bk"
     val accent = when (control) {
-        ControlId.Ventilation -> Color(0xFF3FA9FF)
+        ControlId.Ventilation -> ContentFunctionalBlue
         ControlId.Massage -> Color(0xFFA14FEC)
         else -> Color(0xFFFF6400)
     }
@@ -63,7 +65,10 @@ internal fun vehicleControlIconRecipe(
             mapOf(fill("color1") to base, fill("color2") to base,
                 fill("color3") to if (active) accent else base,
                 // Original wheel variants also name neutral/dim waves this way.
-                fill("color9") to base, fill("color12") to base, fill("color13") to base))
+                fill("color9") to base, fill("color12") to base, fill("color13") to base) + (if (automatic) mapOf(
+                    listOf("color3", "组 1", "填充 1") to OemHeatingAutoBadgeColor,
+                    listOf("color3", "组 2", "填充 1") to OemHeatingAutoBadgeColor)
+                else emptyMap()))
     }
 
     if (automatic) {
@@ -78,7 +83,9 @@ internal fun vehicleControlIconRecipe(
             else "ico_skin_seat_heat_${side}_auto_$suffix.json"
         return VehicleControlIconRecipe(resource, asset, oemGearFrames(3),
             mapOf(0 to base, 1 to base, 2 to base, 3 to body, 4 to body, 5 to accent),
-            mapOf(fill("color1") to body, fill("color2") to base, fill("color3") to accent))
+            mapOf(fill("color1") to body, fill("color2") to base, fill("color3") to accent,
+                 listOf("color3", "组 1", "填充 1") to OemHeatingAutoBadgeColor,
+                 listOf("color3", "组 2", "填充 1") to OemHeatingAutoBadgeColor))
     }
 
     val family = when (control) {
@@ -115,7 +122,7 @@ internal fun vehicleControlIconRecipe(
 
 internal fun frontWiperIconRecipe(displayed: Int, dark: Boolean, base: Color): VehicleControlIconRecipe {
     val level = displayed.coerceIn(0, 5)
-    val color = if (level > 0) Color(0xFF3FA9FF) else base
+    val color = if (level > 0) ContentFunctionalBlue else base
     val resource = if (dark) when (level) {
         1 -> R.drawable.content_oem_ico_wiper_1_night
         2 -> R.drawable.content_oem_ico_wiper_2_night
@@ -142,7 +149,7 @@ internal fun frontWiperIconRecipe(displayed: Int, dark: Boolean, base: Color): V
 
 internal fun rearWiperIconRecipe(selected: Boolean, dark: Boolean,
     base: Color = if (dark) Color.White else Color.Black): VehicleControlIconRecipe {
-    val color = if (selected) Color(0xFF3FA9FF) else base
+    val color = if (selected) ContentFunctionalBlue else base
     return VehicleControlIconRecipe(
         if (dark) R.drawable.content_oem_ico_rear_wiper_night else R.drawable.content_oem_ico_rear_wiper_day,
         "ico_rear_wiper.json", 0..29, (0..2).associateWith { color },
@@ -152,7 +159,7 @@ internal fun rearWiperIconRecipe(selected: Boolean, dark: Boolean,
 
 internal fun rearWashIconRecipe(selected: Boolean, dark: Boolean,
     base: Color = if (dark) Color.White else Color.Black): VehicleControlIconRecipe {
-    val color = if (selected) Color(0xFF3FA9FF) else base
+    val color = if (selected) ContentFunctionalBlue else base
     return VehicleControlIconRecipe(R.drawable.content_oem_ico_wash_rear,
         "ico_wash_rear_derived.json", 0..59, (0..9).associateWith { color },
         mapOf(listOf("color1", "**", "填充 1") to color), playbackSpeed = 2f)

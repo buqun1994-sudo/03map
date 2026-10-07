@@ -1607,8 +1607,8 @@
       "fps": "",
       "startFrame": "",
       "endFrame": "",
-      "states": "ventilate level 1, day; original geometry, user-requested blue function layers",
-      "deployedSha256": "4a9a777a52eaa78818ccb6bbb3b414cd48ce8151d6ff8b75a28cd3e5c0e320c0",
+      "states": "ventilate level 1, day; original geometry, settings-page blue fallback layers",
+      "deployedSha256": "5aa907db9c8d99badc24b711468f30a3a65e8d694b54eb554b62cdb252c3b150",
       "textNormalization": "XML parsed; only fillColor changes, all OEM paths and level alpha retained",
       "intrinsicWidth": "48.0dp",
       "intrinsicHeight": "48.0dp",
@@ -1617,8 +1617,8 @@
       "derivedFrom": "res/drawable/content_oem_ico_skin_seat_ventilate_l_1_day.xml",
       "colorAdaptation": {
         "body": "#27303b",
-        "activeFunction": "#3fa9ff",
-        "reason": "User requested blue ventilation fan; original OEM vectors are monochrome"
+        "activeFunction": "#0086FD",
+        "reason": "OEM vectors are monochrome; use shared settings blue fallback #0086FD"
       }
     },
     {
@@ -1637,8 +1637,8 @@
       "fps": "",
       "startFrame": "",
       "endFrame": "",
-      "states": "ventilate level 2, day; original geometry, user-requested blue function layers",
-      "deployedSha256": "7024ae5c9c2f559301ef798ef4ef79a87381d701b12707aa15ae6294743c8f10",
+      "states": "ventilate level 2, day; original geometry, settings-page blue fallback layers",
+      "deployedSha256": "2218534a0ee68d3f05be6eedc702d6ced1c45f9f35a71e0ee0b4b3bd27cf4e64",
       "textNormalization": "XML parsed; only fillColor changes, all OEM paths and level alpha retained",
       "intrinsicWidth": "48.0dp",
       "intrinsicHeight": "48.0dp",
@@ -1647,8 +1647,8 @@
       "derivedFrom": "res/drawable/content_oem_ico_skin_seat_ventilate_l_2_day.xml",
       "colorAdaptation": {
         "body": "#27303b",
-        "activeFunction": "#3fa9ff",
-        "reason": "User requested blue ventilation fan; original OEM vectors are monochrome"
+        "activeFunction": "#0086FD",
+        "reason": "OEM vectors are monochrome; use shared settings blue fallback #0086FD"
       }
     },
     {
@@ -1667,8 +1667,8 @@
       "fps": "",
       "startFrame": "",
       "endFrame": "",
-      "states": "ventilate level 3, day; original geometry, user-requested blue function layers",
-      "deployedSha256": "f5500bab9e0f8b5ed9f8fcb4ff1516bbe5e8b1d9602e6f0b05da17fda23f5b62",
+      "states": "ventilate level 3, day; original geometry, settings-page blue fallback layers",
+      "deployedSha256": "63d79d047668db0db1f0280195f83c3002d333f3adefe2acd61878cd7b56b619",
       "textNormalization": "XML parsed; only fillColor changes, all OEM paths and level alpha retained",
       "intrinsicWidth": "48.0dp",
       "intrinsicHeight": "48.0dp",
@@ -1677,8 +1677,8 @@
       "derivedFrom": "res/drawable/content_oem_ico_skin_seat_ventilate_l_3_day.xml",
       "colorAdaptation": {
         "body": "#27303b",
-        "activeFunction": "#3fa9ff",
-        "reason": "User requested blue ventilation fan; original OEM vectors are monochrome"
+        "activeFunction": "#0086FD",
+        "reason": "OEM vectors are monochrome; use shared settings blue fallback #0086FD"
       }
     },
     {
@@ -1697,8 +1697,8 @@
       "fps": "",
       "startFrame": "",
       "endFrame": "",
-      "states": "ventilate level 1, night; original geometry, user-requested blue function layers",
-      "deployedSha256": "90fb14e23ae918c357f24681a6682fece935922a8a23f60c893f8871424b7094",
+      "states": "ventilate level 1, night; original geometry, settings-page blue fallback layers",
+      "deployedSha256": "67b93c47b446325b071eef2e348636d235b4263180f40474d0b6757755119ca3",
       "textNormalization": "XML parsed; only fillColor changes, all OEM paths and level alpha retained",
       "intrinsicWidth": "48.0dp",
       "intrinsicHeight": "48.0dp",
@@ -1707,8 +1707,8 @@
       "derivedFrom": "res/drawable/content_oem_ico_skin_seat_ventilate_l_1_night.xml",
       "colorAdaptation": {
         "body": "#ffffff",
-        "activeFunction": "#3fa9ff",
-        "reason": "User requested blue ventilation fan; original OEM vectors are monochrome"
+        "activeFunction": "#0086FD",
+        "reason": "OEM vectors are monochrome; use shared settings blue fallback #0086FD"
       }
     },
     {
@@ -1727,8 +1727,8 @@
       "fps": "",
       "startFrame": "",
       "endFrame": "",
-      "states": "ventilate level 2, night; original geometry, user-requested blue function layers",
-      "deployedSha256": "60fd245a8b770e4faf45dbb2d2f00f9eebe2dbc72d005c2b6a936992ab41b4d0",
+      "states": "ventilate level 2, night; original geometry, settings-page blue fallback layers",
+      "deployedSha256": "a67a950535726cc664790c0a0345990f73e61b98687196642bc61751354a2a2d",
       "textNormalization": "XML parsed; only fillColor changes, all OEM paths and level alpha retained",
       "intrinsicWidth": "48.0dp",
       "intrinsicHeight": "48.0dp",
@@ -1737,8 +1737,8 @@
       "derivedFrom": "res/drawable/content_oem_ico_skin_seat_ventilate_l_2_night.xml",
       "colorAdaptation": {
         "body": "#ffffff",
-        "activeFunction": "#3fa9ff",
-        "reason": "User requested blue ventilation fan; original OEM vectors are monochrome"
+        "activeFunction": "#0086FD",
+        "reason": "OEM vectors are monochrome; use shared settings blue fallback #0086FD"
       }
     },
     {
@@ -1757,8 +1757,8 @@
       "fps": "",
       "startFrame": "",
       "endFrame": "",
-      "states": "ventilate level 3, night; original geometry, user-requested blue function layers",
-      "deployedSha256": "9180b20c185b0fb0bc3271ccfd7bdb36a8654483ba33fdb6a8900e73246abcce",
+      "states": "ventilate level 3, night; original geometry, settings-page blue fallback layers",
+      "deployedSha256": "4f5203e0ee592f6f8d245dec895d249df47d543e8a796c9b83147896ab6e3081",
       "textNormalization": "XML parsed; only fillColor changes, all OEM paths and level alpha retained",
       "intrinsicWidth": "48.0dp",
       "intrinsicHeight": "48.0dp",
@@ -1767,8 +1767,8 @@
       "derivedFrom": "res/drawable/content_oem_ico_skin_seat_ventilate_l_3_night.xml",
       "colorAdaptation": {
         "body": "#ffffff",
-        "activeFunction": "#3fa9ff",
-        "reason": "User requested blue ventilation fan; original OEM vectors are monochrome"
+        "activeFunction": "#0086FD",
+        "reason": "OEM vectors are monochrome; use shared settings blue fallback #0086FD"
       }
     },
     {
@@ -3002,7 +3002,7 @@
           "描边 1"
         ],
         "mask": "Keep mask layer color/opacity unchanged; inverse-alpha matte is part of OEM geometry",
-        "enabled": "#3FA9FF",
+        "enabled": "#0086FD",
         "disabled": "host theme base",
         "retained": "All path, trim, scale, transform, layer/fill/stroke alpha keyframes"
       },
@@ -3052,7 +3052,7 @@
           "描边 1"
         ],
         "mask": "Keep mask layer color/opacity unchanged; inverse-alpha matte is part of OEM geometry",
-        "enabled": "#3FA9FF",
+        "enabled": "#0086FD",
         "disabled": "host theme base",
         "retained": "All path, trim, scale, transform, layer/fill/stroke alpha keyframes"
       },
@@ -3102,7 +3102,7 @@
           "描边 1"
         ],
         "mask": "Keep mask layer color/opacity unchanged; inverse-alpha matte is part of OEM geometry",
-        "enabled": "#3FA9FF",
+        "enabled": "#0086FD",
         "disabled": "host theme base",
         "retained": "All path, trim, scale, transform, layer/fill/stroke alpha keyframes"
       },
@@ -3152,7 +3152,7 @@
           "描边 1"
         ],
         "mask": "Keep mask layer color/opacity unchanged; inverse-alpha matte is part of OEM geometry",
-        "enabled": "#3FA9FF",
+        "enabled": "#0086FD",
         "disabled": "host theme base",
         "retained": "All path, trim, scale, transform, layer/fill/stroke alpha keyframes"
       },
@@ -3185,8 +3185,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_0.xml",
       "colorAdaptation": {
         "base": "#000000",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3217,8 +3217,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_0.xml",
       "colorAdaptation": {
         "base": "#ffffff",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3249,8 +3249,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_1.xml",
       "colorAdaptation": {
         "base": "#000000",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3281,8 +3281,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_1.xml",
       "colorAdaptation": {
         "base": "#ffffff",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3313,8 +3313,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_2.xml",
       "colorAdaptation": {
         "base": "#000000",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3345,8 +3345,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_2.xml",
       "colorAdaptation": {
         "base": "#ffffff",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3377,8 +3377,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_3.xml",
       "colorAdaptation": {
         "base": "#000000",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3409,8 +3409,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_3.xml",
       "colorAdaptation": {
         "base": "#ffffff",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3441,8 +3441,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_4.xml",
       "colorAdaptation": {
         "base": "#000000",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3473,8 +3473,8 @@
       "derivedFrom": "apk-work/asset-library-20260928/decoded/com.android.systemui.plugin/res/drawable-anydpi/ico_wiper_4.xml",
       "colorAdaptation": {
         "base": "#ffffff",
-        "enabledByConsumer": "#3FA9FF",
-        "reason": "Host day/night stable fallback; not a claimed OEM skin-family filename"
+        "enabledByConsumer": "#0086FD",
+        "reason": "OEM asset declares no functional color; use shared settings blue fallback #0086FD"
       },
       "oemOwner": "level1..4: WiperNewScene.initView() capsule drawable; level0: plugin layout_qs btn_wiper drawableTop (entry icon)",
       "audit": "Original level0 and level1 Vector payloads are identical; level1 fallback has no level bar although its Lottie has Lv1. Do not synthesize guessed bars."
@@ -3524,7 +3524,7 @@
       ],
       "colorAdaptation": {
         "base": "#000000",
-        "enabledByConsumer": "#3FA9FF"
+        "enabledByConsumer": "#0086FD"
       },
       "oemOwner": "Project ordinary AUTO-switch composition; no independent OEM wiper AUTO icon/animation owner found",
       "audit": "Circular A copied from registered OEM steering AUTO icon, enlarged and placed at the lower-right of the windshield; AUTO remains static Vector with ordinary switch press micro-motion."
@@ -3574,7 +3574,7 @@
       ],
       "colorAdaptation": {
         "base": "#ffffff",
-        "enabledByConsumer": "#3FA9FF"
+        "enabledByConsumer": "#0086FD"
       },
       "oemOwner": "Project ordinary AUTO-switch composition; no independent OEM wiper AUTO icon/animation owner found",
       "audit": "Circular A copied from registered OEM steering AUTO icon, enlarged and placed at the lower-right of the windshield; AUTO remains static Vector with ordinary switch press micro-motion."
@@ -3661,7 +3661,7 @@
           "**",
           "描边 1"
         ],
-        "enabled": "#3FA9FF",
+        "enabled": "#0086FD",
         "disabled": "host theme base",
         "mask": "Keep original mask color/alpha; recolor visible layers throughout playback"
       },
@@ -3716,7 +3716,7 @@
       },
       "colorAdaptation": {
         "base": "#000000",
-        "enabledByConsumer": "#3FA9FF",
+        "enabledByConsumer": "#0086FD",
         "fillPathIndices": {
           "window": 0,
           "arm": 1,
@@ -3774,7 +3774,7 @@
       },
       "colorAdaptation": {
         "base": "#ffffff",
-        "enabledByConsumer": "#3FA9FF",
+        "enabledByConsumer": "#0086FD",
         "fillPathIndices": {
           "window": 0,
           "arm": 1,
@@ -3918,7 +3918,7 @@
         ],
         "sourceFill": "#FFFFFFFF",
         "visibleStrokeKeyPaths": [],
-        "active": "#3FA9FF",
+        "active": "#0086FD",
         "idle": "host theme base",
         "mask": "Keep mask layer strokes/color/opacity untouched; td=1, water tt=1/tp=1 is positive alpha matte",
         "retained": "Original visible fill/group/layer opacity and all project trim/easing; apply target visible color throughout playback"

@@ -169,6 +169,8 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
         private const val FRAME_STEP_MS = 16L
         private const val HANDLE_WIDTH_PX = 6
         private const val HANDLE_HEIGHT_PX = 256
+        private const val INK_PADDING_PX = 8
+        private const val EDGE_INSET_PX = 2
 
         private fun normalInk(enabled: Boolean, dark: Boolean): Ink = when {
             enabled && dark -> Ink(228f, 237f, 247f, .88f)
@@ -191,8 +193,14 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
             if (existing != null) return existing
             node.isClickable = false
             return MapGestureBar(node).also { bar ->
-                node.addView(bar, FrameLayout.LayoutParams(22, 272, Gravity.LEFT or Gravity.CENTER_VERTICAL).apply {
-                    leftMargin = 34 // Core starts at the old handle's 42px offset.
+                node.addView(bar, FrameLayout.LayoutParams(
+                    HANDLE_WIDTH_PX + INK_PADDING_PX * 2,
+                    HANDLE_HEIGHT_PX + INK_PADDING_PX * 2,
+                    Gravity.RIGHT or Gravity.CENTER_VERTICAL,
+                ).apply {
+                    // The paint has 8px padding; only that transparent padding extends
+                    // past the original touch owner. The visible edge stays 2px inside it.
+                    rightMargin = EDGE_INSET_PX - INK_PADDING_PX
                 })
             }
         }

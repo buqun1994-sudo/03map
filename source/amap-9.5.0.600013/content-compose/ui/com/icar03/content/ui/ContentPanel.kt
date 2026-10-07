@@ -562,7 +562,7 @@ internal fun steeringHeatIcon(level: Int, dark: Boolean = false): Int =
 
 @Composable
 private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color = when {
-    id == ShortcutId.Lock && state.controls.getValue(ControlId.Lock).known && state.controls.getValue(ControlId.Lock).displayed == 0 -> Color(0xFF3FA9FF)
+    id == ShortcutId.Lock && state.controls.getValue(ControlId.Lock).known && state.controls.getValue(ControlId.Lock).displayed == 0 -> ContentFunctionalBlue
     id == ShortcutId.SteeringHeat -> Color.Unspecified
     id.control != null && id.control != ControlId.Lock -> Color.Unspecified
     else -> MaterialTheme.colorScheme.primary
@@ -920,7 +920,7 @@ private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, l
 @Composable
 private fun LyricsEmptyContent(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyrics: LyricsState) {
     // A song change can briefly have no lines. Keep the ambient canvas uninterrupted;
-    // show the existing empty/source affordance only after lookup actually finishes.
+    // show a terminal message only after lookup actually finishes.
     val showLoading = state.media.isSong && lyrics.loading
     if (!state.previewMode && showLoading) return
     val emptyState = if (state.media.isSong) lyrics.emptyState else LyricsEmptyState.NoLyrics
@@ -930,24 +930,27 @@ private fun LyricsEmptyContent(state: ContentUiState, onEvent: (ContentEvent) ->
         emptyState == LyricsEmptyState.Instrumental -> "纯音乐，请您欣赏"
         else -> "暂无歌词"
     }
-    val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
     androidx.compose.ui.layout.Layout(
         modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp).testTag("lyrics-empty"),
         content = {
             Text(emptyText, Modifier.testTag("lyrics-empty-copy"), style = MaterialTheme.typography.headlineMedium,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 color = MaterialTheme.colorScheme.onBackground)
-            if (!state.previewMode && state.showMediaSourceSwitcher && state.media.sourceAvailable && emptyState != LyricsEmptyState.Instrumental) TextButton(
-                onClick = { onEvent(ContentEvent.OpenSources) },
-                modifier = Modifier.heightIn(min = 48.dp).testTag("lyrics-source-action"),
-                interactionSource = interactions,
-            ) {
-                CompositionLocalProvider(LocalIconPressed provides pressed) {
-                    OemIcon(sourceIcon(state.media.targetSource ?: state.media.source), Modifier.size(24.dp), tint = sourceTint(), animateOnPress = true, animateOnAction = false)
+            if (!state.previewMode && state.showMediaSourceSwitcher && state.media.sourceAvailable &&
+                emptyState == LyricsEmptyState.NetworkError) {
+                val interactions = remember { MutableInteractionSource() }
+                val pressed by interactions.collectIsPressedAsState()
+                TextButton(
+                    onClick = { onEvent(ContentEvent.OpenSources) },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("lyrics-source-action"),
+                    interactionSource = interactions,
+                ) {
+                    CompositionLocalProvider(LocalIconPressed provides pressed) {
+                        OemIcon(sourceIcon(state.media.targetSource ?: state.media.source), Modifier.size(24.dp), tint = sourceTint(), animateOnPress = true, animateOnAction = false)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text("选择媒体来源")
                 }
-                Spacer(Modifier.width(8.dp))
-                Text("选择媒体来源")
             }
         },
     ) { measurables, constraints ->
@@ -996,7 +999,7 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
     }
     val base = MaterialTheme.colorScheme.primary
     if (id == ShortcutId.AutoWiper) {
-        OemIcon(icon, modifier, tint = if (shortcutSelected(id, state)) Color(0xFF3FA9FF) else base,
+        OemIcon(icon, modifier, tint = if (shortcutSelected(id, state)) ContentFunctionalBlue else base,
             motionKey = projected?.displayed, animationAsset = null, animateOnAction = false)
         return
     }
@@ -1014,7 +1017,7 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
         return
     }
     if (control == null || control == ControlId.Lock) {
-        OemIcon(icon, modifier, tint = if (id == ShortcutId.RearWash && shortcutSelected(id, state)) Color(0xFF3FA9FF) else shortcutTint(id, state),
+        OemIcon(icon, modifier, tint = if (id == ShortcutId.RearWash && shortcutSelected(id, state)) ContentFunctionalBlue else shortcutTint(id, state),
             motionKey = if (control == null) state.placeholderSwitches[id] ?: false else state.controls.getValue(control).displayed,
             animateOnAction = control == null)
         return

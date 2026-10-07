@@ -127,8 +127,12 @@ open class MapGestureBarTest {
                 assertEquals(60, scene.node.width)
                 assertEquals(810, scene.node.height)
                 // A newly inserted/elevated content sibling must not cover the actual ink.
-                assertNotEquals(blockerColor, scene.rootPixel(divider.toInt() - 15, 540))
-                assertEquals(blockerColor, scene.rootPixel(divider.toInt() - 30, 540))
+                assertNotEquals(blockerColor, scene.rootPixel(divider.toInt() - 5, 540))
+                assertEquals(blockerColor, scene.rootPixel(divider.toInt() - 15, 540))
+                assertEquals("the visible handle leaves exactly two physical pixels", blockerColor,
+                    scene.rootPixel(divider.toInt() - 2, 540))
+                assertNotEquals("the final ink pixel is immediately inside the two-pixel inset", blockerColor,
+                    scene.rootPixel(divider.toInt() - 3, 540))
             }
             assertEquals(View.GONE, scene.oldHint.visibility)
             assertEquals(View.GONE, scene.oldHandle.visibility)

@@ -361,7 +361,8 @@ open class ContentPanelLightPrototypeRenderTest {
     @Test
     fun hidingSourcePreferenceRemovesBothEntrancesWithoutMovingTheEmptyCopy() {
         val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
-            previewMode = false, page = PanelPage.Lyrics, media = MediaState(isSong = false)))
+            previewMode = false, page = PanelPage.Lyrics, media = MediaState(isSong = true),
+            lyrics = LyricsState(emptyState = LyricsEmptyState.NetworkError)))
         mountInteractionState(state)
         compose.onNodeWithTag("source-button").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithTag("lyrics-source-action").assertIsDisplayed().assertIsEnabled()
@@ -372,7 +373,7 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithTag("source-button").assertDoesNotExist()
         compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
         compose.onNodeWithContentDescription("选择来源").assertDoesNotExist()
-        compose.onNodeWithTag("lyrics-empty-copy").assertTextEquals("暂无歌词")
+        compose.onNodeWithTag("lyrics-empty-copy").assertTextEquals("网络错误")
         assertEquals("the optional action cannot shift the centered text", copyBounds,
             compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot())
         assertEquals(mediaBounds, compose.onNodeWithTag("media-card").getUnclippedBoundsInRoot())
@@ -722,7 +723,7 @@ open class ContentPanelLightPrototypeRenderTest {
             compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
                 (ControlId.Lock to ControlState(actual = target))) }
             compose.waitForIdle()
-            val expected = if (target == 0) androidx.compose.ui.graphics.Color(0xFF3FA9FF)
+            val expected = if (target == 0) ContentFunctionalBlue
                 else if (dark) androidx.compose.ui.graphics.Color(0xFFE8E8E8) else androidx.compose.ui.graphics.Color(0xFF27303B)
             listOf("shortcut-icon-Lock", "dock-icon-Lock").forEach { tag ->
                 compose.onNodeWithTag(tag, useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemTint, expected.value.toLong()))

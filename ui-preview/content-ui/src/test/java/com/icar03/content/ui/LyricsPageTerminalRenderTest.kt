@@ -21,12 +21,13 @@ open class LyricsPageTerminalLightRenderTest {
     @get:Rule val compose = createComposeRule()
     private val events = mutableListOf<ContentEvent>()
 
-    @Test fun noMatchCopyItselfIsCenteredAndSourceActionStaysBelowIt() {
+    @Test fun noMatchCopyIsCenteredWithoutADuplicateSourceAction() {
         mount(terminalState(LyricsEmptyState.NoLyrics))
-        assertCentered("暂无歌词", hasSourceAction = true)
+        assertCentered("暂无歌词", hasSourceAction = false)
+        compose.onNodeWithText("选择媒体来源").assertDoesNotExist()
         compose.onNodeWithText("网络错误").assertDoesNotExist()
         compose.onNodeWithText("纯音乐，请您欣赏").assertDoesNotExist()
-        compose.onNodeWithTag("lyrics-source-action").performClick()
+        compose.onNodeWithTag("source-button").assertIsDisplayed().performClick()
         assertEquals(ContentEvent.OpenSources, events.last())
     }
 
@@ -70,7 +71,7 @@ open class LyricsPageTerminalLightRenderTest {
         for (reason in LyricsEmptyState.entries) {
             compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(isSong = false),
                 lyrics = LyricsState(loading = true, emptyState = reason)) }
-            assertCentered("暂无歌词", hasSourceAction = true)
+            assertCentered("暂无歌词", hasSourceAction = false)
             compose.onNodeWithText("正在匹配歌词…").assertDoesNotExist()
             compose.onNodeWithText("网络错误").assertDoesNotExist()
             compose.onNodeWithText("纯音乐，请您欣赏").assertDoesNotExist()
@@ -89,9 +90,9 @@ open class LyricsPageTerminalLightRenderTest {
             assertCentered(text, hasSourceAction = false)
             val withoutAction = compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot()
             compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(sourceAvailable = true)) }
-            assertCentered(text, hasSourceAction = true)
+            assertCentered(text, hasSourceAction = reason == LyricsEmptyState.NetworkError)
             val withAction = compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot()
-            assertEquals("same copy and baseline geometry cannot move when source action appears", withoutAction, withAction)
+            assertEquals("source availability cannot change the terminal copy geometry", withoutAction, withAction)
             compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(sourceAvailable = false)) }
             assertCentered(text, hasSourceAction = false)
             assertEquals("removing source action must retain identical copy geometry", withoutAction,

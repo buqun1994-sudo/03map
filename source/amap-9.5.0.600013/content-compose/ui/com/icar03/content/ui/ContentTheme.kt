@@ -8,6 +8,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
+/** Settings-page blue is the single fallback when an OEM icon package declares no functional color. */
+internal val ContentFunctionalBlue = Color(0xFF0086FD)
+
 /**
  * Semantic surfaces owned by the content panel. Base, slider and feedback roles remain
  * independent; all persistent selected surfaces consume selectedSurface.

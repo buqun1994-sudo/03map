@@ -18,6 +18,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 class VehicleControlIconsTest {
+    @Test fun functionalFallbackBlueIsTheSettingsSliderBlueInBothThemes() {
+        assertEquals(ContentFunctionalBlue, settingsDesign(false).sliderFill)
+        assertEquals(ContentFunctionalBlue, settingsDesign(true).sliderFill)
+    }
+
     @Test fun wiperRecipesKeepMatteWhiteAndUseIndependentManualAutoAndOffProjection() {
         for (dark in listOf(false, true)) for (level in 0..5) {
             val base = if (dark) Color.White else Color.Black
@@ -31,7 +36,7 @@ class VehicleControlIconsTest {
                 assertEquals("ico_wiper_${level.coerceIn(1, 4)}.json", recipe.asset)
                 assertTrue(recipe.animationColors.keys.all { it.first() == "color1" })
                 assertTrue(recipe.animationStrokePathColors.keys.all { it.first() == "color1" })
-                assertTrue(recipe.animationStrokePathColors.values.all { it == if (level == 0) base else Color(0xFF3FA9FF) })
+                assertTrue(recipe.animationStrokePathColors.values.all { it == if (level == 0) base else ContentFunctionalBlue })
                 assertEquals(if (level == 0) mapOf(listOf("color1", "**", "Lv1", "描边 1") to 0) else emptyMap<List<String>, Int>(), recipe.animationPathOpacities)
             }
         }
@@ -64,12 +69,18 @@ class VehicleControlIconsTest {
                 assertEquals(if (id == ControlId.Heating && !dark) "ico_skin_heat_l_auto_bk.json"
                     else "ico_skin_seat_heat_${side}_auto_$suffix.json", automatic.asset)
                 assertEquals(Color(0xFFFF6400), automatic.animationColors[listOf("color3", "**", "填充 1")])
+                 assertEquals(OemHeatingAutoBadgeColor, automatic.animationColors[listOf("color3", "组 1", "填充 1")])
+                 assertEquals(OemHeatingAutoBadgeColor, automatic.animationColors[listOf("color3", "组 2", "填充 1")])
             }
             val wheelFrames = mapOf(0 to 91..120, 1 to 31..60, 2 to 1..30, 3 to 61..90)
             wheelFrames.forEach { (level, expected) ->
                 val recipe = vehicleControlIconRecipe(ControlId.SteeringHeat, level, dark)
                 assertEquals(expected, recipe.frames)
                 assertEquals("ico_skin_stwh_heat${if (level == 3) "_auto" else ""}_$suffix.json", recipe.asset)
+                 if (level == 3) {
+                     assertEquals(OemHeatingAutoBadgeColor, recipe.animationColors[listOf("color3", "组 1", "填充 1")])
+                     assertEquals(OemHeatingAutoBadgeColor, recipe.animationColors[listOf("color3", "组 2", "填充 1")])
+                 }
             }
         }
     }
@@ -88,7 +99,7 @@ class VehicleControlIconsTest {
     @Test fun ventilationKeepsProvenGroupPathsAndColoredFallbacks() {
         for (dark in listOf(false, true)) for (level in 1..3) {
             val recipe = vehicleControlIconRecipe(ControlId.Ventilation, level, dark)
-            val blue = Color(0xFF3FA9FF)
+            val blue = ContentFunctionalBlue
             val base = if (dark) Color.White else Color.Black
             assertEquals(blue, recipe.animationColors[listOf("**", "组 4", "填充 1")])
             assertEquals(blue, recipe.animationColors[listOf("**", "组 5", "填充 1")])

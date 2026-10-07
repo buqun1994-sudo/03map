@@ -33,7 +33,7 @@ data class SettingsDesign(
     val divider: Color,
     val offSwitchTrack: Color,
     val onSwitchTrack: Color = Color(0xFF33C458),
-    val sliderFill: Color = Color(0xFF0086FD),
+    val sliderFill: Color = ContentFunctionalBlue,
     val switchThumb: Color = Color.White,
     val offSwitchThumb: Color = Color.White,
     val rainbowThumbOutline: Color = Color.White,

@@ -116,8 +116,11 @@ open class ContentPanelSystem141Test {
         compose.onNodeWithTag("runtime-pages").performTouchInput { swipeLeft() }
         compose.waitForIdle()
         compose.onNodeWithText("暂无歌词").assertIsDisplayed()
-        touch("lyrics-source-action")
-        compose.onNodeWithTag("lyrics-source-action").performClick()
+        compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
+        compose.onNodeWithText("选择媒体来源").assertDoesNotExist()
+        capture("lyrics-empty")
+        touch("source-button")
+        compose.onNodeWithTag("source-button").performClick()
         assertEquals(ContentEvent.OpenSources, events.last())
     }
 
