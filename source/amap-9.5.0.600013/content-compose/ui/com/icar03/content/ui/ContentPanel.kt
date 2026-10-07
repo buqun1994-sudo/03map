@@ -99,6 +99,8 @@ fun ContentPanel(
     var settingsRetained by remember { androidx.compose.runtime.mutableStateOf(false) }
     val settingsActive = state.settingsOpen || settingsRetained
     val contentInteractive = !state.sourcesOpen && !state.scenariosOpen && !settingsActive
+    val lyricAutoFollowEnabled = contentInteractive ||
+        (state.settingsOpen && state.settingsSection == SettingsSection.Lyrics)
     SideEffect {
         presentation?.updateModalActive(!contentInteractive)
     }
@@ -107,6 +109,8 @@ fun ContentPanel(
     androidx.compose.runtime.SideEffect { state.message?.let { retainedMessage = it } }
     val latestEvent by rememberUpdatedState(onEvent)
     val latestCanDispatch by rememberUpdatedState(canDispatch)
+    val latestPanelState = rememberUpdatedState(state)
+    val latestLyricsState = rememberUpdatedState(lyricsState)
     var geometryReady by remember { mutableStateOf(true) }
     var blankTapRevision by remember { mutableLongStateOf(0L) }
     val pageMotion by remember(presentation) { derivedStateOf { presentation?.moving == true } }
@@ -132,182 +136,186 @@ fun ContentPanel(
     Surface(modifier.fillMaxSize().graphicsLayer {
         alpha = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f
     }, color = MaterialTheme.colorScheme.background) {
-        BoxWithConstraints(Modifier.fillMaxSize().observeUnconsumedPageTap(
-            state.page == PanelPage.Lyrics && contentInteractive && !pageMotion) {
-            clickSound(view)
-            blankTapRevision++
-        }) {
-            val density = LocalDensity.current
-            val fullWidth = if (presentation?.geometryReady == true) with(density) { presentation.fullSize.width.toDp() } else maxWidth
-            val splitWidth = if (presentation?.geometryReady == true) with(density) { presentation.splitWidthPx.toDp() } else maxWidth
-            val lyricMode = state.page == PanelPage.Lyrics && presentation?.geometryReady == true
-            val wide by remember(presentation, lyricMode) { derivedStateOf { lyricMode && (presentation?.progress ?: 0f) >= .5f } }
-            val transitioning by remember(presentation, lyricMode) { derivedStateOf { lyricMode && presentation?.moving == true } }
-            val compactOpacity = remember(presentation, lyricMode) { {
-                if (lyricMode) presentationCompactAlpha(presentation?.progress ?: 0f) else 1f
-            } }
-            val wideOpacity = remember(presentation, lyricMode) { {
-                if (lyricMode) presentationWideAlpha(presentation?.progress ?: 0f) else 1f
-            } }
-            if (state.previewMode || wide || state.page != PanelPage.Lyrics) {
-                SideEffect { presentation?.updatePagerMotion(false) }
-            }
-            val lyricOpacity = remember(presentation, lyricMode) { {
-                if (!lyricMode) 1f else if (geometryReady) lyricsTransitionAlpha(presentation?.progress ?: 0f) else 0f
-            } }
-            val leftWidth = if (lyricMode) splitWidth else maxWidth
-            val compact = !state.previewMode && leftWidth < 600.dp
-            val edge = if (compact) 8.dp else 20.dp
-            val topBarWidth = if (wide && !state.immersiveTopBarKeepSplit) fullWidth else leftWidth
-            val topBarHeight = TopBarMetrics.height(compact)
-            val dockHeight = if (compact) 72.dp else 112.dp
-            val mediaHeight = if (compact) 80.dp else 136.dp
-            val feedbackWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
-            val showTop = !wide || state.immersiveShowTopBar
-            val showDock = !wide || state.immersiveShowDock
-            ambientBackground?.invoke()
-            CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
-                LocalPresentationInteractionEnabled provides !pageMotion) {
-                if (showTop) Box(Modifier.width(topBarWidth).graphicsLayer {
-                    alpha = if (state.immersiveShowTopBar) 1f else compactOpacity()
-                }.zIndex(1f)) { PrototypeTopBar(state, clockText, compactLayout = compact) }
-                Column(Modifier.width(if (lyricMode) splitWidth else maxWidth).fillMaxHeight()) {
-                    if (showTop) Spacer(Modifier.height(topBarHeight))
-                    Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                        if (wide) {
-                            ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
-                                Modifier.fillMaxSize().graphicsLayer { alpha = wideOpacity() })
-                        }
-                    }
-                    if (!wide) Box(Modifier.fillMaxWidth().height(mediaHeight)
-                        .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
-                            alpha = compactOpacity()
-                        }) {
-                        PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
-                            compact, state.showMediaSourceSwitcher)
-                    }
-                    if (showDock) Box(Modifier.fillMaxWidth().graphicsLayer {
-                        alpha = if (state.immersiveShowDock) 1f else compactOpacity()
-                    }) {
-                        PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning,
-                            backgroundOpacity = compactOpacity)
-                    }
+            BoxWithConstraints(Modifier.fillMaxSize().observeUnconsumedPageTap(
+                state.page == PanelPage.Lyrics && contentInteractive && !pageMotion) {
+                clickSound(view)
+                blankTapRevision++
+            }) {
+                val density = LocalDensity.current
+                val fullWidth = if (presentation?.geometryReady == true) with(density) { presentation.fullSize.width.toDp() } else maxWidth
+                val splitWidth = if (presentation?.geometryReady == true) with(density) { presentation.splitWidthPx.toDp() } else maxWidth
+                val lyricMode = state.page == PanelPage.Lyrics && presentation?.geometryReady == true
+                val wide by remember(presentation, lyricMode) { derivedStateOf { lyricMode && (presentation?.progress ?: 0f) >= .5f } }
+                val transitioning by remember(presentation, lyricMode) { derivedStateOf { lyricMode && presentation?.moving == true } }
+                val compactOpacity = remember(presentation, lyricMode) { {
+                    if (lyricMode) presentationCompactAlpha(presentation?.progress ?: 0f) else 1f
+                } }
+                val wideOpacity = remember(presentation, lyricMode) { {
+                    if (lyricMode) presentationWideAlpha(presentation?.progress ?: 0f) else 1f
+                } }
+                if (state.previewMode || wide || state.page != PanelPage.Lyrics) {
+                    SideEffect { presentation?.updatePagerMotion(false) }
                 }
-                // The pager and its lyric page keep the same composition in both modes.
-                // Switch their measured endpoint only while map progress makes the lyrics transparent.
-                Layout(content = {
-                    if (state.previewMode) {
-                        if (state.page == PanelPage.Shortcuts) {
-                            Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
-                        } else Box(Modifier.fillMaxSize()) {
-                            LyricsPage(state, dispatch, lyricsState, presentationScale = if (wide) 3.0f else 1f,
-                                externalGestureActive = transitioning, interactionEnabled = contentInteractive && !transitioning,
-                                onGeometryReady = { geometryReady = it }, presentationOpacity = lyricOpacity)
-                        }
-                    } else {
-                        val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
-                        val currentPage by rememberUpdatedState(state.page)
-                        val currentEvent by rememberUpdatedState(dispatch)
-                        LaunchedEffect(state.page) {
-                            if (pager.currentPage != state.page.ordinal) pager.animateScrollToPage(state.page.ordinal,
-                                animationSpec = tween(700, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
-                        }
-                        LaunchedEffect(pager) {
-                            snapshotFlow { pager.isScrollInProgress }.collect { moving ->
-                                presentation?.updatePagerMotion(moving)
+                val lyricOpacity = remember(presentation, lyricMode) { {
+                    if (!lyricMode) 1f else if (geometryReady) lyricsTransitionAlpha(presentation?.progress ?: 0f) else 0f
+                } }
+                val leftWidth = if (lyricMode) splitWidth else maxWidth
+                val compact = !state.previewMode && leftWidth < 600.dp
+                val edge = if (compact) 8.dp else 20.dp
+                val topBarWidth = if (wide && !state.immersiveTopBarKeepSplit) fullWidth else leftWidth
+                val topBarHeight = TopBarMetrics.height(compact)
+                val dockHeight = if (compact) 72.dp else 112.dp
+                val mediaHeight = if (compact) 80.dp else 136.dp
+                val feedbackWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
+                val showTop = !wide || state.immersiveShowTopBar
+                val showDock = !wide || state.immersiveShowDock
+                ambientBackground?.invoke()
+                CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
+                    LocalPresentationInteractionEnabled provides !pageMotion) {
+                    if (showTop) Box(Modifier.width(topBarWidth).graphicsLayer {
+                        alpha = if (state.immersiveShowTopBar) 1f else compactOpacity()
+                    }.zIndex(1f)) { PrototypeTopBar(state, clockText, compactLayout = compact) }
+                    Column(Modifier.width(if (lyricMode) splitWidth else maxWidth).fillMaxHeight()) {
+                        if (showTop) Spacer(Modifier.height(topBarHeight))
+                        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                            if (wide) {
+                                ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
+                                    Modifier.fillMaxSize().graphicsLayer { alpha = wideOpacity() })
                             }
                         }
-                        LaunchedEffect(pager) {
-                            snapshotFlow { pager.settledPage }.collect { index ->
-                                if (index != currentPage.ordinal) currentEvent(ContentEvent.PageSelected(PanelPage.entries[index]))
-                            }
+                        if (!wide) Box(Modifier.fillMaxWidth().height(mediaHeight)
+                            .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
+                                alpha = compactOpacity()
+                            }) {
+                            PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
+                                compact, state.showMediaSourceSwitcher)
                         }
-                        HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"),
-                            userScrollEnabled = contentInteractive && !transitioning && !wide) { index ->
-                            CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
-                                if (PanelPage.entries[index] == PanelPage.Shortcuts) {
-                                    Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
-                                } else Box(Modifier.fillMaxSize()) {
-                                    LyricsPage(state, dispatch, lyricsState, presentationScale = if (wide) 3.0f else 1f,
-                                        externalGestureActive = transitioning || pager.isScrollInProgress,
-                                        interactionEnabled = contentInteractive && !transitioning,
-                                        onGeometryReady = { geometryReady = it }, presentationOpacity = lyricOpacity)
+                        if (showDock) Box(Modifier.fillMaxWidth().graphicsLayer {
+                            alpha = if (state.immersiveShowDock) 1f else compactOpacity()
+                        }) {
+                            PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning,
+                                backgroundOpacity = compactOpacity)
+                        }
+                    }
+                    // The pager and its lyric page keep the same composition in both modes.
+                    // Switch their measured endpoint only while map progress makes the lyrics transparent.
+                    Layout(content = {
+                        if (state.previewMode) {
+                            if (state.page == PanelPage.Shortcuts) {
+                                Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                            } else Box(Modifier.fillMaxSize()) {
+                                LyricsPage(latestPanelState.value, dispatch, { latestLyricsState.value() }, presentationScale = if (wide) 3.0f else 1f,
+                                    externalGestureActive = transitioning, interactionEnabled = contentInteractive && !transitioning,
+                                    autoFollowEnabled = lyricAutoFollowEnabled,
+                                    onGeometryReady = { geometryReady = it }, presentationOpacity = lyricOpacity)
+                            }
+                        } else {
+                            val pager = rememberPagerState(initialPage = state.page.ordinal, pageCount = { PanelPage.entries.size })
+                            val currentPage by rememberUpdatedState(state.page)
+                            val currentEvent by rememberUpdatedState(dispatch)
+                            LaunchedEffect(state.page) {
+                                if (pager.currentPage != state.page.ordinal) pager.animateScrollToPage(state.page.ordinal,
+                                    animationSpec = tween(700, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
+                            }
+                            LaunchedEffect(pager) {
+                                snapshotFlow { pager.isScrollInProgress }.collect { moving ->
+                                    presentation?.updatePagerMotion(moving)
+                                }
+                            }
+                            LaunchedEffect(pager) {
+                                snapshotFlow { pager.settledPage }.collect { index ->
+                                    if (index != currentPage.ordinal) currentEvent(ContentEvent.PageSelected(PanelPage.entries[index]))
+                                }
+                            }
+                            HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"),
+                                userScrollEnabled = contentInteractive && !transitioning && !wide) { index ->
+                                CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
+                                    if (PanelPage.entries[index] == PanelPage.Shortcuts) {
+                                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                    } else Box(Modifier.fillMaxSize()) {
+                                        LyricsPage(latestPanelState.value, dispatch, { latestLyricsState.value() }, presentationScale = if (wide) 3.0f else 1f,
+                                            externalGestureActive = transitioning || pager.isScrollInProgress,
+                                            interactionEnabled = contentInteractive && !transitioning,
+                                            autoFollowEnabled = lyricAutoFollowEnabled,
+                                            onGeometryReady = { geometryReady = it }, presentationOpacity = lyricOpacity)
+                                    }
                                 }
                             }
                         }
-                    }
-                }, modifier = Modifier.fillMaxSize().then(if (wide) Modifier.testTag("immersive-lyrics-region") else Modifier)) { measurables, constraints ->
-                    val pagesTop = if (wide) 0 else with(density) { topBarHeight.roundToPx() }.coerceAtMost(constraints.maxHeight)
-                    val targetWidth = if (wide) with(density) { (fullWidth - leftWidth).roundToPx() }
-                        else if (lyricMode) with(density) { splitWidth.roundToPx() } else constraints.maxWidth
-                    val targetHeight = if (wide) constraints.maxHeight else
-                        (constraints.maxHeight - pagesTop - with(density) { (mediaHeight + dockHeight).roundToPx() }).coerceAtLeast(0)
-                    val child = measurables.single().measure(androidx.compose.ui.unit.Constraints.fixed(targetWidth.coerceAtLeast(1), targetHeight))
-                    layout(constraints.maxWidth, constraints.maxHeight) {
-                        child.place(if (wide) with(density) { leftWidth.roundToPx() } else 0, pagesTop)
+                    }, modifier = Modifier.fillMaxSize().then(if (wide) Modifier.testTag("immersive-lyrics-region") else Modifier)) { measurables, constraints ->
+                        val pagesTop = if (wide) 0 else with(density) { topBarHeight.roundToPx() }.coerceAtMost(constraints.maxHeight)
+                        val targetWidth = if (wide) with(density) { (fullWidth - leftWidth).roundToPx() }
+                            else if (lyricMode) with(density) { splitWidth.roundToPx() } else constraints.maxWidth
+                        val targetHeight = if (wide) constraints.maxHeight else
+                            (constraints.maxHeight - pagesTop - with(density) { (mediaHeight + dockHeight).roundToPx() }).coerceAtLeast(0)
+                        val child = measurables.single().measure(androidx.compose.ui.unit.Constraints.fixed(targetWidth.coerceAtLeast(1), targetHeight))
+                        layout(constraints.maxWidth, constraints.maxHeight) {
+                            child.place(if (wide) with(density) { leftWidth.roundToPx() } else 0, pagesTop)
+                        }
                     }
                 }
-            }
-            if (state.page == PanelPage.Lyrics) {
-                val overlayActions = if (wide) listOf(PageActionDescriptor("exit", "退出全屏", R.drawable.content_ic_fullscreen_exit))
-                    else listOf(PageActionDescriptor("enter", "全屏歌词", R.drawable.content_ic_fullscreen, enabled = presentation?.geometryReady == true))
-                PageActionsOverlay(overlayActions, pageKey = "lyrics:$wide", blankTapRevision = blankTapRevision,
-                    enabled = contentInteractive && !transitioning, modalActive = settingsActive || state.sourcesOpen,
-                    compact = compact, modifier = Modifier.align(if (wide) Alignment.TopStart else Alignment.TopEnd)
-                        .padding(top = if (showTop) topBarHeight + 12.dp else 16.dp,
-                            start = if (wide) 12.dp else 0.dp,
-                             end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = if (wide) wideOpacity() else compactOpacity() }) { id ->
-                    dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
+                if (state.page == PanelPage.Lyrics) {
+                    val overlayActions = if (wide) listOf(PageActionDescriptor("exit", "退出全屏", R.drawable.content_ic_fullscreen_exit))
+                        else listOf(PageActionDescriptor("enter", "全屏歌词", R.drawable.content_ic_fullscreen, enabled = presentation?.geometryReady == true))
+                    PageActionsOverlay(overlayActions, pageKey = "lyrics:$wide", blankTapRevision = blankTapRevision,
+                        enabled = contentInteractive && !transitioning, modalActive = settingsActive || state.sourcesOpen,
+                        compact = compact, modifier = Modifier.align(if (wide) Alignment.TopStart else Alignment.TopEnd)
+                            .padding(top = if (showTop) topBarHeight + 12.dp else 16.dp,
+                                start = if (wide) 12.dp else 0.dp,
+                                 end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = if (wide) wideOpacity() else compactOpacity() }) { id ->
+                        dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
+                    }
                 }
-            }
-            DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
-                VehicleControlOemIcon(control, state.controls.getValue(control).copy(target = level), state.dark, modifier)
-            }
-            AnimatedVisibility(
-                visible = state.sourcesOpen,
-                enter = fadeIn(tween(240)) + slideInVertically(tween(240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { 24 },
-                exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { 24 },
-            ) { PrototypeSources(state, dispatch, anchorWidth = leftWidth.takeIf { wide }) }
-            if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
-            // Settings always belong to the original left content region, including full-screen lyrics.
-            SettingsSheet(state, dispatch,
-                Modifier.align(Alignment.TopStart).width(splitWidth).fillMaxHeight()
-                    .padding(
-                        start = if (compact) 8.dp else 12.dp,
-                        end = if (compact) 8.dp else 12.dp,
-                        top = if (showTop) topBarHeight else 12.dp,
-                        bottom = if (showDock) dockHeight + if (compact) 8.dp else 16.dp else 12.dp,
-                    ).zIndex(7f),
-                onVisibilityChanged = { settingsRetained = it })
-            if (state.lyricsProviderSettings.appleLoginOpen) {
-                CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark)) { appleMusicLogin(dispatch) }
-            }
-            // Keep the moving feedback surface inside the same fixed content bounds.
-            Box(Modifier.fillMaxSize().padding(top = if (showTop) topBarHeight else 12.dp, bottom = dockHeight).clipToBounds().zIndex(10f)) {
+                DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
+                    VehicleControlOemIcon(control, state.controls.getValue(control).copy(target = level), state.dark, modifier)
+                }
                 AnimatedVisibility(
-                    visible = state.message != null && state.showActionFeedback,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
-                    enter = fadeIn(tween(220)) + slideInVertically(tween(220, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
-                    exit = fadeOut(tween(200)) + slideOutVertically(tween(200, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
-                ) {
-                    Surface(
-                        Modifier.testTag("status-feedback").widthIn(max = feedbackWidth),
-                        shape = RoundedCornerShape(14.dp), color = LocalContentColors.current.sheetBase,
-                        tonalElevation = 4.dp,
+                    visible = state.sourcesOpen,
+                    enter = fadeIn(tween(240)) + slideInVertically(tween(240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { 24 },
+                    exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { 24 },
+                ) { PrototypeSources(state, dispatch, anchorWidth = leftWidth.takeIf { wide }) }
+                if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
+                // Settings always belong to the original left content region, including full-screen lyrics.
+                ProvideContentSliderTickSound {
+                    SettingsSheet(state, dispatch,
+                        Modifier.align(Alignment.TopStart).width(splitWidth).fillMaxHeight()
+                            .padding(
+                                start = if (compact) 8.dp else 12.dp,
+                                end = if (compact) 8.dp else 12.dp,
+                                top = if (showTop) topBarHeight else 12.dp,
+                                bottom = if (showDock) dockHeight + if (compact) 8.dp else 16.dp else 12.dp,
+                            ).zIndex(7f),
+                        onVisibilityChanged = { settingsRetained = it })
+                }
+                if (state.lyricsProviderSettings.appleLoginOpen) {
+                    CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark)) { appleMusicLogin(dispatch) }
+                }
+                // Keep the moving feedback surface inside the same fixed content bounds.
+                Box(Modifier.fillMaxSize().padding(top = if (showTop) topBarHeight else 12.dp, bottom = dockHeight).clipToBounds().zIndex(10f)) {
+                    AnimatedVisibility(
+                        visible = state.message != null && state.showActionFeedback,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                        enter = fadeIn(tween(220)) + slideInVertically(tween(220, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
+                        exit = fadeOut(tween(200)) + slideOutVertically(tween(200, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
                     ) {
-                        Text(state.message ?: retainedMessage,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Surface(
+                            Modifier.testTag("status-feedback").widthIn(max = feedbackWidth),
+                            shape = RoundedCornerShape(14.dp), color = LocalContentColors.current.sheetBase,
+                            tonalElevation = 4.dp,
+                        ) {
+                            Text(state.message ?: retainedMessage,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
+                // This follows the Compose host's actual viewport, supplied by the divider
+                // owner. It never assumes 640px or modifies either map Surface.
+                Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp)
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = .5f)).testTag("content-divider"))
             }
-            // This follows the Compose host's actual viewport, supplied by the divider
-            // owner. It never assumes 640px or modifies either map Surface.
-            Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp)
-                .background(MaterialTheme.colorScheme.outline.copy(alpha = .5f)).testTag("content-divider"))
         }
-    }
 }
 
 @Composable
@@ -894,7 +902,8 @@ private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) 
 @Composable
 private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyricsState: @Composable () -> LyricsState,
     presentationScale: Float = 1f, externalGestureActive: Boolean = false,
-    interactionEnabled: Boolean = true, onGeometryReady: (Boolean) -> Unit = {},
+    interactionEnabled: Boolean = true, autoFollowEnabled: Boolean = interactionEnabled,
+    onGeometryReady: (Boolean) -> Unit = {},
     presentationOpacity: () -> Float = { 1f },
 ) {
     val lyrics = lyricsState()
@@ -903,7 +912,7 @@ private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, l
         speakerLayout = state.lyricsSpeakerLayout, highlightCurrent = true,
         renderStyle = lyricRenderStyle(state, immersive = presentationScale > 1f),
         presentationScale = presentationScale, externalGestureActive = externalGestureActive,
-        interactionEnabled = interactionEnabled, onGeometryReady = onGeometryReady, presentationOpacity = presentationOpacity) {
+        interactionEnabled = interactionEnabled, autoFollowEnabled = autoFollowEnabled, onGeometryReady = onGeometryReady, presentationOpacity = presentationOpacity) {
         if (lyrics.lines.isEmpty()) LyricsEmptyContent(state, onEvent, lyrics)
     }
 }

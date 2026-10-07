@@ -32,6 +32,7 @@ internal fun LyricsBodyTransition(
     fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
     highlightCurrent: Boolean = true, presentationScale: Float = 1f,
     externalGestureActive: Boolean = false, interactionEnabled: Boolean = true,
+    autoFollowEnabled: Boolean = interactionEnabled,
     presentationOpacity: () -> Float = { 1f }, onGeometryReady: (Boolean) -> Unit = {},
     renderStyle: LyricRenderStyle? = null,
     emptyContent: @Composable () -> Unit = {},
@@ -101,7 +102,7 @@ internal fun LyricsBodyTransition(
                 holdFollow = entering, startAtFirstRow = fromStart, visibility = visible,
                 fontScale = fontScale, lineSpacing = lineSpacing, speakerLayout = speakerLayout,
                 presentationScale = presentationScale, externalGestureActive = externalGestureActive,
-                interactionEnabled = interactionEnabled, opacity = alpha, onGeometryReady = onGeometryReady,
+                interactionEnabled = interactionEnabled, autoFollowEnabled = autoFollowEnabled, opacity = alpha, onGeometryReady = onGeometryReady,
                 highlightCurrent = highlightCurrent, onLayoutReady = { ready = true }, renderStyle = renderStyle)
         } else {
             SideEffect { onGeometryReady(true) }

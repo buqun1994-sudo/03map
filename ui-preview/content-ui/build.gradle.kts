@@ -18,11 +18,11 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
 val exportFormalOemResources by tasks.registering(Sync::class) {
-    from("../../source/amap-9.5.0.600013/res") { include("drawable/content_oem_*.xml", "drawable/content_oem_*.png", "drawable/content_provider_*.png", "drawable/content_ic_fullscreen*.xml", "values/content_oem_values.xml") }
+    from("../../source/amap-9.5.0.600013/res") { include("drawable/content_oem_*.xml", "drawable/content_oem_*.png", "drawable/content_provider_*.png", "drawable/content_ic_fullscreen*.xml", "drawable/content_ic_settings_collapse.xml", "values/content_oem_values.xml") }
     into(layout.buildDirectory.dir("formal-oem-res"))
 }
 val exportFormalOemAssets by tasks.registering(Sync::class) {
-    from("../../source/amap-9.5.0.600013/assets") { include("content-oem/*.json", "content-fonts/*") }
+    from("../../source/amap-9.5.0.600013/assets") { include("content-oem/*.json", "content-fonts/*", "content/sounds/*.wav") }
     into(layout.buildDirectory.dir("formal-oem-assets"))
 }
 tasks.named("preBuild") { dependsOn(exportFormalOemResources, exportFormalOemAssets) }

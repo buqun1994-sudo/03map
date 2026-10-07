@@ -137,6 +137,28 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.LyricsSpeakerLayoutChanged -> update { it.copy(lyricsSpeakerLayout = event.value) }
             is ContentEvent.LyricsShowTranslationChanged -> update { it.copy(lyricsShowTranslation = event.value) }
             is ContentEvent.LyricsHighlightChanged -> update { it.copy(lyricsHighlight = event.value) }
+            ContentEvent.LyricsDefaultsRequested -> update {
+                val defaults = ContentUiState()
+                it.copy(
+                    lyricsFontScale = defaults.lyricsFontScale,
+                    lyricsLineSpacing = defaults.lyricsLineSpacing,
+                    lyricsFontSizeSp = defaults.lyricsFontSizeSp,
+                    lyricsCurrentFontSizeSp = defaults.lyricsCurrentFontSizeSp,
+                    lyricsLineGapDp = defaults.lyricsLineGapDp,
+                    lyricsAlignment = defaults.lyricsAlignment,
+                    lyricsColorMode = defaults.lyricsColorMode,
+                    lyricsCustomColor = defaults.lyricsCustomColor,
+                    lyricsCurrentColorMode = defaults.lyricsCurrentColorMode,
+                    lyricsCurrentCustomColor = defaults.lyricsCurrentCustomColor,
+                    lyricsImmersiveFontSizeSp = defaults.lyricsImmersiveFontSizeSp,
+                    lyricsImmersiveCurrentFontSizeSp = defaults.lyricsImmersiveCurrentFontSizeSp,
+                    lyricsImmersiveLineGapDp = defaults.lyricsImmersiveLineGapDp,
+                    lyricsSpeakerLayout = defaults.lyricsSpeakerLayout,
+                    lyricsShowTranslation = defaults.lyricsShowTranslation,
+                    lyricsHighlight = defaults.lyricsHighlight,
+                    lyricsProviderSettings = it.lyricsProviderSettings.copy(preferredPlatform = "auto"),
+                )
+            }
             is ContentEvent.ShowAmbientArtworkChanged -> update { it.copy(showAmbientArtwork = event.value) }
             is ContentEvent.ShowMediaSourceSwitcherChanged -> update { it.copy(showMediaSourceSwitcher = event.value) }
             is ContentEvent.DockButtonCountChanged -> update { it.copy(dockButtonCount = event.value.coerceIn(3, 6)) }

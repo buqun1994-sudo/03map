@@ -41,7 +41,7 @@ class WallpaperScrollMotionTest {
         activeIndex = row, playbackSpeed = if (playing) 1f else 0f, durationMs = 200_000L)
     private data class Render(val lyrics: LyricsState, val width: Int = 640, val height: Int = 800,
         val scale: Float = 1f, val external: Boolean = false, val interactive: Boolean = true,
-        val frozen: Boolean = false, val visible: Boolean = true)
+        val frozen: Boolean = false, val visible: Boolean = true, val followWhileBlocked: Boolean = false)
     private val state = mutableStateOf(Render(source(20)))
     private val readyEvents = ArrayList<Boolean>()
     private val host = "scroll-motion-host"
@@ -58,6 +58,7 @@ class WallpaperScrollMotionTest {
                     .background(androidx.compose.ui.graphics.Color.Black).testTag(host)) {
                     WallpaperLyrics(current.lyrics, true, presentationScale = current.scale,
                         externalGestureActive = current.external, interactionEnabled = current.interactive,
+                        autoFollowEnabled = current.interactive || current.followWhileBlocked,
                         freezeMotion = current.frozen, visibility = current.visible,
                         onGeometryReady = { readyEvents += it })
                 }
@@ -128,9 +129,32 @@ class WallpaperScrollMotionTest {
         assertFalse(value(LyricScrollRunning))
         assertEquals(externalOffset, value(LyricScrollOffset), .01f)
         compose.runOnIdle {
-            state.value = state.value.copy(external = false, interactive = false, lyrics = source(23))
+            state.value = state.value.copy(external = false, interactive = false, followWhileBlocked = true, lyrics = source(23))
         }
         body().performTouchInput { swipeUp() }
+        advance(1_200)
+        assertSettledAt(23)
+    }
+
+    @Test fun otherModalPagesHoldAutomaticFollowUntilThePageGateReopens() {
+        mount(); startWave(); advance(96); capture()
+        compose.runOnIdle {
+            state.value = state.value.copy(interactive = false, lyrics = source(21))
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        val stopped = value(LyricScrollOffset)
+        body().performTouchInput { swipeUp() }
+        advance(1_200)
+        assertFalse(value(LyricScrollRunning))
+        assertEquals(stopped, value(LyricScrollOffset), .01f)
+        compose.runOnIdle {
+            state.value = state.value.copy(followWhileBlocked = true, lyrics = source(23))
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
         advance(1_200)
         assertSettledAt(23)
     }

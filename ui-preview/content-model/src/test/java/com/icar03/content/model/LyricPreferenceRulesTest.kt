@@ -5,18 +5,19 @@ import org.junit.Test
 
 class LyricPreferenceRulesTest {
     @Test fun ordinaryAndCurrentFontRangesUseOneSpStepsAndCurrentNeverFallsBelowOrdinary() {
-        assertEquals(24f, LyricPreferenceRules.fontSize(0f), 0f)
-        assertEquals(64f, LyricPreferenceRules.fontSize(99f), 0f)
-        assertEquals(40f, LyricPreferenceRules.fontSize(40.4f), 0f)
-        assertEquals(41f, LyricPreferenceRules.fontSize(40.6f), 0f)
+        assertEquals(28f, LyricPreferenceRules.fontSize(0f), 0f)
+        assertEquals(72f, LyricPreferenceRules.fontSize(99f), 0f)
+        assertEquals(50f, LyricPreferenceRules.fontSize(50.4f), 0f)
+        assertEquals(51f, LyricPreferenceRules.fontSize(50.6f), 0f)
         assertEquals(64f, LyricPreferenceRules.currentFontSize(20f, 64f), 0f)
-        assertEquals(80f, LyricPreferenceRules.currentFontSize(99f, 64f), 0f)
-        assertEquals(48f, LyricPreferenceRules.currentFontSize(Float.NaN, 40f), 0f)
+        assertEquals(124f, LyricPreferenceRules.currentFontSize(124f, 64f), 0f)
+        assertEquals(50f, LyricPreferenceRules.currentFontSize(Float.NaN, 40f), 0f)
+        assertEquals(132f, LyricPreferenceRules.currentFontSize(999f, 72f), 0f)
     }
 
     @Test fun immersiveCurrentFontUsesTwoSpStepsAndNeverFallsBelowImmersiveNormal() {
         assertEquals(64f, LyricPreferenceRules.immersiveCurrentFontSize(0f, 64f), 0f)
-        assertEquals(640f, LyricPreferenceRules.immersiveCurrentFontSize(999f, 192f), 0f)
+        assertEquals(252f, LyricPreferenceRules.immersiveCurrentFontSize(999f, 192f), 0f)
         assertEquals(144f, LyricPreferenceRules.immersiveCurrentFontSize(Float.NaN, 120f), 0f)
         assertEquals(122f, LyricPreferenceRules.immersiveCurrentFontSize(121f, 120f), 0f)
         assertEquals(192f, LyricPreferenceRules.immersiveCurrentFontSize(144f, 192f), 0f)

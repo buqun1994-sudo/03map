@@ -11,13 +11,19 @@ import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.RenderProcessGoneDetail
 import android.widget.ProgressBar
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.platform.LocalView
+import com.icar03.content.ui.LocalContentClickSound
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -62,15 +68,19 @@ import java.util.Locale
  * Settings-session owner for provider preference and the official Apple Music login surface.
  * It owns only the UI session; source ordering and credential policy remain in existing facades.
  */
-class LyricsSettingsBinding(
+class LyricsSettingsBinding internal constructor(
     context: Context,
     private val onChanged: () -> Unit,
     private val onFeedback: (String) -> Unit,
+    connection: AppleMusicConnection?,
 ) : AutoCloseable {
+    constructor(context: Context, onChanged: () -> Unit, onFeedback: (String) -> Unit) :
+        this(context, onChanged, onFeedback, null)
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private val appContext = context.applicationContext
     private val preferences = ContentLyricsPreferences(appContext)
-    private val appleConnection by lazy(LazyThreadSafetyMode.NONE) { AppleMusicConnection(appContext) }
+    private val appleConnection by lazy(LazyThreadSafetyMode.NONE) { connection ?: AppleMusicConnection(appContext) }
 
     private var currentState = LyricsProviderUiState()
     private var started = false
@@ -82,9 +92,13 @@ class LyricsSettingsBinding(
     private var activeAttempt: AppleMusicConnection.LoginAttempt? = null
     private var pollJob: Job? = null
     private var loginWebView: WebView? = null
+    private var pageLoadTimeout: Runnable? = null
+    private var currentMusicPageUrl = AppleMusicConnection.LOGIN_URL
+    private var initialPageFinished = false
     private var pollErrorShown = false
     private var pageProgress by mutableIntStateOf(0)
     private var pageError by mutableStateOf<String?>(null)
+    private var loginContentRevision by mutableIntStateOf(0)
 
     /** UI projection; it contains no cookies, token, or opaque attempt id. */
     val state: LyricsProviderUiState
@@ -183,12 +197,16 @@ class LyricsSettingsBinding(
      */
     @Composable
     fun LoginContent(onEvent: (ContentEvent) -> Unit = { dispatch(it) }) {
+        @Suppress("UNUSED_VARIABLE")
+        val _loginContentRevision = loginContentRevision
         val snapshot = state
         if (!snapshot.appleLoginOpen || !started) return
         val attempt = activeAttempt
         val ownerLifecycle = lifecycleEpoch
         val ownerLogin = loginEpoch
         val design = LocalSettingsDesign.current
+        val view = LocalView.current
+        val clickSound = LocalContentClickSound.current
         DisposableEffect(ownerLifecycle, ownerLogin) {
             // A removed window must not leave a cookie poller running without its login surface.
             onDispose { releaseLoginContent(ownerLifecycle, ownerLogin) }
@@ -218,9 +236,21 @@ class LyricsSettingsBinding(
                             .testTag("settings-apple-login-web-error"),
                         contentAlignment = Alignment.Center,
                     ) {
-                        BasicText(error, style = design.supportingStyle.copy(
-                            color = design.text, textAlign = TextAlign.Center,
-                        ))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            BasicText(error, style = design.supportingStyle.copy(
+                                color = design.text, textAlign = TextAlign.Center,
+                            ))
+                            BasicText("重试", modifier = Modifier
+                                .testTag("settings-apple-login-retry")
+                                .clickable {
+                                    if (isCurrentLogin(ownerLifecycle, ownerLogin) && pageError != null &&
+                                        !preparing && activeAttempt == null) {
+                                        clickSound(view)
+                                        beginAppleLogin()
+                                    }
+                                }, style = design.supportingStyle.copy(color = design.text))
+                        }
                     }
                 } else if (!snapshot.applePreparing && pageProgress < 100) {
                     AndroidView(
@@ -240,7 +270,7 @@ class LyricsSettingsBinding(
     }
 
     private fun releaseLoginContent(ownerLifecycle: Long, ownerLogin: Long) {
-        if (isCurrentLogin(ownerLifecycle, ownerLogin) && (preparing || activeAttempt != null)) {
+        if (isCurrentLogin(ownerLifecycle, ownerLogin) && (preparing || activeAttempt != null || pageError != null)) {
             cancelAppleLogin()
         }
     }
@@ -257,34 +287,43 @@ class LyricsSettingsBinding(
         resetLoginPage()
         preparing = true
         refreshState()
-        val accepted = runCatching {
-            appleConnection.prepareLogin { attempt ->
-                if (!mainHandler.post { onLoginReady(ownerLifecycle, ownerLogin, attempt) }) {
-                    cancelAttempt(attempt)
+        val attempt = runCatching {
+            appleConnection.prepareLoginAttempt { result ->
+                if (!mainHandler.post { onPreparationResult(ownerLifecycle, ownerLogin, result) }) {
+                    cancelAttempt(result.attempt)
                 }
             }
-        }.getOrElse { false }
-        if (!accepted && isCurrentLogin(ownerLifecycle, ownerLogin)) {
-            preparing = false
-            activeAttempt = null
-            refreshState()
-            feedback("无法打开 Apple Music 官方登录页面")
+        }.getOrNull()
+        if (isCurrentLogin(ownerLifecycle, ownerLogin)) {
+            activeAttempt = attempt
+            if (attempt == null) showLoginPageError("无法准备 Apple Music 官方登录页面，请重试")
+            else refreshState()
+        } else if (attempt != null) {
+            cancelAttempt(attempt)
         }
     }
 
-    private fun onLoginReady(
+    private fun onPreparationResult(
         ownerLifecycle: Long,
         ownerLogin: Long,
-        attempt: AppleMusicConnection.LoginAttempt,
+        result: AppleMusicConnection.PreparationResult,
     ) {
-        if (!isCurrentLogin(ownerLifecycle, ownerLogin) || !preparing) {
-            cancelAttempt(attempt)
+        val attempt = result.attempt
+        if (!isCurrentLogin(ownerLifecycle, ownerLogin, attempt) || !preparing) {
+            if (result is AppleMusicConnection.PreparationResult.Ready) cancelAttempt(attempt)
             return
         }
-        preparing = false
-        activeAttempt = attempt
-        refreshState()
-        startPolling(ownerLifecycle, ownerLogin, attempt)
+        when (result) {
+            is AppleMusicConnection.PreparationResult.Ready -> {
+                preparing = false
+                refreshState(force = true)
+                startPolling(ownerLifecycle, ownerLogin, attempt)
+            }
+            is AppleMusicConnection.PreparationResult.Failed -> showLoginPageError(when (result.reason) {
+                AppleMusicConnection.PreparationFailure.COOKIE_CLEAR_FAILED -> "无法清理 Apple Music 登录会话，请重试"
+                AppleMusicConnection.PreparationFailure.CANCELLED -> "Apple Music 登录准备已取消，请重试"
+            })
+        }
     }
 
     private fun startPolling(
@@ -309,7 +348,7 @@ class LyricsSettingsBinding(
     ) {
         if (!isCurrentLogin(ownerLifecycle, ownerLogin, attempt)) return
         val acceptance = try {
-            appleConnection.pollOfficialLoginCookies(attempt)
+            appleConnection.pollOfficialLoginCookies(attempt, currentMusicPageUrl)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -328,13 +367,14 @@ class LyricsSettingsBinding(
                 attempt,
                 "Apple Music 登录信息无法安全保存",
             )
-            // The backend intentionally owns token, storefront, expiry, and stale-attempt policy.
             AppleMusicConnection.CookieAcceptance.WAITING_FOR_TOKEN,
-            AppleMusicConnection.CookieAcceptance.WAITING_FOR_STOREFRONT,
+            AppleMusicConnection.CookieAcceptance.WAITING_FOR_STOREFRONT -> Unit
             AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN,
             AppleMusicConnection.CookieAcceptance.STALE_COOKIE,
             AppleMusicConnection.CookieAcceptance.EXPIRED_COOKIE,
-            AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT -> Unit
+            AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT -> failAppleLogin(
+                ownerLifecycle, ownerLogin, attempt, "Apple Music 登录会话已失效，请重试",
+            )
         }
     }
 
@@ -361,8 +401,7 @@ class LyricsSettingsBinding(
         message: String,
     ) {
         if (!isCurrentLogin(ownerLifecycle, ownerLogin, attempt)) return
-        cancelAppleLogin()
-        feedback(message)
+        showLoginPageError(message)
     }
 
     private fun cancelAppleLogin() {
@@ -398,7 +437,7 @@ class LyricsSettingsBinding(
         }.onFailure { feedback("Apple Music 账号断开失败") }
     }
 
-    private fun refreshState() {
+    private fun refreshState(force: Boolean = false) {
         val appleState = runCatching { appleConnection.state.value }
             .getOrElse { AppleMusicConnection.State() }
         val preferred = runCatching { preferences.getPreferredPlatform() }
@@ -408,12 +447,13 @@ class LyricsSettingsBinding(
             appleStatus = appleUiStatus(appleState),
             appleNeedsRenewal = appleState.needsRenewal,
             appleStorefront = appleState.storefront,
-            appleLoginOpen = preparing || activeAttempt != null,
+            appleLoginOpen = preparing || activeAttempt != null || pageError != null,
             applePreparing = preparing,
             available = started && !closed,
         )
-        if (next == currentState) return
+        if (!force && next == currentState) return
         currentState = next
+        loginContentRevision++
         runCatching { onChanged() }
     }
 
@@ -464,69 +504,121 @@ class LyricsSettingsBinding(
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                !isAllowedAppleUrl(request.url)
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                if (!isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) return true
+                val blocked = !isAllowedAppleUrl(request.url)
+                if (blocked && request.isForMainFrame) showLoginPageError("Apple Music 登录页面无法继续跳转，请重试")
+                return blocked
+            }
 
             @Suppress("OverridingDeprecatedMember")
-            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean =
-                !isAllowedAppleUrl(Uri.parse(url))
+            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                if (!isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) return true
+                val blocked = !isAllowedAppleUrl(Uri.parse(url))
+                if (blocked) showLoginPageError("Apple Music 登录页面无法继续跳转，请重试")
+                return blocked
+            }
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
-                if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt) && isAllowedAppleUrl(Uri.parse(url))) {
-                    resetLoginPage()
+                if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt) && isAllowedAppleUrl(Uri.parse(url))) {
+                    pageProgress = 0
+                    updateMusicPageUrl(url)
                 }
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt) && isAllowedAppleUrl(Uri.parse(url))) {
+                if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt) && isAllowedAppleUrl(Uri.parse(url))) {
+                    initialPageFinished = true
+                    cancelPageLoadTimeout()
                     pageProgress = 100
-                    // Page completion is an additional trigger; the bounded timer handles SPA pages.
+                    updateMusicPageUrl(url)
                     pollOfficialCookies(ownerLifecycle, ownerLogin, attempt)
                 }
             }
 
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
                 handler.cancel()
-                if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt)) {
-                    showLoginPageError("Apple Music 登录安全连接失败")
+                if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) {
+                    showLoginPageError("Apple Music 登录安全连接失败，请重试")
                 }
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                if (request.isForMainFrame && isCurrentLogin(ownerLifecycle, ownerLogin, attempt)) {
-                    showLoginPageError("Apple Music 官方登录页面加载失败")
+                if (request.isForMainFrame && isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) {
+                    showLoginPageError("Apple Music 官方登录页面加载失败，请重试")
+                }
+            }
+
+            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                if (request.isForMainFrame && isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) {
+                    showLoginPageError("Apple Music 官方登录页面返回 HTTP ${response.statusCode}，请重试")
                 }
             }
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-                if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt)) {
-                    failAppleLogin(ownerLifecycle, ownerLogin, attempt, "Apple Music 登录页面已停止")
+                if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) {
+                    failAppleLogin(ownerLifecycle, ownerLogin, attempt, "Apple Music 登录页面已停止，请重试")
                 }
                 return true
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
-                if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt) && loginWebView === view && pageError == null) {
+                if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) {
                     pageProgress = newProgress.coerceIn(0, 100)
                 }
             }
         }
+        if (!initialPageFinished) {
+            cancelPageLoadTimeout()
+            val timeout = Runnable {
+                if (!initialPageFinished && isCurrentLoginView(webView, ownerLifecycle, ownerLogin, attempt)) {
+                    showLoginPageError("Apple Music 官方登录页面加载超时，请检查网络后重试")
+                }
+            }
+            pageLoadTimeout = timeout
+            mainHandler.postDelayed(timeout, INITIAL_PAGE_TIMEOUT_MS)
+        }
+    }
+
+    private fun cancelPageLoadTimeout() {
+        pageLoadTimeout?.let(mainHandler::removeCallbacks)
+        pageLoadTimeout = null
     }
 
     private fun resetLoginPage() {
+        cancelPageLoadTimeout()
+        currentMusicPageUrl = AppleMusicConnection.LOGIN_URL
+        initialPageFinished = false
         pageProgress = 0
         pageError = null
     }
 
     private fun showLoginPageError(message: String) {
+        cancelPageLoadTimeout()
+        pollJob?.cancel()
+        pollJob = null
+        activeAttempt?.let(::cancelAttempt)
+        activeAttempt = null
+        preparing = false
         pageProgress = 100
         pageError = message
+        destroyLoginWebView()
+        refreshState(force = true)
         feedback(message)
     }
 
+    private fun updateMusicPageUrl(value: String) {
+        val uri = Uri.parse(value)
+        if (isAllowedAppleUrl(uri) && uri.host.equals("music.apple.com", true)) currentMusicPageUrl = value
+    }
+
+    private fun isCurrentLoginView(view: WebView, lifecycle: Long, login: Long,
+        attempt: AppleMusicConnection.LoginAttempt): Boolean = loginWebView === view && pageError == null &&
+        !preparing && isCurrentLogin(lifecycle, login, attempt)
+
     private fun isAllowedAppleUrl(uri: Uri): Boolean {
-        if (!uri.scheme.equals("https", ignoreCase = true)) return false
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.encodedUserInfo != null) return false
         if (uri.port != -1 && uri.port != 443) return false
         val host = uri.host?.lowercase(Locale.ROOT) ?: return false
         return host == "apple.com" || host.endsWith(".apple.com")
@@ -534,6 +626,7 @@ class LyricsSettingsBinding(
 
     private fun releaseLoginWebView(view: WebView) {
         if (loginWebView !== view) return
+        cancelPageLoadTimeout()
         loginWebView = null
         view.stopLoading()
         view.webChromeClient = null
@@ -564,6 +657,7 @@ class LyricsSettingsBinding(
     }
 
     private companion object {
+        const val INITIAL_PAGE_TIMEOUT_MS = 30_000L
         const val POLL_INTERVAL_MS = 750L
 
         fun platformForId(id: String): ContentLyricsPreferences.Platform? = when (id.trim().lowercase(Locale.ROOT)) {

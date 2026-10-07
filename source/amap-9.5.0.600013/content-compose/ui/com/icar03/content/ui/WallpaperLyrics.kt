@@ -102,7 +102,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
     fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
     highlightCurrent: Boolean = true, onLayoutReady: () -> Unit = {},
     presentationScale: Float = 1f, externalGestureActive: Boolean = false,
-    interactionEnabled: Boolean = true, onGeometryReady: (Boolean) -> Unit = {},
+    interactionEnabled: Boolean = true, autoFollowEnabled: Boolean = interactionEnabled, onGeometryReady: (Boolean) -> Unit = {},
     renderStyle: LyricRenderStyle? = null) {
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().testTag("wallpaper-lyrics")) {
         val density = LocalDensity.current
@@ -240,14 +240,14 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
                 else travel.sampleInto(sample, origin)
             }
         }
-        val hasFollowAnchor = workEnabled && !lyricBodyAtEnd(lyrics) &&
+        val hasFollowAnchor = workEnabled && autoFollowEnabled && !lyricBodyAtEnd(lyrics) &&
             (!lyrics.timed || lyrics.timelineReady) && !holdFollow
         var browsingTravel by remember(presentationKey) { mutableStateOf<Float?>(null) }
         var dragging by remember(presentationKey) { mutableStateOf(false) }
         var pointerDown by remember(presentationKey) { mutableStateOf(false) }
         val paused = lyrics.playbackSpeed <= 0f || !lyrics.playbackSpeed.isFinite()
         val scrollBlocked = !workEnabled || holdFollow || !layoutReady || pointerDown ||
-            externalGestureActive
+            externalGestureActive || !autoFollowEnabled
         val commands = remember(presentationKey) { LyricFollowHistory() }
         val commandSample = remember { LyricScrollSample() }
         // One delayed return, cancelled during any gesture/modal and restarted on a timed viewport.

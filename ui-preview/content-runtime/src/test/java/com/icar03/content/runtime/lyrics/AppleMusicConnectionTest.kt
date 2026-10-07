@@ -1,5 +1,11 @@
 package com.icar03.content.runtime.lyrics
 
+import android.os.Looper
+import android.webkit.CookieManager
+import android.webkit.ValueCallback
+import android.webkit.WebView
+import org.robolectric.Shadows.shadowOf
+import java.time.Duration
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -144,6 +150,116 @@ class AppleMusicConnectionTest {
         assertNull(rig.store.value)
     }
 
+    @Test fun synchronousPreparationFailureReportsOncePreservesCredentialAndAllowsRetry() {
+        val rig = AppleMusicFixtureRig()
+        val original = rig.connection.account.requireCredential()
+        rig.cookies.clearResult = false
+        val results = mutableListOf<AppleMusicConnection.PreparationResult>()
+        val first = checkNotNull(rig.connection.prepareLoginAttempt(results::add))
+        assertEquals(1, results.size)
+        val failed = results.single() as AppleMusicConnection.PreparationResult.Failed
+        assertSame(first, failed.attempt)
+        assertEquals(AppleMusicConnection.PreparationFailure.COOKIE_CLEAR_FAILED, failed.reason)
+        assertFalse(rig.connection.refresh().isConnecting)
+        assertSame(original, rig.connection.account.requireCredential())
+        rig.cookies.clearResult = true
+        val next = checkNotNull(rig.connection.prepareLoginAttempt(results::add))
+        assertTrue(results.last() is AppleMusicConnection.PreparationResult.Ready)
+        assertNotSame(first, next)
+        rig.connection.cancelLogin(first)
+        assertTrue(rig.connection.refresh().isConnecting)
+        rig.connection.cancelLogin(next)
+        assertEquals(2, results.size)
+    }
+
+    @Test fun delayedFailedPreparationIgnoresDuplicateCallbacksAndReleasesItsSlot() {
+        val rig = AppleMusicFixtureRig(null)
+        rig.cookies.deferred = true
+        val results = mutableListOf<AppleMusicConnection.PreparationResult>()
+        val first = checkNotNull(rig.connection.prepareLoginAttempt(results::add))
+        assertTrue(results.isEmpty())
+        assertNull(rig.connection.prepareLoginAttempt { error("Duplicate preparation") })
+        rig.cookies.pending[0](false)
+        rig.cookies.pending[0](true)
+        rig.cookies.pending[0](false)
+        assertEquals(1, results.size)
+        assertTrue(results.single() is AppleMusicConnection.PreparationResult.Failed)
+        assertFalse(rig.connection.refresh().isConnecting)
+        val second = checkNotNull(rig.connection.prepareLoginAttempt(results::add))
+        rig.cookies.pending[0](true)
+        assertEquals(1, results.size)
+        rig.cookies.pending[1](true)
+        rig.cookies.pending[1](false)
+        assertEquals(2, results.size)
+        assertSame(second, results.last().attempt)
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT,
+            rig.connection.acceptCookies(first, first.loginUrl, cookies("late")))
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            rig.connection.acceptCookies(second, second.loginUrl, cookies("new")))
+    }
+
+    @Test fun cancellablePreparationImmediatelyPermitsRetryAndOldCallbacksCannotAffectIt() {
+        val rig = AppleMusicFixtureRig(null)
+        rig.cookies.deferred = true
+        val results = mutableListOf<AppleMusicConnection.PreparationResult>()
+        val first = checkNotNull(rig.connection.prepareLoginAttempt(results::add))
+        rig.connection.cancelLogin(first)
+        assertEquals(AppleMusicConnection.PreparationFailure.CANCELLED,
+            (results.single() as AppleMusicConnection.PreparationResult.Failed).reason)
+        assertFalse(rig.connection.refresh().isConnecting)
+        val second = checkNotNull(rig.connection.prepareLoginAttempt(results::add))
+        rig.cookies.pending[0](true)
+        rig.cookies.pending[0](false)
+        assertEquals(1, results.size)
+        assertTrue(rig.connection.refresh().isConnecting)
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT,
+            rig.connection.acceptCookies(second, second.loginUrl, cookies("too-early")))
+        rig.cookies.pending[1](true)
+        assertEquals(2, results.size)
+        assertSame(second, results.last().attempt)
+        rig.connection.cancelLogin(second)
+        assertEquals(2, results.size)
+    }
+
+    @Test fun preparationExceptionAlsoReportsFailureAndDoesNotLeaveAnAttempt() {
+        val rig = AppleMusicFixtureRig(null)
+        rig.cookies.clearFailure = java.io.IOException("Synthetic clear failure")
+        val results = mutableListOf<AppleMusicConnection.PreparationResult>()
+        assertNotNull(rig.connection.prepareLoginAttempt(results::add))
+        assertEquals(1, results.size)
+        assertTrue(results.single() is AppleMusicConnection.PreparationResult.Failed)
+        assertFalse(rig.connection.refresh().isConnecting)
+    }
+
+    @Test fun pollingUsesCurrentOfficialMusicPathAndRejectsNonMusicOriginsBeforeReading() {
+        val rig = AppleMusicFixtureRig(null)
+        val attempt = begin(rig)
+        val page = "https://music.apple.com/cn/browse"
+        rig.cookies.byUrl[page] = listOf(
+            AppleMusicConnection.Cookie("media-user-token", "path-token", ".music.apple.com", "/cn"),
+            AppleMusicConnection.Cookie("itua", "cn", ".apple.com", "/cn"),
+        )
+        for (invalid in listOf("http://music.apple.com/cn/browse", "https://music.apple.com.evil.invalid/", "https://idmsa.apple.com/", "https://user@music.apple.com/")) {
+            assertEquals(AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN,
+                rig.connection.pollOfficialLoginCookies(attempt, invalid))
+        }
+        assertTrue(rig.cookies.reads.isEmpty())
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            rig.connection.pollOfficialLoginCookies(attempt, page))
+        assertEquals(listOf(page), rig.cookies.reads)
+        assertEquals("cn", rig.connection.refresh().storefront)
+    }
+
+    @Test fun pollingFallsBackToRootCookiesWhenCurrentMusicPageHasNone() {
+        val rig = AppleMusicFixtureRig(null)
+        val attempt = begin(rig)
+        val page = "https://music.apple.com/jp/browse"
+        rig.cookies.byUrl["https://music.apple.com/"] = cookies("root-token", "jp")
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            rig.connection.pollOfficialLoginCookies(attempt, page))
+        assertEquals(listOf(page, attempt.loginUrl, "https://music.apple.com/"), rig.cookies.reads)
+    }
+
     @Test fun diskFailureDoesNotAdvertiseASuccessfulConnectionAndMayBeRetried() {
         val rig = AppleMusicFixtureRig(null)
         val attempt = begin(rig)
@@ -191,6 +307,56 @@ class AppleMusicConnectionTest {
         assertEquals(AppleMusicConnection.Status.DISCONNECTED, rig.connection.refresh().status)
         assertTrue(rig.connection.revision > before)
         assertThrows(AppleMusicAuthenticationException::class.java) { rig.connection.account.requireCredential() }
+    }
+
+    @Test fun androidCookieClearWithMissingCallbacksCompletesAtItsBoundAndIgnoresLateResults() {
+        val manager = DeferredCookieManager()
+        val cookies = AppleMusicAndroidWebsiteCookies { manager }
+        val results = mutableListOf<Boolean>()
+        cookies.clear(results::add)
+        assertTrue(manager.callbacks.isNotEmpty())
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2_499))
+        assertTrue(results.isEmpty())
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1))
+        assertEquals(listOf(true), results)
+        manager.cookie = "media-user-token=synthetic-old"
+        manager.callbacks.forEach { it.onReceiveValue(false) }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
+        assertEquals(listOf(true), results)
+        assertEquals(1, manager.flushes)
+    }
+
+    @Test fun androidCookieClearReturningDirtyStopsAtFailureAndTimeoutCannotReplaceIt() {
+        val manager = DeferredCookieManager().apply { cookie = "media-user-token=synthetic-old" }
+        val results = mutableListOf<Boolean>()
+        AppleMusicAndroidWebsiteCookies { manager }.clear(results::add)
+        manager.callbacks.forEach { it.onReceiveValue(true) }
+        assertEquals(listOf(false), results)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
+        assertEquals(listOf(false), results)
+        assertEquals(1, manager.flushes)
+    }
+
+    private class DeferredCookieManager : CookieManager() {
+        var cookie = ""
+        var flushes = 0
+        val callbacks = mutableListOf<ValueCallback<Boolean>>()
+        override fun setAcceptCookie(accept: Boolean) = Unit
+        override fun acceptCookie() = true
+        override fun setAcceptThirdPartyCookies(webView: WebView, accept: Boolean) = Unit
+        override fun acceptThirdPartyCookies(webView: WebView) = true
+        override fun setCookie(url: String, value: String) = Unit
+        override fun setCookie(url: String, value: String, callback: ValueCallback<Boolean>?) {
+            callback?.let(callbacks::add)
+        }
+        override fun getCookie(url: String) = cookie
+        override fun removeSessionCookie() = Unit
+        override fun removeSessionCookies(callback: ValueCallback<Boolean>?) = Unit
+        override fun removeAllCookie() = Unit
+        override fun removeAllCookies(callback: ValueCallback<Boolean>?) = Unit
+        override fun hasCookies() = cookie.isNotEmpty()
+        override fun removeExpiredCookie() = Unit
+        override fun flush() { flushes++ }
     }
 
     private fun begin(rig: AppleMusicFixtureRig): AppleMusicConnection.LoginAttempt {

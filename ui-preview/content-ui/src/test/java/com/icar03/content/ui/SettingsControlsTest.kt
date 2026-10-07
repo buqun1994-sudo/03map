@@ -57,7 +57,7 @@ open class SettingsControlsTest {
     @Test fun designAndCombinedValueLabelKeepSettingsIndependentFromVehicleSelection() {
         val design = settingsDesign(dark)
         assertEquals(if (dark) 0xFF0F0F0F.toInt() else 0xFFF4F4F4.toInt(), design.page.toArgb())
-        assertEquals(if (dark) 0xFF484848.toInt() else 0xFFFFFFFF.toInt(), design.selected.toArgb())
+        assertEquals(if (dark) 0xFF484848.toInt() else 0xFFE4E4E4.toInt(), design.selected.toArgb())
         assertEquals(0xFF33C458.toInt(), design.onSwitchTrack.toArgb())
         assertEquals(0xFF0086FD.toInt(), design.sliderFill.toArgb())
         assertEquals(56.dp, design.segmentHeight)
@@ -139,7 +139,7 @@ open class SettingsControlsTest {
         }
         val title = bounds("settings-section-title-歌词")
         val card = bounds("settings-card-歌词")
-        val row = bounds("switch-row")
+        val row = bounds("switch-row-row")
         val divider = bounds("divider")
         assertEquals(24f, title.left - card.left, 1f)
         assertEquals(24f, card.top - title.bottom, 1f)
@@ -150,7 +150,7 @@ open class SettingsControlsTest {
         assertEquals(24f, bounds("field-body").top - bounds("field-label").bottom, 1f)
     }
 
-    @Test fun switchRowHasOneActionAcrossItsWholeWidthAndRejectsCancelOrDisable() {
+    @Test fun onlyTheSwitchAndItsSmallExpandedTouchAreaToggleAndRejectCancelOrDisable() {
         val checked = mutableStateOf(false)
         val enabled = mutableStateOf(true)
         var changes = 0
@@ -158,15 +158,17 @@ open class SettingsControlsTest {
             SettingsSwitchRow("显示星期", checked.value, { checked.value = it; changes++ },
                 enabled = enabled.value, tag = "switch-row")
         }
-        compose.onAllNodes(hasClickAction() and
-            (hasTestTag("switch-row") or hasAnyAncestor(hasTestTag("switch-row"))),
+        compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("switch-row-row")),
             useUnmergedTree = true).assertCountEquals(1)
+        compose.onNodeWithTag("switch-row-label").performTouchInput { click() }
+        compose.onNodeWithTag("switch-row-row").performTouchInput { click(Offset(4f, center.y)) }
         compose.onNodeWithTag("switch-row").performTouchInput { down(center); cancel() }
         assertEquals(0, changes)
         compose.onNodeWithTag("switch-row").performTouchInput { click(Offset(4f, center.y)) }
-        compose.onNodeWithTag("switch-row").assertIsOn().performClick()
+        compose.onNodeWithTag("switch-row").assertIsOn().assertContentDescriptionEquals("显示星期").performClick()
         compose.onNodeWithTag("switch-row").assertIsOff()
         assertEquals(2, changes)
+        assertEquals(72f, bounds("switch-row").width, 1f)
         assertEquals(30f, bounds("switch-row").height, 1f)
         compose.runOnIdle { enabled.value = false }
         compose.onNodeWithTag("switch-row").assertIsNotEnabled()
@@ -183,7 +185,7 @@ open class SettingsControlsTest {
             }
         }
         val card = bounds("settings-card-时间")
-        val row = bounds("switch-row")
+        val row = bounds("switch-row-row")
         val text = bounds("switch-row-label")
         val track = bounds("switch-row-track")
         val thumb = bounds("switch-row-thumb")

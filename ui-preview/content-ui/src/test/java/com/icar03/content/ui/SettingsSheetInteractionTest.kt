@@ -19,6 +19,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -254,12 +256,13 @@ open class SettingsSheetInteractionTest {
 
     @Test fun disablingEnlargementKeepsBothCurrentSizesAndAllowsIndependentColor() {
         mount(open = true, section = SettingsSection.Lyrics)
+        compose.runOnIdle { state.value = state.value.copy(lyricsHighlight = true) }
         val saved = state.value.lyricsCurrentFontSizeSp
         val immersiveSaved = state.value.lyricsImmersiveCurrentFontSizeSp
         compose.onNodeWithTag("settings-switch-当前句歌词放大").performScrollTo().performClick()
         assertFalse(state.value.lyricsHighlight)
-        compose.onNodeWithTag("settings-current-font-size").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithTag("settings-immersive-current-font-size").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("settings-current-font-size").assertDoesNotExist()
+        compose.onNodeWithTag("settings-immersive-current-font-size").assertDoesNotExist()
         assertEquals(saved, state.value.lyricsCurrentFontSizeSp, .01f)
         assertEquals(immersiveSaved, state.value.lyricsImmersiveCurrentFontSizeSp, .01f)
         chooseSettingOption("settings-current-color-mode", "system")
@@ -280,10 +283,11 @@ open class SettingsSheetInteractionTest {
         assertEquals(128f, state.value.lyricsImmersiveFontSizeSp, .01f)
         assertEquals(96f, state.value.lyricsImmersiveLineGapDp, .01f)
         capture("settings-immersive-controls")
+        compose.runOnIdle { state.value = state.value.copy(lyricsHighlight = true) }
         compose.onNodeWithTag("settings-immersive-current-font-size").performScrollTo()
-            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(200f)) }
-        compose.onNodeWithTag("settings-immersive-current-font-size-label").assertTextEquals("全屏·200sp")
-        assertEquals(200f, state.value.lyricsImmersiveCurrentFontSizeSp, .01f)
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(188f)) }
+        compose.onNodeWithTag("settings-immersive-current-font-size-label").assertTextEquals("全屏·188sp")
+        assertEquals(188f, state.value.lyricsImmersiveCurrentFontSizeSp, .01f)
         assertEquals(ordinaryFont, state.value.lyricsFontSizeSp, .01f)
         assertEquals(ordinaryCurrent, state.value.lyricsCurrentFontSizeSp, .01f)
         assertEquals(ordinaryGap, state.value.lyricsLineGapDp, .01f)
@@ -328,6 +332,217 @@ open class SettingsSheetInteractionTest {
     }
 
 
+    @Test fun outerSheetEntersAndLeavesThroughTheBottomWithoutHorizontalTravel() {
+        mount()
+        val host = bounds("settings-sheet-host")
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { state.value = state.value.copy(settingsOpen = true) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeByFrame()
+        val initial = unclippedBounds("settings-sheet")
+        assertEquals(host.left, initial.left, 1f)
+        assertEquals(host.right, initial.right, 1f)
+        assertTrue("The sheet starts below its host", initial.top >= host.bottom - 1f)
+
+        compose.mainClock.advanceTimeBy(80)
+        val enterFirst = unclippedBounds("settings-sheet")
+        assertTrue(enterFirst.top > host.top + 1f && enterFirst.top < host.bottom - 1f)
+        assertEquals(initial.left, enterFirst.left, 1f)
+        assertEquals(initial.right, enterFirst.right, 1f)
+        assertSheetPixel(capture("settings-enter-bottom-80ms"), enterFirst)
+        compose.mainClock.advanceTimeBy(80)
+        val enterSecond = unclippedBounds("settings-sheet")
+        assertTrue(enterSecond.top < enterFirst.top)
+        assertTrue("Entrance slows down instead of moving linearly",
+            initial.top - enterFirst.top > (enterFirst.top - enterSecond.top) * 1.2f)
+        assertEquals(initial.left, enterSecond.left, 1f)
+        capture("settings-enter-bottom-160ms")
+        compose.mainClock.advanceTimeBy(500)
+        assertRectNear(host, unclippedBounds("settings-sheet"))
+
+        compose.runOnIdle { state.value = state.value.copy(settingsOpen = false) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeByFrame()
+        val exitInitial = unclippedBounds("settings-sheet")
+        assertRectNear(host, exitInitial)
+        compose.mainClock.advanceTimeBy(80)
+        val exitFirst = unclippedBounds("settings-sheet")
+        assertTrue(exitFirst.top > host.top + 1f && exitFirst.top < host.bottom - 1f)
+        assertEquals(host.left, exitFirst.left, 1f)
+        assertEquals(host.right, exitFirst.right, 1f)
+        assertSheetPixel(capture("settings-exit-bottom-80ms"), exitFirst)
+        compose.mainClock.advanceTimeBy(80)
+        val exitSecond = unclippedBounds("settings-sheet")
+        assertTrue(exitSecond.top > exitFirst.top)
+        assertTrue("Exit slows down: first=${exitFirst.top - exitInitial.top}, second=${exitSecond.top - exitFirst.top}",
+            exitFirst.top - exitInitial.top > (exitSecond.top - exitFirst.top) * 1.2f)
+        assertEquals(host.left, exitSecond.left, 1f)
+        capture("settings-exit-bottom-160ms")
+        compose.mainClock.advanceTimeBy(500)
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithTag("settings-sheet").assertDoesNotExist()
+        assertTrue(events.none { it is ContentEvent.PageSelected })
+    }
+
+    @Test fun childPagesTravelLeftAndRightNonlinearlyInsideAStationaryShell() {
+        mount(open = true)
+        val shell = unclippedBounds("settings-sheet")
+        val header = unclippedBounds("settings-header")
+        val home = unclippedBounds("settings-home")
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("settings-menu-TopBar").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        val incomingChild = unclippedBounds("settings-detail-scroll")
+        assertTrue("A child enters from the right", incomingChild.left > home.left + shell.width * .9f)
+        compose.mainClock.advanceTimeBy(80)
+        val childFirst = unclippedBounds("settings-detail-scroll")
+        val leavingHome = unclippedBounds("settings-home")
+        assertTrue(childFirst.left > home.left + 1f && childFirst.left < incomingChild.left)
+        assertTrue("The home page leaves toward the left", leavingHome.left < home.left - 1f)
+        assertRectNear(shell, unclippedBounds("settings-sheet"))
+        assertRectNear(header, unclippedBounds("settings-header"))
+        capture("settings-child-enter-right-80ms")
+        compose.mainClock.advanceTimeBy(80)
+        val childSecond = unclippedBounds("settings-detail-scroll")
+        assertTrue(childSecond.left < childFirst.left)
+        assertTrue("Child entrance is nonlinear",
+            incomingChild.left - childFirst.left > (childFirst.left - childSecond.left) * 1.2f)
+        assertEquals(home.top, childSecond.top, 1f)
+        assertRectNear(shell, unclippedBounds("settings-sheet"))
+        capture("settings-child-enter-right-160ms")
+        compose.mainClock.advanceTimeBy(500)
+        assertEquals(home.left, unclippedBounds("settings-detail-scroll").left, 1f)
+        assertEquals(home.top, unclippedBounds("settings-detail-scroll").top, 1f)
+        assertEquals(home.width, unclippedBounds("settings-detail-scroll").width, 1f)
+        compose.onNodeWithTag("settings-home").assertDoesNotExist()
+
+        compose.onNodeWithTag("settings-back").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        val incomingHome = unclippedBounds("settings-home")
+        assertTrue("Home enters from the left", incomingHome.left < home.left - shell.width * .9f)
+        compose.mainClock.advanceTimeBy(80)
+        val homeFirst = unclippedBounds("settings-home")
+        val leavingChild = unclippedBounds("settings-detail-scroll")
+        assertTrue(homeFirst.left < home.left - 1f && homeFirst.left > incomingHome.left)
+        assertTrue("The child leaves toward the right", leavingChild.left > home.left + 1f)
+        assertRectNear(shell, unclippedBounds("settings-sheet"))
+        assertRectNear(header, unclippedBounds("settings-header"))
+        capture("settings-home-enter-left-80ms")
+        compose.mainClock.advanceTimeBy(80)
+        val homeSecond = unclippedBounds("settings-home")
+        assertTrue(homeSecond.left > homeFirst.left)
+        assertTrue("Returning home is nonlinear",
+            homeFirst.left - incomingHome.left > (homeSecond.left - homeFirst.left) * 1.2f)
+        assertEquals(home.top, homeSecond.top, 1f)
+        compose.mainClock.advanceTimeBy(500)
+        compose.mainClock.autoAdvance = true
+        assertRectNear(home, unclippedBounds("settings-home"))
+        assertRectNear(shell, unclippedBounds("settings-sheet"))
+        assertRectNear(header, unclippedBounds("settings-header"))
+        compose.onNodeWithTag("settings-detail-scroll").assertDoesNotExist()
+        assertEquals(SettingsSection.Home, state.value.settingsSection)
+        capture("settings-child-return-settled")
+    }
+
+    @Test fun collapseFlipsTheSuppliedArrowAroundTheSameVisibleCenterAndKeepsPreferences() {
+        mount(open = true, section = SettingsSection.Lyrics)
+        val saved = state.value
+        val eventCount = events.size
+        val originalSheet = unclippedBounds("settings-sheet")
+        val originalButton = unclippedBounds("settings-collapse")
+        assertEquals(48f * density, originalButton.width, 1f)
+        assertEquals(48f * density, originalButton.height, 1f)
+        compose.onNodeWithTag("settings-collapse").assertContentDescriptionEquals("下移收起设置页")
+        val down = arrowInk(capture("settings-arrow-down"), originalButton)
+        assertTrue("The supplied arrow points down", down.spanAt(.25f) > down.spanAt(.75f) + 2f * density)
+
+        compose.onNodeWithTag("settings-collapse").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        val collapsedSheet = unclippedBounds("settings-sheet")
+        val collapsedButton = unclippedBounds("settings-collapse")
+        compose.onNodeWithTag("settings-collapse").assertContentDescriptionEquals("恢复设置页")
+        val up = arrowInk(capture("settings-arrow-up"), collapsedButton)
+        assertTrue("The flipped arrow points up", up.spanAt(.75f) > up.spanAt(.25f) + 2f * density)
+        assertEquals("Visible arrow center X", down.bounds.center.x, up.bounds.center.x, 1f)
+        assertEquals("Visible arrow center Y", down.bounds.center.y, up.bounds.center.y, 1f)
+        assertTrue(collapsedSheet.top > originalSheet.top + 1f)
+        assertEquals(originalSheet.left, collapsedSheet.left, 1f)
+        assertEquals(originalButton.left - originalSheet.left, collapsedButton.left - collapsedSheet.left, 1f)
+        assertEquals(1, sounds)
+        assertEquals(saved, state.value)
+        assertEquals(eventCount, events.size)
+
+        compose.onNodeWithTag("settings-collapse").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        assertRectNear(originalSheet, unclippedBounds("settings-sheet"))
+        val restored = arrowInk(capture("settings-arrow-restored"), unclippedBounds("settings-collapse"))
+        assertEquals(down.bounds.center.x, restored.bounds.center.x, 1f)
+        assertEquals(down.bounds.center.y, restored.bounds.center.y, 1f)
+        assertTrue(restored.spanAt(.25f) > restored.spanAt(.75f) + 2f * density)
+        assertEquals(2, sounds)
+        assertEquals(saved, state.value)
+        assertEquals(eventCount, events.size)
+    }
+
+    @Test fun lyricDefaultsAndCurrentFontRangesComeFromTheActualControls() {
+        mount(open = true, section = SettingsSection.Lyrics)
+        assertEquals(50f, state.value.lyricsFontSizeSp, .01f)
+        assertEquals(120f, state.value.lyricsImmersiveFontSizeSp, .01f)
+        assertFalse(state.value.lyricsHighlight)
+        assertSliderRange("settings-font-size", 28f, 72f, 50f, 43)
+        compose.onNodeWithTag("settings-font-size-label").assertTextEquals("分屏·50sp")
+        assertSliderRange("settings-immersive-font-size", 64f, 192f, 120f, 63)
+        compose.onNodeWithTag("settings-immersive-font-size-label").assertTextEquals("全屏·120sp")
+        compose.onNodeWithTag("settings-current-font-size").assertDoesNotExist()
+        compose.onNodeWithTag("settings-immersive-current-font-size").assertDoesNotExist()
+        capture("settings-lyric-default-fonts")
+
+        compose.onNodeWithTag("settings-switch-当前句歌词放大").performScrollTo().performClick()
+        assertTrue(state.value.lyricsHighlight)
+        assertSliderRange("settings-current-font-size", 50f, 110f, 50f, 59)
+        assertSliderRange("settings-immersive-current-font-size", 120f, 180f, 144f, 29)
+        compose.onNodeWithTag("settings-font-size").performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(56f)) }
+        assertSliderRange("settings-current-font-size", 56f, 116f, 56f, 59)
+        compose.onNodeWithTag("settings-current-font-size")
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(116f)) }
+        compose.onNodeWithTag("settings-current-font-size-label").assertTextEquals("分屏·116sp")
+        compose.onNodeWithTag("settings-current-font-size")
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(-100f)) }
+        assertEquals(56f, state.value.lyricsCurrentFontSizeSp, .01f)
+        compose.onNodeWithTag("settings-immersive-font-size").performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(128f)) }
+        assertSliderRange("settings-immersive-current-font-size", 128f, 188f, 144f, 29)
+        compose.onNodeWithTag("settings-immersive-current-font-size")
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(188f)) }
+        compose.onNodeWithTag("settings-immersive-current-font-size-label").assertTextEquals("全屏·188sp")
+        compose.onNodeWithTag("settings-immersive-current-font-size")
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(-100f)) }
+        assertEquals(128f, state.value.lyricsImmersiveCurrentFontSizeSp, .01f)
+        val expandedColorGap = unclippedBounds("settings-label-当前句歌词颜色").top -
+            unclippedBounds("settings-switch-当前句歌词放大").bottom
+        capture("settings-current-font-ranges")
+
+        compose.onNodeWithTag("settings-switch-当前句歌词放大").performScrollTo().performClick()
+        compose.onNodeWithTag("settings-current-font-size").assertDoesNotExist()
+        compose.onNodeWithTag("settings-immersive-current-font-size").assertDoesNotExist()
+        val closedColorGap = unclippedBounds("settings-label-当前句歌词颜色").top -
+            unclippedBounds("settings-switch-当前句歌词放大").bottom
+        assertTrue("The hidden font section leaves no reserved height", closedColorGap < expandedColorGap - 120f * density)
+        val savedNormalColor = state.value.lyricsCustomColor
+        chooseSettingOption("settings-current-color-mode", "custom")
+        chooseSettingSwatch("settings-current-color", 0)
+        val colorEvent = events.filterIsInstance<ContentEvent.LyricsCurrentCustomColorChanged>().single()
+        assertEquals(colorEvent.value, state.value.lyricsCurrentCustomColor)
+        assertEquals(savedNormalColor, state.value.lyricsCustomColor)
+        assertEquals(56f, state.value.lyricsCurrentFontSizeSp, .01f)
+        assertEquals(128f, state.value.lyricsImmersiveCurrentFontSizeSp, .01f)
+        assertFalse(state.value.lyricsHighlight)
+        capture("settings-current-fonts-collapsed-color-editable")
+    }
+
     @Test fun homeUsesTheMeasuredHeaderAndSectionSpacingInEveryDensity() {
         mount(open = true)
         val sheet = bounds("settings-sheet")
@@ -368,6 +583,71 @@ open class SettingsSheetInteractionTest {
         }
         assertTrue(state.value.showBattery)
         assertTrue(state.value.immersiveShowTopBar)
+    }
+
+    private fun unclippedBounds(tag: String): Rect {
+        val node = compose.onNodeWithTag(tag).fetchSemanticsNode()
+        val origin = node.positionInRoot
+        return Rect(origin.x, origin.y, origin.x + node.size.width, origin.y + node.size.height)
+    }
+
+    private fun assertRectNear(expected: Rect, actual: Rect) {
+        assertEquals(expected.left, actual.left, 1f)
+        assertEquals(expected.top, actual.top, 1f)
+        assertEquals(expected.right, actual.right, 1f)
+        assertEquals(expected.bottom, actual.bottom, 1f)
+    }
+
+    private fun assertSheetPixel(bitmap: Bitmap, sheet: Rect) {
+        val origin = bounds("settings-native-root").topLeft
+        val x = kotlin.math.round(sheet.left + 16f * density - origin.x).toInt()
+        val y = kotlin.math.round(sheet.top + 20f * density - origin.y).toInt()
+        assertTrue("The sampled native sheet pixel is inside the frame", x in 0 until bitmap.width && y in 0 until bitmap.height)
+        val actual = bitmap.getPixel(x, y)
+        val expected = settingsDesign(dark).page.toArgb()
+        for (shift in listOf(16, 8, 0)) {
+            assertEquals("Native frame follows the measured sheet", ((expected ushr shift) and 255).toDouble(),
+                ((actual ushr shift) and 255).toDouble(), 3.0)
+        }
+    }
+
+    private data class ArrowInk(val bounds: Rect, val pixels: List<Offset>) {
+        fun spanAt(fraction: Float): Float {
+            val y = bounds.top + bounds.height * fraction
+            val row = pixels.filter { kotlin.math.abs(it.y - y) <= 1f }
+            check(row.isNotEmpty()) { "No arrow pixels in the requested band" }
+            return row.maxOf { it.x } - row.minOf { it.x }
+        }
+    }
+
+    private fun arrowInk(bitmap: Bitmap, button: Rect): ArrowInk {
+        val origin = bounds("settings-native-root").topLeft
+        val expected = settingsDesign(dark).text.toArgb()
+        val pixels = mutableListOf<Offset>()
+        val left = kotlin.math.ceil(button.left - origin.x).toInt().coerceAtLeast(0)
+        val top = kotlin.math.ceil(button.top - origin.y).toInt().coerceAtLeast(0)
+        val right = kotlin.math.floor(button.right - origin.x).toInt().coerceAtMost(bitmap.width)
+        val bottom = kotlin.math.floor(button.bottom - origin.y).toInt().coerceAtMost(bitmap.height)
+        for (y in top until bottom) for (x in left until right) {
+            val actual = bitmap.getPixel(x, y)
+            if (listOf(16, 8, 0).all { shift ->
+                    kotlin.math.abs(((actual ushr shift) and 255) - ((expected ushr shift) and 255)) <= 24
+                }) pixels += Offset(x + .5f + origin.x - button.left, y + .5f + origin.y - button.top)
+        }
+        assertTrue("The supplied arrow is drawn in the native button frame", pixels.isNotEmpty())
+        val ink = Rect(pixels.minOf { it.x } - .5f, pixels.minOf { it.y } - .5f,
+            pixels.maxOf { it.x } + .5f, pixels.maxOf { it.y } + .5f)
+        assertTrue(ink.width > 20f * density && ink.height > 10f * density)
+        return ArrowInk(ink, pixels)
+    }
+
+    private fun assertSliderRange(tag: String, minimum: Float, maximum: Float, current: Float, steps: Int) {
+        val slider = compose.onNodeWithTag(tag).performScrollTo().fetchSemanticsNode()
+        val range = slider.config[SemanticsProperties.ProgressBarRangeInfo]
+        assertEquals(minimum, range.range.start, .01f)
+        assertEquals(maximum, range.range.endInclusive, .01f)
+        assertEquals(current, range.current, .01f)
+        assertEquals(steps, range.steps)
     }
 
     private fun chooseSettingOption(group: String, id: String) {

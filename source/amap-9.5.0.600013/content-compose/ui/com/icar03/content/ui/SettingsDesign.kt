@@ -73,7 +73,7 @@ data class SettingsDesign(
 
 private val LightSettingsDesign = SettingsDesign(
     dark = false, page = Color(0xFFF4F4F4), card = Color.White, track = Color(0xFFE9E9E9),
-    selected = Color.White, text = Color(0xFF27303B), secondaryText = Color(0xFF6B7078),
+    selected = Color(0xFFE4E4E4), text = Color(0xFF27303B), secondaryText = Color(0xFF6B7078),
     divider = Color(0xFFE7E7E7), offSwitchTrack = Color(0xFFE1E1E1),
 )
 private val DarkSettingsDesign = SettingsDesign(

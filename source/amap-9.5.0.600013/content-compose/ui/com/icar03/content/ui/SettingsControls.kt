@@ -304,7 +304,7 @@ fun SettingsSegmented(
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             Box(
                 Modifier.width(rowWidth).height(design.segmentHeight)
-                    .downwardSoftShadow(design.track, design.dark)
+                    .downwardSoftShadow(design.track, design.dark, design.segmentHeight / 2)
                     .clip(design.controlShape).background(design.track.copy(alpha = if (enabled) 1f else .38f))
                     .settingsTag(settingsChildTag(tagPrefix, "track")),
             ) {
@@ -362,7 +362,7 @@ fun SettingsToggle(
     val currentOnCheckedChange by rememberUpdatedState(onCheckedChange)
     val interactions = remember { MutableInteractionSource() }
     Box(
-        modifier.sizeIn(minWidth = design.minimumTouchHeight, minHeight = design.minimumTouchHeight)
+        modifier.sizeIn(minWidth = design.switchWidth + design.smallGap, minHeight = design.minimumTouchHeight)
             .settingsTag(tag)
             .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Switch,
                 onClick = {
@@ -380,7 +380,7 @@ fun SettingsToggle(
     }
 }
 
-/** The whole label-and-switch row exposes one toggle action; its visual has no input handler. */
+/** The label is passive; only the switch control owns the toggle action and semantics. */
 @Composable
 fun SettingsSwitchRow(
     title: String,
@@ -391,27 +391,21 @@ fun SettingsSwitchRow(
     tag: String = "",
 ) {
     val design = LocalSettingsDesign.current
-    val currentEnabled by rememberUpdatedState(enabled)
-    val currentOnChanged by rememberUpdatedState(onCheckedChange)
-    val interactions = remember { MutableInteractionSource() }
     Row(
-        modifier.fillMaxWidth().heightIn(min = 30.dp).settingsTag(tag)
-            .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Switch,
-                onClick = {
-                    if (currentEnabled) currentOnChanged(!checked)
-                })
-            .excludeDisabledActionTap(enabled)
-            .semantics {
-                role = Role.Switch
-                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
-                stateDescription = if (checked) "已开启" else "已关闭"
-            },
+        modifier.fillMaxWidth().heightIn(min = design.switchHeight).settingsTag(settingsChildTag(tag, "row")),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(design.smallGap),
     ) {
         SettingsLineText(title, Modifier.weight(1f).settingsTag(settingsChildTag(tag, "label")),
             design.labelStyle, design.text.copy(alpha = if (enabled) 1f else .38f))
-        SettingsSwitchVisual(checked, enabled, tag)
+        SettingsToggle(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.height(design.switchHeight).offset(x = design.smallGap / 2)
+                .semantics { contentDescription = title },
+            enabled = enabled,
+            tag = tag,
+        )
     }
 }
 
@@ -425,7 +419,7 @@ private fun SettingsSwitchVisual(checked: Boolean, enabled: Boolean, tag: String
     Box(
         Modifier.size(design.switchWidth, design.switchHeight).alpha(if (enabled) 1f else .38f)
             .settingsTag(settingsChildTag(tag, "track"))
-            .downwardSoftShadow(if (checked) design.onSwitchTrack else design.offSwitchTrack, design.dark)
+            .downwardSoftShadow(if (checked) design.onSwitchTrack else design.offSwitchTrack, design.dark, design.switchHeight / 2)
             .clip(design.controlShape)
             .background(if (checked) design.onSwitchTrack else design.offSwitchTrack),
     ) {

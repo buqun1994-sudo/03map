@@ -85,9 +85,11 @@ public final class ContentPreferenceStore {
         if (version <= 5) {
             // Versions 1..5 had only scale/spacing. Keep those choices while introducing
             // independent normal/current/full-screen fields in the same migration transaction.
-            state.lyricsFontSizeSp = LyricPreferenceRules.fontSize(40.0f * legacyFontScale);
+            state.lyricsFontSizeSp = LyricPreferenceRules.fontSize(preferences.contains(KEY_LYRICS_FONT_SCALE)
+                    ? 40.0f * legacyFontScale : LyricPreferenceRules.DEFAULT_FONT_SP);
             state.lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(
-                    48.0f * legacyFontScale, state.lyricsFontSizeSp);
+                    preferences.contains(KEY_LYRICS_FONT_SCALE) ? 48.0f * legacyFontScale
+                            : LyricPreferenceRules.DEFAULT_CURRENT_SP, state.lyricsFontSizeSp);
             state.lyricsLineGapDp = LyricPreferenceRules.lineGap(legacyLineGapDp(legacyLineSpacing));
             state.lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(
                     40.0f * legacyFontScale * 3.0f);
@@ -124,12 +126,13 @@ public final class ContentPreferenceStore {
                             LyricPreferenceRules.DEFAULT_IMMERSIVE_GAP_DP));
         }
         float immersiveNormal = LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp);
-        if (version <= 6) {
+        if (version <= 6 && (preferences.contains(KEY_LYRICS_FONT_SCALE)
+                || preferences.contains(KEY_LYRICS_CURRENT_FONT_SIZE_SP))) {
             float ordinaryNormal = LyricPreferenceRules.fontSize(state.lyricsFontSizeSp);
             float ordinaryCurrent = LyricPreferenceRules.currentFontSize(
                     state.lyricsCurrentFontSizeSp, ordinaryNormal);
-            // Keep the existing ordinary-current/full-screen-normal ratio; the 64..640
-            // range is exactly the old 64..192 normal range times 80/24.
+            // Keep the saved ordinary-current/full-screen-normal ratio, clamped
+            // to the current normal..normal+60 range.
             state.lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
                     immersiveNormal * ordinaryCurrent / ordinaryNormal, immersiveNormal);
         } else {
@@ -139,7 +142,7 @@ public final class ContentPreferenceStore {
         }
         state.lyricsShowTranslation = readBoolean(KEY_LYRICS_SHOW_TRANSLATION, true);
         state.lyricsSpeakerLayout = readBoolean(KEY_LYRICS_SPEAKER_LAYOUT, true);
-        state.lyricsHighlight = readBoolean(KEY_LYRICS_HIGHLIGHT, true);
+        state.lyricsHighlight = readBoolean(KEY_LYRICS_HIGHLIGHT, LyricPreferenceRules.DEFAULT_HIGHLIGHT);
         state.immersiveShowTopBar = readBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, true);
         state.immersiveTopBarKeepSplit = readBoolean(KEY_IMMERSIVE_TOP_BAR_KEEP_SPLIT, true);
         state.immersiveShowDock = readBoolean(KEY_IMMERSIVE_SHOW_DOCK, true);

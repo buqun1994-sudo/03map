@@ -107,7 +107,8 @@ open class LyricsImmersivePanelTest {
 
     @Test fun independentImmersiveTypographyReachesTheActualNativeLyrics() {
         state = state.copy(lyricsFontSizeSp = 32f, lyricsCurrentFontSizeSp = 48f, lyricsLineGapDp = 18f,
-            lyricsImmersiveFontSizeSp = 128f, lyricsImmersiveCurrentFontSizeSp = 180f, lyricsImmersiveLineGapDp = 72f)
+            lyricsImmersiveFontSizeSp = 128f, lyricsImmersiveCurrentFontSizeSp = 180f, lyricsImmersiveLineGapDp = 72f,
+            lyricsHighlight = true)
         mount()
         val body = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true)
         assertEquals(128f, body.fetchSemanticsNode().config[LyricFontPixels], .01f)
@@ -146,7 +147,7 @@ open class LyricsImmersivePanelTest {
         assertEquals(640f, lyrics.boundsInRoot.left, 1f)
         assertEquals(1280f, lyrics.boundsInRoot.width, 1f)
         assertEquals(120f, lyrics.config[LyricFontPixels], .1f)
-        assertEquals(144f, lyrics.config[LyricActiveFontPixels], .1f)
+        assertEquals(120f, lyrics.config[LyricActiveFontPixels], .1f)
         compose.onNodeWithTag("immersive-progress").assertIsDisplayed()
         compose.onNodeWithTag("immersive-progress-fill").assertIsDisplayed()
         compose.onNodeWithTag("immersive-progress-elapsed").assertTextEquals("0:05")
@@ -163,8 +164,8 @@ open class LyricsImmersivePanelTest {
         val initialBody = compose.onNodeWithTag("wallpaper-lyrics", useUnmergedTree = true).fetchSemanticsNode().id
         val initialFrame = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true).fetchSemanticsNode()
         val compactBounds = initialFrame.boundsInRoot
-        assertEquals(40f, initialFrame.config[LyricFontPixels], .1f)
-        assertEquals(48f, initialFrame.config[LyricActiveFontPixels], .1f)
+        assertEquals(50f, initialFrame.config[LyricFontPixels], .1f)
+        assertEquals(50f, initialFrame.config[LyricActiveFontPixels], .1f)
         assertEquals(0f, compactBounds.left, 1f)
         assertEquals(640f, compactBounds.width, 1f)
         assertEquals(compose.onNodeWithTag("top-bar").fetchSemanticsNode().boundsInRoot.bottom, compactBounds.top, 1f)
@@ -196,8 +197,8 @@ open class LyricsImmersivePanelTest {
                 compose.onNodeWithTag("wallpaper-lyrics", useUnmergedTree = true).fetchSemanticsNode().id)
             val frame = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true).fetchSemanticsNode()
             assertEquals("immersive-fixture", frame.config[LyricRecordingKey])
-            assertEquals(if (progress >= .5f) 120f else 40f, frame.config[LyricFontPixels], .1f)
-            assertEquals(if (progress >= .5f) 144f else 48f, frame.config[LyricActiveFontPixels], .1f)
+            assertEquals(if (progress >= .5f) 120f else 50f, frame.config[LyricFontPixels], .1f)
+            assertEquals(if (progress >= .5f) 120f else 50f, frame.config[LyricActiveFontPixels], .1f)
             if (progress == 1f) {
                 assertEquals(640f, frame.boundsInRoot.left, 1f)
                 assertEquals(0f, frame.boundsInRoot.top, 1f)

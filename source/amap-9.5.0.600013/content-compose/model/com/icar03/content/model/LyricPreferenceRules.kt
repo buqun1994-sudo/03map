@@ -9,8 +9,10 @@ import kotlin.math.roundToInt
  * same normalizers so malformed input cannot create a second interpretation.
  */
 object LyricPreferenceRules {
-    const val DEFAULT_FONT_SP: Float = 40f
-    const val DEFAULT_CURRENT_SP: Float = 48f
+    const val DEFAULT_FONT_SP: Float = 50f
+    const val DEFAULT_CURRENT_SP: Float = 50f
+    const val DEFAULT_HIGHLIGHT: Boolean = false
+    const val CURRENT_FONT_EXTRA_SP: Float = 60f
     const val DEFAULT_GAP_DP: Float = 28f
     const val DEFAULT_IMMERSIVE_FONT_SP: Float = 120f
     const val DEFAULT_IMMERSIVE_CURRENT_SP: Float = 144f
@@ -20,11 +22,11 @@ object LyricPreferenceRules {
     const val DEFAULT_CUSTOM_COLOR: Int = -10721601
     const val DEFAULT_SYSTEM_ACCENT_COLOR: Int = -15037185
 
-    val FONT_RANGE: ClosedFloatingPointRange<Float> = 24f..64f
-    val CURRENT_FONT_RANGE: ClosedFloatingPointRange<Float> = 24f..80f
+    val FONT_RANGE: ClosedFloatingPointRange<Float> = 28f..72f
+    val CURRENT_FONT_RANGE: ClosedFloatingPointRange<Float> = 28f..132f
     val GAP_RANGE: ClosedFloatingPointRange<Float> = 0f..64f
     val IMMERSIVE_FONT_RANGE: ClosedFloatingPointRange<Float> = 64f..192f
-    val IMMERSIVE_CURRENT_FONT_RANGE: ClosedFloatingPointRange<Float> = 64f..640f
+    val IMMERSIVE_CURRENT_FONT_RANGE: ClosedFloatingPointRange<Float> = 64f..252f
     val IMMERSIVE_GAP_RANGE: ClosedFloatingPointRange<Float> = 0f..192f
 
     /** Normalize to the one-spaced slider grid, with non-finite values at the default. */
@@ -35,7 +37,8 @@ object LyricPreferenceRules {
     @JvmStatic
     fun currentFontSize(value: Float, normal: Float): Float {
         val safeNormal = fontSize(normal)
-        return normalizeStep(value, CURRENT_FONT_RANGE, DEFAULT_CURRENT_SP).coerceAtLeast(safeNormal)
+        return normalizeStep(value, CURRENT_FONT_RANGE, DEFAULT_CURRENT_SP)
+            .coerceIn(safeNormal, safeNormal + CURRENT_FONT_EXTRA_SP)
     }
 
     /** Normalize to the one-dp slider grid. */
@@ -52,7 +55,7 @@ object LyricPreferenceRules {
     fun immersiveCurrentFontSize(value: Float, normal: Float): Float {
         val safeNormal = immersiveFontSize(normal)
         return normalizeStep(value, IMMERSIVE_CURRENT_FONT_RANGE, DEFAULT_IMMERSIVE_CURRENT_SP, 2)
-            .coerceAtLeast(safeNormal)
+            .coerceIn(safeNormal, safeNormal + CURRENT_FONT_EXTRA_SP)
     }
 
     /** Normalize the immersive/full-screen lyric gap to a two-dp step grid. */

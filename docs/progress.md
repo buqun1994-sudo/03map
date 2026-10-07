@@ -1,4 +1,17 @@
-## 设置页Figma重构（2026-10-07，前一轮已提交，本轮控件快速调整）
+## 设置反馈与Apple登录终态修正（2026-10-07，本轮最终构建与设备边界）
+
+本轮正式源码完成设置反馈、Apple Music有界登录、歌词默认／范围、歌词设置页自动跟随门控、滑条录音、底部Sheet／子页转场与设置图标修正；`ContentPanel`同时修复实际歌词分页路径读取最新偏好的状态闭包，预览宿主补齐歌词默认值事件。五模块 `all + lint` 已通过：`app`、`content-model`、`content-ui`、`content-runtime`、`map-host`，246 actionable tasks，失败／错误／跳过均0；项目文档、Skills、代码地图和diff检查通过。
+
+正式 `bash scripts/build-content-apk.sh` 与独立 `bash scripts/test-content-host.sh` 已通过。最终签名包为 [signed.apk](<../apk-work/9.5.0.600013/source-build.o1SQgU/signed.apk>)，包名 `com.autonavi.amapautolite`、版本 `9.5.0.600013`、Launcher `com.autonavi.auto.remote.fill.UsbFillActivity`、大小165757077 bytes、SHA-256=`635d8e2f86a31cacea6b5485420cc9acf6febd32516d48c342a0cfa24135b0b1`；单签名人、v1／v2／v3、2个连续DEX、5408原public IDs、61个原生库哈希、64个Deflate库和Compose资源／DEX闭包均通过。包级报告见`apk-work/9.5.0.600013/host-package-test.tDAN5t/report.json`。
+
+设备重新发现为 `192.168.0.203:5555`。自动 `adb install -r` 已确认设备在线但无线大包传输长时间未提交，随后安全终止；非流式重试也因用户改为手动安装而立即停止。未清数据、未卸载，车机仍保留旧包；最终APK已提供给用户手动安装，设备启动／窗口／日志smoke待用户安装完成后继续核验。
+
+## 设置反馈与Apple登录终态修正（2026-10-07，本轮跟进）
+
+正式源码已补齐本轮现场反馈：浅色选中层改为可见灰面，开关只有自身热区并略微扩展，开关／分段控件阴影不再形成外层圆框；设置Sheet从底部进入／退出，子页使用非线性横向转场，右上SVG图标围绕同一中心上下翻转。歌词自动跟随只在歌词设置子页开启；滑条离散刻度使用用户提供的轻量录音；Apple Music准备失败、首屏超时、主框架错误和Cookie清理失败均结束加载并提供重试，回调按attempt／页面／生命周期隔离。
+
+歌词偏好已统一为分屏普通默认50sp、范围28..72sp，全屏普通默认120sp；当前句范围为对应普通值至普通值+60sp，放大默认关闭且关闭时折叠当前句字号控制。`LyricPreferenceRules`、ContentState／Store／PreferenceStore、Settings UI和运行时合同已同步，模型、运行时、Wallpaper滚动门控与定向UI验证通过；正式签名构建和包级核验已通过，最终APK已交用户手动安装，车机smoke待安装完成后执行。用户已有README、字体研究和车机链路研究改动保持不纳入本轮提交。
+
 
 正式源码已按现场Figma和12／24／48dp规则依次实现令牌、原子控件及页面；首页、状态栏和歌词完整组合，其余子页同皮肤。歌词预览移除，八段配色等分且总宽等于色相条；schema7的续航、四充电项、翻译、全屏顶栏宽度及独立全屏当前字号已有实际消费者。Apple登录单独大Dialog，不受1/3设置宽度约束，返回／关闭／系统返回沿统一取消和WebView清理；保留系统栏与IME resize。
 

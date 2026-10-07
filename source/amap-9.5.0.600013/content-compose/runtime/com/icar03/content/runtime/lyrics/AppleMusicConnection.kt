@@ -38,6 +38,13 @@ class AppleMusicConnection internal constructor(internal val account: AppleMusic
         override fun toString(): String = "AppleMusicLoginAttempt"
     }
 
+    enum class PreparationFailure { COOKIE_CLEAR_FAILED, CANCELLED }
+
+    sealed class PreparationResult(open val attempt: LoginAttempt) {
+        class Ready(override val attempt: LoginAttempt) : PreparationResult(attempt)
+        class Failed(override val attempt: LoginAttempt, val reason: PreparationFailure) : PreparationResult(attempt)
+    }
+
     /** A domain-bearing official cookie, rather than an arbitrary user token entry. */
     class Cookie(
         val name: String,
@@ -59,16 +66,32 @@ class AppleMusicConnection internal constructor(internal val account: AppleMusic
     val revision: Long get() = account.revision
     fun refresh(): State = account.refresh()
 
-    /** Clear previous Apple login cookies before the caller opens [loginUrl]. */
-    fun prepareLogin(onReady: (LoginAttempt) -> Unit): Boolean = account.prepareLogin(onReady)
+    /** Compatibility facade: true means preparation was accepted, rather than completed. */
+    fun prepareLogin(onReady: (LoginAttempt) -> Unit): Boolean = prepareLoginAttempt { result ->
+        if (result is PreparationResult.Ready) onReady(result.attempt)
+    } != null
+
+    /** Returns ownership immediately; every accepted preparation completes exactly once. */
+    fun prepareLoginAttempt(onResult: (PreparationResult) -> Unit): LoginAttempt? = account.prepareLoginAttempt(onResult)
 
     /** Missing itua gets eight seconds of grace, then the backend asks /v1/me/storefront. */
     fun acceptCookies(attempt: LoginAttempt, pageUrl: String, cookies: List<Cookie>): CookieAcceptance =
         account.acceptCookies(attempt, pageUrl, cookies)
 
     /** CookieManager does not expose expiry; these cookies use the 180-day upper bound. */
-    fun pollOfficialLoginCookies(attempt: LoginAttempt): CookieAcceptance =
-        acceptCookies(attempt, LOGIN_URL, account.websiteCookies.read(LOGIN_URL))
+    fun pollOfficialLoginCookies(attempt: LoginAttempt, pageUrl: String = LOGIN_URL): CookieAcceptance {
+        if (officialMusicUri(pageUrl) == null) return CookieAcceptance.INVALID_ORIGIN
+        var pending = CookieAcceptance.WAITING_FOR_TOKEN
+        for (url in listOf(pageUrl, LOGIN_URL, "https://music.apple.com/").distinct()) {
+            when (val result = acceptCookies(attempt, url, account.websiteCookies.read(url))) {
+                CookieAcceptance.ACCEPTED, CookieAcceptance.STORAGE_FAILED,
+                CookieAcceptance.STALE_ATTEMPT, CookieAcceptance.WAITING_FOR_STOREFRONT -> return result
+                CookieAcceptance.WAITING_FOR_TOKEN -> Unit
+                else -> pending = result
+            }
+        }
+        return pending
+    }
 
     fun cancelLogin(attempt: LoginAttempt) = account.cancelLogin(attempt)
     fun disconnect(onComplete: (Boolean) -> Unit = {}) = account.disconnect(onComplete)
@@ -121,6 +144,7 @@ internal class AppleMusicAccount(
     private var credential: AppleMusicCredential? = runCatching { credentialStore.load() }.getOrNull()
     private var loginAttempt: AppleMusicConnection.LoginAttempt? = null
     private var loginReady = false
+    private var preparationCallback: ((AppleMusicConnection.PreparationResult) -> Unit)? = null
     private var observedToken = ""
     private var tokenFirstSeenAtMs = 0L
     private val mutableState = MutableStateFlow(describe())
@@ -169,37 +193,52 @@ internal class AppleMusicAccount(
         refresh()
     }
 
-    fun prepareLogin(onReady: (AppleMusicConnection.LoginAttempt) -> Unit): Boolean {
+    fun prepareLoginAttempt(
+        onResult: (AppleMusicConnection.PreparationResult) -> Unit,
+    ): AppleMusicConnection.LoginAttempt? {
         val attempt = synchronized(lock) {
-            if (loginAttempt != null) return false
+            if (loginAttempt != null) return null
             AppleMusicConnection.LoginAttempt(UUID.randomUUID().toString(), credential?.token.orEmpty()).also {
                 loginAttempt = it
                 loginReady = false
+                preparationCallback = onResult
                 observedToken = ""
                 tokenFirstSeenAtMs = 0L
                 refresh()
             }
         }
         try {
-            websiteCookies.clear { success ->
-                val ready = synchronized(lock) {
-                    if (loginAttempt !== attempt) return@clear
-                    if (!success) {
-                        loginAttempt = null
-                        refresh()
-                        false
-                    } else {
-                        loginReady = true
-                        true
-                    }
-                }
-                if (ready) onReady(attempt)
-            }
+            websiteCookies.clear { success -> completePreparation(attempt, success) }
         } catch (_: Exception) {
-            cancelLogin(attempt)
-            return false
+            completePreparation(attempt, false)
         }
-        return true
+        return attempt
+    }
+
+    private fun completePreparation(attempt: AppleMusicConnection.LoginAttempt, success: Boolean) {
+        val completion = synchronized(lock) {
+            if (loginAttempt !== attempt) return
+            val callback = preparationCallback ?: return
+            preparationCallback = null
+            val result = if (success) {
+                loginReady = true
+                AppleMusicConnection.PreparationResult.Ready(attempt)
+            } else {
+                clearLoginAttempt()
+                refresh()
+                AppleMusicConnection.PreparationResult.Failed(attempt, AppleMusicConnection.PreparationFailure.COOKIE_CLEAR_FAILED)
+            }
+            callback to result
+        }
+        completion.first(completion.second)
+    }
+
+    private fun clearLoginAttempt() {
+        loginAttempt = null
+        loginReady = false
+        preparationCallback = null
+        observedToken = ""
+        tokenFirstSeenAtMs = 0L
     }
 
     fun acceptCookies(
@@ -252,27 +291,31 @@ internal class AppleMusicAccount(
         AppleMusicConnection.CookieAcceptance.ACCEPTED
     }
 
-    fun cancelLogin(attempt: AppleMusicConnection.LoginAttempt) = synchronized(lock) {
-        if (loginAttempt !== attempt) return@synchronized
-        loginAttempt = null
-        loginReady = false
-        observedToken = ""
-        tokenFirstSeenAtMs = 0L
-        refresh()
+    fun cancelLogin(attempt: AppleMusicConnection.LoginAttempt) {
+        val callback = synchronized(lock) {
+            if (loginAttempt !== attempt) return
+            val pending = preparationCallback
+            clearLoginAttempt()
+            refresh()
+            pending
+        }
+        callback?.invoke(AppleMusicConnection.PreparationResult.Failed(attempt, AppleMusicConnection.PreparationFailure.CANCELLED))
     }
 
     fun disconnect(onComplete: (Boolean) -> Unit) {
+        var cancelled: Pair<AppleMusicConnection.LoginAttempt, (AppleMusicConnection.PreparationResult) -> Unit>? = null
         val removed = synchronized(lock) {
             try { credentialStore.clear() } catch (_: Exception) { return@synchronized false }
             credential = null
-            loginAttempt = null
-            loginReady = false
-            observedToken = ""
-            tokenFirstSeenAtMs = 0L
+            loginAttempt?.let { attempt -> preparationCallback?.let { cancelled = attempt to it } }
+            clearLoginAttempt()
             refresh()
             true
         }
         if (!removed) { onComplete(false); return }
+        cancelled?.let { (attempt, callback) ->
+            callback(AppleMusicConnection.PreparationResult.Failed(attempt, AppleMusicConnection.PreparationFailure.CANCELLED))
+        }
         try { websiteCookies.clear(onComplete) } catch (_: Exception) { onComplete(false) }
     }
 
@@ -299,10 +342,12 @@ internal interface AppleMusicWebsiteCookies {
 }
 
 /** Target official login hosts only; never remove unrelated WebView cookies. */
-internal class AppleMusicAndroidWebsiteCookies : AppleMusicWebsiteCookies {
+internal class AppleMusicAndroidWebsiteCookies(
+    private val cookieManager: () -> CookieManager = CookieManager::getInstance,
+) : AppleMusicWebsiteCookies {
     override fun read(url: String): List<AppleMusicConnection.Cookie> {
         val origin = officialMusicUri(url) ?: return emptyList()
-        return CookieManager.getInstance().getCookie(url).orEmpty().split(';').mapNotNull { raw ->
+        return cookieManager().getCookie(url).orEmpty().split(';').mapNotNull { raw ->
             val pieces = raw.trim().split('=', limit = 2)
             if (pieces.size != 2 || pieces[0].isBlank()) null else
                 AppleMusicConnection.Cookie(pieces[0], pieces[1], origin.host)
@@ -310,7 +355,7 @@ internal class AppleMusicAndroidWebsiteCookies : AppleMusicWebsiteCookies {
     }
 
     override fun clear(onComplete: (Boolean) -> Unit) {
-        val manager = CookieManager.getInstance()
+        val manager = cookieManager()
         val deletions = linkedSetOf<Pair<String, String>>()
         for (url in LOGIN_COOKIE_URLS) {
             val host = URI(url).host

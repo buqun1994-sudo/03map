@@ -29,7 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -55,12 +57,11 @@ internal fun SettingsSheet(
         val currentEvent by rememberUpdatedState(onEvent)
         BoxWithConstraints(modifier.clipToBounds().testTag("settings-sheet-host")) {
             val density = LocalDensity.current
-            val widthPx = with(density) { maxWidth.toPx() }
             val heightPx = with(density) { maxHeight.toPx() }
             val headerHeight = with(density) { design.pageTitleStyle.lineHeight.toDp() } + design.pagePadding * 2
             val headerHeightPx = with(density) { headerHeight.toPx() }
             val peekHeightPx = with(density) { (design.minimumTouchHeight + 16.dp).toPx() }
-            val horizontalOffset = remember { Animatable(-1f) }
+            val verticalOffset = remember { Animatable(1f) }
             val collapseOffset = remember { Animatable(0f) }
             var wasOpen by remember { mutableStateOf(false) }
             var collapsed by remember { mutableStateOf(false) }
@@ -71,17 +72,17 @@ internal fun SettingsSheet(
                 if (currentState.settingsOpen && (!currentState.lyricsProviderSettings.appleLoginOpen ||
                         it == AppleMusicLoginDismissed || it == ContentEvent.SettingsBack)) currentEvent(it)
             }
-            LaunchedEffect(open, widthPx) {
-                if (widthPx <= 0f) return@LaunchedEffect
+            LaunchedEffect(open, heightPx) {
+                if (heightPx <= 0f) return@LaunchedEffect
                 if (open) {
                     if (!wasOpen) {
-                        horizontalOffset.snapTo(-widthPx)
+                        verticalOffset.snapTo(heightPx)
                         wasOpen = true
                         collapsed = false
                     }
-                    horizontalOffset.animateTo(0f, tween(360, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)))
+                    verticalOffset.animateTo(0f, tween(360, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)))
                 } else if (wasOpen) {
-                    horizontalOffset.animateTo(-widthPx, tween(300, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
+                    verticalOffset.animateTo(heightPx, tween(300, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
                     wasOpen = false
                     collapsed = false
                 }
@@ -95,8 +96,7 @@ internal fun SettingsSheet(
             Box(
                 Modifier.fillMaxSize()
                     .graphicsLayer {
-                        translationX = horizontalOffset.value
-                        translationY = collapseOffset.value
+                        translationY = verticalOffset.value + collapseOffset.value
                     }
                     .downwardSoftShadow(design.page, design.dark, 12.dp)
                     .clip(design.pageShape)
@@ -129,8 +129,15 @@ internal fun SettingsSheet(
                             modifier = Modifier.align(Alignment.CenterEnd).padding(end = design.pagePadding),
                             tag = "settings-collapse",
                         ) { iconModifier ->
-                            Icon(if (collapsed) Icons.Outlined.VerticalAlignTop else Icons.Outlined.VerticalAlignBottom,
-                                null, iconModifier, tint = design.text)
+                            Icon(
+                                painter = painterResource(R.drawable.content_ic_settings_collapse),
+                                contentDescription = null,
+                                modifier = iconModifier.graphicsLayer {
+                                    rotationZ = if (collapsed) 180f else 0f
+                                    transformOrigin = TransformOrigin.Center
+                                },
+                                tint = design.text,
+                            )
                         }
                     }
                     HorizontalDivider(color = design.divider, modifier = Modifier.testTag("settings-header-divider"))
@@ -248,6 +255,8 @@ private fun LyricsSettings(
     val immersiveCurrent = LyricPreferenceRules.immersiveCurrentFontSize(immersiveCurrentDraft ?: state.lyricsImmersiveCurrentFontSizeSp, immersive)
     val gap = LyricPreferenceRules.lineGap(gapDraft ?: state.lyricsLineGapDp)
     val immersiveGap = LyricPreferenceRules.immersiveLineGap(immersiveGapDraft ?: state.lyricsImmersiveLineGapDp)
+    val currentRange = normal..(normal + LyricPreferenceRules.CURRENT_FONT_EXTRA_SP)
+    val immersiveCurrentRange = immersive..(immersive + LyricPreferenceRules.CURRENT_FONT_EXTRA_SP)
     SettingsPageList(modifier, "settings-detail-scroll") {
         SettingsSection("歌词库") {
             LyricsProviderSettings(state.lyricsProviderSettings, onEvent, controlsEnabled, loginEnabled = enabled)
@@ -256,7 +265,7 @@ private fun LyricsSettings(
             SettingsFieldBlock("字号") {
                 SettingsSliderRow("分屏", normal, "sp", LyricPreferenceRules.FONT_RANGE, { normalDraft = it },
                     { onEvent(ContentEvent.LyricsFontSizeChanged(LyricPreferenceRules.fontSize(normalDraft ?: state.lyricsFontSizeSp))); normalDraft = null },
-                    enabled = controlsEnabled, tag = "settings-font-size", steps = 39)
+                    enabled = controlsEnabled, tag = "settings-font-size", steps = 43)
                 SettingsSliderRow("全屏", immersive, "sp", LyricPreferenceRules.IMMERSIVE_FONT_RANGE, { immersiveDraft = it },
                     { onEvent(ContentEvent.LyricsImmersiveFontSizeChanged(LyricPreferenceRules.immersiveFontSize(immersiveDraft ?: state.lyricsImmersiveFontSizeSp))); immersiveDraft = null },
                     enabled = controlsEnabled, tag = "settings-immersive-font-size", steps = 63)
@@ -284,20 +293,22 @@ private fun LyricsSettings(
         SettingsSection("当前句歌词") {
             SettingsSwitchRow("放大强调", state.lyricsHighlight, { onEvent(ContentEvent.LyricsHighlightChanged(it)) },
                 enabled = controlsEnabled, tag = "settings-switch-当前句歌词放大")
-            SettingsDivider()
-            SettingsFieldBlock("字号") {
-                SettingsSliderRow("分屏", current, "sp", normal..LyricPreferenceRules.CURRENT_FONT_RANGE.endInclusive,
-                    { currentDraft = it },
-                    { onEvent(ContentEvent.LyricsCurrentFontSizeChanged(LyricPreferenceRules.currentFontSize(currentDraft ?: state.lyricsCurrentFontSizeSp, normal))); currentDraft = null },
-                    enabled = controlsEnabled && state.lyricsHighlight, tag = "settings-current-font-size",
-                    steps = (LyricPreferenceRules.CURRENT_FONT_RANGE.endInclusive - normal).roundToInt() - 1)
-                SettingsSliderRow("全屏", immersiveCurrent, "sp", immersive..LyricPreferenceRules.IMMERSIVE_CURRENT_FONT_RANGE.endInclusive,
-                    { immersiveCurrentDraft = it },
-                    { onEvent(ContentEvent.LyricsImmersiveCurrentFontSizeChanged(LyricPreferenceRules.immersiveCurrentFontSize(immersiveCurrentDraft ?: state.lyricsImmersiveCurrentFontSizeSp, immersive))); immersiveCurrentDraft = null },
-                    enabled = controlsEnabled && state.lyricsHighlight, tag = "settings-immersive-current-font-size",
-                    steps = ((LyricPreferenceRules.IMMERSIVE_CURRENT_FONT_RANGE.endInclusive - immersive) / 2f).roundToInt() - 1)
+            if (state.lyricsHighlight) {
+                SettingsDivider()
+                SettingsFieldBlock("字号") {
+                    SettingsSliderRow("分屏", current, "sp", currentRange,
+                        { currentDraft = it },
+                        { onEvent(ContentEvent.LyricsCurrentFontSizeChanged(LyricPreferenceRules.currentFontSize(currentDraft ?: state.lyricsCurrentFontSizeSp, normal))); currentDraft = null },
+                        enabled = controlsEnabled, tag = "settings-current-font-size",
+                        steps = (currentRange.endInclusive - currentRange.start).roundToInt() - 1)
+                    SettingsSliderRow("全屏", immersiveCurrent, "sp", immersiveCurrentRange,
+                        { immersiveCurrentDraft = it },
+                        { onEvent(ContentEvent.LyricsImmersiveCurrentFontSizeChanged(LyricPreferenceRules.immersiveCurrentFontSize(immersiveCurrentDraft ?: state.lyricsImmersiveCurrentFontSizeSp, immersive))); immersiveCurrentDraft = null },
+                        enabled = controlsEnabled, tag = "settings-immersive-current-font-size",
+                        steps = ((immersiveCurrentRange.endInclusive - immersiveCurrentRange.start) / 2f).roundToInt() - 1)
+                }
+                SettingsDivider()
             }
-            SettingsDivider()
             SettingsLyricColor(state.lyricsCurrentColorMode, currentColorDraft?.first ?: state.lyricsCurrentCustomColor, controlsEnabled, true,
                 onMode = { onEvent(ContentEvent.LyricsCurrentColorModeChanged(it)) },
                 onPreview = { currentColorDraft = it to state.lyricsCurrentColorMode },

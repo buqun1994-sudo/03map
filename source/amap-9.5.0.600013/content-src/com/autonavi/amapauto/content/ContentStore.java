@@ -429,7 +429,7 @@ public final class ContentStore {
             state.lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(
                     LyricPreferenceRules.DEFAULT_IMMERSIVE_GAP_DP);
             state.lyricsSpeakerLayout = true;
-            state.lyricsHighlight = true;
+            state.lyricsHighlight = LyricPreferenceRules.DEFAULT_HIGHLIGHT;
             state.lyricsShowTranslation = true;
             preferenceStore.save(state);
         }

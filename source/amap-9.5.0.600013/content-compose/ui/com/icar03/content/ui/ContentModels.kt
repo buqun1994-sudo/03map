@@ -151,7 +151,7 @@ data class ContentUiState(
     val lyricsSystemAccentColor: Int = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR,
     val lyricsProviderSettings: LyricsProviderUiState = LyricsProviderUiState(),
     val lyricsSpeakerLayout: Boolean = true,
-    val lyricsHighlight: Boolean = true,
+    val lyricsHighlight: Boolean = LyricPreferenceRules.DEFAULT_HIGHLIGHT,
     val immersiveShowTopBar: Boolean = true, val immersiveTopBarKeepSplit: Boolean = true,
     val immersiveShowDock: Boolean = true,
     val showAmbientArtwork: Boolean = true,

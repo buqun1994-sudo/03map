@@ -441,6 +441,7 @@ open class ContentPanelLightPrototypeRenderTest {
             LyricLine(4_000, "合成下一句", side = LyricSide.Leading))
         val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
             previewMode = false, page = PanelPage.Lyrics,
+            lyricsFontSizeSp = 40f, lyricsCurrentFontSizeSp = 48f, lyricsHighlight = true,
             lyrics = LyricsState(recordingKey = "page-lyric-preferences", lines = lines,
                 timelineReady = true, positionMs = 500, activeIndex = 0, scrollIndex = 0, durationMs = 60_000)))
         compose.setContent {
@@ -454,7 +455,11 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.waitForIdle()
         val body = compose.onNode(SemanticsMatcher.keyIsDefined(LyricRowHeights), useUnmergedTree = true)
         val voiceHeights = body.fetchSemanticsNode().config[LyricRowHeights]
-        compose.runOnIdle { state.value = state.value.copy(lyricsSpeakerLayout = false) }
+        compose.runOnIdle {
+            state.value = state.value.copy(lyricsSpeakerLayout = false)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
         val defaultHeights = body.fetchSemanticsNode().config[LyricRowHeights]
         assertTrue("ContentPanel forwards voice preferences through LyricsBodyTransition", defaultHeights[0] < voiceHeights[0])
@@ -462,7 +467,7 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.waitForIdle()
         val looseHeights = body.fetchSemanticsNode().config[LyricRowHeights]
         assertTrue("the actual page changes main-only row spacing", looseHeights.zip(defaultHeights).all { (loose, normal) -> loose > normal })
-        compose.runOnIdle { state.value = state.value.copy(lyricsFontSizeSp = 34f, lyricsCurrentFontSizeSp = 42f) }
+        compose.runOnIdle { state.value = state.value.copy(lyricsFontSizeSp = 34f, lyricsCurrentFontSizeSp = 42f, lyricsHighlight = true) }
         compose.waitForIdle()
         assertEquals(34f, body.fetchSemanticsNode().config[LyricFontPixels], .01f)
         assertEquals(42f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)

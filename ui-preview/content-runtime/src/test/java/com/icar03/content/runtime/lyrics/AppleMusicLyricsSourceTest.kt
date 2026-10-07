@@ -331,11 +331,22 @@ internal class AppleMusicFixtureRig(credential: AppleMusicCredential? = AppleMus
     }
     class Cookies : AppleMusicWebsiteCookies {
         var deferred = false
+        var clearResult = true
+        var clearFailure: Exception? = null
         var clears = 0
         val pending = mutableListOf<(Boolean) -> Unit>()
+        val reads = mutableListOf<String>()
+        val byUrl = mutableMapOf<String, List<AppleMusicConnection.Cookie>>()
         var current: List<AppleMusicConnection.Cookie> = emptyList()
-        override fun read(url: String): List<AppleMusicConnection.Cookie> = current
-        override fun clear(onComplete: (Boolean) -> Unit) { clears++; if (deferred) pending += onComplete else onComplete(true) }
+        override fun read(url: String): List<AppleMusicConnection.Cookie> {
+            reads += url
+            return byUrl[url] ?: current
+        }
+        override fun clear(onComplete: (Boolean) -> Unit) {
+            clears++
+            clearFailure?.let { throw it }
+            if (deferred) pending += onComplete else onComplete(clearResult)
+        }
     }
 }
 

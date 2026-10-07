@@ -1,6 +1,7 @@
 package com.autonavi.amapauto.content;
 
 import com.icar03.content.model.VehicleControl;
+import com.icar03.content.model.LyricPreferenceRules;
 
 import android.graphics.Bitmap;
 
@@ -31,8 +32,8 @@ public final class ContentState {
     public float lyricsFontScale = 1.0f;
     public int lyricsLineSpacing = 1;
     // New independent lyric preferences. The legacy scale/spacing fields above remain for API compatibility.
-    public float lyricsFontSizeSp = 40.0f;
-    public float lyricsCurrentFontSizeSp = 48.0f;
+    public float lyricsFontSizeSp = LyricPreferenceRules.DEFAULT_FONT_SP;
+    public float lyricsCurrentFontSizeSp = LyricPreferenceRules.DEFAULT_CURRENT_SP;
     public float lyricsLineGapDp = 28.0f;
     public String lyricsAlignment = "left";
     public String lyricsColorMode = "theme";
@@ -44,7 +45,7 @@ public final class ContentState {
     public float lyricsImmersiveLineGapDp = 84.0f;
     public boolean lyricsShowTranslation = true;
     public boolean lyricsSpeakerLayout = true;
-    public boolean lyricsHighlight = true;
+    public boolean lyricsHighlight = LyricPreferenceRules.DEFAULT_HIGHLIGHT;
     public boolean immersiveShowTopBar = true;
     public boolean immersiveTopBarKeepSplit = true;
     public boolean immersiveShowDock = true;
