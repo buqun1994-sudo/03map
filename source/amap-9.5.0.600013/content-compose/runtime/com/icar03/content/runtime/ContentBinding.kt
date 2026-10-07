@@ -14,6 +14,7 @@ import com.autonavi.amapauto.content.ContentPorts
 import com.autonavi.amapauto.content.ContentState
 import com.autonavi.amapauto.content.ContentStore
 import com.icar03.content.ui.*
+import com.icar03.content.model.VehicleFeature
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,7 +37,7 @@ class ContentBinding(
     private val handler = Handler(Looper.getMainLooper())
     private var generation = 0L
     private val workerEpoch = AtomicLong()
-    private val latestSystemRequest = AtomicLongArray(2)
+    private val latestSystemRequest = AtomicLongArray(5)
     private var systemWriteSequence = 0L
     private var systemObservationSequence = 0L
     private var appliedSystemObservation = 0L
@@ -44,14 +45,16 @@ class ContentBinding(
     private var systemReadDirty = false
     private var systemJob: Future<*>? = null
     private val systemWorker = Executors.newSingleThreadExecutor()
-    private val systemTargets = arrayOfNulls<Float>(2)
-    private val systemKindSequence = LongArray(2)
+    private val systemTargets = arrayOfNulls<Float>(5)
+    private val systemKindSequence = LongArray(5)
     private var running = false
     private var closed = false
     private var queuedProjectionEpoch: Long? = null
     private var listener: ContentStore.Listener? = null
     private var brightness = ContentPorts.SystemSnapshot(false, 0)
     private var volume = ContentPorts.SystemSnapshot(false, 0)
+    private var systemLevels: Map<SystemQuickControl, ContentPorts.SystemSnapshot> =
+        SystemQuickControl.entries.associateWith { ContentPorts.SystemSnapshot(false, 0) }
     private var sourcesOpen = false
     private var settingsOpen = false
     private var settingsSection = SettingsSection.Home
@@ -62,6 +65,7 @@ class ContentBinding(
     private var themeObserverRegistered = false
     private var feedback: String? = null
     private var feedbackRevision = 0L
+    private var screenCleaning = false
     private val feedbackTimeout = Runnable {
         if (feedback != null) {
             feedback = null
@@ -205,6 +209,7 @@ class ContentBinding(
         settingsOpen = false
         settingsSection = SettingsSection.Home
         replaceFeedback(null)
+        screenCleaning = false
         mutableArtwork.value = null
         mutableAmbient.value = null
         retainedAmbient = null
@@ -221,6 +226,9 @@ class ContentBinding(
         controls = state.controls.mapValues { it.value.copy(available = false) },
         brightness = state.brightness.copy(available = false, target = null), volume = state.volume.copy(available = false, target = null),
         media = state.media.copy(playbackAvailable = false, nextAvailable = false, sourceAvailable = false),
+        features = state.features.mapValues { it.value.copy(available = false, target = null) },
+        systemLevels = state.systemLevels.mapValues { it.value.copy(available = false, target = null) },
+        screenCleaning = false,
     )
 
     override fun close() {
@@ -271,7 +279,8 @@ class ContentBinding(
         if (event is ContentEvent.ControlTapped || event is ContentEvent.ControlPowerTapped ||
             event is ContentEvent.ControlAutomaticTapped || event is ContentEvent.ControlLevelChanged ||
             event == ContentEvent.PlayPause || event == ContentEvent.NextTrack || event == ContentEvent.RearWashTapped ||
-            event is ContentEvent.SourceSelected || event is ContentEvent.BrightnessChanged || event is ContentEvent.VolumeChanged) replaceFeedback(null)
+            event is ContentEvent.SourceSelected || event is ContentEvent.BrightnessChanged || event is ContentEvent.VolumeChanged ||
+             event is ContentEvent.SystemVolumeChanged || event is ContentEvent.FeatureTapped || event == ContentEvent.ScreenCleanTapped) replaceFeedback(null)
         // A fresh capability snapshot is a cached fact, never a synchronous service probe.
         project(store.snapshot())
         when (event) {
@@ -290,8 +299,23 @@ class ContentBinding(
             is ContentEvent.ControlLevelChanged -> {
                 if (state.value.controls[event.id]?.available == true) store.setControlLevel(event.id.id, event.level)
             }
-            is ContentEvent.BrightnessChanged -> writeSystem(0, event.value)
+            is ContentEvent.FeatureTapped -> {
+                val feature = event.id.feature
+                if (feature != null && state.value.features[feature]?.available == true) {
+                    val current = state.value.features.getValue(feature)
+                    if (feature.action) store.requestFeature(feature.id, 1)
+                    else store.requestFeature(feature.id, if (current.displayed == 0) 1 else 0)
+                }
+            }
+            ContentEvent.ScreenCleanTapped -> {
+                if (state.value.screenCleaning || state.value.screenCleanAvailable) {
+                    screenCleaning = !screenCleaning
+                    publishShell()
+                }
+            }
+            is ContentEvent.BrightnessChanged -> store.setCenterBrightness((1 + event.value.coerceIn(0f, 1f) * 9f).roundToInt())
             is ContentEvent.VolumeChanged -> writeSystem(1, event.value)
+            is ContentEvent.SystemVolumeChanged -> writeSystem(event.id.systemKind(), event.value)
             ContentEvent.PlayPause -> if (state.value.media.playbackAvailable) store.toggleMediaPlayback()
             ContentEvent.NextTrack -> if (state.value.media.nextAvailable) store.nextMediaTrack()
             ContentEvent.RearWashTapped -> store.triggerControl(ControlId.RearWash.id)
@@ -408,20 +432,37 @@ class ContentBinding(
             if (workerEpoch.get() != epoch) return@submit
             val light = read(0)
             val sound = read(1)
+            val call = read(2)
+            val navigation = read(3)
+            val voice = read(4)
             handler.post {
                 if (!running || generation != epoch) return@post
                 systemReadInFlight = false
-                applySystem(sequence, light, sound)
+                applySystem(sequence, light, sound, call, navigation, voice)
                 if (systemReadDirty) { systemReadDirty = false; requestSystemRead() }
             }
         }
     }
 
-    private fun applySystem(sequence: Long, light: ContentPorts.SystemSnapshot, sound: ContentPorts.SystemSnapshot) {
+    private fun applySystem(
+        sequence: Long,
+        light: ContentPorts.SystemSnapshot,
+        sound: ContentPorts.SystemSnapshot,
+        call: ContentPorts.SystemSnapshot,
+        navigation: ContentPorts.SystemSnapshot,
+        voice: ContentPorts.SystemSnapshot,
+    ) {
         if (sequence <= appliedSystemObservation) return
         appliedSystemObservation = sequence
         brightness = light
         volume = sound
+        systemLevels = mapOf(
+            SystemQuickControl.Brightness to light,
+            SystemQuickControl.Volume to sound,
+            SystemQuickControl.CallVolume to call,
+            SystemQuickControl.NavigationVolume to navigation,
+            SystemQuickControl.VoiceVolume to voice,
+        )
         publishShell()
     }
 
@@ -440,18 +481,27 @@ class ContentBinding(
             if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
             val before = read(kind)
             if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
-            val accepted = before.available && (kotlin.math.abs(before.percent - target) <= 1 ||
-                try { store.systemPort().write(kind, target) } catch (_: RuntimeException) { false })
+            val accepted = before.matches(target) ||
+                try { store.systemPort().write(kind, target) } catch (_: RuntimeException) { false }
             val light = read(0)
             val sound = read(1)
+            val call = read(2)
+            val navigation = read(3)
+            val voice = read(4)
+            val actual = when (kind) {
+                0 -> light
+                1 -> sound
+                2 -> call
+                3 -> navigation
+                else -> voice
+            }
             handler.post {
                 if (!running || generation != epoch) return@post
                 if (systemKindSequence[kind] == requestSequence) systemTargets[kind] = null
-                val actual = if (kind == 0) light else sound
                 if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner) {
-                    replaceFeedback(if (accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) null else "系统状态未确认")
+                    replaceFeedback(if (accepted && actual.matches(target)) null else "系统状态未确认")
                 }
-                applySystem(observation, light, sound)
+                applySystem(observation, light, sound, call, navigation, voice)
                 publishShell()
                 handler.postDelayed({
                     if (running && generation == epoch && systemWriteSequence == requestSequence) {
@@ -468,19 +518,36 @@ class ContentBinding(
             if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
             val light = read(0)
             val sound = read(1)
+            val call = read(2)
+            val navigation = read(3)
+            val voice = read(4)
+            val actual = when (kind) {
+                0 -> light
+                1 -> sound
+                2 -> call
+                3 -> navigation
+                else -> voice
+            }
             handler.post {
                 if (!running || generation != epoch) return@post
-                val actual = if (kind == 0) light else sound
-                if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner && accepted && actual.available && kotlin.math.abs(actual.percent - target) <= 1) replaceFeedback(null)
-                applySystem(observation, light, sound)
+                if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner && accepted && actual.matches(target)) replaceFeedback(null)
+                applySystem(observation, light, sound, call, navigation, voice)
                 publishShell()
             }
         }
     }
 
-    private fun shell(snapshot: ContentState): ContentUiState = mapper.mapShell(snapshot, brightness, volume, RuntimeCapabilities(
-        snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, snapshot.mediaSourceWriteAvailable, snapshot.writableSeatControls),
-        lyricsSystemAccentColor).copy(lyricsProviderSettings = lyricsSettings?.state ?: LyricsProviderUiState())
+    private fun shell(snapshot: ContentState): ContentUiState {
+        val writableFeatures = VehicleFeature.entries.filter { feature ->
+            val actual = snapshot.featureLevel(feature.id)
+            val target = if (feature.action) 1 else if (actual == 1) 0 else 1
+            store.isFeatureAvailable(feature.id, target)
+        }.map { it.id }.toSet()
+        return mapper.mapShell(snapshot, brightness, volume, RuntimeCapabilities(
+            snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, snapshot.mediaSourceWriteAvailable, snapshot.writableSeatControls,
+            writableFeatures),
+            lyricsSystemAccentColor, systemLevels).copy(lyricsProviderSettings = lyricsSettings?.state ?: LyricsProviderUiState(), screenCleaning = screenCleaning)
+    }
 
     private fun publishShell() {
         val projected = shell(latestSnapshot)
@@ -488,11 +555,16 @@ class ContentBinding(
         val messageRevision = if (message == null) 0L else feedbackRevision
         val light = if (systemTargets[0] == null) projected.brightness else projected.brightness.copy(target = systemTargets[0])
         val sound = if (systemTargets[1] == null) projected.volume else projected.volume.copy(target = systemTargets[1])
+        val system = projected.systemLevels.mapValues { (id, level) ->
+            systemTargets[id.systemKind()]?.let { level.copy(target = it) } ?: level
+        }
         val result = if (projected.sourcesOpen == sourcesOpen && projected.settingsOpen == settingsOpen &&
             projected.settingsSection == settingsSection && projected.message == message && projected.messageRevision == messageRevision &&
-            light === projected.brightness && sound === projected.volume && projected.placeholderSwitches == placeholderSwitches) projected
+            light === projected.brightness && sound === projected.volume && system == projected.systemLevels &&
+            projected.placeholderSwitches == placeholderSwitches && projected.screenCleaning == screenCleaning) projected
             else projected.copy(sourcesOpen = sourcesOpen, settingsOpen = settingsOpen, settingsSection = settingsSection,
-                message = message, messageRevision = messageRevision, brightness = light, volume = sound, placeholderSwitches = placeholderSwitches)
+                message = message, messageRevision = messageRevision, brightness = light, volume = sound,
+                systemLevels = system, placeholderSwitches = placeholderSwitches, screenCleaning = screenCleaning)
         if (mutableState.value != result) mutableState.value = result
     }
 

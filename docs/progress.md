@@ -1,4 +1,11 @@
-## 设置反馈与Apple登录终态修正（2026-10-07，本轮最终构建与设备边界）
+## 快捷页车机能力扩展（2026-10-08，正式源码、定向回归与签名包通过；实车待用户测试）
+
+13 项快捷页功能已接入真实车控主链：后雾灯、乘客车窗禁用、前雨刮维护、手套箱、左右儿童锁、中控屏亮度、无线充电开关、车窗透气／全关、对外放电、媒体／通话／导航／语音音量与清洁屏幕。蓝牙和 Wi‑Fi 未加入。请求与实际回读分离，拒绝、断连、未知、超时清除 pending，不自动补发或 restore；副驾电动调节协议未证实，保持不可用。四组音量现在通过已确认的 `com.mengbo.media` `IAudio`／`ICarAudio` group 事务读写，服务不可用时保持 unknown，不借用 Android 通用流。
+
+正式源码 Debug/Release 编译通过；资源、文档、Skills、代码地图和 diff 检查通过；车控协议、Adapter／Store／Mapper、四组音量 Binder 替身、快捷页模型／OEM 图标／默认几何定向回归通过。正式签名包 [signed.apk](<../apk-work/9.5.0.600013/source-build.qBkS4N/signed.apk>) SHA-256=`692e4fe56275aadea62e2a9bb7fc12adb93ae53a6fe43a8753a518531396f5a8`，源码指纹=`0d46f6f561c29a47709248798441c3b245f7a04c228f90161686c03a2a961a43`，包级报告见`apk-work/9.5.0.600013/host-package-test.NR3N3G/report.json`；包名 `com.autonavi.amapautolite`、版本 `9.5.0.600013`、v1/v2/v3 单签名、2 个连续 DEX、64 个 Deflate 原生库均通过。完整命令与证据见[快捷页车机能力扩展验证记录](<testing/快捷页车机能力扩展验证记录-20261008.md>)。
+
+未执行实体车辆动作。用户手测时重点确认所有开关／亮度／音量实际回读、雨刮维护和手套箱一次性动作、对外放电独立状态、断连／拒绝后的未知恢复、清洁屏幕遮罩，以及 Binder worker 性能；清洁屏幕不应写 `597/0x255`，副驾电动调节应保持不可用。当前全量 content-runtime/content-ui 仍保留设置、Apple、歌词、阴影等既有工作树失败，未把全量结果写成通过。
+
 
 本轮正式源码完成设置反馈、Apple Music有界登录、歌词默认／范围、歌词设置页自动跟随门控、滑条录音、底部Sheet／子页转场与设置图标修正；`ContentPanel`同时修复实际歌词分页路径读取最新偏好的状态闭包，预览宿主补齐歌词默认值事件。五模块 `all + lint` 已通过：`app`、`content-model`、`content-ui`、`content-runtime`、`map-host`，246 actionable tasks，失败／错误／跳过均0；项目文档、Skills、代码地图和diff检查通过。
 

@@ -1,6 +1,7 @@
 package com.icar03.content.ui
 
 import androidx.compose.ui.graphics.Color
+import com.icar03.content.model.VehicleFeature
 
 /** Pure, shared grid/Dock recipe. Source bytes, geometry and level opacity stay OEM. */
 internal data class VehicleControlIconRecipe(
@@ -120,7 +121,45 @@ internal fun vehicleControlIconRecipe(
         oemGearFrames(gear), mapOf(0 to body), colors, strokes)
 }
 
-internal fun frontWiperIconRecipe(displayed: Int, dark: Boolean, base: Color): VehicleControlIconRecipe {
+internal fun vehicleFeatureIconRecipe(
+    feature: VehicleFeature,
+    displayed: Int,
+    dark: Boolean,
+    base: Color = if (dark) Color.White else Color.Black,
+): VehicleControlIconRecipe {
+    val active = displayed == 1
+    val resource = when (feature) {
+        VehicleFeature.RearFog -> R.drawable.content_oem_ico_light_fog_rear
+        VehicleFeature.PassengerWindowLock -> R.drawable.content_oem_ico_window_dis
+        VehicleFeature.WiperMaintenance -> R.drawable.content_oem_ico_wiper_fix
+        VehicleFeature.GloveBox -> R.drawable.content_oem_ico_glove_box
+        VehicleFeature.LeftChildLock -> R.drawable.content_oem_ico_door_baby_l
+        VehicleFeature.RightChildLock -> R.drawable.content_oem_ico_door_baby_r
+        VehicleFeature.WirelessCharging -> R.drawable.content_oem_ico_wireless_charging_02
+        VehicleFeature.WindowVent -> if (active) R.drawable.content_oem_ico_window_half else R.drawable.content_oem_ico_window_close
+        VehicleFeature.ExternalDischarge -> R.drawable.content_oem_ico_sys_power
+        VehicleFeature.PassengerSeatAdjust -> R.drawable.content_oem_ico_seat_set
+    }
+    val asset = when (feature) {
+        VehicleFeature.RearFog -> "ico_light_fog_rear.json"
+        VehicleFeature.PassengerWindowLock -> "ico_window_dis.json"
+        VehicleFeature.GloveBox -> "ico_glove_box.json"
+        VehicleFeature.LeftChildLock -> "ico_door_baby_l.json"
+        VehicleFeature.RightChildLock -> "ico_door_baby_r.json"
+        VehicleFeature.WindowVent -> if (active) "ico_window_half.json" else "ico_window_close.json"
+        VehicleFeature.PassengerSeatAdjust -> "ico_seat_set.json"
+        else -> ""
+    }
+    val color = if (active) ContentFunctionalBlue else base
+    return VehicleControlIconRecipe(resource, asset ?: "", 0..29,
+        pathColors = emptyMap(),
+        animationColors = if (asset.isEmpty()) emptyMap() else mapOf(listOf("**") to color),
+        playbackSpeed = if (feature == VehicleFeature.WindowVent) 1f else 1f)
+}
+
+internal fun frontWiperIconRecipe(
+    displayed: Int, dark: Boolean, base: Color = if (dark) Color.White else Color.Black,
+): VehicleControlIconRecipe {
     val level = displayed.coerceIn(0, 5)
     val color = if (level > 0) ContentFunctionalBlue else base
     val resource = if (dark) when (level) {

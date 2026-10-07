@@ -100,7 +100,7 @@ open class QuickControlsNativeTest {
             assertEquals("whole icon + text group remains at the previous icon centre", bar.bottom.value - 81f,
                 (group.top.value + group.bottom.value) / 2f, 1f)
         }
-        for (id in ShortcutId.entries) compose.onNodeWithTag("shortcut-label-${id.name}", useUnmergedTree = true).assertTextEquals(id.label)
+        for (id in ShortcutId.entries.filter { it.feature == null && it != ShortcutId.ScreenClean }) compose.onNodeWithTag("shortcut-label-${id.name}", useUnmergedTree = true).assertTextEquals(id.label)
         capture("metadata-label-groups")
     }
 

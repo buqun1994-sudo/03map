@@ -190,6 +190,12 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     @Override
+    public synchronized boolean isLockAvailable() {
+        return running && binder != null && workerHandler != null && latestSnapshot.lockKnown;
+    }
+
+
+    @Override
     public synchronized boolean isFeatureAvailable(String featureId, int target) {
         if (!running || binder == null || workerHandler == null || featureId == null
                 || target < 0 || target > 1) return false;
@@ -197,7 +203,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         if (features == null) return false;
         if ("glove_box".equals(featureId)) return target == 1;
         if ("passenger_seat_adjust".equals(featureId)) return false;
-        if ("wiper_maintenance".equals(featureId)) return features.wiperMaintenance >= 0 && target == 1;
+        if ("wiper_maintenance".equals(featureId)) return target == 1;
         if ("window_vent".equals(featureId)) return features.windowPositionsKnown && features.windowVent >= 0;
         return featuresFor(featureId, features) >= 0;
     }
@@ -722,7 +728,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int rearWash = ContentVehicleProtocol.normalizeRearWindowLevel(readInt(currentBinder, REAR_WASH, AREA_DRIVER));
         int rearFog = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, REAR_FOG, AREA_DRIVER));
         int passengerWindowLock = normalizePassengerWindowLock(readInt(currentBinder, REAR_WINDOW_DISABLE, AREA_DRIVER));
-        int maintenance = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, FRONT_WIPER_MAINTENANCE, AREA_DRIVER));
+        int maintenance = -1;
         int leftChild = ContentVehicleProtocol.normalizeChildLock(readInt(currentBinder, REAR_CHILD_LOCK_STATE, AREA_REAR_LEFT));
         int rightChild = ContentVehicleProtocol.normalizeChildLock(readInt(currentBinder, REAR_CHILD_LOCK_STATE, AREA_REAR_RIGHT));
         int wireless = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, WIRELESS_CHARGING_SWITCH, AREA_DRIVER));
@@ -776,7 +782,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 || seatKnown || lockKnown || wiperKnown || rearWiper >= 0 || rearWash >= 0
                 || rearFog >= 0 || passengerWindowLock >= 0 || maintenance >= 0
                 || leftChild >= 0 || rightChild >= 0 || wireless >= 0 || windowVent >= 0
-                || external >= 0 || centerBrightness >= 0 || externalStatusKnown || screenGear >= 0;
+                || external >= 0 || centerBrightness >= 0 || externalStatusKnown;
         ContentPorts.VehicleSnapshot snapshot = new ContentPorts.VehicleSnapshot(available, false,
                 temperature, battery, range, chargeState, connection, bms, schedule, chargePowerKw,
                 remainingMinutes, ventilation, heating, heatingAutoKnown, heatingAutoActive,
@@ -918,6 +924,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         }
     }
 
+    private int readInt(IBinder currentBinder, int functionId, int area) {
         try {
             return getData(currentBinder, functionId, area);
         } catch (RemoteException | RuntimeException error) {

@@ -51,7 +51,10 @@ enum class VehicleControl(
         return next >= 0 && (level == 0) != (next == 0)
     }
 
-
+    companion object {
+        @JvmStatic fun fromId(id: String?): VehicleControl? = entries.firstOrNull { it.id == id }
+    }
+}
 
 /**
  * Shortcut-page vehicle features that are not seat level controls.  The Java

@@ -117,6 +117,22 @@ private fun animationFor(resource: Int): String? = when (resource) {
     R.drawable.content_oem_ico_media_neteasy -> "ico_media_neteasy.json"
     R.drawable.content_oem_ico_devices_usb -> "ico_devices_usb.json"
     R.drawable.content_oem_ico_media_local -> "ico_media_local.json"
+    R.drawable.content_oem_ico_light_fog_rear -> "ico_light_fog_rear.json"
+    R.drawable.content_oem_ico_window_dis -> "ico_window_dis.json"
+    R.drawable.content_oem_ico_window_close -> "ico_window_close.json"
+    R.drawable.content_oem_ico_window_half -> "ico_window_half.json"
+    R.drawable.content_oem_ico_glove_box -> "ico_glove_box.json"
+    R.drawable.content_oem_ico_door_baby_l -> "ico_door_baby_l.json"
+    R.drawable.content_oem_ico_door_baby_r -> "ico_door_baby_r.json"
+    R.drawable.content_oem_ico_brightness_lo -> "ico_brightness_lo.json"
+    R.drawable.content_oem_ico_volume_2 -> "ico_volume_2.json"
+    R.drawable.content_oem_ico_screen_clean -> "ico_screen_clean.json"
+    R.drawable.content_oem_ico_sys_power -> "ico_sys_power.json"
+    R.drawable.content_oem_ico_volume_0 -> "ico_volume_0.json"
+    R.drawable.content_oem_ico_volume_1 -> "ico_volume_1.json"
+    R.drawable.content_oem_ico_volume_3 -> "ico_volume_3.json"
+    R.drawable.content_oem_ico_volume_mute -> "ico_volume_mute.json"
+    R.drawable.content_oem_ico_seat_set -> "ico_seat_set.json"
     else -> null
 }
 

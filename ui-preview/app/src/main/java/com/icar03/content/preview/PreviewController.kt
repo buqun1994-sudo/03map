@@ -180,7 +180,27 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.ControlLevelChanged -> {
                 if (event.id != ControlId.RearWash && event.level in 0..event.id.maxManualLevel) requestControl(event.id) { event.level }
             }
-            ContentEvent.RearWashTapped -> {
+            is ContentEvent.FeatureTapped -> {
+                 val feature = event.id.feature ?: return
+                 val current = state.value.features[feature] ?: return
+                 if (!active || !current.available || current.pending) return
+                 val target = if (feature.action) 1 else if (current.actual == 1) 0 else 1
+                 update { it.copy(features = it.features + (feature to current.copy(target = target)), message = null) }
+                 simulate("feature-${feature.id}") { success ->
+                     update { snapshot ->
+                         snapshot.copy(features = snapshot.features + (feature to current.copy(
+                             actual = if (success) target else current.actual,
+                             target = null, known = !feature.action || success,
+                         )))
+                     }
+                 }
+             }
+             ContentEvent.ScreenCleanTapped -> {
+                 if (active && (state.value.screenCleanAvailable || state.value.screenCleaning)) {
+                     update { it.copy(screenCleaning = !it.screenCleaning) }
+                 }
+             }
+             ContentEvent.RearWashTapped -> {
                 if (active) update { it.copy(message = "预览洗涤脉冲已触发 · 未执行真实操作") }
             }
             is ContentEvent.PlaceholderToggled -> {
@@ -188,7 +208,8 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                     it.copy(placeholderSwitches = it.placeholderSwitches + (event.id to (it.placeholderSwitches[event.id] != true)))
                 }
             }
-            is ContentEvent.BrightnessChanged -> changeLevel(true, event.value)
+            is ContentEvent.SystemVolumeChanged -> changeSystemLevel(event.id, event.value)
+             is ContentEvent.BrightnessChanged -> changeLevel(true, event.value)
             is ContentEvent.VolumeChanged -> changeLevel(false, event.value)
             ContentEvent.PlayPause -> {
                 val media = state.value.media
@@ -237,6 +258,19 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             update { if (brightness) it.copy(brightness = result) else it.copy(volume = result) }
         }
     }
+
+    private fun changeSystemLevel(id: SystemQuickControl, value: Float) {
+        if (!value.isFinite() || !active) return
+        val level = state.value.systemLevels[id] ?: return
+        if (!level.available || level.target != null) return
+        val target = value.coerceIn(0f, 1f)
+        if (target == level.actual) return
+        update { it.copy(systemLevels = it.systemLevels + (id to level.copy(target = target)), message = null) }
+        simulate("system-${id.name}") { success ->
+            update { snapshot -> snapshot.copy(systemLevels = snapshot.systemLevels + (id to level.copy(actual = if (success) target else level.actual))) }
+        }
+    }
+
 
     private fun simulate(key: String, finish: (Boolean) -> Unit) {
         val token = generation

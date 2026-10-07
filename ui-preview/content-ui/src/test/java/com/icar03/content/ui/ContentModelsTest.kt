@@ -126,7 +126,7 @@ class ContentModelsTest {
 
     @Test fun metadataDeclaresFourPresentationsWithoutDuplicatingVehicleState() {
         assertEquals(4, QuickControlType.entries.size)
-        assertEquals(11, ShortcutId.entries.size)
+        assertEquals(22, ShortcutId.entries.size)
         assertTrue(ShortcutGrid.buttons.take(4).all { it.type == QuickControlType.DynamicIconSwitch })
         assertEquals(listOf(ShortcutId.RearWiper, ShortcutId.RearWash), ShortcutGrid.lowerToggles)
         assertEquals(listOf(ShortcutId.Wiper), ShortcutGrid.verticals)

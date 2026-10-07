@@ -270,7 +270,14 @@ fun ContentPanel(
                         dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
                     }
                 }
-                DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
+                if (state.screenCleaning) {
+                     Box(Modifier.fillMaxSize().background(Color.Black).zIndex(20f)
+                         .clickable { dispatch(ContentEvent.ScreenCleanTapped) },
+                         contentAlignment = Alignment.Center) {
+                         Text("清洁屏幕中 · 点击退出", color = Color.White.copy(alpha = .72f), fontSize = 18.sp)
+                     }
+                 }
+                 DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
                     VehicleControlOemIcon(control, state.controls.getValue(control).copy(target = level), state.dark, modifier)
                 }
                 AnimatedVisibility(
@@ -421,6 +428,14 @@ private fun TopBarText(text: String, tag: String, style: TextStyle, naturalWidth
     }, style = style, maxLines = 1, softWrap = false)
 }
 
+private fun visibleShortcutButtons(state: ContentUiState): List<ShortcutId> = ShortcutGrid.buttons.filter { id ->
+    when {
+        id == ShortcutId.ScreenClean -> state.screenCleanAvailable
+        id.feature == null -> true
+        else -> state.features[id.feature]?.available == true || state.features[id.feature]?.known == true
+    }
+}
+
 @Composable
 private fun PrototypeGrid(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -429,24 +444,26 @@ private fun PrototypeGrid(state: ContentUiState, onEvent: (ContentEvent) -> Unit
         val columnWidth = (maxWidth - gap * 3) / 4
         val columns = if (columnWidth < 88.dp) 2 else 4
         val density = LocalDensity.current
+        val buttons = visibleShortcutButtons(state)
         val labelMeasurer = rememberTextMeasurer()
         val tileWidth = if (columns == 4) columnWidth else (maxWidth - gap) / 2
         val labelWidth = with(density) { (tileWidth - 4.dp).roundToPx().coerceAtLeast(1) }
-        val labelHeight = ShortcutGrid.buttons.maxOf { id ->
+        val labelHeight = buttons.maxOfOrNull { id ->
             labelMeasurer.measure(AnnotatedString(id.label), quickControlLabelStyle(), maxLines = 2,
                 constraints = androidx.compose.ui.unit.Constraints(maxWidth = labelWidth)).size.height
-        }
+        } ?: 0
         val tileHeight = maxOf(if (narrow) 112.dp else 135.dp, with(density) { labelHeight.toDp() } + 68.dp)
         val verticalHeight = maxOf(290.dp, tileHeight * 2 + gap)
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            ShortcutGrid.buttons.chunked(columns).forEach { row ->
+            buttons.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     row.forEach { id -> Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, tileHeight) } }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             val verticals = ShortcutGrid.verticals.map { QuickVerticalCell.Shortcut(it) } +
-                SystemQuickControl.entries.map { QuickVerticalCell.System(it) }
+                (SystemQuickControl.gridItems + SystemQuickControl.entries.drop(2).filter { state.systemLevels[it]?.available == true })
+                    .map { QuickVerticalCell.System(it) }
             if (columns == 4) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     Column(Modifier.width(columnWidth), verticalArrangement = Arrangement.spacedBy(gap)) {
@@ -497,9 +514,18 @@ private fun QuickVerticalCellContent(cell: QuickVerticalCell, state: ContentUiSt
 private fun SystemVertical(id: SystemQuickControl, state: ContentUiState, onEvent: (ContentEvent) -> Unit,
     height: androidx.compose.ui.unit.Dp) {
     val brightness = id == SystemQuickControl.Brightness
-    ContinuousVerticalControl(id.label, if (brightness) R.drawable.content_oem_ico_brightness_mid else R.drawable.content_oem_ico_volume_2,
-        if (brightness) state.brightness else state.volume, if (brightness) "brightness-card" else "volume-card", height = height) {
-        onEvent(if (brightness) ContentEvent.BrightnessChanged(it) else ContentEvent.VolumeChanged(it))
+    val level = if (brightness) state.brightness else state.systemLevels.getValue(id)
+    val icon = when {
+        brightness && level.displayed < .25f -> R.drawable.content_oem_ico_brightness_lo
+        brightness && level.displayed > .75f -> R.drawable.content_oem_ico_brightness_hi
+        brightness -> R.drawable.content_oem_ico_brightness_mid
+        level.displayed < .15f -> R.drawable.content_oem_ico_volume_0
+        level.displayed < .4f -> R.drawable.content_oem_ico_volume_1
+        level.displayed > .8f -> R.drawable.content_oem_ico_volume_3
+        else -> R.drawable.content_oem_ico_volume_2
+    }
+    ContinuousVerticalControl(id.label, icon, level, "${id.name.lowercase()}-card", height = height) {
+        onEvent(if (brightness) ContentEvent.BrightnessChanged(it) else ContentEvent.SystemVolumeChanged(id, it))
     }
 }
 
@@ -527,6 +553,18 @@ private fun ShortcutVertical(id: ShortcutId, state: ContentUiState, onEvent: (Co
 }
 
 private fun shortcutStatus(id: ShortcutId, state: ContentUiState): String {
+    id.feature?.let { feature ->
+        val value = state.features[feature] ?: FeatureState()
+        return when {
+            value.pending -> "待确认"
+            feature.action -> if (value.available) "执行" else "能力不可用"
+            !value.known -> "状态未知"
+            feature == com.icar03.content.model.VehicleFeature.ExternalDischarge && value.detail == "状态已读取" -> "状态已读取"
+            value.actual == 1 -> "开启"
+            else -> "关闭"
+        }
+    }
+    if (id == ShortcutId.ScreenClean) return if (state.screenCleaning) "清洁屏幕中" else if (state.screenCleanAvailable) "可用" else "能力不可用"
     val control = id.control?.let { state.controls.getValue(it) }
     if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) {
         val value = control ?: return "状态未知"
@@ -558,7 +596,9 @@ private fun shortcutIcon(id: ShortcutId, state: ContentUiState): Int = when (id)
     ShortcutId.RearWiper -> state.controls.getValue(ControlId.RearWiper).let { rearWiperIconRecipe(it.displayed == 1, state.dark).resource }
     ShortcutId.RearWash -> state.controls.getValue(ControlId.RearWash).let { rearWashIconRecipe(it.displayed == 1, state.dark).resource }
     ShortcutId.Settings -> R.drawable.content_oem_ic_settings
-    else -> seatIcon(requireNotNull(id.control), state)
+     ShortcutId.ScreenClean -> R.drawable.content_oem_ico_screen_clean
+    else -> id.feature?.let { vehicleFeatureIconRecipe(it, state.features[it]?.displayed ?: 0, state.dark).resource }
+         ?: seatIcon(requireNotNull(id.control), state)
 }
 
 /** Same Launcher skin family as the manual/AUTO Lottie, including the A badge. */
@@ -568,6 +608,8 @@ internal fun steeringHeatIcon(level: Int, dark: Boolean = false): Int =
 @Composable
 private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color = when {
     id == ShortcutId.Lock && state.controls.getValue(ControlId.Lock).known && state.controls.getValue(ControlId.Lock).displayed == 0 -> ContentFunctionalBlue
+    id.feature != null && shortcutSelected(id, state) -> ContentFunctionalBlue
+    id == ShortcutId.ScreenClean && state.screenCleaning -> ContentFunctionalBlue
     id == ShortcutId.SteeringHeat -> Color.Unspecified
     id.control != null && id.control != ControlId.Lock -> Color.Unspecified
     else -> MaterialTheme.colorScheme.primary
@@ -577,6 +619,11 @@ private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color = when {
 private fun sourceTint(): Color = MaterialTheme.colorScheme.primary
 
 private fun shortcutSelected(id: ShortcutId, state: ContentUiState): Boolean {
+    id.feature?.let { feature ->
+        val value = state.features[feature] ?: return false
+        return value.pending && value.target == 1 || !value.pending && value.known && value.actual == 1
+    }
+    if (id == ShortcutId.ScreenClean) return state.screenCleaning
     val control = id.control?.let { state.controls.getValue(it) } ?: return false
     if (id == ShortcutId.AutoWiper) return (control.known || control.pending) && ControlId.Wiper.isAutomatic(control.displayed)
     if (id == ShortcutId.Wiper) return (control.known || control.pending) && ControlId.Wiper.isManualLevel(control.manualWiperDisplayed)
@@ -589,12 +636,18 @@ private fun shortcutEvent(id: ShortcutId, state: ContentUiState): ContentEvent? 
     ShortcutId.RearWiper -> ContentEvent.ControlTapped(ControlId.RearWiper)
     ShortcutId.RearWash -> ContentEvent.RearWashTapped
     ShortcutId.Settings -> ContentEvent.SettingsTapped
-    else -> id.control?.let { ContentEvent.ControlTapped(it) }
+    ShortcutId.ScreenClean -> ContentEvent.ScreenCleanTapped
+    else -> if (id.feature != null) ContentEvent.FeatureTapped(id) else id.control?.let { ContentEvent.ControlTapped(it) }
 }
 
 private fun dockEvent(id: ShortcutId, state: ContentUiState): ContentEvent? = shortcutEvent(id, state)
 
 internal fun shortcutRippleEnabled(id: ShortcutId, state: ContentUiState): Boolean {
+    id.feature?.let { feature ->
+        val value = state.features[feature] ?: return false
+        return value.available && !value.pending && (feature.action || value.known)
+    }
+    if (id == ShortcutId.ScreenClean) return state.screenCleanAvailable || state.screenCleaning
     val idControl = id.control ?: return true
     val control = state.controls.getValue(idControl)
     if (!control.available || !control.known || control.pending || !idControl.isLevel(control.actual)) return false
@@ -604,7 +657,12 @@ internal fun shortcutRippleEnabled(id: ShortcutId, state: ContentUiState): Boole
 @Composable
 private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (ContentEvent) -> Unit, height: androidx.compose.ui.unit.Dp) {
     val control = id.control?.let { state.controls.getValue(it) }
-    val enabled = control == null || control.available && control.known && !control.pending && id.control!!.isLevel(control.actual)
+    val enabled = when {
+        id.feature != null -> state.features[id.feature]?.available == true
+        id == ShortcutId.ScreenClean -> state.screenCleanAvailable || state.screenCleaning
+        control == null -> true
+        else -> control.available && control.known && !control.pending && id.control!!.isLevel(control.actual)
+    }
     val tag = shortcutTag(id)
     val icon: @Composable (Modifier) -> Unit = { modifier ->
         ShortcutOemIcon(id, state, shortcutIcon(id, state), modifier.testTag("shortcut-icon-${id.name}"))
@@ -1019,6 +1077,26 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
             animationFrames = recipe.frames, animationColors = recipe.animationColors,
             animationStrokePathColors = recipe.animationStrokePathColors,
             playbackSpeed = recipe.playbackSpeed, animateOnAction = false)
+        return
+    }
+    val feature = id.feature
+    if (feature != null) {
+        val value = state.features[feature] ?: FeatureState()
+        val known = value.known || value.pending
+        val displayed = value.displayed.takeIf { it == 0 || it == 1 } ?: 0
+        val recipe = vehicleFeatureIconRecipe(feature, displayed, state.dark, base)
+        OemIcon(recipe.resource, modifier, tint = if (known) Color.Unspecified else base.copy(alpha = .45f),
+            pathColors = if (known) recipe.pathColors else emptyMap(),
+            motionKey = if (known) displayed else "unknown",
+            animationAsset = recipe.asset.takeIf { known && !it.isNullOrEmpty() },
+            animationFrames = recipe.frames, animationColors = recipe.animationColors,
+            animationStrokePathColors = recipe.animationStrokePathColors,
+            playbackSpeed = recipe.playbackSpeed, animateOnAction = false)
+        return
+    }
+    if (id == ShortcutId.ScreenClean) {
+        OemIcon(icon, modifier, tint = if (state.screenCleaning) ContentFunctionalBlue else base,
+            motionKey = state.screenCleaning, animateOnAction = false)
         return
     }
     if (control == null || control == ControlId.Lock) {

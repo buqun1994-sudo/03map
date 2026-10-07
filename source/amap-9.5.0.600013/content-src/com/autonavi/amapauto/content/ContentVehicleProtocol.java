@@ -194,7 +194,7 @@ public final class ContentVehicleProtocol {
     }
 
     public static int[] centerBrightnessWrite(int level) {
-        return level >= 1 && level <= 10 ? new int[] {1, level} : null;
+        return level >= 1 && level <= 10 ? new int[] {255, level} : null;
     }
 
     public static int normalizeBinarySwitch(int raw) {
@@ -238,6 +238,11 @@ public final class ContentVehicleProtocol {
         if (raw == 1) return VehicleControl.Wiper.getAutomaticLevel();
         return raw >= 2 && raw <= 5 ? raw - 1 : -1;
     }
+
+    public static int normalizeRearWindowLevel(int raw) {
+        return raw == 1 ? 0 : raw == 2 ? 1 : -1;
+    }
+
 
     public static boolean isKnownHeatingAuto(int raw) {
         return raw == READ_AUTO_INACTIVE || raw == READ_AUTO_ACTIVE;

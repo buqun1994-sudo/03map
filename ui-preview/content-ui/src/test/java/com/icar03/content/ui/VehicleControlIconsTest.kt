@@ -9,6 +9,7 @@ import com.airbnb.lottie.LottieDrawable
 import com.airbnb.lottie.LottieProperty
 import com.airbnb.lottie.model.KeyPath
 import com.airbnb.lottie.value.LottieValueCallback
+import com.icar03.content.model.VehicleFeature
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -118,9 +119,24 @@ class VehicleControlIconsTest {
         }
     }
 
+    @Test fun featureRecipesUseFormalOemVectorsAndOnlyAcceptedLotties() {
+        VehicleFeature.entries.forEach { feature ->
+            val off = vehicleFeatureIconRecipe(feature, 0, dark = false)
+            val on = vehicleFeatureIconRecipe(feature, 1, dark = true)
+            assertTrue("${feature.id} has an OEM vector", off.resource != 0)
+            assertTrue("${feature.id} has an OEM vector for active state", on.resource != 0)
+            if (feature == VehicleFeature.WirelessCharging || feature == VehicleFeature.ExternalDischarge ||
+                feature == VehicleFeature.WiperMaintenance) {
+                assertTrue("${feature.id} uses vector fallback for unverified animation", off.asset.isEmpty())
+            }
+        }
+        assertEquals("ico_window_half.json", vehicleFeatureIconRecipe(VehicleFeature.WindowVent, 1, false).asset)
+        assertEquals("ico_window_close.json", vehicleFeatureIconRecipe(VehicleFeature.WindowVent, 0, false).asset)
+    }
     @Test fun sevenNamesComeFromTheSharedOwnerAndPreviewUnknownStaysUnknown() {
         assertEquals(listOf("车锁", "方向盘加热", "座椅通风", "主驾座椅加热", "副驾座椅加热", "座椅按摩", "设置",
-            "自动雨刮器", "后窗雨刮器", "后窗洗涤", "雨刮器"), ShortcutId.entries.map { it.label })
+            "自动雨刮器", "后窗雨刮器", "后窗洗涤", "后雾灯", "乘客车窗禁用", "前雨刮维护", "手套箱",
+            "左后排儿童锁", "右后排儿童锁", "手机无线充电", "车窗透气／车窗全关", "对外放电", "副驾电动调节", "雨刮器", "清洁屏幕"), ShortcutId.entries.map { it.label })
         ShortcutId.entries.filter { it.control != null && it != ShortcutId.AutoWiper }.forEach { assertEquals(it.control!!.label, it.label) }
         val passenger = previewState(PreviewScenario.NoData).controls.getValue(ControlId.PassengerHeating)
         assertFalse(passenger.known); assertFalse(passenger.available); assertEquals(-1, passenger.displayed)

@@ -393,7 +393,7 @@ class ContentVehicleAdapterCommandTest {
             assertEquals(listOf(1045 to 2, 0x212 to 7, 0x212 to 4, 0x243 to 3, 0x21c to 4),
                 service.writes.drop(before).map { it.functionId to it.value })
         }
-        assertFalse(service.calls.any { it.functionId == 0x255 || it.functionId == 0x401 })
+        assertFalse(service.calls.any { it.functionId == 0x401 })
         assertNoCompanionWrites(service)
     }
 

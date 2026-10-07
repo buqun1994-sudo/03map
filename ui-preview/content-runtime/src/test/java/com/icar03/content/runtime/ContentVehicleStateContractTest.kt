@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Looper
 import com.autonavi.amapauto.content.*
 import com.icar03.content.ui.*
+import com.icar03.content.model.VehicleFeature
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -586,12 +587,58 @@ class ContentVehicleStateContractTest {
         assertFalse(preferences.contains("dock_slot_5"))
     }
 
+    @Test fun featureSnapshotKeepsIndependentActualsAndProjectsOnlyKnownCapabilities() {
+        val store = store()
+        val featureSnapshot = featureSnapshot()
+        store.acceptVehicleSnapshot(legacySnapshot(0).withFeatureSnapshot(featureSnapshot))
+        val state = store.snapshot()
+        assertEquals(1, state.rearFogLevel)
+        assertEquals(1, state.passengerWindowLockLevel)
+        assertEquals(0, state.leftChildLockLevel)
+        assertEquals(1, state.rightChildLockLevel)
+        assertEquals(1, state.wirelessChargingLevel)
+        assertEquals(0, state.wirelessChargingActualLevel)
+        assertEquals(1, state.windowVentLevel)
+        assertEquals(1, state.externalDischargeLevel)
+        assertEquals(6, state.centerBrightnessLevel)
+        assertTrue(state.screenGearKnown)
+        val mapped = ContentUiMapper().map(state, capabilities = RuntimeCapabilities(
+            vehicle = true,
+            writableFeatures = VehicleFeature.entries.filter { it != VehicleFeature.PassengerSeatAdjust }.map { it.id }.toSet(),
+        ))
+        assertTrue(mapped.features.getValue(VehicleFeature.RearFog).known)
+        assertEquals(1, mapped.features.getValue(VehicleFeature.WirelessCharging).actual)
+        assertTrue(mapped.screenCleanAvailable)
+        assertEquals(5, mapped.systemLevels.size)
+    }
+
+    @Test fun featureRequestRemainsPendingUntilAChangedVehicleReadbackArrives() {
+        val vehicle = Vehicle()
+        val store = store(vehicle)
+        store.acceptVehicleSnapshot(legacySnapshot(0).withFeatureSnapshot(featureSnapshot(rearFog = 0)))
+        store.requestFeature("rear_fog", 1)
+        assertEquals(Command("rear_fog", 1, null, 1L), vehicle.commands.single())
+        assertEquals("rear_fog", store.snapshot().pendingVehicleCommand)
+        assertEquals(1, store.snapshot().pendingFeatureTarget)
+        assertEquals(0, store.snapshot().rearFogLevel)
+        store.acceptVehicleSnapshot(legacySnapshot(0).withFeatureSnapshot(featureSnapshot(rearFog = 1)))
+        assertEquals(1, store.snapshot().rearFogLevel)
+        assertEquals("", store.snapshot().pendingVehicleCommand)
+        assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+    }
+
     private fun timeout(store: ContentStore) = ContentStore::class.java.getDeclaredField("commandTimeout")
         .apply { isAccessible = true }.get(store) as Runnable
 
     private fun legacySnapshot(heating: Int) = ContentPorts.VehicleSnapshot(true, false,
         25f, 60, 123, ContentState.CHARGE_DEFAULT, 0, 0, 0, Float.NaN, -1,
         0, heating, 0, 0, true, false, true, true, true)
+
+    private fun featureSnapshot(rearFog: Int = 1, centerBrightness: Int = 6) = ContentPorts.FeatureSnapshot(
+        rearFog, 1, -1, -1, 0, 1, 1, 1, 1, -1,
+        centerBrightness, true, 0, true, intArrayOf(1, 1, 1, 1), true,
+        FloatArray(7) { it.toFloat() }, true, 3, 11, true,
+    )
 
     private fun jointSnapshot(
         ventilation: Int = 0, heating: Int = 0, autoKnown: Boolean = true,
@@ -638,6 +685,16 @@ class ContentVehicleStateContractTest {
         }
         override fun requestSeatLevel(seatId: String, level: Int, requestId: Long): Boolean {
             commands += Command(seatId, level, null, requestId)
+            return accept
+        }
+        override fun isFeatureAvailable(featureId: String, target: Int) = connected && target in 0..1
+        override fun requestFeature(featureId: String, target: Int, requestId: Long, deadlineUptimeMs: Long): Boolean {
+            commands += Command(featureId, target, null, requestId)
+            return accept
+        }
+        override fun isCenterBrightnessAvailable(level: Int) = connected && level in 1..10
+        override fun requestCenterBrightness(level: Int, requestId: Long, deadlineUptimeMs: Long): Boolean {
+            commands += Command("center_brightness", level, null, requestId)
             return accept
         }
         override fun start(listener: ContentPorts.VehicleSnapshotListener) {

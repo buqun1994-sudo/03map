@@ -229,6 +229,7 @@ public final class ContentState {
         }
     }
 
+    public ContentState copy() {
         ContentState copy = new ContentState();
         copy.themeMode = themeMode;
         copy.showWeekday = showWeekday;

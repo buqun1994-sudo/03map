@@ -32,7 +32,8 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private var shellVolume: ContentPorts.SystemSnapshot? = null
     private var shellCapabilities: RuntimeCapabilities? = null
     private var shellSystemLevels: Map<SystemQuickControl, ContentPorts.SystemSnapshot> = emptyMap()
-    private var shell: ContentUiState? = null
+    private var shellLyricsSystemAccentColor = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR
+     private var shell: ContentUiState? = null
     private var lyricsSource: ContentState? = null
     private var lyrics: LyricsState = LyricsState()
     internal var shellProjectionCount = 0L
@@ -142,11 +143,14 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 rememberedLevel = state.rememberedLevel(id),
             )
         }
+        val source = MediaSource.entries.firstOrNull { it.label == ContentRegistry.normalizeMediaSource(state.mediaSource) } ?: MediaSource.Local
+        val ready = metadataReady(state)
         val featureStates = VehicleFeature.entries.associateWith { feature ->
             val actual = state.featureLevel(feature.id)
             val target = state.pendingFeatureTarget.takeIf { state.pendingVehicleCommand == feature.id }
             val known = realVehicle && actual >= 0
-            val available = realVehicle && vehicleIdle && feature.id in capabilities.writableFeatures
+            val available = realVehicle && vehicleIdle && feature.id in capabilities.writableFeatures &&
+                (feature.action || known)
             FeatureState(
                 actual = if (realVehicle) actual else -1,
                 target = target,
@@ -215,6 +219,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             volume = projectedSystemLevels.getValue(SystemQuickControl.Volume),
              features = featureStates,
              systemLevels = projectedSystemLevels,
+             screenCleanAvailable = realVehicle && state.screenGearKnown && state.screenGearRaw == 11,
             media = MediaState(title = state.mediaTitle.takeIf { ready && it.isNotBlank() },
                 artist = state.mediaArtist.takeIf { ready && it.isNotBlank() },
                 isSong = song(state), playing = realMedia && state.mediaPlaying,
@@ -270,6 +275,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         a?.available == b?.available && a?.percent == b?.percent
     }
 
+    private fun sameLyricsFacts(a: ContentState, b: ContentState): Boolean =
         metadataReady(a) == metadataReady(b) && a.mediaRecordingKey == b.mediaRecordingKey &&
             a.mediaRecordingGeneration == b.mediaRecordingGeneration && a.mediaNextPending == b.mediaNextPending &&
             a.lyricsLines === b.lyricsLines && a.lyricsStatus == b.lyricsStatus && a.lyricsTimed == b.lyricsTimed &&

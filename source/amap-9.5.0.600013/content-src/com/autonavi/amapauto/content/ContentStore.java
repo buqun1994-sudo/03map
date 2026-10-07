@@ -191,6 +191,7 @@ public final class ContentStore {
         mediaCommandExecutor.shutdownNow();
         vehiclePort.stop();
         mediaPort.stop();
+        systemPort.close();
         synchronized (this) {
             listeners.clear();
         }
@@ -980,6 +981,15 @@ public final class ContentStore {
         dispatchControlLevel(controlId, targetLevel, LevelIntent.Select);
     }
 
+    public boolean isFeatureAvailable(String featureId, int target) {
+        if (featureId == null || target < 0 || target > 1) return false;
+        synchronized (this) {
+            return !destroyed && state.vehicleDataAvailable && !state.vehiclePreview
+                    && vehiclePort.isFeatureAvailable(featureId, target);
+        }
+    }
+
+
     public void requestFeature(String featureId, int target) {
         if (featureId == null || target < 0 || target > 1) return;
         final long requestId;
@@ -1440,6 +1450,7 @@ public final class ContentStore {
         state.pendingFeatureTarget = target;
     }
 
+    private void beginVehicleCommandLocked(String command, int seatLevel, boolean locked,
             long requestId) {
         clearCommandResultIfOwnedLocked(COMMAND_DOMAIN_VEHICLE);
         pendingCommandDomain = COMMAND_DOMAIN_VEHICLE;

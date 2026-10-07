@@ -41,11 +41,24 @@ enum class SystemQuickControl(val label: String) {
     Brightness("屏幕亮度"), Volume("媒体音量"), CallVolume("通话音量"),
     NavigationVolume("导航音量"), VoiceVolume("语音音量");
     val type: QuickControlType get() = QuickControlType.ContinuousVertical
+    fun systemKind(): Int = when (this) {
+        Brightness -> 0
+        Volume -> 1
+        CallVolume -> 2
+        NavigationVolume -> 3
+        VoiceVolume -> 4
+    }
+    companion object {
+        val gridItems: List<SystemQuickControl> = listOf(Brightness, Volume)
+    }
 }
 
 /** Grid placement is metadata, independent of Dock membership. */
 object ShortcutGrid {
-    val buttons = ShortcutId.entries.filter { it.placement == QuickControlPlacement.ButtonRows }
+    // New feature descriptors keep their domain owner; grid registration requires a completed UI consumer.
+    val buttons = ShortcutId.entries.filter {
+        it.placement == QuickControlPlacement.ButtonRows && (it.control != null || it.feature != null || it == ShortcutId.Settings)
+    }
     val lowerToggles = ShortcutId.entries.filter { it.placement == QuickControlPlacement.LowerToggles }
     val verticals = ShortcutId.entries.filter { it.placement == QuickControlPlacement.Vertical }
 }
@@ -185,6 +198,7 @@ data class ContentUiState(
     val features: Map<VehicleFeature, FeatureState> = VehicleFeature.entries.associateWith { FeatureState() },
     val systemLevels: Map<SystemQuickControl, LevelState> = SystemQuickControl.entries.associateWith { LevelState(0f, available = false) },
     val screenCleaning: Boolean = false,
+    val screenCleanAvailable: Boolean = false,
 )
 sealed interface ContentEvent {
     data class ControlTapped(val id: ControlId) : ContentEvent
@@ -192,7 +206,9 @@ sealed interface ContentEvent {
     data class ControlAutomaticTapped(val id: ControlId) : ContentEvent
     data class ControlLevelChanged(val id: ControlId, val level: Int) : ContentEvent
     data class FeatureTapped(val id: ShortcutId) : ContentEvent
-    data class SystemVolumeChanged(val id: SystemQuickControl, val value: Float) : ContentEvent
+         data class PlaceholderToggled(val id: ShortcutId) : ContentEvent
+     data class SystemVolumeChanged(val id: SystemQuickControl, val value: Float) : ContentEvent
+
     data object ScreenCleanTapped : ContentEvent
     data object RearWashTapped : ContentEvent
     data class BrightnessChanged(val value: Float) : ContentEvent

@@ -2,11 +2,19 @@ package com.autonavi.amapauto.content;
 
 import com.icar03.content.model.VehicleControl;
 
+import android.content.ComponentName;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.graphics.Bitmap;
 import android.content.Context;
-import android.media.AudioManager;
 import android.os.Build;
+import android.os.IBinder;
+import android.os.Parcel;
+import android.os.RemoteException;
+import android.os.SystemClock;
 import android.provider.Settings;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 public final class ContentPorts {
     private ContentPorts() {
     }
@@ -22,62 +30,362 @@ public final class ContentPorts {
         SystemSnapshot read(int kind);
 
         boolean write(int kind, int percent);
+
+        /** Releases a cached vendor Binder connection when the owning Store is destroyed. */
+        default void close() {
+        }
     }
 
     public static final class SystemSnapshot {
         public final boolean available;
         public final int percent;
+        /** Discrete group volumes may round a continuous slider target to a nearby percentage. */
+        public final int tolerancePercent;
 
         public SystemSnapshot(boolean available, int percent) {
+            this(available, percent, 1);
+        }
+
+        public SystemSnapshot(boolean available, int percent, int tolerancePercent) {
             this.available = available;
             this.percent = Math.max(0, Math.min(100, percent));
+            this.tolerancePercent = Math.max(0, tolerancePercent);
+        }
+
+        public boolean matches(int targetPercent) {
+            return available && Math.abs(percent - Math.max(0, Math.min(100, targetPercent))) <= tolerancePercent;
         }
     }
 
+    /** Android brightness plus the S56_HQX com.mengbo four-group car-audio service. */
     public static final class AndroidSystemPort implements SystemPort {
+        private static final String AUDIO_ACTION = "com.mengbo.media.IAudio";
+        private static final String AUDIO_PACKAGE = "com.mengbo.media";
+        private static final String AUDIO_ROOT_DESCRIPTOR = "com.mengbo.media.client.IAudio";
+        private static final String AUDIO_DESCRIPTOR = "com.mengbo.media.client.ICarAudio";
+        private static final String AUDIO_SERVICE_NAME = "mb_audio_service";
+        private static final int AUDIO_LOOKUP_TRANSACTION = 1;
+        private static final int AUDIO_SET_GROUP_VOLUME_TRANSACTION = 1;
+        private static final int AUDIO_GET_GROUP_MAX_TRANSACTION = 2;
+        private static final int AUDIO_GET_GROUP_MIN_TRANSACTION = 3;
+        private static final int AUDIO_GET_GROUP_VOLUME_TRANSACTION = 4;
+        private static final int AUDIO_GET_GROUP_FOR_USAGE_TRANSACTION = 23;
+        private static final long AUDIO_BIND_WAIT_MS = 300L;
+        private static final long AUDIO_RETRY_INTERVAL_MS = 1000L;
+
+        /* Confirmed by the OEM IAudio mapping: media 1→0, call 2→2, nav 12→1, voice 11/16→3. */
+        private static final int[] AUDIO_USAGES = {1, 2, 12, 11};
+        private static final int[] AUDIO_GROUPS = {0, 2, 1, 3};
         private final Context context;
+        private final Object audioLock = new Object();
+        private final ServiceConnection audioConnection = new ServiceConnection() {
+            @Override public void onServiceConnected(ComponentName name, IBinder service) {
+                CountDownLatch signal;
+                synchronized (audioLock) {
+                    if (closed) {
+                        signal = audioConnectionLatch;
+                        audioConnectionLatch = null;
+                        audioBinding = false;
+                    } else {
+                        audioRoot = service;
+                        audioBinder = null;
+                        audioRanges = null;
+                        signal = audioConnectionLatch;
+                        audioConnectionLatch = null;
+                        audioBinding = false;
+                    }
+                }
+                if (signal != null) signal.countDown();
+            }
+
+            @Override public void onServiceDisconnected(ComponentName name) {
+                disconnectAudio();
+            }
+
+            @Override public void onBindingDied(ComponentName name) {
+                disconnectAudio();
+            }
+
+            @Override public void onNullBinding(ComponentName name) {
+                disconnectAudio();
+            }
+        };
+        private IBinder audioRoot;
+        private IBinder audioBinder;
+        private IBinder validatedRoot;
+        private VolumeRange[] audioRanges;
+        private CountDownLatch audioConnectionLatch;
+        private boolean audioBinding;
+        private boolean audioBound;
+        private boolean closed;
+        private long nextAudioBindUptimeMs;
 
         public AndroidSystemPort(Context context) {
             this.context = context.getApplicationContext();
         }
 
         @Override public SystemSnapshot read(int kind) {
+            if (kind == 0) return readScreenBrightness();
+            if (kind < 1 || kind > AUDIO_GROUPS.length) return new SystemSnapshot(false, 0);
+            VolumeRange range = ensureAudioRange(kind);
+            if (range == null) return new SystemSnapshot(false, 0);
             try {
-                if (kind == 0) {
-                    int raw = Settings.System.getInt(context.getContentResolver(),
-                            Settings.System.SCREEN_BRIGHTNESS, -1);
-                    boolean available = raw >= 0 && (Build.VERSION.SDK_INT < 23
-                            || Settings.System.canWrite(context));
-                    return new SystemSnapshot(available, raw < 0 ? 0 : Math.round(raw * 100f / 255f));
-                }
-                AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-                int max = audio == null ? 0 : audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                boolean writable = context.checkCallingOrSelfPermission(
-                        android.Manifest.permission.MODIFY_AUDIO_SETTINGS)
-                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
-                return new SystemSnapshot(max > 0 && writable,
-                        max > 0 ? Math.round(audio.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max) : 0);
-            } catch (SecurityException | IllegalArgumentException exception) {
+                int raw = transactInt(audioBinder, AUDIO_DESCRIPTOR,
+                        AUDIO_GET_GROUP_VOLUME_TRANSACTION, range.group);
+                if (raw < range.min || raw > range.max) return new SystemSnapshot(false, 0);
+                return new SystemSnapshot(true, volumePercent(raw, range.min, range.max),
+                        volumeTolerance(range.min, range.max));
+            } catch (RemoteException | RuntimeException exception) {
+                invalidateAudio(audioBinder);
                 return new SystemSnapshot(false, 0);
             }
         }
 
         @Override public boolean write(int kind, int percent) {
+            if (kind == 0) return writeScreenBrightness(percent);
+            if (kind < 1 || kind > AUDIO_GROUPS.length) return false;
+            VolumeRange range = ensureAudioRange(kind);
+            if (range == null) return false;
             int target = Math.max(0, Math.min(100, percent));
             try {
-                if (kind == 0) {
-                    if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context)) return false;
-                    if (!Settings.System.putInt(context.getContentResolver(),
-                            Settings.System.SCREEN_BRIGHTNESS, Math.round(target * 255f / 100f))) return false;
-                } else {
-                    AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-                    if (audio == null || audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) <= 0) return false;
-                    audio.setStreamVolume(AudioManager.STREAM_MUSIC,
-                            Math.round(audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * target / 100f), 0);
-                }
-                return read(kind).available && Math.abs(read(kind).percent - target) <= 1;
+                transactVoid(audioBinder, AUDIO_DESCRIPTOR, AUDIO_SET_GROUP_VOLUME_TRANSACTION,
+                        range.group, volumeRaw(target, range.min, range.max), 0);
+                return read(kind).matches(target);
+            } catch (RemoteException | RuntimeException exception) {
+                invalidateAudio(audioBinder);
+                return false;
+            }
+        }
+
+        @Override public void close() {
+            boolean shouldUnbind;
+            synchronized (audioLock) {
+                closed = true;
+                shouldUnbind = audioBound;
+                audioRoot = null;
+                audioBinder = null;
+                validatedRoot = null;
+                audioRanges = null;
+                audioBinding = false;
+                audioBound = false;
+                if (audioConnectionLatch != null) audioConnectionLatch.countDown();
+                audioConnectionLatch = null;
+            }
+            if (shouldUnbind) {
+                try { context.unbindService(audioConnection); } catch (IllegalArgumentException ignoredException) { }
+            }
+        }
+
+        public static int volumePercent(int raw, int min, int max) {
+            if (max <= min || raw < min || raw > max) return -1;
+            return Math.max(0, Math.min(100, Math.round((raw - min) * 100f / (max - min))));
+        }
+
+        public static int volumeRaw(int percent, int min, int max) {
+            if (max <= min) return min;
+            int target = Math.max(0, Math.min(100, percent));
+            return min + Math.round((max - min) * target / 100f);
+        }
+
+        public static int volumeTolerance(int min, int max) {
+            if (max <= min) return 100;
+            return Math.max(1, (int) Math.ceil(50f / (max - min)) + 1);
+        }
+
+        private SystemSnapshot readScreenBrightness() {
+            try {
+                int raw = Settings.System.getInt(context.getContentResolver(),
+                        Settings.System.SCREEN_BRIGHTNESS, -1);
+                boolean available = raw >= 0 && (Build.VERSION.SDK_INT < 23
+                        || Settings.System.canWrite(context));
+                return new SystemSnapshot(available, raw < 0 ? 0 : Math.round(raw * 100f / 255f));
+            } catch (SecurityException | IllegalArgumentException exception) {
+                return new SystemSnapshot(false, 0);
+            }
+        }
+
+        private boolean writeScreenBrightness(int percent) {
+            int target = Math.max(0, Math.min(100, percent));
+            try {
+                if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context)) return false;
+                if (!Settings.System.putInt(context.getContentResolver(),
+                        Settings.System.SCREEN_BRIGHTNESS, Math.round(target * 255f / 100f))) return false;
+                return readScreenBrightness().matches(target);
             } catch (SecurityException | IllegalArgumentException exception) {
                 return false;
+            }
+        }
+
+        private VolumeRange ensureAudioRange(int kind) {
+            IBinder root = ensureAudioRoot();
+            if (root == null) return null;
+            synchronized (audioLock) {
+                if (audioBinder != null && audioBinder.isBinderAlive() && validatedRoot == root
+                        && audioRanges != null) return audioRanges[kind - 1];
+            }
+            try {
+                if (!AUDIO_ROOT_DESCRIPTOR.equals(root.getInterfaceDescriptor())) throw new RemoteException("audio root descriptor");
+                IBinder binder = lookupAudioBinder(root);
+                if (binder == null || !binder.isBinderAlive()
+                        || !AUDIO_DESCRIPTOR.equals(binder.getInterfaceDescriptor())) {
+                    throw new RemoteException("car audio descriptor");
+                }
+                VolumeRange[] ranges = new VolumeRange[AUDIO_GROUPS.length];
+                for (int i = 0; i < ranges.length; i++) {
+                    int group = transactInt(binder, AUDIO_DESCRIPTOR,
+                            AUDIO_GET_GROUP_FOR_USAGE_TRANSACTION, AUDIO_USAGES[i]);
+                    if (group != AUDIO_GROUPS[i]) throw new RemoteException("audio group mapping");
+                    int min = transactInt(binder, AUDIO_DESCRIPTOR,
+                            AUDIO_GET_GROUP_MIN_TRANSACTION, group);
+                    int max = transactInt(binder, AUDIO_DESCRIPTOR,
+                            AUDIO_GET_GROUP_MAX_TRANSACTION, group);
+                    if (min < 0 || max <= min) throw new RemoteException("audio group range");
+                    ranges[i] = new VolumeRange(group, min, max);
+                }
+                synchronized (audioLock) {
+                    if (closed) return null;
+                    audioBinder = binder;
+                    validatedRoot = root;
+                    audioRanges = ranges;
+                    return ranges[kind - 1];
+                }
+            } catch (RemoteException | RuntimeException exception) {
+                invalidateAudio(null);
+                return null;
+            }
+        }
+
+        private IBinder ensureAudioRoot() {
+            CountDownLatch wait;
+            boolean startBinding = false;
+            synchronized (audioLock) {
+                if (closed) return null;
+                if (audioRoot != null && audioRoot.isBinderAlive()) return audioRoot;
+                long now = SystemClock.uptimeMillis();
+                if (audioBinding) {
+                    wait = audioConnectionLatch;
+                } else if (now >= nextAudioBindUptimeMs) {
+                    audioBinding = true;
+                    audioConnectionLatch = new CountDownLatch(1);
+                    wait = audioConnectionLatch;
+                    nextAudioBindUptimeMs = now + AUDIO_RETRY_INTERVAL_MS;
+                    startBinding = true;
+                } else {
+                    return null;
+                }
+            }
+            if (startBinding) {
+                boolean bound;
+                try {
+                    Intent intent = new Intent(AUDIO_ACTION).setPackage(AUDIO_PACKAGE);
+                    bound = context.bindService(intent, audioConnection, Context.BIND_AUTO_CREATE);
+                } catch (RuntimeException exception) {
+                    bound = false;
+                }
+                synchronized (audioLock) {
+                    audioBound = bound;
+                    if (!bound) {
+                        audioBinding = false;
+                        if (audioConnectionLatch != null) audioConnectionLatch.countDown();
+                        audioConnectionLatch = null;
+                    }
+                }
+            }
+            if (wait != null) {
+                try { wait.await(AUDIO_BIND_WAIT_MS, TimeUnit.MILLISECONDS); }
+                catch (InterruptedException exception) { Thread.currentThread().interrupt(); }
+            }
+            synchronized (audioLock) {
+                return audioRoot != null && audioRoot.isBinderAlive() ? audioRoot : null;
+            }
+        }
+
+        private IBinder lookupAudioBinder(IBinder root) throws RemoteException {
+            Parcel data = Parcel.obtain();
+            Parcel reply = Parcel.obtain();
+            try {
+                data.writeInterfaceToken(AUDIO_ROOT_DESCRIPTOR);
+                data.writeString(AUDIO_SERVICE_NAME);
+                if (!root.transact(AUDIO_LOOKUP_TRANSACTION, data, reply, 0)) {
+                    throw new RemoteException("audio lookup not handled");
+                }
+                reply.readException();
+                return reply.readStrongBinder();
+            } finally {
+                reply.recycle();
+                data.recycle();
+            }
+        }
+
+        private static int transactInt(IBinder binder, String descriptor, int transaction, int... args)
+                throws RemoteException {
+            Parcel data = Parcel.obtain();
+            Parcel reply = Parcel.obtain();
+            try {
+                data.writeInterfaceToken(descriptor);
+                for (int arg : args) data.writeInt(arg);
+                if (!binder.transact(transaction, data, reply, 0)) {
+                    throw new RemoteException("audio transaction not handled: " + transaction);
+                }
+                reply.readException();
+                return reply.readInt();
+            } finally {
+                reply.recycle();
+                data.recycle();
+            }
+        }
+
+        private static void transactVoid(IBinder binder, String descriptor, int transaction, int... args)
+                throws RemoteException {
+            Parcel data = Parcel.obtain();
+            Parcel reply = Parcel.obtain();
+            try {
+                data.writeInterfaceToken(descriptor);
+                for (int arg : args) data.writeInt(arg);
+                if (!binder.transact(transaction, data, reply, 0)) {
+                    throw new RemoteException("audio transaction not handled: " + transaction);
+                }
+                reply.readException();
+            } finally {
+                reply.recycle();
+                data.recycle();
+            }
+        }
+
+        private void invalidateAudio(IBinder binder) {
+            synchronized (audioLock) {
+                if (binder == null || binder == audioBinder) {
+                    audioBinder = null;
+                    validatedRoot = null;
+                    audioRanges = null;
+                }
+            }
+        }
+
+        private void disconnectAudio() {
+            CountDownLatch signal;
+            synchronized (audioLock) {
+                audioRoot = null;
+                audioBinder = null;
+                validatedRoot = null;
+                audioRanges = null;
+                audioBinding = false;
+                audioBound = false;
+                signal = audioConnectionLatch;
+                audioConnectionLatch = null;
+            }
+            if (signal != null) signal.countDown();
+        }
+
+        private static final class VolumeRange {
+            final int group;
+            final int min;
+            final int max;
+
+            VolumeRange(int group, int min, int max) {
+                this.group = group;
+                this.min = min;
+                this.max = max;
             }
         }
     }

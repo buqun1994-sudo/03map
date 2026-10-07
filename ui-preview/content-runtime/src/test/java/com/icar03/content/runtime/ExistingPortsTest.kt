@@ -49,13 +49,26 @@ class ExistingPortsTest {
         } finally { adapter.stop() }
     }
 
-    @Test fun realSystemPortDoesNotAdvertiseVolumeWriteWithoutPermission() {
+    @Test fun realSystemPortDoesNotAdvertiseGenericAndroidVolumeWithoutCarAudioService() {
         val app = RuntimeEnvironment.getApplication()
         val port = ContentPorts.AndroidSystemPort(app)
         shadowOf(app).denyPermissions(Manifest.permission.MODIFY_AUDIO_SETTINGS)
         assertFalse(port.read(1).available)
         shadowOf(app).grantPermissions(Manifest.permission.MODIFY_AUDIO_SETTINGS)
-        assertTrue(port.read(1).available)
+        assertFalse(port.read(1).available)
+        assertFalse(port.read(2).available)
+        assertFalse(port.read(3).available)
+        assertFalse(port.read(4).available)
+        port.close()
+    }
+
+    @Test fun carAudioVolumeRangesRoundTripWithoutBorrowingMediaScale() {
+        assertEquals(52, ContentPorts.AndroidSystemPort.volumePercent(16, 0, 31))
+        assertEquals(5, ContentPorts.AndroidSystemPort.volumeRaw(50, 0, 10))
+        assertEquals(16, ContentPorts.AndroidSystemPort.volumeRaw(50, 0, 31))
+        assertTrue(ContentPorts.SystemSnapshot(true, 52, 3).matches(50))
+        assertFalse(ContentPorts.SystemSnapshot(true, 52, 3).matches(47))
+        assertTrue(ContentPorts.SystemSnapshot(true, 50, 1).matches(50))
     }
 
     @Test fun chargingSnapshotFieldsUseOnlyValidatedValues() {
