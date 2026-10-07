@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.Interaction
@@ -28,9 +29,8 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
@@ -41,7 +41,6 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -49,9 +48,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,16 +61,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -108,6 +112,60 @@ internal fun SettingsLineText(
         Text(text, Modifier.fillMaxWidth().wrapContentHeight(unbounded = true),
             style = style, color = color, maxLines = maxLines, overflow = overflow, textAlign = textAlign)
     }
+}
+
+/** Settings icon actions use the same bounded rounded press wash as Dock buttons. */
+@Composable
+internal fun SettingsIconButton(
+    onClick: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tag: String = "",
+    icon: @Composable (Modifier) -> Unit,
+) {
+    val design = LocalSettingsDesign.current
+    val interactions = remember { MutableInteractionSource() }
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, design.page, design.selected)
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier.size(design.minimumTouchHeight).settingsTag(tag)
+            .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
+            .clip(shape).then(feedback.area(design.page))
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled,
+                role = Role.Button, onClick = onClick)
+            .excludeDisabledActionTap(enabled)
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center,
+    ) { icon(Modifier.size(28.dp)) }
+}
+
+/** Text actions retain a single rounded surface and the shared settings shadow. */
+@Composable
+internal fun SettingsActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tag: String = "",
+) {
+    val design = LocalSettingsDesign.current
+    val interactions = remember { MutableInteractionSource() }
+    val base = design.track.copy(alpha = if (enabled) 1f else .38f)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, base, design.selected)
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier.fillMaxWidth().heightIn(min = 56.dp).settingsTag(tag)
+            .downwardSoftShadow(base, design.dark, 8.dp).clip(shape)
+            .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
+            .then(feedback.area(base))
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled,
+                role = Role.Button, onClick = onClick)
+            .excludeDisabledActionTap(enabled)
+            .semantics { this.contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) { SettingsLineText(label, style = design.optionStyle, color = design.text.copy(alpha = if (enabled) 1f else .38f),
+        maxLines = 1, textAlign = TextAlign.Center) }
 }
 
 /** Section titles sit 24dp inside the card edge; the card owns its single shadow. */
@@ -228,6 +286,8 @@ fun SettingsSegmented(
     val currentSelected by rememberUpdatedState(selected)
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnSelected by rememberUpdatedState(onSelected)
+    val lastSelected = remember { mutableStateOf(selected) }
+    SideEffect { lastSelected.value = selected }
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val optionStyle = LocalTextStyle.current.merge(design.optionStyle)
@@ -242,37 +302,43 @@ fun SettingsSegmented(
         val minimumWidth = maxOf(design.segmentMinimumWidth, naturalLabelWidth + selectionInset * 2) * options.size
         val rowWidth = if (maxWidth == Dp.Infinity) minimumWidth else maxOf(maxWidth, minimumWidth)
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            Surface(
-                modifier = Modifier.width(rowWidth).height(design.segmentHeight)
+            Box(
+                Modifier.width(rowWidth).height(design.segmentHeight)
+                    .downwardSoftShadow(design.track, design.dark)
+                    .clip(design.controlShape).background(design.track.copy(alpha = if (enabled) 1f else .38f))
                     .settingsTag(settingsChildTag(tagPrefix, "track")),
-                shape = design.controlShape,
-                color = design.track.copy(alpha = if (enabled) 1f else .38f),
-                tonalElevation = 0.dp,
-                shadowElevation = design.shadowElevation,
             ) {
                 Row(Modifier.fillMaxSize().selectableGroup()) {
                     options.forEach { (id, label) ->
+                        val optionSelected = id == currentSelected
                         Box(
                             Modifier.weight(1f).fillMaxHeight()
                                 .settingsTag(settingsChildTag(tagPrefix, id))
-                                .selectable(selected = id == selected, enabled = enabled, role = Role.RadioButton,
-                                    onClick = { if (currentEnabled && id != currentSelected) currentOnSelected(id) }),
+                                .clickable(interactionSource = remember(id) { MutableInteractionSource() }, indication = null,
+                                    enabled = currentEnabled, role = Role.RadioButton, onClick = {
+                                        if (currentEnabled && id != lastSelected.value) {
+                                            lastSelected.value = id
+                                            currentOnSelected(id)
+                                        }
+                                    })
+                                .semantics {
+                                    role = Role.RadioButton
+                                    this.selected = optionSelected
+                                    stateDescription = if (optionSelected) "已选中" else "未选中"
+                                },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Surface(
-                                modifier = Modifier.padding(selectionInset).fillMaxSize()
+                            Box(
+                                Modifier.padding(selectionInset).fillMaxSize()
+                                    .clip(design.controlShape)
+                                    .background(if (optionSelected) design.selected.copy(alpha = if (enabled) 1f else .38f) else Color.Transparent)
                                     .settingsTag(settingsChildTag(tagPrefix, "$id-surface")),
-                                shape = design.controlShape,
-                                color = if (id == selected) design.selected.copy(alpha = if (enabled) 1f else .38f)
-                                    else Color.Transparent,
-                                tonalElevation = 0.dp,
+                                contentAlignment = Alignment.Center,
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    SettingsLineText(label, style = optionStyle,
-                                        color = (if (id == selected) design.text else design.secondaryText)
-                                            .copy(alpha = if (enabled) 1f else .38f),
-                                        maxLines = 1, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
-                                }
+                                SettingsLineText(label, style = optionStyle,
+                                    color = (if (optionSelected) design.text else design.secondaryText)
+                                        .copy(alpha = if (enabled) 1f else .38f),
+                                    maxLines = 1, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
@@ -294,11 +360,22 @@ fun SettingsToggle(
     val design = LocalSettingsDesign.current
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnCheckedChange by rememberUpdatedState(onCheckedChange)
-    Box(modifier.sizeIn(minWidth = design.minimumTouchHeight, minHeight = design.minimumTouchHeight)
-        .settingsTag(tag).toggleable(checked, enabled = enabled, role = Role.Switch,
-            onValueChange = { if (currentEnabled) currentOnCheckedChange(it) })
-        .semantics { stateDescription = if (checked) "已开启" else "已关闭" },
-        contentAlignment = Alignment.Center) {
+    val interactions = remember { MutableInteractionSource() }
+    Box(
+        modifier.sizeIn(minWidth = design.minimumTouchHeight, minHeight = design.minimumTouchHeight)
+            .settingsTag(tag)
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Switch,
+                onClick = {
+                    if (currentEnabled) currentOnCheckedChange(!checked)
+                })
+            .excludeDisabledActionTap(enabled)
+            .semantics {
+                role = Role.Switch
+                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+                stateDescription = if (checked) "已开启" else "已关闭"
+            },
+        contentAlignment = Alignment.Center,
+    ) {
         SettingsSwitchVisual(checked, enabled, tag)
     }
 }
@@ -316,12 +393,22 @@ fun SettingsSwitchRow(
     val design = LocalSettingsDesign.current
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnChanged by rememberUpdatedState(onCheckedChange)
-    Row(modifier.fillMaxWidth().heightIn(min = 30.dp).settingsTag(tag)
-        .toggleable(checked, enabled = enabled, role = Role.Switch,
-            onValueChange = { if (currentEnabled) currentOnChanged(it) })
-        .semantics { stateDescription = if (checked) "已开启" else "已关闭" },
+    val interactions = remember { MutableInteractionSource() }
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 30.dp).settingsTag(tag)
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Switch,
+                onClick = {
+                    if (currentEnabled) currentOnChanged(!checked)
+                })
+            .excludeDisabledActionTap(enabled)
+            .semantics {
+                role = Role.Switch
+                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+                stateDescription = if (checked) "已开启" else "已关闭"
+            },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(design.smallGap)) {
+        horizontalArrangement = Arrangement.spacedBy(design.smallGap),
+    ) {
         SettingsLineText(title, Modifier.weight(1f).settingsTag(settingsChildTag(tag, "label")),
             design.labelStyle, design.text.copy(alpha = if (enabled) 1f else .38f))
         SettingsSwitchVisual(checked, enabled, tag)
@@ -335,16 +422,17 @@ private fun SettingsSwitchVisual(checked: Boolean, enabled: Boolean, tag: String
     val thumbOffset by animateDpAsState(
         if (checked) design.switchWidth - design.switchThumbWidth - thumbInset else thumbInset,
         animationSpec = tween(180), label = "settings-switch-thumb")
-    Surface(Modifier.size(design.switchWidth, design.switchHeight).alpha(if (enabled) 1f else .38f)
-        .settingsTag(settingsChildTag(tag, "track")),
-        shape = design.controlShape, color = if (checked) design.onSwitchTrack else design.offSwitchTrack,
-        tonalElevation = 0.dp, shadowElevation = design.shadowElevation) {
-        Box(Modifier.fillMaxSize()) {
-            Box(Modifier.align(Alignment.CenterStart).offset(x = thumbOffset)
-                .size(design.switchThumbWidth, design.switchThumbHeight)
-                .background(if (checked) design.switchThumb else design.offSwitchThumb, design.controlShape)
-                .settingsTag(settingsChildTag(tag, "thumb")))
-        }
+    Box(
+        Modifier.size(design.switchWidth, design.switchHeight).alpha(if (enabled) 1f else .38f)
+            .settingsTag(settingsChildTag(tag, "track"))
+            .downwardSoftShadow(if (checked) design.onSwitchTrack else design.offSwitchTrack, design.dark)
+            .clip(design.controlShape)
+            .background(if (checked) design.onSwitchTrack else design.offSwitchTrack),
+    ) {
+        Box(Modifier.align(Alignment.CenterStart).offset(x = thumbOffset)
+            .size(design.switchThumbWidth, design.switchThumbHeight)
+            .background(if (checked) design.switchThumb else design.offSwitchThumb, design.controlShape)
+            .settingsTag(settingsChildTag(tag, "thumb")))
     }
 }
 
@@ -363,15 +451,15 @@ fun SettingsNavigationItem(
     val currentOnClick by rememberUpdatedState(onClick)
     val textColor = design.text.copy(alpha = if (enabled) 1f else .38f)
     val iconColor = design.secondaryText.copy(alpha = if (enabled) 1f else .38f)
-    Surface(
-        onClick = { if (currentEnabled) currentOnClick() },
-        enabled = enabled,
-        modifier = modifier.fillMaxWidth().heightIn(min = design.navigationHeight)
-            .settingsTag(tag).semantics { role = Role.Button },
-        shape = RectangleShape,
-        color = design.card,
-        contentColor = textColor,
-        tonalElevation = 0.dp,
+    val interactions = remember { MutableInteractionSource() }
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, design.card, design.selected)
+    Box(
+        modifier.fillMaxWidth().heightIn(min = design.navigationHeight).settingsTag(tag)
+            .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
+            .clip(RoundedCornerShape(8.dp)).then(feedback.area(design.card))
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled,
+                role = Role.Button, onClick = { if (currentEnabled) currentOnClick() })
+            .excludeDisabledActionTap(enabled),
     ) {
         Row(Modifier.fillMaxWidth().padding(design.pagePadding),
             verticalAlignment = Alignment.CenterVertically,
@@ -394,13 +482,11 @@ fun SettingsGroupCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val design = LocalSettingsDesign.current
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = design.card,
-        contentColor = design.text,
-        shape = design.cardShape,
-        tonalElevation = 0.dp,
-        shadowElevation = design.shadowElevation,
+    Box(
+        modifier.fillMaxWidth()
+            .downwardSoftShadow(design.card, design.dark, 8.dp)
+            .clip(design.cardShape)
+            .background(design.card),
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(contentPadding ?: PaddingValues(design.pagePadding)),
@@ -471,13 +557,11 @@ fun SettingsColorPicker(
             hueDegrees = hue,
             tag = settingsChildTag(tagPrefix, "hue"),
         )
-        Surface(
+        Box(
             modifier = Modifier.fillMaxWidth().height(design.colorHeight)
-                .settingsTag(settingsChildTag(tagPrefix, "swatches")),
-            shape = design.hueTrackShape,
-            color = Color.Transparent,
-            tonalElevation = 0.dp,
-            shadowElevation = design.shadowElevation,
+                .settingsTag(settingsChildTag(tagPrefix, "swatches"))
+                .downwardSoftShadow(design.track, design.dark, 8.dp)
+                .clip(design.hueTrackShape),
         ) {
             Row(Modifier.fillMaxSize().selectableGroup()) {
                 shades.forEachIndexed { index, shade ->
@@ -486,17 +570,19 @@ fun SettingsColorPicker(
                         Modifier.weight(1f).fillMaxHeight()
                             .background(Color(shade).copy(alpha = if (enabled) 1f else .38f))
                             .settingsTag(settingsChildTag(tagPrefix, "swatch-$index"))
-                            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton,
-                                onClick = {
-                                    if (currentEnabled) {
-                                        lastEmittedColor = shade
-                                        currentOnPreview(shade)
-                                        currentOnSwatch(shade)
-                                    }
-                                })
+                            .clickable(interactionSource = remember(index) { MutableInteractionSource() }, indication = null,
+                                enabled = enabled, role = Role.RadioButton, onClick = {
+                                if (currentEnabled) {
+                                    lastEmittedColor = shade
+                                    currentOnPreview(shade)
+                                    currentOnSwatch(shade)
+                                }
+                            })
                             .semantics {
+                                role = Role.RadioButton
+                                this.selected = selected
                                 contentDescription = "颜色${index + 1}"
-                                stateDescription = "${if (selected) "已选中，" else ""}${settingsColorHex(shade)}"
+                                stateDescription = "${if (selected) "已选中，" else "未选中，"}${settingsColorHex(shade)}"
                             },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -656,6 +742,18 @@ private fun SettingsSliderControl(
     val currentOnFinished by rememberUpdatedState(onValueChangeFinished)
     val currentOnCancelled by rememberUpdatedState(onValueCancelled)
     val currentOnStarted by rememberUpdatedState(onValueChangeStarted)
+    val view = LocalView.current
+    val sliderTick = LocalContentSliderTickSound.current
+    val tickCount = if (steps > 0) steps + 1 else 64
+    var lastTick by remember(interactionSource) { mutableIntStateOf(Int.MIN_VALUE) }
+    fun emitSliderTick(next: Float) {
+        val fraction = ((next - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+        val bucket = (fraction * tickCount).roundToInt()
+        if (bucket != lastTick) {
+            lastTick = bucket
+            sliderTick(view)
+        }
+    }
     interactionSource.onCancel = {
         val initialValue = draft.initialValue
         val hadPreview = draft.value != null
@@ -701,19 +799,17 @@ private fun SettingsSliderControl(
     val fraction = ((displayValue - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
     val visualHeight = if (rainbow) design.colorHeight else design.controlHeight
     Box(modifier.fillMaxWidth().height(visualHeight), contentAlignment = Alignment.Center) {
-        Surface(
-            modifier = Modifier.fillMaxWidth().height(visualHeight).alpha(if (enabled) 1f else .38f)
-                .settingsTag(settingsChildTag(tag, "track")),
-            shape = if (rainbow) design.hueTrackShape else design.controlShape,
-            color = if (rainbow) Color.Transparent else design.track,
-            tonalElevation = 0.dp,
-            shadowElevation = design.shadowElevation,
+        val trackShape = if (rainbow) design.hueTrackShape else design.controlShape
+        Box(
+            Modifier.fillMaxWidth().height(visualHeight).alpha(if (enabled) 1f else .38f)
+                .settingsTag(settingsChildTag(tag, "track"))
+                .downwardSoftShadow(if (rainbow) design.track else design.track, design.dark)
+                .clip(trackShape)
+                .background(if (rainbow) Color.Transparent else design.track),
         ) {
             if (rainbow) Box(Modifier.fillMaxSize().background(rainbowBrush))
-            else Box(Modifier.fillMaxSize()) {
-                Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(fraction)
-                    .background(design.sliderFill).settingsTag(settingsChildTag(tag, "fill")))
-            }
+            else Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(fraction)
+                .background(design.sliderFill).settingsTag(settingsChildTag(tag, "fill")))
         }
         // Disable Material's extra layout reservation, not Foundation's minimum touch target.
         CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
@@ -737,9 +833,12 @@ private fun SettingsSliderControl(
                             if (draft.initialValue == null) {
                                 interactionSource.beginValueChange()
                                 draft.initialValue = currentValue
+                                lastTick = (((currentValue - valueRange.start) /
+                                    (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f) * tickCount).roundToInt()
                                 currentOnStarted()
                             }
                             draft.value = bounded
+                            emitSliderTick(bounded)
                             currentOnChange(bounded)
                         }
                     }

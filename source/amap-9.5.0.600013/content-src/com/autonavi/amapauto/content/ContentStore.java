@@ -409,6 +409,33 @@ public final class ContentStore {
         publish();
     }
 
+    public void resetLyricsPreferences() {
+        synchronized (this) {
+            state.lyricsFontScale = 1.0f;
+            state.lyricsLineSpacing = 1;
+            state.lyricsFontSizeSp = LyricPreferenceRules.fontSize(LyricPreferenceRules.DEFAULT_FONT_SP);
+            state.lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(
+                    LyricPreferenceRules.DEFAULT_CURRENT_SP, state.lyricsFontSizeSp);
+            state.lyricsLineGapDp = LyricPreferenceRules.lineGap(LyricPreferenceRules.DEFAULT_GAP_DP);
+            state.lyricsAlignment = LyricPreferenceRules.alignment(LyricPreferenceRules.DEFAULT_ALIGNMENT);
+            state.lyricsColorMode = LyricPreferenceRules.colorMode(LyricPreferenceRules.DEFAULT_COLOR_MODE);
+            state.lyricsCustomColor = LyricPreferenceRules.opaqueColor(LyricPreferenceRules.DEFAULT_CUSTOM_COLOR);
+            state.lyricsCurrentColorMode = LyricPreferenceRules.colorMode(LyricPreferenceRules.DEFAULT_COLOR_MODE);
+            state.lyricsCurrentCustomColor = LyricPreferenceRules.opaqueColor(LyricPreferenceRules.DEFAULT_CUSTOM_COLOR);
+            state.lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(
+                    LyricPreferenceRules.DEFAULT_IMMERSIVE_FONT_SP);
+            state.lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                    LyricPreferenceRules.DEFAULT_IMMERSIVE_CURRENT_SP, state.lyricsImmersiveFontSizeSp);
+            state.lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(
+                    LyricPreferenceRules.DEFAULT_IMMERSIVE_GAP_DP);
+            state.lyricsSpeakerLayout = true;
+            state.lyricsHighlight = true;
+            state.lyricsShowTranslation = true;
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
     private float legacyLineGapDp(int value) {
         switch (value) {
             case 0: return 28.0f * 0.75f;

@@ -3,7 +3,6 @@ package com.icar03.content.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,16 +19,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
@@ -40,6 +33,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -98,7 +92,6 @@ private val lyricsProviderOptions = listOf(
  * Standard Material3 provider preference section. The selection is single-owner: tapping the
  * already selected chip is intentionally a no-op and can never toggle the preference off.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LyricsProviderSettings(
     state: LyricsProviderUiState,
@@ -128,37 +121,44 @@ fun LyricsProviderSettings(
             }
         }
         SettingsDivider()
-        AppleMusicStatusSection(state, loginEnabled && state.available, onEvent)
+        if (selectedOption.id == "applemusic") {
+            AppleMusicStatusSection(state, loginEnabled && state.available, onEvent)
+        }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProviderChoice(
     option: LyricsProviderOption, selected: Boolean, enabled: Boolean, onSelect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val design = LocalSettingsDesign.current
-    FilterChip(
-        selected = selected, onClick = { if (enabled && !selected) onSelect() }, enabled = enabled,
-        shape = RoundedCornerShape(4.dp), border = null,
-        modifier = modifier.heightIn(min = 56.dp).testTag("settings-platform-${option.id}").semantics {
-            role = Role.RadioButton; stateDescription = if (selected) "已选中" else "未选中"
-        },
-        label = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(design.smallGap)) {
-                if (option.iconRes == null) Icon(Icons.Default.AutoAwesome, null, Modifier.size(24.dp), tint = design.text)
-                else Image(painterResource(option.iconRes), null, Modifier.size(24.dp))
-                Text(option.label, style = design.optionStyle, maxLines = 2)
-            }
-        },
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = design.card, labelColor = design.text, iconColor = design.text,
-            selectedContainerColor = design.track, selectedLabelColor = design.text, selectedLeadingIconColor = design.text,
-            disabledContainerColor = design.card, disabledLabelColor = design.secondaryText.copy(alpha = .38f),
-            disabledLeadingIconColor = design.secondaryText.copy(alpha = .38f),
-        ),
-    )
+    val interactions = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier.heightIn(min = 56.dp).testTag("settings-platform-${option.id}")
+            .clip(shape)
+            .background((if (selected) design.track else design.card).copy(alpha = if (enabled) 1f else .38f))
+            .clickable(interactionSource = interactions, indication = null, enabled = enabled && !selected,
+                role = Role.RadioButton, onClick = { if (enabled && !selected) onSelect() })
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+                stateDescription = if (selected) "已选中" else "未选中"
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = design.pagePadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(design.smallGap),
+        ) {
+            if (option.iconRes == null) Icon(Icons.Default.AutoAwesome, null, Modifier.size(24.dp), tint = design.text)
+            else Image(painterResource(option.iconRes), null, Modifier.size(24.dp))
+            Text(option.label, style = design.optionStyle,
+                color = design.text.copy(alpha = if (enabled) 1f else .38f), maxLines = 1)
+        }
+    }
 }
 
 @Composable
@@ -185,9 +185,11 @@ private fun AppleMusicStatusSection(state: LyricsProviderUiState, enabled: Boole
             Button(
                 onClick = { onEvent(if (opening) AppleMusicLoginDismissed else AppleMusicConnectRequested) }, enabled = enabled,
                 modifier = Modifier.width(150.dp).heightIn(min = 56.dp).testTag("settings-apple-login"),
-                shape = RoundedCornerShape(4.dp), colors = ButtonDefaults.buttonColors(containerColor = design.track, contentColor = design.text),
+                shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = design.track, contentColor = design.text),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            ) { Text(if (opening) "取消登录" else if (connected || state.appleNeedsRenewal) "重新登录" else "登录 Apple Music", style = design.optionStyle) }
+            ) {
+                Text("登录", style = design.optionStyle, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
+            }
         }
         if (connected) OutlinedButton(onClick = { onEvent(AppleMusicDisconnectRequested) }, enabled = enabled,
             modifier = Modifier.align(Alignment.End).heightIn(min = design.minimumTouchHeight).testTag("settings-apple-disconnect"),
@@ -219,19 +221,36 @@ fun AppleMusicLoginPanel(
                 window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             }
         }
-        Surface(modifier.fillMaxSize().padding(design.pagePadding).testTag("settings-apple-login-panel"),
-            shape = design.pageShape, color = design.card, contentColor = design.text,
-            tonalElevation = 0.dp, shadowElevation = design.shadowElevation) {
+        Box(
+            modifier.fillMaxSize().padding(design.pagePadding)
+                .downwardSoftShadow(design.card, design.dark, 8.dp)
+                .clip(design.pageShape).background(design.card)
+                .testTag("settings-apple-login-panel"),
+        ) {
             Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().height(84.dp).padding(horizontal = design.pagePadding),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss, Modifier.size(design.minimumTouchHeight).testTag("settings-apple-login-back")) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回设置", tint = design.text)
+                Row(
+                    Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SettingsIconButton(
+                        onClick = onDismiss,
+                        contentDescription = "返回设置",
+                        tag = "settings-apple-login-back",
+                    ) { iconModifier ->
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, iconModifier, tint = design.text)
                     }
-                    Text("登录 Apple Music", Modifier.weight(1f), style = design.pageTitleStyle, color = design.text,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2)
-                    IconButton(onClick = onDismiss, Modifier.size(design.minimumTouchHeight).testTag("settings-apple-login-close")) {
-                        Icon(Icons.Default.Close, "关闭登录", tint = design.text)
+                    Box(Modifier.weight(1f).padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                        Text("登录 Apple Music", style = design.pageTitleStyle, color = design.text,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            maxLines = 1, softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                    SettingsIconButton(
+                        onClick = onDismiss,
+                        contentDescription = "关闭登录",
+                        tag = "settings-apple-login-close",
+                    ) { iconModifier ->
+                        Icon(Icons.Default.Close, null, iconModifier, tint = design.text)
                     }
                 }
                 HorizontalDivider(color = design.divider)
@@ -239,8 +258,8 @@ fun AppleMusicLoginPanel(
                     Text("正在准备 Apple 登录页面…", style = design.supportingStyle, color = design.secondaryText)
                     LinearProgressIndicator(Modifier.fillMaxWidth(), color = design.text, trackColor = design.track)
                 }
-                Box(Modifier.fillMaxWidth().weight(1f).padding(design.pagePadding).clip(design.cardShape).background(design.track),
-                    contentAlignment = Alignment.Center) { content() }
+                Box(Modifier.fillMaxWidth().weight(1f).padding(design.pagePadding)
+                    .clip(design.cardShape).background(design.track), contentAlignment = Alignment.Center) { content() }
             }
         }
     }

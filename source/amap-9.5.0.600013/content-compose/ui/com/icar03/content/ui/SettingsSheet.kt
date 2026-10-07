@@ -1,6 +1,14 @@
 package com.icar03.content.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.background
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -16,14 +24,14 @@ import androidx.compose.material.icons.outlined.VerticalAlignBottom
 import androidx.compose.material.icons.outlined.VerticalAlignTop
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.semantics
@@ -47,42 +55,64 @@ internal fun SettingsSheet(
         val currentEvent by rememberUpdatedState(onEvent)
         BoxWithConstraints(modifier.clipToBounds().testTag("settings-sheet-host")) {
             val density = LocalDensity.current
+            val widthPx = with(density) { maxWidth.toPx() }
             val heightPx = with(density) { maxHeight.toPx() }
             val headerHeight = with(density) { design.pageTitleStyle.lineHeight.toDp() } + design.pagePadding * 2
-            val offset = remember { Animatable(heightPx.coerceAtLeast(1f)) }
+            val headerHeightPx = with(density) { headerHeight.toPx() }
+            val peekHeightPx = with(density) { (design.minimumTouchHeight + 16.dp).toPx() }
+            val horizontalOffset = remember { Animatable(-1f) }
+            val collapseOffset = remember { Animatable(0f) }
             var wasOpen by remember { mutableStateOf(false) }
+            var collapsed by remember { mutableStateOf(false) }
             val open = state.settingsOpen
+            val view = LocalView.current
+            val clickSound = LocalContentClickSound.current
             val settingsEvent: (ContentEvent) -> Unit = {
                 if (currentState.settingsOpen && (!currentState.lyricsProviderSettings.appleLoginOpen ||
                         it == AppleMusicLoginDismissed || it == ContentEvent.SettingsBack)) currentEvent(it)
             }
-            LaunchedEffect(open, heightPx) {
-                if (heightPx <= 0f) return@LaunchedEffect
+            LaunchedEffect(open, widthPx) {
+                if (widthPx <= 0f) return@LaunchedEffect
                 if (open) {
-                    if (!wasOpen) { offset.snapTo(heightPx); wasOpen = true }
-                    offset.animateTo(0f, tween(320, easing = CubicBezierEasing(.2f, .8f, .2f, 1f)))
+                    if (!wasOpen) {
+                        horizontalOffset.snapTo(-widthPx)
+                        wasOpen = true
+                        collapsed = false
+                    }
+                    horizontalOffset.animateTo(0f, tween(360, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)))
                 } else if (wasOpen) {
-                    offset.animateTo(heightPx, tween(250, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
+                    horizontalOffset.animateTo(-widthPx, tween(300, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
                     wasOpen = false
+                    collapsed = false
                 }
+            }
+            LaunchedEffect(open, collapsed, heightPx, headerHeightPx) {
+                val target = if (open && collapsed) (heightPx - headerHeightPx - peekHeightPx).coerceAtLeast(0f) else 0f
+                collapseOffset.animateTo(target, tween(340, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)))
             }
             SideEffect { onVisibilityChanged(open || wasOpen) }
             if (!open && !wasOpen) return@BoxWithConstraints
-            Surface(
-                modifier = Modifier.fillMaxSize().graphicsLayer { translationY = offset.value }.testTag("settings-sheet"),
-                color = design.page, shape = design.pageShape, tonalElevation = 0.dp,
-                shadowElevation = design.shadowElevation,
+            Box(
+                Modifier.fillMaxSize()
+                    .graphicsLayer {
+                        translationX = horizontalOffset.value
+                        translationY = collapseOffset.value
+                    }
+                    .downwardSoftShadow(design.page, design.dark, 12.dp)
+                    .clip(design.pageShape)
+                    .background(design.page)
+                    .testTag("settings-sheet"),
             ) {
                 Column(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxWidth().height(headerHeight).testTag("settings-header")) {
-                        IconButton(
-                            onClick = { settingsEvent(ContentEvent.SettingsBack) }, enabled = open,
-                            modifier = Modifier.align(Alignment.CenterStart).padding(start = design.pagePadding)
-                                .size(design.minimumTouchHeight).testTag("settings-back"),
-                        ) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = design.text, modifier = Modifier.size(28.dp))
-                            }
+                        SettingsIconButton(
+                            onClick = { settingsEvent(ContentEvent.SettingsBack) },
+                            contentDescription = "返回",
+                            enabled = open,
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = design.pagePadding),
+                            tag = "settings-back",
+                        ) { iconModifier ->
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, iconModifier, tint = design.text)
                         }
                         val title = when (state.settingsSection) {
                             SettingsSection.Home -> "设置"
@@ -92,13 +122,38 @@ internal fun SettingsSheet(
                         SettingsLineText(title,
                             Modifier.align(Alignment.Center).padding(horizontal = 72.dp).testTag("settings-title"),
                             design.pageTitleStyle, design.text, textAlign = TextAlign.Center)
+                        SettingsIconButton(
+                            onClick = { clickSound(view); collapsed = !collapsed },
+                            contentDescription = if (collapsed) "恢复设置页" else "下移收起设置页",
+                            enabled = open,
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = design.pagePadding),
+                            tag = "settings-collapse",
+                        ) { iconModifier ->
+                            Icon(if (collapsed) Icons.Outlined.VerticalAlignTop else Icons.Outlined.VerticalAlignBottom,
+                                null, iconModifier, tint = design.text)
+                        }
                     }
                     HorizontalDivider(color = design.divider, modifier = Modifier.testTag("settings-header-divider"))
-                    key(state.settingsSection) {
-                        when (state.settingsSection) {
-                            SettingsSection.Home -> SettingsHome(settingsEvent, open, Modifier.weight(1f))
-                            SettingsSection.Lyrics -> LyricsSettings(state, settingsEvent, open, Modifier.weight(1f))
-                            else -> SettingsDetail(state, settingsEvent, open, Modifier.weight(1f))
+                    AnimatedContent(
+                        targetState = state.settingsSection,
+                        modifier = Modifier.weight(1f),
+                        transitionSpec = {
+                            val direction = if (targetState == SettingsSection.Home) -1 else 1
+                            (slideInHorizontally(
+                                animationSpec = tween(320, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)),
+                                initialOffsetX = { it * direction },
+                            ) + fadeIn(tween(220))) togetherWith
+                                (slideOutHorizontally(
+                                    animationSpec = tween(320, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)),
+                                    targetOffsetX = { -it * direction },
+                                ) + fadeOut(tween(180))) using SizeTransform(clip = true)
+                        },
+                        label = "settings-page-transition",
+                    ) { section ->
+                        when (section) {
+                            SettingsSection.Home -> SettingsHome(settingsEvent, open, Modifier.fillMaxSize())
+                            SettingsSection.Lyrics -> LyricsSettings(state, settingsEvent, open, Modifier.fillMaxSize())
+                            else -> SettingsDetail(state, settingsEvent, open, Modifier.fillMaxSize())
                         }
                     }
                 }
@@ -256,6 +311,12 @@ private fun LyricsSettings(
             SettingsSwitchRow("显示歌词翻译", state.lyricsShowTranslation, { onEvent(ContentEvent.LyricsShowTranslationChanged(it)) },
                 enabled = controlsEnabled, tag = "settings-switch-显示歌词翻译")
         }
+        SettingsActionButton(
+            label = "恢复默认值",
+            onClick = { onEvent(ContentEvent.LyricsDefaultsRequested) },
+            enabled = controlsEnabled,
+            tag = "settings-lyrics-reset",
+        )
     }
 }
 

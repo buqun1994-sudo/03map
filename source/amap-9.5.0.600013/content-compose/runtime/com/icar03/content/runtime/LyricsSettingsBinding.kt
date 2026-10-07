@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -426,6 +427,7 @@ class LyricsSettingsBinding(
         configureWebView(webView, attempt, ownerLifecycle, ownerLogin)
         // This is the first load and uses only the opaque attempt's official URL.
         webView.loadUrl(attempt.loginUrl)
+        webView.post { if (loginWebView === webView) webView.requestFocus() }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -442,10 +444,25 @@ class LyricsSettingsBinding(
             allowContentAccess = false
             javaScriptCanOpenWindowsAutomatically = false
             setSupportMultipleWindows(false)
+            builtInZoomControls = false
+            displayZoomControls = false
+            loadsImagesAutomatically = true
+            val userAgent = userAgentString.orEmpty()
+            if (userAgent.contains("; wv", ignoreCase = true)) {
+                userAgentString = userAgent.replace("; wv", "", ignoreCase = true)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             }
         }
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                setAcceptThirdPartyCookies(webView, true)
+            }
+        }
+        webView.isFocusable = true
+        webView.isFocusableInTouchMode = true
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                 !isAllowedAppleUrl(request.url)

@@ -52,12 +52,12 @@ internal val ControlDragging = SemanticsPropertyKey<Boolean>("ControlDragging")
 internal val ControlLabelBand = SemanticsPropertyKey<androidx.compose.ui.geometry.Rect>("ControlLabelBand")
 internal val ControlFill = SemanticsPropertyKey<Long>("ControlFill")
 
-internal fun Modifier.downwardSoftShadow(fill: Color, dark: Boolean): Modifier = drawWithCache {
+internal fun Modifier.downwardSoftShadow(fill: Color, dark: Boolean, cornerRadius: Dp = 12.dp): Modifier = drawWithCache {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = fill.toArgb()
         setShadowLayer(5.dp.toPx(), 0f, 3.dp.toPx(), if (dark) 0xA0000000.toInt() else 0x30000000)
     }
-    val radius = 12.dp.toPx()
+    val radius = cornerRadius.toPx()
     onDrawBehind {
         drawIntoCanvas { canvas ->
             canvas.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, radius, radius, paint)
@@ -247,18 +247,42 @@ internal fun ContinuousVerticalControl(label: String, icon: Int, level: LevelSta
     val enabled = level.available && level.target == null
     val gate = rememberQuickControlGestureGate(enabled) { draft = null }
     var trackSize by remember { mutableStateOf(IntSize.Zero) }
+    val view = LocalView.current
+    val sliderTick = LocalContentSliderTickSound.current
+    var lastTick by remember { mutableIntStateOf(Int.MIN_VALUE) }
+    fun emitTick(value: Float) {
+        val bucket = (value.coerceIn(0f, 1f) * 32f).roundToInt()
+        if (bucket != lastTick) {
+            lastTick = bucket
+            sliderTick(view)
+        }
+    }
     val shown = draft ?: level.displayed
     VerticalControlSurface(label, tag, QuickControlType.ContinuousVertical, shown, draft != null,
         modifier.height(height).onSizeChanged { trackSize = it }
             .semantics {
                 progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
                 if (enabled) setProgress { value ->
-                    if (gate.enabled && value.isFinite()) { commit(value.coerceIn(0f, 1f)); true } else false
+                    if (gate.enabled && value.isFinite()) {
+                        val next = value.coerceIn(0f, 1f)
+                        emitTick(next)
+                        commit(next)
+                        true
+                    } else false
                 } else disabled()
             }.verticalControlGesture(gate, tap = { point ->
-                commit(verticalFraction(point.y, trackSize.height.toFloat())); draft = null
-            }, onStart = { draft = current.displayed }, onDrag = { draft = verticalFraction(it.y, trackSize.height.toFloat()) },
-                onCommit = { draft?.let(commit); draft = null }, onCancel = { draft = null }, geometryKey = trackSize),
+                val next = verticalFraction(point.y, trackSize.height.toFloat())
+                emitTick(next)
+                commit(next); draft = null
+            }, onStart = {
+                val initial = current.displayed.takeIf { it.isFinite() } ?: 0f
+                draft = initial
+                lastTick = (initial.coerceIn(0f, 1f) * 32f).roundToInt()
+            }, onDrag = {
+                val next = verticalFraction(it.y, trackSize.height.toFloat())
+                emitTick(next)
+                draft = next
+            }, onCommit = { draft?.let(commit); draft = null }, onCancel = { draft = null }, geometryKey = trackSize),
         icon = { OemIcon(icon, it.testTag("$tag-icon"), motionKey = shown) })
 }
 
@@ -273,6 +297,16 @@ internal fun SteppedVerticalControl(label: String, levelCount: Int, level: Int?,
     val power by rememberUpdatedState(onPower)
     val gate = rememberQuickControlGestureGate(enabled) { draft = null }
     var trackSize by remember { mutableStateOf(IntSize.Zero) }
+    val view = LocalView.current
+    val sliderTick = LocalContentSliderTickSound.current
+    var lastTick by remember(levelCount) { mutableIntStateOf(Int.MIN_VALUE) }
+    fun emitTick(value: Int) {
+        val next = value.coerceIn(0, levelCount)
+        if (next != lastTick) {
+            lastTick = next
+            sliderTick(view)
+        }
+    }
     val displayed = (draft ?: level)?.takeIf { it in 0..levelCount }
     val fraction = displayed?.let(scale::fraction) ?: 0f
     val levelDescription = when (displayed) {
@@ -290,12 +324,24 @@ internal fun SteppedVerticalControl(label: String, levelCount: Int, level: Int?,
             if (enabled) {
                 onClick { if (gate.enabled) { power(); true } else false }
                 setProgress { value ->
-                    if (gate.enabled && value.isFinite()) { commit(value.roundToInt().coerceIn(0, levelCount)); true } else false
+                    if (gate.enabled && value.isFinite()) {
+                        val next = value.roundToInt().coerceIn(0, levelCount)
+                        emitTick(next)
+                        commit(next)
+                        true
+                    } else false
                 }
             } else disabled()
         }.verticalControlGesture(gate, tap = { power() },
-            onStart = { draft = current?.takeIf { it in 0..levelCount } ?: 0 },
-            onDrag = { draft = scale.levelAt(it.y, trackSize.height.toFloat()) },
+            onStart = {
+                draft = current?.takeIf { it in 0..levelCount } ?: 0
+                lastTick = draft ?: 0
+            },
+            onDrag = {
+                val next = scale.levelAt(it.y, trackSize.height.toFloat())
+                emitTick(next)
+                draft = next
+            },
             onCommit = { draft?.let(commit); draft = null }, onCancel = { draft = null },
             geometryKey = trackSize to levelCount),
         scale = scale, icon = { icon(displayed, it) })

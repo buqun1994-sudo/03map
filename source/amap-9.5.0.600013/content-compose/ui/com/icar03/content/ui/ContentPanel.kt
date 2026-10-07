@@ -118,6 +118,7 @@ fun ContentPanel(
         // as the old Android buttons, respecting the user's sound-effects setting.
         val audible = when (event) {
             is ContentEvent.PageSelected, ContentEvent.DismissSheet,
+            is ContentEvent.ControlLevelChanged, is ContentEvent.BrightnessChanged, is ContentEvent.VolumeChanged,
             is ContentEvent.LyricsFontSizeChanged, is ContentEvent.LyricsCurrentFontSizeChanged,
             is ContentEvent.LyricsLineGapChanged, is ContentEvent.LyricsImmersiveFontSizeChanged,
             is ContentEvent.LyricsImmersiveLineGapChanged, is ContentEvent.LyricsImmersiveCurrentFontSizeChanged -> false

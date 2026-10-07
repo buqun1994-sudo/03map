@@ -212,6 +212,7 @@ sealed interface ContentEvent {
     data class LyricsSpeakerLayoutChanged(val value: Boolean) : ContentEvent
     data class LyricsShowTranslationChanged(val value: Boolean) : ContentEvent
     data class LyricsHighlightChanged(val value: Boolean) : ContentEvent
+    data object LyricsDefaultsRequested : ContentEvent
     data class ImmersiveShowTopBarChanged(val value: Boolean) : ContentEvent
     data class ImmersiveTopBarKeepSplitChanged(val value: Boolean) : ContentEvent
     data class ImmersiveShowDockChanged(val value: Boolean) : ContentEvent
@@ -243,7 +244,7 @@ fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
     is ContentEvent.LyricsImmersiveFontSizeChanged, is ContentEvent.LyricsImmersiveCurrentFontSizeChanged, is ContentEvent.LyricsImmersiveLineGapChanged,
     is ContentEvent.LyricsLineSpacingChanged, is ContentEvent.LyricsSpeakerLayoutChanged,
      is ContentEvent.LyricsShowTranslationChanged,
-    is ContentEvent.LyricsHighlightChanged, is ContentEvent.ImmersiveShowTopBarChanged,
+    is ContentEvent.LyricsHighlightChanged, ContentEvent.LyricsDefaultsRequested, is ContentEvent.ImmersiveShowTopBarChanged,
      is ContentEvent.ImmersiveTopBarKeepSplitChanged,
     is ContentEvent.ImmersiveShowDockChanged, is ContentEvent.ShowAmbientArtworkChanged,
     is ContentEvent.ShowMediaSourceSwitcherChanged, is ContentEvent.DockButtonCountChanged,

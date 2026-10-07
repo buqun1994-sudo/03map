@@ -110,7 +110,7 @@ class WallpaperScrollMotionTest {
         assertFalse(value(LyricFrameRunning)) // no invented word animation in this LRC fixture
     }
 
-    @Test fun downStopsBeforeDragSlopAndExternalOrModalGesturesNeverRunAWave() {
+    @Test fun downStopsBeforeDragSlopAndExternalGesturesNeverRunAWaveButModalFollowRemainsLive() {
         mount(); startWave(); advance(96); capture()
         body().performTouchInput { down(center) }
         assertFalse(value(LyricScrollRunning))
@@ -127,11 +127,12 @@ class WallpaperScrollMotionTest {
         advance(400)
         assertFalse(value(LyricScrollRunning))
         assertEquals(externalOffset, value(LyricScrollOffset), .01f)
-        compose.runOnIdle { state.value = state.value.copy(external = false, interactive = false) }
+        compose.runOnIdle {
+            state.value = state.value.copy(external = false, interactive = false, lyrics = source(23))
+        }
         body().performTouchInput { swipeUp() }
-        advance(400)
-        assertFalse(value(LyricScrollRunning))
-        assertEquals(externalOffset, value(LyricScrollOffset), .01f)
+        advance(1_200)
+        assertSettledAt(23)
     }
 
     @Test fun manualPreviewKeepsRigidMotionThenUsesTheExistingFourSecondReturn() {

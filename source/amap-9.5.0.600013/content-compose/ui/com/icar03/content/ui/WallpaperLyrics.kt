@@ -247,7 +247,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         var pointerDown by remember(presentationKey) { mutableStateOf(false) }
         val paused = lyrics.playbackSpeed <= 0f || !lyrics.playbackSpeed.isFinite()
         val scrollBlocked = !workEnabled || holdFollow || !layoutReady || pointerDown ||
-            externalGestureActive || !interactionEnabled
+            externalGestureActive
         val commands = remember(presentationKey) { LyricFollowHistory() }
         val commandSample = remember { LyricScrollSample() }
         // One delayed return, cancelled during any gesture/modal and restarted on a timed viewport.

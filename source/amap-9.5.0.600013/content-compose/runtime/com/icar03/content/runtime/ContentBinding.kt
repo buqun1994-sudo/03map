@@ -376,6 +376,11 @@ class ContentBinding(
             is ContentEvent.LyricsSpeakerLayoutChanged -> store.setLyricsSpeakerLayout(event.value)
             is ContentEvent.LyricsShowTranslationChanged -> store.setLyricsShowTranslation(event.value)
             is ContentEvent.LyricsHighlightChanged -> store.setLyricsHighlight(event.value)
+            ContentEvent.LyricsDefaultsRequested -> {
+                store.resetLyricsPreferences()
+                lyricsSettings?.dispatch(LyricsPlatformSelected("auto"))
+                publishShell()
+            }
             is ContentEvent.ImmersiveShowTopBarChanged -> store.setImmersiveShowTopBar(event.value)
             is ContentEvent.ImmersiveTopBarKeepSplitChanged -> store.setImmersiveTopBarKeepSplit(event.value)
             is ContentEvent.ImmersiveShowDockChanged -> store.setImmersiveShowDock(event.value)

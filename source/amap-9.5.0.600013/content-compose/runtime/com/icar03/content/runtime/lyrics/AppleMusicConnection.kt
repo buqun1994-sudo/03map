@@ -1,6 +1,8 @@
 package com.icar03.content.runtime.lyrics
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -8,7 +10,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.net.URI
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+
+private const val COOKIE_CLEAR_TIMEOUT_MS = 2500L
 
 /** Settings facade for the official embedded music.apple.com login; contains no login UI. */
 class AppleMusicConnection internal constructor(internal val account: AppleMusicAccount) {
@@ -283,7 +288,9 @@ internal class AppleMusicAccount(
         )
     }
 
-    private companion object { const val MAX_TOKEN_LENGTH = 32_768 }
+    private companion object {
+        const val MAX_TOKEN_LENGTH = 32_768
+    }
 }
 
 internal interface AppleMusicWebsiteCookies {
@@ -318,18 +325,34 @@ internal class AppleMusicAndroidWebsiteCookies : AppleMusicWebsiteCookies {
             }
         }
         val remaining = AtomicInteger(deletions.size)
+        val completed = AtomicBoolean(false)
+        val handler = Handler(Looper.getMainLooper())
+        lateinit var timeout: Runnable
+        fun finish(clean: Boolean) {
+            if (!completed.compareAndSet(false, true)) return
+            handler.removeCallbacks(timeout)
+            runCatching { manager.flush() }
+            onComplete(clean)
+        }
+        timeout = Runnable {
+            // A few Android 9 WebView providers never invoke setCookie callbacks.
+            // Opening the page is still safe: acceptCookies rejects the prior token.
+            finish(true)
+        }
+        handler.postDelayed(timeout, COOKIE_CLEAR_TIMEOUT_MS)
         manager.setAcceptCookie(true)
+        if (deletions.isEmpty()) {
+            finish(true)
+            return
+        }
         deletions.forEach { (url, cookie) ->
             manager.setCookie(url, cookie) {
                 if (remaining.decrementAndGet() == 0) {
-                    manager.flush()
-                    // Some OEM stores hide cookie paths. Rejecting the preceding token in
-                    // acceptCookies is a second guard against renewing the old login by accident.
                     val oldMusicCookie = manager.getCookie(AppleMusicConnection.LOGIN_URL).orEmpty()
                     val clean = oldMusicCookie.split(';').none {
                         it.trim().startsWith("media-user-token=") && it.substringAfter('=').isNotBlank()
                     }
-                    onComplete(clean)
+                    finish(clean)
                 }
             }
         }
