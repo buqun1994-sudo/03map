@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.testTag
@@ -49,7 +50,7 @@ open class SettingsFigmaReferenceRenderTest {
     }
 
     @Test fun lyricsReferenceUsesTheMeasuredFigmaFrame() {
-        captureReference(SettingsSection.Lyrics, 2735, "lyrics-reference")
+        captureReference(SettingsSection.Lyrics, 2880, "lyrics-reference")
     }
 
     private fun captureReference(section: SettingsSection, designHeight: Int, label: String) {
@@ -92,10 +93,30 @@ open class SettingsFigmaReferenceRenderTest {
         val bitmap = capture(rootTag)
         assertEquals("Figma reference width", 618, bitmap.width)
         assertEquals("Figma reference height for $section", designHeight, bitmap.height)
+        val design = settingsDesign(dark)
+        assertEquals("page background matches the resolved Amap theme",
+            design.page.toArgb(), bitmap.getPixel(12, 110))
+        assertTrue("native page must contain its themed card surface", containsColor(bitmap, design.card.toArgb()))
+        assertTrue("native page must contain readable themed text", containsColor(bitmap, design.text.toArgb()))
+        if (section != SettingsSection.Home) {
+            assertTrue("enabled switches must render green", containsColor(bitmap, design.onSwitchTrack.toArgb()))
+        }
+        if (section == SettingsSection.Lyrics) {
+            assertTrue("numeric sliders must render blue", containsColor(bitmap, design.sliderFill.toArgb()))
+            val card = compose.onNodeWithTag("settings-card-歌词翻译", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            assertTrue("the final lyrics card must not be clipped", card.bottom <= designHeight - 24f)
+        }
         val directory = File("build/frames").apply { mkdirs() }
         File(directory, "${javaClass.simpleName}-$label.png").outputStream().use {
             assertTrue("native settings reference must be a PNG", bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
         }
+    }
+
+    private fun containsColor(bitmap: Bitmap, expected: Int): Boolean {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        return pixels.any { it == expected }
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -127,3 +148,8 @@ class SettingsFigmaReferenceRenderDarkTest : SettingsFigmaReferenceRenderTest() 
 
 @Config(sdk = [34], qualifiers = "w640dp-h4096dp-mdpi")
 class SettingsFigmaReferenceRenderApi34LightTest : SettingsFigmaReferenceRenderTest()
+
+@Config(sdk = [34], qualifiers = "w640dp-h4096dp-mdpi")
+class SettingsFigmaReferenceRenderApi34DarkTest : SettingsFigmaReferenceRenderTest() {
+    override val dark = true
+}

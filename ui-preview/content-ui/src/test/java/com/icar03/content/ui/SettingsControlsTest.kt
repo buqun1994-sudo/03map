@@ -1,5 +1,7 @@
 package com.icar03.content.ui
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -8,9 +10,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -22,6 +26,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
+import kotlin.math.roundToInt
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -53,7 +58,11 @@ open class SettingsControlsTest {
         val design = settingsDesign(dark)
         assertEquals(if (dark) 0xFF0F0F0F.toInt() else 0xFFF4F4F4.toInt(), design.page.toArgb())
         assertEquals(if (dark) 0xFF484848.toInt() else 0xFFFFFFFF.toInt(), design.selected.toArgb())
-        assertEquals(if (dark) 0xFFE8E8E8.toInt() else 0xFF27303B.toInt(), design.onSwitchTrack.toArgb())
+        assertEquals(0xFF33C458.toInt(), design.onSwitchTrack.toArgb())
+        assertEquals(0xFF0086FD.toInt(), design.sliderFill.toArgb())
+        assertEquals(56.dp, design.segmentHeight)
+        assertEquals(60.dp, design.switchWidth)
+        assertEquals(30.dp, design.switchHeight)
         assertEquals(24.dp, design.paddingFor(399.dp))
         assertEquals(24.dp, design.paddingFor(400.dp))
         assertEquals(48.dp, design.sectionGap)
@@ -182,11 +191,14 @@ open class SettingsControlsTest {
         assertEquals(30f, row.height, 1f)
         assertEquals(24f, text.top - card.top, 1f)
         assertEquals(24f, card.bottom - text.bottom, 1f)
-        assertEquals(48f, track.width, 1f)
-        assertEquals(24f, track.height, 1f)
-        assertEquals(3f, track.top - row.top, 1f)
-        assertEquals(24f, thumb.width, 1f)
-        assertEquals(20f, thumb.height, 1f)
+        assertEquals(60f, track.width, 1f)
+        assertEquals(30f, track.height, 1f)
+        assertEquals(row.top, track.top, 1f)
+        assertEquals(row.right, track.right, 1f)
+        assertEquals(30f, thumb.width, 1f)
+        assertEquals(25f, thumb.height, 1f)
+        assertEquals(2.5f, thumb.left - track.left, 1f)
+        assertEquals(track.center.y, thumb.center.y, 1f)
         compose.onNodeWithTag("switch-row").performTouchInput { click(Offset(center.x, -6f)) }
         compose.onNodeWithTag("switch-row").assertIsOn()
         assertEquals(1, changes)
@@ -258,13 +270,13 @@ open class SettingsControlsTest {
             )
         }
         val group = bounds("size-track")
-        assertEquals(40f, group.height, 1f)
-        assertEquals(36f, bounds("size-normal-surface").height, 1f)
+        assertEquals(56f, group.height, 1f)
+        assertEquals(52f, bounds("size-normal-surface").height, 1f)
         compose.onNodeWithTag("size-normal").assertIsSelected()
         for (id in listOf("small", "normal", "large")) {
             val bounds = compose.onNodeWithTag("size-$id").performScrollTo().fetchSemanticsNode().boundsInRoot
             assertTrue("each segment keeps its full touch width", bounds.width >= 63f)
-            assertEquals("each segment keeps the reference visual height", 40f, bounds.height, 1f)
+            assertEquals("each segment keeps the reference visual height", 56f, bounds.height, 1f)
         }
         compose.onNodeWithTag("size-large").performScrollTo().performClick()
         compose.onNodeWithTag("size-large").assertIsSelected().performClick()
@@ -287,12 +299,12 @@ open class SettingsControlsTest {
         val track = bounds("size-track")
         val choice = bounds("size-normal")
         val surface = bounds("size-normal-surface")
-        assertEquals(40f, bounds("size").height, 1f)
-        assertEquals(40f, track.height, 1f)
-        assertEquals(36f, surface.height, 1f)
+        assertEquals(56f, bounds("size").height, 1f)
+        assertEquals(56f, track.height, 1f)
+        assertEquals(52f, surface.height, 1f)
         assertEquals(2f, surface.top - choice.top, 1f)
         assertEquals(2f, surface.left - choice.left, 1f)
-        compose.onNodeWithTag("size-large").performTouchInput { click(Offset(center.x, -2f)) }
+        compose.onNodeWithTag("size-large").performTouchInput { click(Offset(center.x, 3f)) }
         compose.onNodeWithTag("size-large").assertIsSelected()
         assertEquals(listOf("large"), changes)
     }
@@ -545,6 +557,34 @@ open class SettingsControlsTest {
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         assertTrue(previews.isEmpty())
         assertTrue(commits.isEmpty())
+    }
+
+    @Test fun switchAndNumericSliderUseTheirOwnRenderedStateColors() {
+        mount {
+            SettingsSwitchRow("显示星期", true, {}, tag = "green")
+            SettingsSlider(.5f, 0f..1f, {}, {}, tag = "blue")
+        }
+        val design = settingsDesign(dark)
+        assertEquals(design.onSwitchTrack.toArgb(), pixelAt("green-track", .15f, .5f))
+        assertEquals(design.switchThumb.toArgb(), pixelAt("green-thumb", .5f, .5f))
+        assertEquals(design.sliderFill.toArgb(), pixelAt("blue-fill", .5f, .5f))
+        assertEquals(2.5f, bounds("green-track").right - bounds("green-thumb").right, 1f)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun pixelAt(tag: String, x: Float, y: Float): Int {
+        val node = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        val root = node.root as ViewRootForTest
+        val bounds = node.boundsInRoot
+        return compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
+            try {
+                Canvas(bitmap).apply { translate(-bounds.left, -bounds.top); root.view.draw(this) }
+                bitmap.getPixel((bitmap.width * x).toInt(), (bitmap.height * y).toInt())
+            } finally {
+                bitmap.recycle()
+            }
+        }
     }
 
     private fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true)

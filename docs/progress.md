@@ -1,8 +1,8 @@
-## 设置页Figma重构（2026-10-07，本机源码验证收敛）
+## 设置页Figma重构（2026-10-07，前一轮已提交，本轮控件快速调整）
 
 正式源码已按现场Figma和12／24／48dp规则依次实现令牌、原子控件及页面；首页、状态栏和歌词完整组合，其余子页同皮肤。歌词预览移除，八段配色等分且总宽等于色相条；schema7的续航、四充电项、翻译、全屏顶栏宽度及独立全屏当前字号已有实际消费者。Apple登录单独大Dialog，不受1/3设置宽度约束，返回／关闭／系统返回沿统一取消和WebView清理；保留系统栏与IME resize。
 
-定向设置、Runtime和Ambient回归通过；三张Figma参照帧已生成。`node scripts/validate-content.mjs --scope all --lint` 已通过 app、content-model、content-ui、content-runtime、map-host 五模块，Lint退出0；本轮证据、命令和帧尺寸见[设置页Figma重构验证记录](<testing/设置页Figma重构验证记录-20261007.md>)及 `apk-work/validation.7LwFiM/report.json`。未生成APK、未连接车机、未进行覆盖安装或Apple账号在线验收，不能把本机源码结果外推为车机或真实账号接受结果。用户原有字体研究改动保留。
+前一轮完整五模块 `all + lint`、正式签名构建与独立包级核验通过，已先提交为`4904b52`，无关研究引用隔离为`4d5d926`。本轮共享控件已调整为开关绿色60×30、数值条蓝色、分段单选56高／选中面52高，两种主题均一致；Release编译通过，设置定向回归／Lint通过，双主题三页原生图已查看；新签名包`source-build.LtXtDT/signed.apk`与独立包级核验通过并交付，SHA-256=`4acfe8c4eb927f456292c301a9da9a921a7f8ae3dbf0e6b6e4c514059534fb0d`。完整命令、帧与包身份见[设置页Figma重构验证记录](<testing/设置页Figma重构验证记录-20261007.md>)。不连接车机、无覆盖安装或Apple账号在线验收；用户原有字体研究仍留在工作树。
 
 ## 此前设置首页与歌词子页阶段提交（2026-10-06，未验收；下轮重构）
 

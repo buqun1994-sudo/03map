@@ -32,7 +32,8 @@ data class SettingsDesign(
     val secondaryText: Color,
     val divider: Color,
     val offSwitchTrack: Color,
-    val onSwitchTrack: Color = Color(0xFF27303B),
+    val onSwitchTrack: Color = Color(0xFF33C458),
+    val sliderFill: Color = Color(0xFF0086FD),
     val switchThumb: Color = Color.White,
     val offSwitchThumb: Color = Color.White,
     val rainbowThumbOutline: Color = Color.White,
@@ -43,6 +44,11 @@ data class SettingsDesign(
     val itemGap: Dp = 24.dp,
     val smallGap: Dp = 12.dp,
     val controlHeight: Dp = 40.dp,
+    val segmentHeight: Dp = 56.dp,
+    val switchWidth: Dp = 60.dp,
+    val switchHeight: Dp = 30.dp,
+    val switchThumbWidth: Dp = 30.dp,
+    val switchThumbHeight: Dp = 25.dp,
     val minimumTouchHeight: Dp = 48.dp,
     val colorHeight: Dp = 60.dp,
     val rainbowThumbWidth: Dp = 60.dp,
@@ -74,7 +80,7 @@ private val DarkSettingsDesign = SettingsDesign(
     dark = true, page = Color(0xFF0F0F0F), card = Color(0xFF1A1A1A), track = Color(0xFF303030),
     selected = Color(0xFF484848), text = Color(0xFFF2F2F2), secondaryText = Color(0xFFB9B9B9),
     divider = Color(0xFF353535), offSwitchTrack = Color(0xFF454545),
-    onSwitchTrack = Color(0xFFE8E8E8), switchThumb = Color(0xFF1A1A1A), offSwitchThumb = Color(0xFFE8E8E8),
+    switchThumb = Color.White, offSwitchThumb = Color(0xFFE8E8E8),
 )
 
 fun settingsDesign(dark: Boolean): SettingsDesign = if (dark) DarkSettingsDesign else LightSettingsDesign

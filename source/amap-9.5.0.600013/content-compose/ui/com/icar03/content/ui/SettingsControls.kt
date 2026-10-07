@@ -238,12 +238,12 @@ fun SettingsSegmented(
                 maxLines = 1, softWrap = false).size.width }.toDp()
         }
     }
-    BoxWithConstraints(modifier.fillMaxWidth().height(design.controlHeight).settingsTag(tagPrefix)) {
+    BoxWithConstraints(modifier.fillMaxWidth().height(design.segmentHeight).settingsTag(tagPrefix)) {
         val minimumWidth = maxOf(design.segmentMinimumWidth, naturalLabelWidth + selectionInset * 2) * options.size
         val rowWidth = if (maxWidth == Dp.Infinity) minimumWidth else maxOf(maxWidth, minimumWidth)
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             Surface(
-                modifier = Modifier.width(rowWidth).height(design.controlHeight)
+                modifier = Modifier.width(rowWidth).height(design.segmentHeight)
                     .settingsTag(settingsChildTag(tagPrefix, "track")),
                 shape = design.controlShape,
                 color = design.track.copy(alpha = if (enabled) 1f else .38f),
@@ -331,14 +331,17 @@ fun SettingsSwitchRow(
 @Composable
 private fun SettingsSwitchVisual(checked: Boolean, enabled: Boolean, tag: String) {
     val design = LocalSettingsDesign.current
-    val thumbOffset by animateDpAsState(if (checked) 22.dp else 2.dp,
+    val thumbInset = (design.switchHeight - design.switchThumbHeight) / 2
+    val thumbOffset by animateDpAsState(
+        if (checked) design.switchWidth - design.switchThumbWidth - thumbInset else thumbInset,
         animationSpec = tween(180), label = "settings-switch-thumb")
-    Surface(Modifier.size(48.dp, 24.dp).alpha(if (enabled) 1f else .38f)
+    Surface(Modifier.size(design.switchWidth, design.switchHeight).alpha(if (enabled) 1f else .38f)
         .settingsTag(settingsChildTag(tag, "track")),
         shape = design.controlShape, color = if (checked) design.onSwitchTrack else design.offSwitchTrack,
         tonalElevation = 0.dp, shadowElevation = design.shadowElevation) {
         Box(Modifier.fillMaxSize()) {
-            Box(Modifier.align(Alignment.CenterStart).offset(x = thumbOffset).size(24.dp, 20.dp)
+            Box(Modifier.align(Alignment.CenterStart).offset(x = thumbOffset)
+                .size(design.switchThumbWidth, design.switchThumbHeight)
                 .background(if (checked) design.switchThumb else design.offSwitchThumb, design.controlShape)
                 .settingsTag(settingsChildTag(tag, "thumb")))
         }
@@ -709,7 +712,7 @@ private fun SettingsSliderControl(
             if (rainbow) Box(Modifier.fillMaxSize().background(rainbowBrush))
             else Box(Modifier.fillMaxSize()) {
                 Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(fraction)
-                    .background(design.selected).settingsTag(settingsChildTag(tag, "fill")))
+                    .background(design.sliderFill).settingsTag(settingsChildTag(tag, "fill")))
             }
         }
         // Disable Material's extra layout reservation, not Foundation's minimum touch target.
