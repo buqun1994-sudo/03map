@@ -184,6 +184,9 @@ class ContentLyricsEngine internal constructor(
             fallbackArtwork = null
             coverAttempted = false
             if (next != null) persistNativeCover(next, snapshot.artwork)
+        } else if (snapshot.publicArtworkPending) {
+            if (coverJob != null || coverCancellation != null) cancelCover()
+            coverAttempted = false
         } else if (next != null && !coverAttempted) {
             startCover(next)
         }
@@ -406,6 +409,7 @@ class ContentLyricsEngine internal constructor(
     }
 
     private fun startCover(state: MediaRecordingState, forceRefresh: Boolean = false) {
+        if (media?.publicArtworkPending == true || media?.artwork?.isRecycled == false) return
         val runtime = resources ?: return
         val currentScope = scope ?: return
         val query = state.identity().lookup()
@@ -617,7 +621,7 @@ class ContentLyricsEngine internal constructor(
         state: MediaRecordingState,
         cancellation: LyricsCancellationSignal
     ): Boolean = isCurrent(life, epoch, state) && coverCancellation === cancellation &&
-        media?.artwork?.isRecycled != false
+        media?.publicArtworkPending != true && media?.artwork?.isRecycled != false
 
     private fun discardCoverBitmap(bitmap: Bitmap?) {
         if (bitmap == null || bitmap.isRecycled || bitmap === fallbackArtwork ||

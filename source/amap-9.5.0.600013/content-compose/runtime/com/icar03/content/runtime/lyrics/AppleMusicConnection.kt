@@ -78,6 +78,13 @@ class AppleMusicConnection internal constructor(internal val account: AppleMusic
     fun acceptCookies(attempt: LoginAttempt, pageUrl: String, cookies: List<Cookie>): CookieAcceptance =
         account.acceptCookies(attempt, pageUrl, cookies)
 
+    /** Official WOA results are accepted only at this attempt's exact nonce-bearing callback. */
+    fun acceptAuthorizationCallback(attempt: LoginAttempt, value: String): CookieAcceptance {
+        val result = AppleMusicWebAuthorization.parseCallback(attempt, value)
+            ?: return CookieAcceptance.INVALID_ORIGIN
+        return account.acceptAuthorizedToken(attempt, result.musicUserToken)
+    }
+
     /** CookieManager does not expose expiry; these cookies use the 180-day upper bound. */
     fun pollOfficialLoginCookies(attempt: LoginAttempt, pageUrl: String = LOGIN_URL): CookieAcceptance {
         if (officialMusicUri(pageUrl) == null) return CookieAcceptance.INVALID_ORIGIN
@@ -101,6 +108,7 @@ class AppleMusicConnection internal constructor(internal val account: AppleMusic
         internal const val TOKEN_LIFETIME_MS = 180L * 24L * 60L * 60L * 1_000L
         internal const val RENEW_NOTICE_MS = 14L * 24L * 60L * 60L * 1_000L
         internal const val STOREFRONT_GRACE_MS = 8_000L
+        internal const val MAX_TOKEN_LENGTH = 32_768
     }
 }
 
@@ -253,7 +261,7 @@ internal class AppleMusicAccount(
         val tokenCookie = applicable.firstOrNull { it.name == "media-user-token" && it.value.isNotBlank() }
             ?: return AppleMusicConnection.CookieAcceptance.WAITING_FOR_TOKEN
         val token = tokenCookie.value.trim()
-        if (token.length > MAX_TOKEN_LENGTH || token.any { it == '\r' || it == '\n' || it == '\u0000' }) {
+        if (!validAppleMusicUserToken(tokenCookie.value) || !validAppleMusicUserToken(token)) {
             return AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN
         }
         if (token == attempt.previousToken) return AppleMusicConnection.CookieAcceptance.STALE_COOKIE
@@ -276,19 +284,36 @@ internal class AppleMusicAccount(
             now + AppleMusicConnection.TOKEN_LIFETIME_MS,
             tokenCookie.expiresAtMs.takeIf { it > 0L } ?: Long.MAX_VALUE
         )
-        val updated = AppleMusicCredential(token, storefront, now, expiry)
+        saveLoginCredential(attempt, token, storefront, now, expiry)
+    }
+
+    /** WOA has completed authorization; a missing storefront is resolved by the existing broker. */
+    fun acceptAuthorizedToken(
+        attempt: AppleMusicConnection.LoginAttempt, token: String,
+    ): AppleMusicConnection.CookieAcceptance = synchronized(lock) {
+        val now = clock.nowMs()
+        saveLoginCredential(attempt, token, "", now, now + AppleMusicConnection.TOKEN_LIFETIME_MS)
+    }
+
+    /** Both callers hold the account lock; storage failure leaves the previous account untouched. */
+    private fun saveLoginCredential(
+        attempt: AppleMusicConnection.LoginAttempt, token: String, storefront: String, now: Long, expiry: Long,
+    ): AppleMusicConnection.CookieAcceptance {
+        if (loginAttempt !== attempt || !loginReady) return AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT
+        if (!validAppleMusicUserToken(token)) return AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN
+        if (token == attempt.previousToken) return AppleMusicConnection.CookieAcceptance.STALE_COOKIE
+        if (expiry <= now) return AppleMusicConnection.CookieAcceptance.EXPIRED_COOKIE
+        val updated = AppleMusicCredential(token, storefront, now,
+            minOf(expiry, now + AppleMusicConnection.TOKEN_LIFETIME_MS))
         try {
             credentialStore.save(updated)
         } catch (_: Exception) {
             return AppleMusicConnection.CookieAcceptance.STORAGE_FAILED
         }
         credential = updated
-        loginAttempt = null
-        loginReady = false
-        observedToken = ""
-        tokenFirstSeenAtMs = 0L
+        clearLoginAttempt()
         refresh()
-        AppleMusicConnection.CookieAcceptance.ACCEPTED
+        return AppleMusicConnection.CookieAcceptance.ACCEPTED
     }
 
     fun cancelLogin(attempt: AppleMusicConnection.LoginAttempt) {
@@ -331,9 +356,6 @@ internal class AppleMusicAccount(
         )
     }
 
-    private companion object {
-        const val MAX_TOKEN_LENGTH = 32_768
-    }
 }
 
 internal interface AppleMusicWebsiteCookies {

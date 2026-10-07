@@ -4,6 +4,7 @@ import com.autonavi.amapauto.content.ContentPorts
 import com.autonavi.amapauto.content.ContentRegistry
 import com.autonavi.amapauto.content.ContentState
 import com.icar03.content.model.LyricPreferenceRules
+import com.icar03.content.model.VehicleFeature
 import com.icar03.content.runtime.lyrics.ContentLyricsCursor
 import com.icar03.content.ui.*
 import java.util.Locale
@@ -14,6 +15,7 @@ data class RuntimeCapabilities(
     val lock: Boolean = false,
     val source: Boolean = false,
     val writableSeatControls: Set<String> = emptySet(),
+    val writableFeatures: Set<String> = emptySet(),
 )
 
 /** Each domain is projected before publication; a lyrics event never allocates the shell. */
@@ -29,7 +31,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private var shellBrightness: ContentPorts.SystemSnapshot? = null
     private var shellVolume: ContentPorts.SystemSnapshot? = null
     private var shellCapabilities: RuntimeCapabilities? = null
-    private var shellLyricsSystemAccentColor: Int? = null
+    private var shellSystemLevels: Map<SystemQuickControl, ContentPorts.SystemSnapshot> = emptyMap()
     private var shell: ContentUiState? = null
     private var lyricsSource: ContentState? = null
     private var lyrics: LyricsState = LyricsState()
@@ -83,9 +85,10 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         volume: ContentPorts.SystemSnapshot = ContentPorts.SystemSnapshot(false, 0),
         capabilities: RuntimeCapabilities = RuntimeCapabilities(),
         lyricsSystemAccentColor: Int = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR,
+        systemLevels: Map<SystemQuickControl, ContentPorts.SystemSnapshot> = emptyMap(),
     ): ContentUiState {
         val text = clock(state)
-        return mapShell(state, brightness, volume, capabilities, lyricsSystemAccentColor)
+        return mapShell(state, brightness, volume, capabilities, lyricsSystemAccentColor, systemLevels)
             .copy(time = text.time, weekday = text.weekday, lyrics = mapLyrics(state))
     }
 
@@ -95,15 +98,21 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         volume: ContentPorts.SystemSnapshot,
         capabilities: RuntimeCapabilities,
         lyricsSystemAccentColor: Int = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR,
+        systemLevels: Map<SystemQuickControl, ContentPorts.SystemSnapshot> = emptyMap(),
     ): ContentUiState {
         val previous = shellSource
         if (previous != null && sameShellFacts(previous, state) &&
             sameSystem(shellBrightness, brightness) && sameSystem(shellVolume, volume) &&
+            sameSystemLevels(shellSystemLevels, systemLevels) &&
             shellCapabilities == capabilities && shellLyricsSystemAccentColor == lyricsSystemAccentColor) return shell!!
         shellSource = state.copy()
         shellBrightness = brightness
         shellVolume = volume
-        shellCapabilities = capabilities.copy(writableSeatControls = capabilities.writableSeatControls.toSet())
+        shellCapabilities = capabilities.copy(
+            writableSeatControls = capabilities.writableSeatControls.toSet(),
+            writableFeatures = capabilities.writableFeatures.toSet(),
+        )
+        shellSystemLevels = systemLevels.toMap()
         shellLyricsSystemAccentColor = lyricsSystemAccentColor
         shellProjectionCount++
         val realVehicle = state.vehicleDataAvailable && !state.vehiclePreview
@@ -133,8 +142,32 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 rememberedLevel = state.rememberedLevel(id),
             )
         }
-        val source = MediaSource.entries.firstOrNull { it.label == ContentRegistry.normalizeMediaSource(state.mediaSource) } ?: MediaSource.Local
-        val ready = metadataReady(state)
+        val featureStates = VehicleFeature.entries.associateWith { feature ->
+            val actual = state.featureLevel(feature.id)
+            val target = state.pendingFeatureTarget.takeIf { state.pendingVehicleCommand == feature.id }
+            val known = realVehicle && actual >= 0
+            val available = realVehicle && vehicleIdle && feature.id in capabilities.writableFeatures
+            FeatureState(
+                actual = if (realVehicle) actual else -1,
+                target = target,
+                available = available,
+                known = known,
+                detail = when {
+                    target != null -> "待确认"
+                    !known -> "状态未知"
+                    feature == VehicleFeature.ExternalDischarge && state.externalDischargeStatusKnown -> "状态已读取"
+                    actual == 1 -> "开启"
+                    else -> "关闭"
+                },
+            )
+        }
+        val centerBrightness = if (realVehicle && state.centerBrightnessKnown) {
+            LevelState(((state.centerBrightnessLevel - 1).coerceIn(0, 9)) / 9f, available = vehicleIdle)
+        } else LevelState(0f, available = false)
+        val projectedSystemLevels = SystemQuickControl.entries.associateWith { id ->
+            val snapshot = systemLevels[id] ?: if (id == SystemQuickControl.Volume) volume else ContentPorts.SystemSnapshot(false, 0)
+            LevelState(snapshot.percent / 100f, available = snapshot.available && vehicleIdle)
+        }
         return ContentUiState(
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
@@ -178,8 +211,10 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             chargeStatus = chargeStatus(state, realVehicle),
 
              controls = controls,
-            brightness = LevelState(brightness.percent / 100f, available = brightness.available),
-            volume = LevelState(volume.percent / 100f, available = volume.available),
+            brightness = centerBrightness,
+            volume = projectedSystemLevels.getValue(SystemQuickControl.Volume),
+             features = featureStates,
+             systemLevels = projectedSystemLevels,
             media = MediaState(title = state.mediaTitle.takeIf { ready && it.isNotBlank() },
                 artist = state.mediaArtist.takeIf { ready && it.isNotBlank() },
                 isSong = song(state), playing = realMedia && state.mediaPlaying,
@@ -226,7 +261,15 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private fun sameSystem(a: ContentPorts.SystemSnapshot?, b: ContentPorts.SystemSnapshot) =
         a != null && a.available == b.available && a.percent == b.percent
 
-    private fun sameLyricsFacts(a: ContentState, b: ContentState): Boolean =
+    private fun sameSystemLevels(
+        previous: Map<SystemQuickControl, ContentPorts.SystemSnapshot>,
+        current: Map<SystemQuickControl, ContentPorts.SystemSnapshot>,
+    ): Boolean = SystemQuickControl.entries.all { id ->
+        val a = previous[id]
+        val b = current[id]
+        a?.available == b?.available && a?.percent == b?.percent
+    }
+
         metadataReady(a) == metadataReady(b) && a.mediaRecordingKey == b.mediaRecordingKey &&
             a.mediaRecordingGeneration == b.mediaRecordingGeneration && a.mediaNextPending == b.mediaNextPending &&
             a.lyricsLines === b.lyricsLines && a.lyricsStatus == b.lyricsStatus && a.lyricsTimed == b.lyricsTimed &&
@@ -276,7 +319,22 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.massageLevel == b.massageLevel && a.massageSwitchKnown == b.massageSwitchKnown && a.massageActive == b.massageActive &&
             a.wiperLevel == b.wiperLevel && a.wiperKnown == b.wiperKnown &&
              a.rearWiperLevel == b.rearWiperLevel && a.rearWiperKnown == b.rearWiperKnown &&
-             a.rearWashLevel == b.rearWashLevel && a.rearWashKnown == b.rearWashKnown && a.rememberedControlLevels == b.rememberedControlLevels &&
+             a.rearWashLevel == b.rearWashLevel && a.rearWashKnown == b.rearWashKnown &&
+             a.rearFogLevel == b.rearFogLevel && a.rearFogKnown == b.rearFogKnown &&
+             a.passengerWindowLockLevel == b.passengerWindowLockLevel && a.passengerWindowLockKnown == b.passengerWindowLockKnown &&
+             a.wiperMaintenanceLevel == b.wiperMaintenanceLevel && a.wiperMaintenanceKnown == b.wiperMaintenanceKnown &&
+             a.leftChildLockLevel == b.leftChildLockLevel && a.leftChildLockKnown == b.leftChildLockKnown &&
+             a.rightChildLockLevel == b.rightChildLockLevel && a.rightChildLockKnown == b.rightChildLockKnown &&
+             a.wirelessChargingLevel == b.wirelessChargingLevel && a.wirelessChargingKnown == b.wirelessChargingKnown &&
+             a.windowVentLevel == b.windowVentLevel && a.windowVentKnown == b.windowVentKnown &&
+             a.externalDischargeLevel == b.externalDischargeLevel && a.externalDischargeKnown == b.externalDischargeKnown &&
+             a.centerBrightnessLevel == b.centerBrightnessLevel && a.centerBrightnessKnown == b.centerBrightnessKnown &&
+             a.wirelessChargingActualLevel == b.wirelessChargingActualLevel && a.wirelessChargingActualKnown == b.wirelessChargingActualKnown &&
+             a.windowPositions.contentEquals(b.windowPositions) && a.windowPositionsKnown == b.windowPositionsKnown &&
+             a.externalDischargeStatus.contentEquals(b.externalDischargeStatus) && a.externalDischargeStatusKnown == b.externalDischargeStatusKnown &&
+             a.screenGearRaw == b.screenGearRaw && a.screenGearKnown == b.screenGearKnown &&
+             a.pendingFeatureTarget == b.pendingFeatureTarget &&
+             a.rememberedControlLevels == b.rememberedControlLevels &&
             a.mediaDataAvailable == b.mediaDataAvailable && a.mediaPreview == b.mediaPreview && a.mediaSource == b.mediaSource &&
             a.pendingSource == b.pendingSource && a.mediaPlaying == b.mediaPlaying && a.mediaSongIdentity == b.mediaSongIdentity &&
             a.mediaRecordingKey == b.mediaRecordingKey && a.mediaTitle == b.mediaTitle && a.mediaArtist == b.mediaArtist &&

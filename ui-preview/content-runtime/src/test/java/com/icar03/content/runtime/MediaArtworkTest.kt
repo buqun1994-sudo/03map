@@ -99,10 +99,12 @@ class MediaArtworkTest {
         try {
             adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             assertNull(seen.last().artwork)
+            assertTrue(seen.last().publicArtworkPending)
             val task = ContentMediaAdapter::class.java.getDeclaredField("artworkTask").apply { isAccessible = true }
             (task.get(adapter) as Future<*>).get(3, TimeUnit.SECONDS)
             shadowOf(Looper.getMainLooper()).idle()
             val decoded = seen.last().artwork!!
+            assertFalse(seen.last().publicArtworkPending)
             assertEquals(Color.BLUE, decoded.getPixel(0, 0))
             val epoch = ContentMediaAdapter::class.java.getDeclaredField("lifecycle").apply { isAccessible = true }.getLong(adapter)
             ContentMediaAdapter::class.java.getDeclaredMethod("publishSnapshot", java.lang.Long.TYPE)
@@ -124,6 +126,7 @@ class MediaArtworkTest {
             adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             awaitArtwork(adapter)
             val decoded = seen.last().artwork!!
+            assertFalse(seen.last().publicArtworkPending)
             assertEquals(Color.BLUE, decoded.getPixel(0, 0))
             val failures = ContentMediaAdapter::class.java.getDeclaredField("failedArtwork").apply { isAccessible = true }
                 .get(adapter) as Map<*, *>
@@ -165,6 +168,7 @@ class MediaArtworkTest {
             adapter.start { seen += it }; ContentMediaAdapterTestSupport.awaitBootstrapPreservingArtworkDelivery(adapter)
             awaitArtwork(adapter)
             assertNull(seen.last().artwork)
+            assertFalse(seen.last().publicArtworkPending)
             writeImage(file)
             repeat(10) { publish(adapter) }
             assertNull(artworkTask(adapter))

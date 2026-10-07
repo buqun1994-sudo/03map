@@ -19,7 +19,7 @@
 | 无图标的行 | 名称与开关距卡两边各24；分隔线左右各24 |
 | 数值调节 | 常规24字号；分屏与全屏同组，136宽标签列＋12间隔，即滑条起点偏移148；分屏／全屏滑条同宽；内容宽不足360时按12间距上下排布 |
 | 数值条 | 40高胶囊，进度填充蓝色 `#0086FD`；触摸、取消、焦点与无障碍沿成熟Material3／Foundation路径 |
-| 单选分段条 | 56高胶囊，选中面52高、四周2dp内缩；两种主题均保持完整文字和等宽选项 |
+| 单选分段条 | 底框为56高、8dp圆角矩形；选中面52高、6dp圆角矩形、四周2dp内缩；两种主题统一数值滑条蓝色 `#0086FD`＋白色文字，保留完整文字和等宽选项 |
 | 色相条／色阶 | 同为60高、总宽相等；色阶八个无缝等分且完整可见，无内部横向滚动 |
 | 色相选择框 | 60×60、4圆角、白色4描边、内部显示当前饱和色 |
 
@@ -37,9 +37,9 @@ Figma 使用 `Microsoft YaHei UI`；Android 设置复用项目已有系统 sans-
 | 分段及平台选项 | 22sp／28sp | 常规400 |
 | 辅助状态 | 18sp／24sp | 常规400 |
 
-浅色页面 `#F4F4F4`、卡片白色、文字 `#27303B`、轨道 `#E9E9E9`、分隔线 `#E7E7E7`。深色沿已有高德日夜状态适配为 `#0F0F0F` 页面／`#1A1A1A` 卡片／`#303030` 轨道；设置局部选中胶囊由 `SettingsDesign.selected` 拥有。车控、媒体及Dock仍消费各自既有颜色角色。
+浅色页面 `#F4F4F4`、卡片白色、文字 `#27303B`、轨道 `#E9E9E9`、分隔线 `#E7E7E7`。深色沿已有高德日夜状态适配为 `#0F0F0F` 页面／`#1A1A1A` 卡片／`#303030` 轨道；设置单选分段及平台选项的选中矩形统一由 `SettingsDesign.selected` 复用 `sliderFill` 蓝色；`pressed` 仅拥有主题灰色按压反馈。车控、媒体及Dock仍消费各自既有颜色角色。
 
-页面12圆角、卡片8圆角、色相及色阶整体8圆角。Figma 卡片阴影为向下2、模糊4、黑色25%；Android 使用同一标准表面柔和阴影并通过原生帧检查。阴影由卡片／浮层统一提供，导航行不重复套背景和阴影。
+页面12圆角、卡片8圆角、色相及色阶整体8圆角。Figma卡片阴影参考向下2、模糊4、黑色25%；Android沿既有共享`downwardSoftShadow`的显式水平0／向下3dp、模糊5dp与主题alpha，和Dock、媒体、快捷功能共用同一绘制owner，并通过原生帧检查水平对称／下重。冷路径预渲染阴影纹理，稳定绘制只贴缓存，不每帧执行模糊；导航行、开关、数值条、色相和色阶不重复叠加容器阴影。系统elevation光源会导致左重，不替代已验收的向下阴影。
 
 八段明暗参考为Figma黄系50／200／400／600／700／800／900／950：`#FEFCE8 / #FEF08A / #FACC15 / #CA8A04 / #A16207 / #854D0E / #713F12 / #422006`。其它色相沿同一参考的饱和度、明度与色相偏移生成。色相渐变使用读取到的八个不等距停止点；滑条位置与真实HSL色相分段互映。重复选择固定色阶不会逐次变暗；旧任意RGB保持原值，不吸附到新色板。
 
@@ -53,13 +53,13 @@ Figma 使用 `Microsoft YaHei UI`；Android 设置复用项目已有系统 sans-
 4. “状态栏保持分屏”开启时，全屏歌词顶栏保留左侧初始宽度；关闭时使用全屏宽度，与顶栏是否显示分开保存。
 5. 歌词页依次为歌词库、歌词、当前句歌词、对唱布局、歌词翻译。歌词板块内字号和句间距各有分屏／全屏两行，随后是位置与颜色。当前句板块有放大、两种字号与独立配色。
 6. 全屏当前句字号独立保存；关闭放大折叠隐藏当前句字号调节区，保留当前句清晰强调和独立配色。翻译开关只控制已有译文的呈现，不删除正文或缓存。
-7. 平台使用实际AUTO＋八个平台的图标和全名，单选、不点空，继续既有失败回退；两列放不下时纵向排布。
+7. 平台使用实际AUTO＋八个平台的图标和全名，圆角矩形蓝色选中、白色文字，单选、不点空，继续既有失败回退；两列放不下时纵向排布。
 8. 数值／色相调节实时显示草稿，结束一次保存；取消、退出、禁用和窗口中断不写入。色块及按钮沿 `ContentClickSound` 只播放一次，拖动静音。
 
 ## Apple 登录窗口
 
-用户明确网页可单独打开且覆盖应用全屏。登录入口从歌词库卡片打开应用内独立大 `Dialog`，不受设置页1/3宽度限制；顶部返回、关闭和系统返回均结束网页登录并回到原设置页。背景点击不关闭，窗口期间其它偏好与内容按钮沿现有门禁拒绝。网页Window显式清除fullscreen标志、不隐藏系统栏，并设置ADJUST_RESIZE以保留Android9输入法缩放；这不改变独立大窗口可覆盖应用区域的宽度。网页保持不透明可读，不继承内容根的uiOpacity。真实键盘出现、字段可见、第一次返回先收键盘须另做在线实机核对。
+用户明确网页可单独打开且覆盖应用全屏。登录入口从歌词库卡片打开应用内独立大窗口，不受设置页1/3宽度限制；顶部返回、关闭和系统返回均结束网页登录并回到原设置页。背景点击不关闭，窗口期间其它偏好与内容按钮沿现有门禁拒绝。使用物理配置Context构造真正的ComponentDialog及AbstractComposeView根，show及网页创建前设置MATCH_PARENT、宿主token、CENTER零偏移、系统栏和ADJUST_RESIZE；不依赖后置SideEffect修正首帧，也不使用Compose Dialog按宿主dp配置重测。网页保持不透明，不继承内容根的uiOpacity。首个predraw与复开均覆盖污染宿主资源夹具；真实车机键盘与首帧仍以同包取证为准。
 
-流程参照核实过的 [Lyrimuse 当前实现](https://github.com/Yudaotor/lyrimuse/blob/d254390eca59ec38a37339a71c86b6735d1f2c0d/lyrimuse/Sources/lyrimuse/Settings/AppleMusicConnection.swift#L129)：打开官方网页、读取登录结果并保存凭据。Android继续复用 [LyricsSettingsBinding](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/LyricsSettingsBinding.kt) 唯一WebView、attempt、生命周期、Cookie轮询与 [AppleMusicConnection](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/lyrics/AppleMusicConnection.kt) 的私有加密保存。账号、密码与验证码由网页呈现；窗口关闭、宿主停止和组合卸载均取消轮询并销毁WebView，拒收旧页面回调。实际账号、订阅、地区及车机WebView登录需在线证据。
+流程继续复用[LyricsSettingsBinding](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/LyricsSettingsBinding.kt)唯一WebView、attempt及生命周期，并沿[AppleMusicConnection](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/lyrics/AppleMusicConnection.kt)唯一私有加密保存。用户主动连接后，既有broker限时准备公开developer bearer，打开官方独立MusicKit WOA授权站，经官方activate／IDMS页面输入账号、密码和验证码，再将官方nonce返程的真实musicUserToken交回Connection；developer bearer不能确认账号连接。兼容当前WebView66时只对两条锁定官方CDN脚本路径返回可重建的Chrome66语法版本与缺失randomUUID的标准安全实现，表单及认证请求仍归Apple，详见[来源与重建说明](../../tools/apple-authorize/README.md)。不以商店现代语法探针拒绝独立授权。页面就绪仅检查可见交互及同源iframe中的交互，不读取输入内容；Logo或空iframe不结束有限加载期限。关闭、宿主停止和组合卸载同时取消Cookie检查、授权准备并销毁网页；旧attempt／nonce／页面回调拒收。真实账号、验证码、订阅及地区仍需官方流程在线完成。
 
-偏好范围、默认值与schema迁移由 [设置项清单](设置项清单.md) 及现有Store拥有。本轮截图、回归与未验证边界集中于 [Figma重构验证记录](../testing/设置页Figma重构验证记录-20261007.md)。
+偏好范围、默认值与schema迁移由 [设置项清单](设置项清单.md) 及现有Store拥有。前轮Figma布局证据见 [Figma重构验证记录](../testing/设置页Figma重构验证记录-20261007.md)，本轮单选、性能与网页边界见 [修复验证记录](../testing/设置性能与媒体读取修复验证记录-20261007.md)。

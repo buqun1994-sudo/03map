@@ -57,7 +57,8 @@ open class SettingsControlsTest {
     @Test fun designAndCombinedValueLabelKeepSettingsIndependentFromVehicleSelection() {
         val design = settingsDesign(dark)
         assertEquals(if (dark) 0xFF0F0F0F.toInt() else 0xFFF4F4F4.toInt(), design.page.toArgb())
-        assertEquals(if (dark) 0xFF484848.toInt() else 0xFFE4E4E4.toInt(), design.selected.toArgb())
+        assertEquals(design.sliderFill.toArgb(), design.selected.toArgb())
+        assertEquals(0xFFFFFFFF.toInt(), design.selectedText.toArgb())
         assertEquals(0xFF33C458.toInt(), design.onSwitchTrack.toArgb())
         assertEquals(0xFF0086FD.toInt(), design.sliderFill.toArgb())
         assertEquals(56.dp, design.segmentHeight)
@@ -289,7 +290,7 @@ open class SettingsControlsTest {
         assertEquals(listOf("large"), changes)
     }
 
-    @Test fun segmentedCapsuleKeepsTheInsetSelectionAndStandardExpandedTouchTarget() {
+    @Test fun segmentedRectangleKeepsTheInsetSelectionAndStandardExpandedTouchTarget() {
         val selected = mutableStateOf("normal")
         val changes = mutableListOf<String>()
         mount {
@@ -306,6 +307,8 @@ open class SettingsControlsTest {
         assertEquals(52f, surface.height, 1f)
         assertEquals(2f, surface.top - choice.top, 1f)
         assertEquals(2f, surface.left - choice.left, 1f)
+        assertEquals("an inset rounded rectangle must retain blue near its corner",
+            settingsDesign(dark).selected.toArgb(), pixelAt("size-normal-surface", .04f, .08f))
         compose.onNodeWithTag("size-large").performTouchInput { click(Offset(center.x, 3f)) }
         compose.onNodeWithTag("size-large").assertIsSelected()
         assertEquals(listOf("large"), changes)

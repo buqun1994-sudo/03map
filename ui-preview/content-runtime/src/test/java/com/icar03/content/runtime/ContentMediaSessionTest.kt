@@ -102,6 +102,22 @@ class ContentMediaSessionTest {
         assertFalse(cover.isRecycled)
     }
 
+    @Test fun lookalikePackageNamesCannotClaimAMediaSourceWithoutExactComponentOrActualReadback() {
+        listOf("example.netease.player", "example.cloudmusic.player", "example.btmusic", "example.usb.player").forEach { pkg ->
+            val c = controller(pkg)
+            shadowOf(c).setMetadata(metadata(pkg)); shadowOf(c).setPlaybackState(playback())
+            add(c)
+        }
+        val adapter = ContentMediaAdapter(app)
+        val seen = mutableListOf<ContentPorts.MediaSnapshot>()
+        try {
+            adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
+            assertFalse(seen.last().dataAvailable)
+            assertEquals("暂无媒体", seen.last().title)
+            assertFalse(adapter.requestPlayback(true)); assertFalse(adapter.requestNext())
+        } finally { adapter.stop() }
+    }
+
     @Test fun unknownPositionAndDurationRemainUnknownInsteadOfBecomingZeroEvidence() {
         val c = controller("com.android.bluetooth")
         shadowOf(c).setMetadata(metadata("unknown", duration = 0L))
@@ -191,7 +207,7 @@ class ContentMediaSessionTest {
         val c = controller("com.tencent.wecarflow")
         shadowOf(c).setMetadata(metadata("cloud")); shadowOf(c).setPlaybackState(playback())
         val service = ServiceInfo().apply {
-            packageName = "com.tencent.wecarflow"; name = "com.mengbo.multimedia.cloudmusic.service.CloudMusicService"
+            packageName = "com.tencent.wecarflow"; name = "com.mychery.cloudmusic.service.CloudMusicService"
             enabled = true; exported = true
             applicationInfo = ApplicationInfo().apply { packageName = "com.tencent.wecarflow"; enabled = true }
         }
@@ -203,7 +219,7 @@ class ContentMediaSessionTest {
             ContentPublicMediaBrowsers.ClientFactory { _, _, cb ->
                 callback = cb
                 object : ContentPublicMediaBrowsers.Client { override fun connect() {}; override fun disconnect() {} }
-            })
+            }, java.util.concurrent.Executor { it.run() })
         try {
             adapter.start { seen += it }; ContentMediaAdapterTestSupport.drainSource(adapter)
             val field = ContentMediaAdapter::class.java.getDeclaredField("browsers").apply { isAccessible = true }
@@ -212,6 +228,7 @@ class ContentMediaSessionTest {
             shadowOf(app.packageManager).addResolveInfoForIntent(Intent(ContentPublicMediaBrowsers.ACTION), ResolveInfo().apply { serviceInfo = service })
             changeSource(adapter, "网易云音乐")
             browsers.refresh(setOf("com.tencent.wecarflow"))
+            shadowOf(Looper.getMainLooper()).idle()
             callback!!.onConnected(c)
             ContentMediaAdapterTestSupport.drainSource(adapter)
             assertEquals("歌曲cloud", seen.last().title); assertEquals("网易云音乐", seen.last().source)

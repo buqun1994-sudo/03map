@@ -144,6 +144,28 @@ public final class ContentPorts {
         default void cancelRearWindowRequest(long requestId) {
         }
 
+        /** A feature owns its own raw-state predicate and request target. */
+        default boolean isFeatureAvailable(String featureId, int target) {
+            return isAvailable();
+        }
+
+        default boolean requestFeature(String featureId, int target, long requestId, long deadlineUptimeMs) {
+            return false;
+        }
+
+        /** Center display brightness is an OEM array property, not Android Settings brightness. */
+        default boolean isCenterBrightnessAvailable(int level) {
+            return isAvailable() && level >= 1 && level <= 10;
+        }
+
+        default boolean requestCenterBrightness(int level, long requestId, long deadlineUptimeMs) {
+            return false;
+        }
+
+        /** Local cancellation for typed feature requests; no compensating write is allowed. */
+        default void cancelFeatureRequest(long requestId) {
+        }
+
         boolean requestLock(boolean locked, long requestId);
 
         boolean requestSeatLevel(String seatId, int level, long requestId);
@@ -173,6 +195,70 @@ public final class ContentPorts {
         void start(MediaSnapshotListener listener);
 
         void stop();
+    }
+
+    public static final class FeatureSnapshot {
+        public final int rearFog;
+        public final int passengerWindowLock;
+        public final int wiperMaintenance;
+        public final int gloveBox;
+        public final int leftChildLock;
+        public final int rightChildLock;
+        public final int wirelessCharging;
+        public final int windowVent;
+        public final int externalDischarge;
+        public final int passengerSeatAdjust;
+        public final int centerBrightnessLevel;
+        public final boolean centerBrightnessKnown;
+        public final int wirelessChargingActual;
+        public final boolean wirelessChargingActualKnown;
+        public final int[] windowPositions;
+        public final boolean windowPositionsKnown;
+        public final float[] externalDischargeStatus;
+        public final boolean externalDischargeStatusKnown;
+        public final int externalConnectionRaw;
+        public final int screenGearRaw;
+        public final boolean screenGearKnown;
+
+        public FeatureSnapshot(int rearFog, int passengerWindowLock, int wiperMaintenance, int gloveBox,
+                int leftChildLock, int rightChildLock, int wirelessCharging, int windowVent,
+                int externalDischarge, int passengerSeatAdjust, int centerBrightnessLevel,
+                boolean centerBrightnessKnown, int wirelessChargingActual, boolean wirelessChargingActualKnown,
+                int[] windowPositions, boolean windowPositionsKnown, float[] externalDischargeStatus,
+                boolean externalDischargeStatusKnown, int externalConnectionRaw, int screenGearRaw,
+                boolean screenGearKnown) {
+            this.rearFog = binary(rearFog);
+            this.passengerWindowLock = binary(passengerWindowLock);
+            this.wiperMaintenance = binary(wiperMaintenance);
+            this.gloveBox = -1;
+            this.leftChildLock = binary(leftChildLock);
+            this.rightChildLock = binary(rightChildLock);
+            this.wirelessCharging = binary(wirelessCharging);
+            this.windowVent = binary(windowVent);
+            this.externalDischarge = binary(externalDischarge);
+            this.passengerSeatAdjust = -1;
+            this.centerBrightnessLevel = centerBrightnessKnown && centerBrightnessLevel >= 1 && centerBrightnessLevel <= 10
+                    ? centerBrightnessLevel : -1;
+            this.centerBrightnessKnown = this.centerBrightnessLevel >= 0;
+            this.wirelessChargingActual = binary(wirelessChargingActual);
+            this.wirelessChargingActualKnown = this.wirelessChargingActual >= 0 && wirelessChargingActualKnown;
+            this.windowPositions = windowPositions == null ? new int[] {-1, -1, -1, -1} : windowPositions.clone();
+            this.windowPositionsKnown = windowPositionsKnown && this.windowPositions.length == 4;
+            this.externalDischargeStatus = externalDischargeStatus == null ? new float[0] : externalDischargeStatus.clone();
+            this.externalDischargeStatusKnown = externalDischargeStatusKnown && this.externalDischargeStatus.length == 7;
+            this.externalConnectionRaw = externalConnectionRaw;
+            this.screenGearRaw = screenGearRaw;
+            this.screenGearKnown = screenGearKnown && screenGearRaw >= 0;
+        }
+
+        public static FeatureSnapshot unknown() {
+            return new FeatureSnapshot(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                    -1, false, -1, false, null, false, null, false, -1, -1, false);
+        }
+
+        private static int binary(int value) {
+            return value == 0 || value == 1 ? value : -1;
+        }
     }
 
     public static final class VehicleSnapshot {
@@ -212,6 +298,7 @@ public final class ContentPorts {
         public final String rearReadbackControlId;
         public final long rearReadbackRequestId;
         public final boolean rearWashActivationObserved;
+        public FeatureSnapshot featureSnapshot;
 
         /**
          * Legacy 20-argument contract: levels are already normalized OFF/1/2/3 (0..3),
@@ -333,6 +420,12 @@ public final class ContentPorts {
             this.rearReadbackRequestId = this.rearReadbackControlId.length() == 0 ? 0L : rearReadbackRequestId;
             this.rearWashActivationObserved = rearControl == VehicleControl.RearWash
                     && this.rearReadbackRequestId > 0L && rearWashActivationObserved;
+            this.featureSnapshot = FeatureSnapshot.unknown();
+        }
+
+        public VehicleSnapshot withFeatureSnapshot(FeatureSnapshot features) {
+            this.featureSnapshot = features == null ? FeatureSnapshot.unknown() : features;
+            return this;
         }
 
         /** Copy cached unrelated facts while replacing one actually read rear property. */
@@ -351,7 +444,7 @@ public final class ContentPorts {
                     control == VehicleControl.RearWiper ? known : rearWiperKnown,
                     control == VehicleControl.RearWash ? level : rearWashLevel,
                     control == VehicleControl.RearWash ? known : rearWashKnown,
-                    controlId, requestId, washActivationObserved);
+                    controlId, requestId, washActivationObserved).withFeatureSnapshot(featureSnapshot);
         }
 
         /** Normalized-mode invariant, shared by Snapshot, Store, State copies and Mapper. */
@@ -393,6 +486,8 @@ public final class ContentPorts {
         public final boolean playbackAvailable;
         public final boolean nextAvailable;
         public final Bitmap artwork;
+        /** A public session URI is being resolved; fallback cover search must wait for this attempt. */
+        public final boolean publicArtworkPending;
         public final String mediaId;
         public final String album;
         public final long durationMs;
@@ -492,6 +587,21 @@ public final class ContentPorts {
                 MediaSongIdentity songIdentity, int playbackState, long avrcpEventSequence,
                 long avrcpPositionMs, int avrcpPlaybackState, long avrcpElapsedRealtimeMs,
                 long avrcpPositionElapsedRealtimeMs) {
+            this(dataAvailable, preview, source, playing, generation, title, artist,
+                    playbackAvailable, nextAvailable, artwork, mediaId, album, durationMs,
+                    positionMs, positionElapsedRealtimeMs, playbackSpeed, embeddedLyrics,
+                    songIdentity, playbackState, avrcpEventSequence, avrcpPositionMs,
+                    avrcpPlaybackState, avrcpElapsedRealtimeMs, avrcpPositionElapsedRealtimeMs, false);
+        }
+
+        public MediaSnapshot(boolean dataAvailable, boolean preview, String source,
+                boolean playing, int generation, String title, String artist,
+                boolean playbackAvailable, boolean nextAvailable, Bitmap artwork,
+                String mediaId, String album, long durationMs, long positionMs,
+                long positionElapsedRealtimeMs, float playbackSpeed, String embeddedLyrics,
+                MediaSongIdentity songIdentity, int playbackState, long avrcpEventSequence,
+                long avrcpPositionMs, int avrcpPlaybackState, long avrcpElapsedRealtimeMs,
+                long avrcpPositionElapsedRealtimeMs, boolean publicArtworkPending) {
             this.dataAvailable = dataAvailable;
             this.preview = preview;
             this.source = source;
@@ -502,6 +612,8 @@ public final class ContentPorts {
             this.playbackAvailable = playbackAvailable;
             this.nextAvailable = nextAvailable;
             this.artwork = artwork;
+            this.publicArtworkPending = publicArtworkPending && dataAvailable && !preview
+                    && songIdentity == MediaSongIdentity.SONG && (artwork == null || artwork.isRecycled());
             this.mediaId = mediaId == null ? "" : mediaId;
             this.album = album == null ? "" : album;
             this.durationMs = Math.max(0L, durationMs);

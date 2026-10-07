@@ -47,6 +47,50 @@ class ContentLyricsEngineTest {
         assertEquals(listOf("第一句", "第二句"), snapshots.last().lines.map { it.text })
     }
 
+    @Test fun publicUriPendingKeepsEmbeddedLyricsReadyWithoutSearchingAndNativeCompletionWins() {
+        val runtime = Runtime().apply { coverOptions = { error("public URI must finish before fallback search") } }
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val engine = engine(runtime, frames)
+        val body = "[00:01.0]First\n[00:02.0]Second"
+        engine.update(media(title = "PublicPendingSynthetic", embedded = body, publicArtworkPending = true))
+        drain()
+        assertEquals(0, runtime.coverRounds); assertEquals(0, runtime.lookups.size)
+        assertEquals(ContentPorts.LyricsSnapshot.READY, frames.last().status)
+        val native = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        engine.update(media(title = "PublicPendingSynthetic", embedded = body, artwork = native))
+        drain()
+        assertEquals(0, runtime.coverRounds); assertFalse(native.isRecycled)
+        assertEquals(ContentPorts.LyricsSnapshot.READY, frames.last().status)
+    }
+
+    @Test fun publicUriArrivalRejectsLateSearchAndFailedNativeAttemptReleasesOnlyTheCurrentRecordingFallback() {
+        val runtime = Runtime(waitForCover = true)
+        val frames = mutableListOf<ContentPorts.LyricsSnapshot>()
+        val decoded = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        var downloads = 0
+        val engine = ContentLyricsEngine(RuntimeEnvironment.getApplication(), { runtime }, Dispatchers.Unconfined,
+            { _, _ -> downloads++; decoded }).also { engines += it; it.start(frames::add) }
+        val body = "[00:01.0]First\n[00:02.0]Second"
+        engine.update(media(title = "PublicLateFallbackSynthetic", embedded = body))
+        drain()
+        assertEquals(1, runtime.coverRounds)
+        val late = requireNotNull(runtime.pendingCover)
+        engine.update(media(title = "PublicLateFallbackSynthetic", embedded = body, publicArtworkPending = true))
+        drain()
+        late.resume("https://example.invalid/stale-cover")
+        drain()
+        assertEquals(0, downloads); assertNull(frames.last().artwork)
+        assertEquals(1, runtime.coverRounds)
+        // Adapter failure/timeout publishes the same recording with the pending fact cleared.
+        engine.update(media(title = "PublicLateFallbackSynthetic", embedded = body, publicArtworkPending = false))
+        drain()
+        assertEquals(2, runtime.coverRounds)
+        requireNotNull(runtime.pendingCover).resume("https://example.invalid/current-cover")
+        drain()
+        assertEquals(1, downloads); assertSame(decoded, frames.last().artwork)
+        assertEquals(ContentPorts.LyricsSnapshot.READY, frames.last().status)
+    }
+
     @Test fun duplicatePlaybackFramesAndEnvelopeFormattingDoNotStartAnotherLookup() {
         val runtime = Runtime()
         val snapshots = mutableListOf<ContentPorts.LyricsSnapshot>()
@@ -769,10 +813,13 @@ class ContentLyricsEngineTest {
     private fun drain() = shadowOf(Looper.getMainLooper()).idle()
 
     private fun media(title: String = "Song", generation: Int = 1, playing: Boolean = true,
-        duration: Long = 200_000L, position: Long = -1L, embedded: String = "", artwork: Bitmap? = null) =
+        duration: Long = 200_000L, position: Long = -1L, embedded: String = "", artwork: Bitmap? = null,
+        publicArtworkPending: Boolean = false) =
         ContentPorts.MediaSnapshot(true, false, "本机音乐", playing, generation, title, "Artist", true, true,
             artwork, "", "Album", duration, position, 0L, if (playing) 1f else 0f, embedded,
-            ContentPorts.MediaSongIdentity.SONG)
+            ContentPorts.MediaSongIdentity.SONG,
+            if (playing) android.media.session.PlaybackState.STATE_PLAYING else android.media.session.PlaybackState.STATE_PAUSED,
+            0L, -1L, -1, 0L, 0L, publicArtworkPending)
 
     private class Runtime(override val cache: MemoryCache = MemoryCache(), private val waitForCover: Boolean = false) :
         LyricsEngineResources {

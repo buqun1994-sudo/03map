@@ -1,6 +1,5 @@
 package com.icar03.content.ui
 
-import android.graphics.Paint
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
@@ -21,10 +20,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -51,19 +47,6 @@ internal val ControlDraft = SemanticsPropertyKey<Float>("ControlDraft")
 internal val ControlDragging = SemanticsPropertyKey<Boolean>("ControlDragging")
 internal val ControlLabelBand = SemanticsPropertyKey<androidx.compose.ui.geometry.Rect>("ControlLabelBand")
 internal val ControlFill = SemanticsPropertyKey<Long>("ControlFill")
-
-internal fun Modifier.downwardSoftShadow(fill: Color, dark: Boolean, cornerRadius: Dp = 12.dp): Modifier = drawWithCache {
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = fill.toArgb()
-        setShadowLayer(5.dp.toPx(), 0f, 3.dp.toPx(), if (dark) 0xA0000000.toInt() else 0x30000000)
-    }
-    val radius = cornerRadius.toPx()
-    onDrawBehind {
-        drawIntoCanvas { canvas ->
-            canvas.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, radius, radius, paint)
-        }
-    }
-}
 
 @Composable
 internal fun quickControlLabelStyle(): TextStyle =

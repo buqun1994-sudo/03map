@@ -137,6 +137,37 @@ public final class ContentState {
     public boolean rearWiperKnown;
     public int rearWashLevel = -1;
     public boolean rearWashKnown;
+    // New shortcut-page feature actuals: normalized 0/1, -1 means unknown.
+    public int rearFogLevel = -1;
+    public boolean rearFogKnown;
+    public int passengerWindowLockLevel = -1;
+    public boolean passengerWindowLockKnown;
+    public int wiperMaintenanceLevel = -1;
+    public boolean wiperMaintenanceKnown;
+    public int leftChildLockLevel = -1;
+    public boolean leftChildLockKnown;
+    public int rightChildLockLevel = -1;
+    public boolean rightChildLockKnown;
+    public int wirelessChargingLevel = -1;
+    public boolean wirelessChargingKnown;
+    public int windowVentLevel = -1;
+    public boolean windowVentKnown;
+    public int externalDischargeLevel = -1;
+    public boolean externalDischargeKnown;
+    public int passengerSeatAdjustLevel = -1;
+    public boolean passengerSeatAdjustKnown;
+    public int centerBrightnessLevel = -1;
+    public boolean centerBrightnessKnown;
+    public int wirelessChargingActualLevel = -1;
+    public boolean wirelessChargingActualKnown;
+    public int[] windowPositions = new int[] {-1, -1, -1, -1};
+    public boolean windowPositionsKnown;
+    public float[] externalDischargeStatus = new float[0];
+    public boolean externalDischargeStatusKnown;
+    public int externalConnectionRaw = -1;
+    public int screenGearRaw = -1;
+    public boolean screenGearKnown;
+    public int pendingFeatureTarget = -1;
     private java.util.Map<String, Integer> rememberedControlLevels = java.util.Collections.emptyMap();
 
     public java.util.Map<String, Integer> getRememberedControlLevels() {
@@ -181,7 +212,23 @@ public final class ContentState {
         }
     }
 
-    public ContentState copy() {
+    public int featureLevel(String featureId) {
+        if (featureId == null) return -1;
+        switch (featureId) {
+            case "rear_fog": return rearFogKnown ? rearFogLevel : -1;
+            case "passenger_window_lock": return passengerWindowLockKnown ? passengerWindowLockLevel : -1;
+            case "wiper_maintenance": return wiperMaintenanceKnown ? wiperMaintenanceLevel : -1;
+            case "glove_box": return -1;
+            case "left_child_lock": return leftChildLockKnown ? leftChildLockLevel : -1;
+            case "right_child_lock": return rightChildLockKnown ? rightChildLockLevel : -1;
+            case "wireless_charging": return wirelessChargingKnown ? wirelessChargingLevel : -1;
+            case "window_vent": return windowVentKnown ? windowVentLevel : -1;
+            case "external_discharge": return externalDischargeKnown ? externalDischargeLevel : -1;
+            case "passenger_seat_adjust": return -1;
+            default: return -1;
+        }
+    }
+
         ContentState copy = new ContentState();
         copy.themeMode = themeMode;
         copy.showWeekday = showWeekday;
@@ -300,7 +347,38 @@ public final class ContentState {
         copy.rearWiperKnown = copy.rearWiperLevel >= 0;
         copy.rearWashLevel = rearWashKnown ? VehicleControl.RearWash.normalizeLevel(rearWashLevel) : -1;
         copy.rearWashKnown = copy.rearWashLevel >= 0;
-        copy.rememberedControlLevels = rememberedControlLevels;
+        copy.rearFogLevel = rearFogLevel;
+         copy.rearFogKnown = rearFogKnown;
+         copy.passengerWindowLockLevel = passengerWindowLockLevel;
+         copy.passengerWindowLockKnown = passengerWindowLockKnown;
+         copy.wiperMaintenanceLevel = wiperMaintenanceLevel;
+         copy.wiperMaintenanceKnown = wiperMaintenanceKnown;
+         copy.leftChildLockLevel = leftChildLockLevel;
+         copy.leftChildLockKnown = leftChildLockKnown;
+         copy.rightChildLockLevel = rightChildLockLevel;
+         copy.rightChildLockKnown = rightChildLockKnown;
+         copy.wirelessChargingLevel = wirelessChargingLevel;
+         copy.wirelessChargingKnown = wirelessChargingKnown;
+         copy.windowVentLevel = windowVentLevel;
+         copy.windowVentKnown = windowVentKnown;
+         copy.externalDischargeLevel = externalDischargeLevel;
+         copy.externalDischargeKnown = externalDischargeKnown;
+         copy.passengerSeatAdjustLevel = passengerSeatAdjustLevel;
+         copy.passengerSeatAdjustKnown = passengerSeatAdjustKnown;
+         copy.centerBrightnessLevel = centerBrightnessLevel;
+         copy.centerBrightnessKnown = centerBrightnessKnown;
+         copy.wirelessChargingActualLevel = wirelessChargingActualLevel;
+         copy.wirelessChargingActualKnown = wirelessChargingActualKnown;
+         copy.windowPositions = windowPositions == null ? new int[] {-1, -1, -1, -1} : windowPositions.clone();
+         copy.windowPositionsKnown = windowPositionsKnown;
+         copy.externalDischargeStatus = externalDischargeStatus == null ? new float[0] : externalDischargeStatus.clone();
+         copy.externalDischargeStatusKnown = externalDischargeStatusKnown;
+         copy.externalConnectionRaw = externalConnectionRaw;
+         copy.screenGearRaw = screenGearRaw;
+         copy.screenGearKnown = screenGearKnown;
+         copy.pendingFeatureTarget = pendingFeatureTarget;
+         copy.rememberedControlLevels = rememberedControlLevels;
+
         return copy;
     }
 }

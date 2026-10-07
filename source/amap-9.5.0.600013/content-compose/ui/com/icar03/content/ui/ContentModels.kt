@@ -1,6 +1,7 @@
 package com.icar03.content.ui
 
 import com.icar03.content.model.LyricPreferenceRules
+import com.icar03.content.model.VehicleFeature
 
 /** Pure presentation contract: no Android, vendor IDs, permissions or business ports. */
 /** The shared domain definition also supplies stable presentation labels. */
@@ -13,6 +14,7 @@ enum class ShortcutId(
     val type: QuickControlType = QuickControlType.DynamicIconSwitch,
     val placement: QuickControlPlacement = QuickControlPlacement.ButtonRows,
     private val title: String? = null,
+    val feature: VehicleFeature? = null,
 ) {
     Lock(ControlId.Lock), SteeringHeat(ControlId.SteeringHeat),
     Ventilation(ControlId.Ventilation), Heating(ControlId.Heating),
@@ -21,11 +23,23 @@ enum class ShortcutId(
     AutoWiper(ControlId.Wiper, QuickControlType.OrdinaryToggle, title = "自动雨刮器"),
     RearWiper(ControlId.RearWiper, QuickControlType.OrdinaryToggle, placement = QuickControlPlacement.LowerToggles, title = "后窗雨刮器"),
     RearWash(ControlId.RearWash, QuickControlType.OrdinaryToggle, placement = QuickControlPlacement.LowerToggles, title = "后窗洗涤"),
-    Wiper(ControlId.Wiper, QuickControlType.SteppedVertical, QuickControlPlacement.Vertical);
-    val label: String get() = title ?: requireNotNull(control).label
+    RearFog(feature = VehicleFeature.RearFog),
+    PassengerWindowLock(feature = VehicleFeature.PassengerWindowLock),
+    WiperMaintenance(feature = VehicleFeature.WiperMaintenance),
+    GloveBox(feature = VehicleFeature.GloveBox),
+    LeftChildLock(feature = VehicleFeature.LeftChildLock),
+    RightChildLock(feature = VehicleFeature.RightChildLock),
+    WirelessCharging(feature = VehicleFeature.WirelessCharging),
+    WindowVent(feature = VehicleFeature.WindowVent),
+    ExternalDischarge(feature = VehicleFeature.ExternalDischarge),
+    PassengerSeatAdjust(feature = VehicleFeature.PassengerSeatAdjust),
+    Wiper(ControlId.Wiper, QuickControlType.SteppedVertical, QuickControlPlacement.Vertical),
+    ScreenClean(type = QuickControlType.OrdinaryToggle, title = "清洁屏幕");
+    val label: String get() = title ?: control?.label ?: feature?.label ?: name
 }
 enum class SystemQuickControl(val label: String) {
-    Brightness("屏幕亮度"), Volume("媒体音量");
+    Brightness("屏幕亮度"), Volume("媒体音量"), CallVolume("通话音量"),
+    NavigationVolume("导航音量"), VoiceVolume("语音音量");
     val type: QuickControlType get() = QuickControlType.ContinuousVertical
 }
 
@@ -80,6 +94,14 @@ data class ControlState(val actual: Int = 0, val target: Int? = null, val availa
  * AUTO is not manual power; unknown remains unknown and actual/target/memory stay untouched. */
 internal val ControlState.manualWiperDisplayed: Int
     get() = displayed.let { if (ControlId.Wiper.isAutomatic(it)) 0 else it }
+
+data class FeatureState(
+    val actual: Int = -1, val target: Int? = null, val available: Boolean = false,
+    val known: Boolean = false, val detail: String = "状态未知",
+) {
+    val displayed: Int get() = target ?: if (known) actual else -1
+    val pending: Boolean get() = target != null
+}
 
 data class LevelState(val actual: Float, val target: Float? = null, val available: Boolean = true) {
     val displayed: Float get() = target ?: actual
@@ -160,13 +182,18 @@ data class ContentUiState(
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,
     val placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap(),
+    val features: Map<VehicleFeature, FeatureState> = VehicleFeature.entries.associateWith { FeatureState() },
+    val systemLevels: Map<SystemQuickControl, LevelState> = SystemQuickControl.entries.associateWith { LevelState(0f, available = false) },
+    val screenCleaning: Boolean = false,
 )
 sealed interface ContentEvent {
     data class ControlTapped(val id: ControlId) : ContentEvent
     data class ControlPowerTapped(val id: ControlId) : ContentEvent
     data class ControlAutomaticTapped(val id: ControlId) : ContentEvent
     data class ControlLevelChanged(val id: ControlId, val level: Int) : ContentEvent
-    data class PlaceholderToggled(val id: ShortcutId) : ContentEvent
+    data class FeatureTapped(val id: ShortcutId) : ContentEvent
+    data class SystemVolumeChanged(val id: SystemQuickControl, val value: Float) : ContentEvent
+    data object ScreenCleanTapped : ContentEvent
     data object RearWashTapped : ContentEvent
     data class BrightnessChanged(val value: Float) : ContentEvent
     data class VolumeChanged(val value: Float) : ContentEvent

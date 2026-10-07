@@ -12,9 +12,15 @@ public final class ContentVehicleProtocol {
     public static final String VEHICLE_SERVICE_CLASS = "com.chery.virtualcarservice.virtualcar.VirtualCarService";
     public static final String VEHICLE_DESCRIPTOR = "com.chery.canmanager.interfaces.IVirturalCarProperty";
     public static final int TRANSACTION_SEND_DATA = 5;
+    public static final int TRANSACTION_SEND_DATA_ARRAY = 6;
     public static final int TRANSACTION_GET_DATA = 7;
+    public static final int TRANSACTION_GET_DATA_ARRAY = 8;
     public static final int TRANSACTION_GET_DATA_FLOAT = 13;
+    public static final int TRANSACTION_SEND_SEAT_DATA = 37;
     public static final int AREA_DRIVER = 0;
+    public static final int AREA_REAR_LEFT = 0x10;
+    public static final int AREA_REAR_RIGHT = 0x40;
+    public static final int AREA_WINDOW_GROUP = 0x550;
     public static final int LOCK_REQUEST = 1045;
     public static final int LOCK_STATE = 1047;
     public static final int CABIN_TEMPERATURE = 0x110;
@@ -42,6 +48,26 @@ public final class ContentVehicleProtocol {
     public static final int FRONT_WIPER = 608;
     public static final int REAR_WIPER = 609;
     public static final int REAR_WASH = 610;
+    public static final int REAR_FOG = 0x21e;
+    public static final int REAR_WINDOW_DISABLE = 0x411;
+    public static final int REAR_CHILD_LOCK_WRITE = 0x412;
+    public static final int REAR_CHILD_LOCK_STATE = 0x418;
+    public static final int CENTER_BRIGHTNESS = 0x31a;
+    public static final int WIRELESS_CHARGING_SWITCH = 0x238;
+    public static final int WIRELESS_CHARGING_STATE = 0x275;
+    public static final int WINDOW_COMMAND = 0x217;
+    public static final int WINDOW_POSITION = 535;
+    public static final int FRONT_WIPER_MAINTENANCE = 0x29f;
+    public static final int GLOVE_BOX_REQUEST = 1046;
+    public static final int SCREEN_CLEAN_GEAR = 0x255;
+    public static final int EXTERNAL_DISCHARGE_SWITCH = 0x25a;
+    public static final int EXTERNAL_DISCHARGE_SOC = 0x259;
+    public static final int EXTERNAL_DISCHARGE_STATUS = 0x25c;
+    public static final int PASSENGER_SEAT_DIRECTION = 0x330;
+    public static final int WINDOW_POS_LEFT_FRONT = 0x10;
+    public static final int WINDOW_POS_RIGHT_FRONT = 0x40;
+    public static final int WINDOW_POS_LEFT_REAR = 0x100;
+    public static final int WINDOW_POS_RIGHT_REAR = 0x400;
     private static final int WRITE_REAR_TRIGGER = 2;
     private static final int WRITE_WIPER_OFF = 1;
     private static final int WRITE_WIPER_AUTO = 2;
@@ -58,13 +84,19 @@ public final class ContentVehicleProtocol {
     /** Immutable target packet; massage initialization is executed by the Adapter. */
     public static final class Write {
         public final int functionId;
+        public final int area;
         public final int value;
         public final boolean ensureMassageOn;
 
-        private Write(int functionId, int value, boolean ensureMassageOn) {
+        private Write(int functionId, int area, int value, boolean ensureMassageOn) {
             this.functionId = functionId;
+            this.area = area;
             this.value = value;
             this.ensureMassageOn = ensureMassageOn;
+        }
+
+        private Write(int functionId, int value, boolean ensureMassageOn) {
+            this(functionId, AREA_DRIVER, value, ensureMassageOn);
         }
     }
 
@@ -130,8 +162,72 @@ public final class ContentVehicleProtocol {
         return null;
     }
 
-    public static int normalizeRearWindowLevel(int raw) {
+    /** Feature requests use normalized target 0/1; the adapter owns readback confirmation. */
+    public static Write featureWrite(String featureId, int target) {
+        com.icar03.content.model.VehicleFeature feature =
+                com.icar03.content.model.VehicleFeature.fromId(featureId);
+        if (feature == null || target < 0 || target > 1) return null;
+        switch (feature) {
+            case RearFog:
+                return new Write(REAR_FOG, target == 1 ? SWITCH_ON : SWITCH_OFF, false);
+            case PassengerWindowLock:
+                return new Write(REAR_WINDOW_DISABLE, target == 1 ? 1 : 2, false);
+            case WiperMaintenance:
+                return target == 1 ? new Write(FRONT_WIPER_MAINTENANCE, 2, false) : null;
+            case GloveBox:
+                return target == 1 ? new Write(GLOVE_BOX_REQUEST, 2, false) : null;
+            case LeftChildLock:
+                return new Write(REAR_CHILD_LOCK_WRITE, AREA_REAR_LEFT, target == 1 ? 2 : 1, false);
+            case RightChildLock:
+                return new Write(REAR_CHILD_LOCK_WRITE, AREA_REAR_RIGHT, target == 1 ? 2 : 1, false);
+            case WirelessCharging:
+                return new Write(WIRELESS_CHARGING_SWITCH, target == 1 ? SWITCH_ON : SWITCH_OFF, false);
+            case WindowVent:
+                return new Write(WINDOW_COMMAND, AREA_WINDOW_GROUP, target == 1 ? 1 : 5, false);
+            case ExternalDischarge:
+                return new Write(EXTERNAL_DISCHARGE_SWITCH, target == 1 ? SWITCH_ON : SWITCH_OFF, false);
+            case PassengerSeatAdjust:
+                return null; // Direction/stop values remain deliberately unguessed.
+            default:
+                return null;
+        }
+    }
+
+    public static int[] centerBrightnessWrite(int level) {
+        return level >= 1 && level <= 10 ? new int[] {1, level} : null;
+    }
+
+    public static int normalizeBinarySwitch(int raw) {
+        return raw == SWITCH_OFF ? 0 : raw == SWITCH_ON ? 1 : -1;
+    }
+
+    public static int normalizePassengerWindowLock(int raw) {
+        return raw == 1 ? 1 : raw == 2 ? 0 : -1;
+    }
+
+    public static int normalizeChildLock(int raw) {
         return raw == 1 ? 0 : raw == 2 ? 1 : -1;
+    }
+
+    public static int normalizeWindowMode(int[] positions) {
+        if (positions == null || positions.length != 4) return -1;
+        boolean vent = true;
+        boolean closed = true;
+        for (int position : positions) {
+            vent &= position == 1;
+            closed &= position == 5;
+        }
+        return vent ? 1 : closed ? 0 : -1;
+    }
+
+    public static int normalizeCenterBrightness(java.util.List<Integer> values) {
+        if (values == null || values.size() != 2 || values.get(0) == null || values.get(1) == null
+                || values.get(0) != 255 || values.get(1) < 1 || values.get(1) > 10) return -1;
+        return values.get(1);
+    }
+
+    public static boolean isKnownExternalStatus(java.util.List<Float> values) {
+        return values != null && values.size() == 7;
     }
 
     /** Research section19: RX0=OFF, RX1=AUTO, RX2..5=manual1..4.

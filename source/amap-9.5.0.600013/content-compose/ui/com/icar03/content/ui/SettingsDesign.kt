@@ -27,7 +27,7 @@ data class SettingsDesign(
     val page: Color,
     val card: Color,
     val track: Color,
-    val selected: Color,
+    val pressed: Color,
     val text: Color,
     val secondaryText: Color,
     val divider: Color,
@@ -55,11 +55,17 @@ data class SettingsDesign(
     val rainbowThumbShape: RoundedCornerShape = RoundedCornerShape(4.dp),
     val navigationHeight: Dp = 78.dp,
     val segmentMinimumWidth: Dp = 64.dp,
-    val cardShape: RoundedCornerShape = RoundedCornerShape(8.dp),
-    val pageShape: RoundedCornerShape = RoundedCornerShape(12.dp),
+    val segmentInset: Dp = 2.dp,
+    val segmentCornerRadius: Dp = 8.dp,
+    val segmentShape: RoundedCornerShape = RoundedCornerShape(segmentCornerRadius),
+    val segmentSelectedShape: RoundedCornerShape = RoundedCornerShape(segmentCornerRadius - segmentInset),
+    val selectedText: Color = Color.White,
+    val cardCornerRadius: Dp = 8.dp,
+    val pageCornerRadius: Dp = 12.dp,
+    val cardShape: RoundedCornerShape = RoundedCornerShape(cardCornerRadius),
+    val pageShape: RoundedCornerShape = RoundedCornerShape(pageCornerRadius),
     val controlShape: RoundedCornerShape = RoundedCornerShape(50),
     val hueTrackShape: RoundedCornerShape = RoundedCornerShape(8.dp),
-    val shadowElevation: Dp = 3.dp,
     val labelStyle: TextStyle = settingsTextStyle(24, 30),
     val valueStyle: TextStyle = settingsTextStyle(24, 30),
     val navigationTitleStyle: TextStyle = settingsTextStyle(24, 30),
@@ -67,18 +73,23 @@ data class SettingsDesign(
     val pageTitleStyle: TextStyle = settingsTextStyle(28, 36),
     val supportingStyle: TextStyle = settingsTextStyle(18, 24),
     val optionStyle: TextStyle = settingsTextStyle(22, 28),
+    val providerIconSize: Dp = 32.dp,
+    val providerOptionStyle: TextStyle = settingsTextStyle(24, 30),
 ) {
+    /** All settings choices share the numeric slider's blue; presses keep their neutral wash. */
+    val selected: Color get() = sliderFill
+
     fun paddingFor(@Suppress("UNUSED_PARAMETER") viewportWidth: Dp): Dp = pagePadding
 }
 
 private val LightSettingsDesign = SettingsDesign(
     dark = false, page = Color(0xFFF4F4F4), card = Color.White, track = Color(0xFFE9E9E9),
-    selected = Color(0xFFE4E4E4), text = Color(0xFF27303B), secondaryText = Color(0xFF6B7078),
+    pressed = Color(0xFFE4E4E4), text = Color(0xFF27303B), secondaryText = Color(0xFF6B7078),
     divider = Color(0xFFE7E7E7), offSwitchTrack = Color(0xFFE1E1E1),
 )
 private val DarkSettingsDesign = SettingsDesign(
     dark = true, page = Color(0xFF0F0F0F), card = Color(0xFF1A1A1A), track = Color(0xFF303030),
-    selected = Color(0xFF484848), text = Color(0xFFF2F2F2), secondaryText = Color(0xFFB9B9B9),
+    pressed = Color(0xFF484848), text = Color(0xFFF2F2F2), secondaryText = Color(0xFFB9B9B9),
     divider = Color(0xFF353535), offSwitchTrack = Color(0xFF454545),
     switchThumb = Color.White, offSwitchThumb = Color(0xFFE8E8E8),
 )

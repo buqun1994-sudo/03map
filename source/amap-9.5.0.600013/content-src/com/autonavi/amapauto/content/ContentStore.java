@@ -586,6 +586,34 @@ public final class ContentStore {
             state.rearWashLevel = snapshot.rearWashKnown
                     ? VehicleControl.RearWash.normalizeLevel(snapshot.rearWashLevel) : -1;
             state.rearWashKnown = state.rearWashLevel >= 0;
+             ContentPorts.FeatureSnapshot features = snapshot.featureSnapshot == null ? ContentPorts.FeatureSnapshot.unknown() : snapshot.featureSnapshot;
+             state.rearFogLevel = features.rearFog;
+             state.rearFogKnown = features.rearFog >= 0;
+             state.passengerWindowLockLevel = features.passengerWindowLock;
+             state.passengerWindowLockKnown = features.passengerWindowLock >= 0;
+             state.wiperMaintenanceLevel = features.wiperMaintenance;
+             state.wiperMaintenanceKnown = features.wiperMaintenance >= 0;
+             state.leftChildLockLevel = features.leftChildLock;
+             state.leftChildLockKnown = features.leftChildLock >= 0;
+             state.rightChildLockLevel = features.rightChildLock;
+             state.rightChildLockKnown = features.rightChildLock >= 0;
+             state.wirelessChargingLevel = features.wirelessCharging;
+             state.wirelessChargingKnown = features.wirelessCharging >= 0;
+             state.windowVentLevel = features.windowVent;
+             state.windowVentKnown = features.windowVent >= 0;
+             state.externalDischargeLevel = features.externalDischarge;
+             state.externalDischargeKnown = features.externalDischarge >= 0;
+             state.centerBrightnessLevel = features.centerBrightnessLevel;
+             state.centerBrightnessKnown = features.centerBrightnessKnown;
+             state.wirelessChargingActualLevel = features.wirelessChargingActual;
+             state.wirelessChargingActualKnown = features.wirelessChargingActualKnown;
+             state.windowPositions = features.windowPositions == null ? new int[] {-1, -1, -1, -1} : features.windowPositions.clone();
+             state.windowPositionsKnown = features.windowPositionsKnown;
+             state.externalDischargeStatus = features.externalDischargeStatus == null ? new float[0] : features.externalDischargeStatus.clone();
+             state.externalDischargeStatusKnown = features.externalDischargeStatusKnown;
+             state.externalConnectionRaw = features.externalConnectionRaw;
+             state.screenGearRaw = features.screenGearRaw;
+             state.screenGearKnown = features.screenGearKnown;
             rememberManualReadbackLocked();
             if (state.pendingVehicleCommand.length() != 0) {
                 if (!snapshot.dataAvailable || snapshot.preview || !vehiclePort.isAvailable()) {
@@ -948,8 +976,61 @@ public final class ContentStore {
         setControlLevel(seatId, targetLevel);
     }
 
-    public void setControlLevel(String controlId, int targetLevel) {
+        public void setControlLevel(String controlId, int targetLevel) {
         dispatchControlLevel(controlId, targetLevel, LevelIntent.Select);
+    }
+
+    public void requestFeature(String featureId, int target) {
+        if (featureId == null || target < 0 || target > 1) return;
+        final long requestId;
+        synchronized (this) {
+            if (destroyed || state.pendingVehicleCommand.length() != 0
+                    || !state.vehicleDataAvailable || state.vehiclePreview
+                    || !vehiclePort.isAvailable()
+                    || !vehiclePort.isFeatureAvailable(featureId, target)) return;
+            requestId = ++nextVehicleRequestId;
+            beginFeatureCommandLocked(featureId, target, requestId);
+        }
+        publish();
+        boolean accepted;
+        try {
+            accepted = vehiclePort.requestFeature(featureId, target, requestId,
+                    android.os.SystemClock.uptimeMillis() + VEHICLE_COMMAND_TIMEOUT_MS);
+        } catch (RuntimeException failure) {
+            accepted = false;
+        }
+        if (!accepted) failVehicleCommand(requestId, "车控命令未发送，请检查车机状态");
+    }
+
+    public void toggleFeature(String featureId) {
+        if (featureId == null) return;
+        final int target;
+        synchronized (this) {
+            int actual = state.featureLevel(featureId);
+            if (actual < 0) return;
+            target = actual == 0 ? 1 : 0;
+        }
+        requestFeature(featureId, target);
+    }
+
+    public void setCenterBrightness(final int level) {
+        final long requestId;
+        synchronized (this) {
+            if (destroyed || level < 1 || level > 10 || state.pendingVehicleCommand.length() != 0
+                    || !state.vehicleDataAvailable || state.vehiclePreview || !state.centerBrightnessKnown
+                    || !vehiclePort.isAvailable() || !vehiclePort.isCenterBrightnessAvailable(level)) return;
+            requestId = ++nextVehicleRequestId;
+            beginFeatureCommandLocked("center_brightness", level, requestId);
+        }
+        publish();
+        boolean accepted;
+        try {
+            accepted = vehiclePort.requestCenterBrightness(level, requestId,
+                    android.os.SystemClock.uptimeMillis() + VEHICLE_COMMAND_TIMEOUT_MS);
+        } catch (RuntimeException failure) {
+            accepted = false;
+        }
+        if (!accepted) failVehicleCommand(requestId, "中控亮度命令未发送，请检查车机状态");
     }
 
     public void toggleControlPower(String controlId) {
@@ -1354,7 +1435,11 @@ public final class ContentStore {
         if (domain != COMMAND_DOMAIN_MEDIA_PLAYBACK) clearLateMediaPlaybackLocked();
     }
 
-    private void beginVehicleCommandLocked(String command, int seatLevel, boolean locked,
+    private void beginFeatureCommandLocked(String featureId, int target, long requestId) {
+        beginVehicleCommandLocked(featureId, target, false, requestId);
+        state.pendingFeatureTarget = target;
+    }
+
             long requestId) {
         clearCommandResultIfOwnedLocked(COMMAND_DOMAIN_VEHICLE);
         pendingCommandDomain = COMMAND_DOMAIN_VEHICLE;
@@ -1386,6 +1471,16 @@ public final class ContentStore {
         if (ContentRegistry.Shortcuts.LOCK.equals(state.pendingVehicleCommand)) {
             return snapshot.lockKnown && snapshot.locked == state.pendingLocked;
         }
+        if ("center_brightness".equals(state.pendingVehicleCommand)) {
+            return snapshot.featureSnapshot != null && snapshot.featureSnapshot.centerBrightnessKnown
+                    && state.centerBrightnessLevel == state.pendingSeatLevel;
+        }
+        com.icar03.content.model.VehicleFeature feature =
+                com.icar03.content.model.VehicleFeature.fromId(state.pendingVehicleCommand);
+        if (feature != null) {
+            if (feature.getAction() || feature == com.icar03.content.model.VehicleFeature.PassengerSeatAdjust) return false;
+            return state.featureLevel(state.pendingVehicleCommand) == state.pendingFeatureTarget;
+        }
         VehicleControl control = VehicleControl.fromId(state.pendingVehicleCommand);
         if (control != null && control.isRearWindow()) {
             if (snapshot.rearReadbackRequestId != pendingVehicleRequestId
@@ -1415,12 +1510,20 @@ public final class ContentStore {
                 // Cancellation is local best effort; it must not erase the actual readback or result.
             }
         }
-        pendingRearExpectedLevel = -1;
+        if (com.icar03.content.model.VehicleFeature.fromId(state.pendingVehicleCommand) != null
+                || "center_brightness".equals(state.pendingVehicleCommand)) {
+            try {
+                vehiclePort.cancelFeatureRequest(pendingVehicleRequestId);
+            } catch (RuntimeException ignored) {
+                // Cancellation is local best effort; actual snapshots remain authoritative.
+            }
+        }
         pendingRearDeadlineUptimeMs = 0L;
         pendingRearWashActivationObserved = false;
         state.pendingVehicleCommand = "";
         state.pendingSeatLevel = -1;
         state.pendingLocked = false;
+        state.pendingFeatureTarget = -1;
         pendingVehicleRequestId = 0L;
         recordCommandResultLocked(confirmed, failureMessage, COMMAND_DOMAIN_VEHICLE);
     }

@@ -961,7 +961,7 @@ open class QuickControlsNativeTest {
         for (y in 0 until height) for (x in 0 until width) {
             val pixel = pixels[y * width + x]
             val r = android.graphics.Color.red(pixel); val g = android.graphics.Color.green(pixel); val b = android.graphics.Color.blue(pixel)
-            val blue = abs(r - 63) <= 10 && abs(g - 169) <= 10 && abs(b - 255) <= 10
+            val blue = abs(r) <= 10 && abs(g - 134) <= 10 && abs(b - 253) <= 10
             if (y < (height * .30f).toInt() || y >= (height * .84f).toInt()) {
                 if (abs(r - 32) > 4 || abs(g - 32) > 4 || abs(b - 32) > 4) waterInk++
                 if (blue) waterBlue++
@@ -993,7 +993,7 @@ open class QuickControlsNativeTest {
     }
 
     private fun assertPalette(bitmap: Bitmap, tag: String, active: Boolean): Int {
-        val expected = if (active) intArrayOf(63, 169, 255) else if (dark) intArrayOf(232, 232, 232) else intArrayOf(39, 48, 59)
+        val expected = if (active) intArrayOf(0, 134, 253) else if (dark) intArrayOf(232, 232, 232) else intArrayOf(39, 48, 59)
         val pixels = iconPixels(bitmap, tag)
         val count = pixels.count { pixel -> abs(android.graphics.Color.red(pixel) - expected[0]) <= 10 &&
             abs(android.graphics.Color.green(pixel) - expected[1]) <= 10 && abs(android.graphics.Color.blue(pixel) - expected[2]) <= 10 }

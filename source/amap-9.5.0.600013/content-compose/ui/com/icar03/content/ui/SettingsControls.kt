@@ -57,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
@@ -126,7 +127,7 @@ internal fun SettingsIconButton(
 ) {
     val design = LocalSettingsDesign.current
     val interactions = remember { MutableInteractionSource() }
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled, design.page, design.selected)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, design.page, design.pressed)
     val shape = RoundedCornerShape(12.dp)
     Box(
         modifier.size(design.minimumTouchHeight).settingsTag(tag)
@@ -152,7 +153,7 @@ internal fun SettingsActionButton(
     val design = LocalSettingsDesign.current
     val interactions = remember { MutableInteractionSource() }
     val base = design.track.copy(alpha = if (enabled) 1f else .38f)
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled, base, design.selected)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, base, design.pressed)
     val shape = RoundedCornerShape(8.dp)
     Box(
         modifier.fillMaxWidth().heightIn(min = 56.dp).settingsTag(tag)
@@ -271,7 +272,7 @@ fun SettingsSlider(
     )
 }
 
-/** Equal-width standard selectable segments share one capsule, without per-option frames. */
+/** Equal-width choices share one rounded rectangle and an inset rounded selection. */
 @Composable
 fun SettingsSegmented(
     options: List<Pair<String, String>>,
@@ -291,7 +292,7 @@ fun SettingsSegmented(
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val optionStyle = LocalTextStyle.current.merge(design.optionStyle)
-    val selectionInset = 2.dp
+    val selectionInset = design.segmentInset
     val naturalLabelWidth = remember(options, optionStyle, textMeasurer, density) {
         with(density) {
             options.maxOf { textMeasurer.measure(it.second, style = optionStyle,
@@ -304,8 +305,8 @@ fun SettingsSegmented(
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             Box(
                 Modifier.width(rowWidth).height(design.segmentHeight)
-                    .downwardSoftShadow(design.track, design.dark, design.segmentHeight / 2)
-                    .clip(design.controlShape).background(design.track.copy(alpha = if (enabled) 1f else .38f))
+                    .downwardSoftShadow(design.track, design.dark, design.segmentCornerRadius)
+                    .clip(design.segmentShape).background(design.track.copy(alpha = if (enabled) 1f else .38f))
                     .settingsTag(settingsChildTag(tagPrefix, "track")),
             ) {
                 Row(Modifier.fillMaxSize().selectableGroup()) {
@@ -330,13 +331,13 @@ fun SettingsSegmented(
                         ) {
                             Box(
                                 Modifier.padding(selectionInset).fillMaxSize()
-                                    .clip(design.controlShape)
+                                    .clip(design.segmentSelectedShape)
                                     .background(if (optionSelected) design.selected.copy(alpha = if (enabled) 1f else .38f) else Color.Transparent)
                                     .settingsTag(settingsChildTag(tagPrefix, "$id-surface")),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 SettingsLineText(label, style = optionStyle,
-                                    color = (if (optionSelected) design.text else design.secondaryText)
+                                    color = (if (optionSelected) design.selectedText else design.secondaryText)
                                         .copy(alpha = if (enabled) 1f else .38f),
                                     maxLines = 1, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
                             }
@@ -413,7 +414,9 @@ fun SettingsSwitchRow(
 private fun SettingsSwitchVisual(checked: Boolean, enabled: Boolean, tag: String) {
     val design = LocalSettingsDesign.current
     val thumbInset = (design.switchHeight - design.switchThumbHeight) / 2
-    val thumbOffset by animateDpAsState(
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val thumbOffset = animateDpAsState(
         if (checked) design.switchWidth - design.switchThumbWidth - thumbInset else thumbInset,
         animationSpec = tween(180), label = "settings-switch-thumb")
     Box(
@@ -423,7 +426,9 @@ private fun SettingsSwitchVisual(checked: Boolean, enabled: Boolean, tag: String
             .clip(design.controlShape)
             .background(if (checked) design.onSwitchTrack else design.offSwitchTrack),
     ) {
-        Box(Modifier.align(Alignment.CenterStart).offset(x = thumbOffset)
+        Box(Modifier.align(Alignment.CenterStart).graphicsLayer {
+            translationX = with(density) { thumbOffset.value.toPx() } * if (direction == LayoutDirection.Rtl) -1f else 1f
+        }
             .size(design.switchThumbWidth, design.switchThumbHeight)
             .background(if (checked) design.switchThumb else design.offSwitchThumb, design.controlShape)
             .settingsTag(settingsChildTag(tag, "thumb")))
@@ -446,7 +451,7 @@ fun SettingsNavigationItem(
     val textColor = design.text.copy(alpha = if (enabled) 1f else .38f)
     val iconColor = design.secondaryText.copy(alpha = if (enabled) 1f else .38f)
     val interactions = remember { MutableInteractionSource() }
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled, design.card, design.selected)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, design.card, design.pressed)
     Box(
         modifier.fillMaxWidth().heightIn(min = design.navigationHeight).settingsTag(tag)
             .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
@@ -468,6 +473,10 @@ fun SettingsNavigationItem(
     }
 }
 
+/** Settings use the same cached downward lighting as Dock/media, independent of system lighting. */
+internal fun Modifier.settingsSurfaceShadow(fill: Color, dark: Boolean, cornerRadius: Dp): Modifier =
+    downwardSoftShadow(fill, dark, cornerRadius)
+
 /** A group owns one shape and shadow, with content spacing independent from its padding. */
 @Composable
 fun SettingsGroupCard(
@@ -478,7 +487,7 @@ fun SettingsGroupCard(
     val design = LocalSettingsDesign.current
     Box(
         modifier.fillMaxWidth()
-            .downwardSoftShadow(design.card, design.dark, 8.dp)
+            .settingsSurfaceShadow(design.card, design.dark, design.cardCornerRadius)
             .clip(design.cardShape)
             .background(design.card),
     ) {
@@ -797,7 +806,7 @@ private fun SettingsSliderControl(
         Box(
             Modifier.fillMaxWidth().height(visualHeight).alpha(if (enabled) 1f else .38f)
                 .settingsTag(settingsChildTag(tag, "track"))
-                .downwardSoftShadow(if (rainbow) design.track else design.track, design.dark)
+                .downwardSoftShadow(design.track, design.dark)
                 .clip(trackShape)
                 .background(if (rainbow) Color.Transparent else design.track),
         ) {

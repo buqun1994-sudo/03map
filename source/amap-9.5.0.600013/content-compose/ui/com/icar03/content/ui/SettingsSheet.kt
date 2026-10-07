@@ -50,6 +50,7 @@ internal fun SettingsSheet(
     onEvent: (ContentEvent) -> Unit,
     modifier: Modifier = Modifier,
     onVisibilityChanged: (Boolean) -> Unit = {},
+    onOcclusionChanged: (Boolean) -> Unit = {},
 ) {
     CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark)) {
         val design = LocalSettingsDesign.current
@@ -91,14 +92,20 @@ internal fun SettingsSheet(
                 val target = if (open && collapsed) (heightPx - headerHeightPx - peekHeightPx).coerceAtLeast(0f) else 0f
                 collapseOffset.animateTo(target, tween(340, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)))
             }
-            SideEffect { onVisibilityChanged(open || wasOpen) }
+            val fullyCovering = remember(open, verticalOffset, collapseOffset) {
+                derivedStateOf { open && verticalOffset.value == 0f && collapseOffset.value == 0f }
+            }.value
+            SideEffect {
+                onVisibilityChanged(open || wasOpen)
+                onOcclusionChanged(fullyCovering && state.uiOpacity >= 1f)
+            }
             if (!open && !wasOpen) return@BoxWithConstraints
             Box(
                 Modifier.fillMaxSize()
                     .graphicsLayer {
                         translationY = verticalOffset.value + collapseOffset.value
                     }
-                    .downwardSoftShadow(design.page, design.dark, 12.dp)
+                    .settingsSurfaceShadow(design.page, design.dark, design.pageCornerRadius)
                     .clip(design.pageShape)
                     .background(design.page)
                     .testTag("settings-sheet"),

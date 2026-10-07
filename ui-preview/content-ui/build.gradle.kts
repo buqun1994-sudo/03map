@@ -30,6 +30,9 @@ tasks.named("preBuild") { dependsOn(exportFormalOemResources, exportFormalOemAss
 dependencies {
     api(project(":content-model"))
     implementation("androidx.core:core:1.13.1")
+    implementation("androidx.activity:activity-ktx:1.8.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.7")
+    implementation("androidx.savedstate:savedstate:1.2.1")
     implementation("com.airbnb.android:lottie:6.6.7") { exclude(group = "androidx.appcompat") }
     implementation("androidx.compose.ui:ui:1.7.6")
     implementation("androidx.compose.foundation:foundation:1.7.6")

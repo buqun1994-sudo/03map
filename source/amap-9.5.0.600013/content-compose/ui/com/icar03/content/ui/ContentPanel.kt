@@ -97,6 +97,7 @@ fun ContentPanel(
     val clickSound = LocalContentClickSound.current
     val dockOverlay = remember { DockLevelOverlayState() }
     var settingsRetained by remember { androidx.compose.runtime.mutableStateOf(false) }
+    var settingsObscured by remember { mutableStateOf(false) }
     val settingsActive = state.settingsOpen || settingsRetained
     val contentInteractive = !state.sourcesOpen && !state.scenariosOpen && !settingsActive
     val lyricAutoFollowEnabled = contentInteractive ||
@@ -169,7 +170,10 @@ fun ContentPanel(
                 val feedbackWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
                 val showTop = !wide || state.immersiveShowTopBar
                 val showDock = !wide || state.immersiveShowDock
-                ambientBackground?.invoke()
+                CompositionLocalProvider(LocalAmbientMotionAllowed provides
+                    (!state.lyricsProviderSettings.appleLoginOpen && (!settingsObscured || wide))) {
+                    ambientBackground?.invoke()
+                }
                 CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
                     LocalPresentationInteractionEnabled provides !pageMotion) {
                     if (showTop) Box(Modifier.width(topBarWidth).graphicsLayer {
@@ -285,7 +289,8 @@ fun ContentPanel(
                                 top = if (showTop) topBarHeight else 12.dp,
                                 bottom = if (showDock) dockHeight + if (compact) 8.dp else 16.dp else 12.dp,
                             ).zIndex(7f),
-                        onVisibilityChanged = { settingsRetained = it })
+                        onVisibilityChanged = { settingsRetained = it },
+                        onOcclusionChanged = { settingsObscured = it })
                 }
                 if (state.lyricsProviderSettings.appleLoginOpen) {
                     CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark)) { appleMusicLogin(dispatch) }

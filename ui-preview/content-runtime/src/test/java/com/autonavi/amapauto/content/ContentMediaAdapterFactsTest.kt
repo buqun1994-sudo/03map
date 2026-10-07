@@ -223,18 +223,44 @@ class ContentMediaAdapterFactsTest {
     @Test fun bootstrapPullCannotOverwriteCallbacksOrAnExplicitNullReceivedWhileItIsInFlight() {
         Fixture().use { f ->
             val entered = CountDownLatch(1); val release = CountDownLatch(1)
-            f.reads.beforeMetadata = { entered.countDown(); assertTrue(release.await(2L, TimeUnit.SECONDS)) }
+            val failure = AtomicReference<Throwable>()
             f.start(settle = false)
-            // Session-list result discovers/registers the callback, then queues bootstrap.
-            f.worker.run(); shadowOf(Looper.getMainLooper()).idle()
-            f.worker.run(); shadowOf(Looper.getMainLooper()).idle()
-            val bootstrap = requireNotNull(f.worker.take())
-            val thread = Thread(bootstrap); thread.start()
+            fun beginBootstrapRead(): Thread {
+                repeat(40) {
+                    shadowOf(Looper.getMainLooper()).idle()
+                    val task = requireNotNull(f.worker.take()) { "bootstrap metadata read was not queued" }
+                    val completedOrEntered = CountDownLatch(1)
+                    f.reads.beforeMetadata = {
+                        entered.countDown(); completedOrEntered.countDown()
+                        assertTrue(release.await(2L, TimeUnit.SECONDS))
+                    }
+                    val candidate = Thread({
+                        try { task.run() } catch (error: Throwable) { failure.set(error) }
+                        finally { completedOrEntered.countDown() }
+                    }, "media-test-bootstrap")
+                    candidate.start()
+                    assertTrue("worker neither completed nor entered metadata read",
+                        completedOrEntered.await(1L, TimeUnit.SECONDS))
+                    failure.get()?.let { throw it }
+                    // Locate the bootstrap by its real ExternalReads entry, not the queue position.
+                    if (entered.count == 0L) return candidate
+                    candidate.join(2_000L)
+                    assertFalse("completed inventory task blocked", candidate.isAlive)
+                }
+                error("bootstrap metadata read did not start within the bounded task budget")
+            }
+            val thread = beginBootstrapRead()
             assertTrue(entered.await(1L, TimeUnit.SECONDS))
-            f.callback().onMetadataChanged(metadata("new"))
-            f.callback().onPlaybackStateChanged(playback(PlaybackState.STATE_PAUSED, 321L, speed = 0f))
-            f.callback().onAudioInfoChanged(audio())
-            release.countDown(); thread.join(2_000L); f.settle()
+            try {
+                f.callback().onMetadataChanged(metadata("new"))
+                f.callback().onPlaybackStateChanged(playback(PlaybackState.STATE_PAUSED, 321L, speed = 0f))
+                f.callback().onAudioInfoChanged(audio())
+            } finally {
+                release.countDown(); thread.join(2_000L)
+            }
+            assertFalse("bootstrap worker blocked", thread.isAlive)
+            failure.get()?.let { throw it }
+            f.settle()
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_500L)); f.settle()
             assertEquals("new", f.seen.last().mediaId)
             assertEquals(321L, f.seen.last().positionMs)
@@ -326,7 +352,7 @@ class ContentMediaAdapterFactsTest {
         Fixture(status = true).use { f ->
             f.start(); val old = SourceBinder(6); f.connect(old)
             val entered = CountDownLatch(1); val release = CountDownLatch(1)
-            old.raw = 10; old.beforeRead = { entered.countDown(); assertTrue(release.await(2L, TimeUnit.SECONDS)) }
+            old.raw = 14; old.beforeRead = { entered.countDown(); assertTrue(release.await(2L, TimeUnit.SECONDS)) }
             old.changed(); shadowOf(Looper.getMainLooper()).idle()
             val thread = Thread(requireNotNull(f.worker.take())); thread.start()
             assertTrue(entered.await(1L, TimeUnit.SECONDS))
@@ -348,7 +374,7 @@ class ContentMediaAdapterFactsTest {
         Fixture(withController = false, status = true).use { f ->
             f.start(); val old = SourceBinder(6); f.connect(old)
             val entered = CountDownLatch(1); val release = CountDownLatch(1)
-            old.raw = 10; old.beforeRead = { entered.countDown(); assertTrue(release.await(2L, TimeUnit.SECONDS)) }
+            old.raw = 14; old.beforeRead = { entered.countDown(); assertTrue(release.await(2L, TimeUnit.SECONDS)) }
             old.changed(); shadowOf(Looper.getMainLooper()).idle()
             val thread = Thread(requireNotNull(f.worker.take())); thread.start(); assertTrue(entered.await(1L, TimeUnit.SECONDS))
             val oldCallback = requireNotNull(old.callback)
@@ -440,6 +466,7 @@ class ContentMediaAdapterFactsTest {
             f.reads.metadataValue = metadata("cover", uri = "content://fixture/cover")
             f.reads.decoder = { entered.countDown(); assertTrue(release.await(2L, TimeUnit.SECONDS)); Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888) }
             f.start(); assertTrue(entered.await(1L, TimeUnit.SECONDS))
+            assertTrue(f.seen.last().publicArtworkPending)
             val task = field(f.adapter, "artworkTask") as Future<*>
             release.countDown(); task.get(2L, TimeUnit.SECONDS); f.settle()
             assertNotNull(f.seen.last().artwork)
@@ -448,6 +475,7 @@ class ContentMediaAdapterFactsTest {
             // Execute the real captured timeout before the already posted worker completion.
             (field(f.adapter, "artworkTimeout") as Runnable).run()
             f.settle(); assertNull(f.seen.last().artwork)
+            assertFalse(f.seen.last().publicArtworkPending)
             assertEquals("timeout", f.seen.last().mediaId)
         }
     }
@@ -526,6 +554,26 @@ class ContentMediaAdapterFactsTest {
                 repeat(100) { service.changed() }; f.settle()
                 assertEquals(publications + 1, f.seen.size)
             } finally { store.destroy() }
+        }
+    }
+
+    @Test fun publicArtworkCapabilityLogContainsOnlyKeysAndDeduplicatesPlaybackCallbacks() {
+        Fixture().use { f ->
+            val image = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+            f.reads.metadataValue = metadata("private-recording", image, "https://example.invalid/private-artwork")
+            f.start()
+            fun logs() = org.robolectric.shadows.ShadowLog.getLogsForTag("ContentMediaAdapter")
+                .map { it.msg }.filter { it.startsWith("public media fields ") }
+            val initial = logs()
+            assertEquals(1, initial.size)
+            assertTrue(initial.single().contains(MediaMetadata.METADATA_KEY_ART_URI))
+            assertTrue(initial.single().contains("hasTitle=true"))
+            assertFalse(initial.single().contains("private-recording"))
+            assertFalse(initial.single().contains("https://"))
+            assertFalse(initial.single().contains(f.controller.sessionToken.toString()))
+            repeat(10) { f.callback().onPlaybackStateChanged(playback(position = 10_000L + it)) }
+            f.settle()
+            assertEquals(initial, logs())
         }
     }
 

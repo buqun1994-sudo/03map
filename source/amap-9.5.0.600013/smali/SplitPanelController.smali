@@ -987,7 +987,7 @@
 
     if-eqz p2, :click_release
 
-    invoke-direct {p0}, LSplitPanelController;->settleToStableState()V
+    invoke-direct {p0}, LSplitPanelController;->setStableStateFromCurrent()V
 
     return-void
 
@@ -999,7 +999,7 @@
     return-void
 
     :not_pressed
-    invoke-direct {p0}, LSplitPanelController;->settleToStableState()V
+    invoke-direct {p0}, LSplitPanelController;->setStableStateFromCurrent()V
 
     return-void
 .end method
@@ -1521,8 +1521,6 @@
     iput-boolean v0, p0, LSplitPanelController;->gestureActive:Z
     invoke-direct {p0}, LSplitPanelController;->cancelPanelAnimation()V
 
-    invoke-direct {p0}, LSplitPanelController;->fadeOutHint()V
-
     iget-object v0, p0, LSplitPanelController;->panelHost:Landroid/view/ViewGroup;
 
     invoke-virtual {v0}, Landroid/view/View;->getTranslationX()F
@@ -1562,8 +1560,6 @@
     const/4 v0, 0x2
 
     iput v0, p0, LSplitPanelController;->panelState:I
-
-    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
 
     goto :return_true
 
@@ -1666,6 +1662,8 @@
     if-lez v8, :block_gesture
 
     :horizontal_started
+    invoke-direct {p0}, LSplitPanelController;->fadeOutHint()V
+
     const/4 v6, 0x3
 
     iput v6, p0, LSplitPanelController;->panelState:I

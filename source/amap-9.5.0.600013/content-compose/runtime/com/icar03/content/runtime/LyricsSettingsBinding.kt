@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.webkit.CookieManager
+import android.webkit.ConsoleMessage
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -43,6 +44,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.icar03.content.runtime.lyrics.AppleMusicConnection
+import com.icar03.content.runtime.lyrics.AppleMusicAuthBroker
+import com.icar03.content.runtime.lyrics.AppleMusicWebAuthorization
+import com.icar03.content.runtime.lyrics.AppleMusicAuthorizationCompatAssets
+import com.icar03.content.runtime.lyrics.LyricsCancellationSignal
 import com.icar03.content.runtime.lyrics.ContentLyricsPreferences
 import com.icar03.content.ui.AppleMusicConnectRequested
 import com.icar03.content.ui.AppleMusicDisconnectRequested
@@ -62,6 +67,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
@@ -73,6 +79,7 @@ class LyricsSettingsBinding internal constructor(
     private val onChanged: () -> Unit,
     private val onFeedback: (String) -> Unit,
     connection: AppleMusicConnection?,
+    private val authorizationConfiguration: (suspend (AppleMusicConnection.LoginAttempt) -> AppleMusicWebAuthorization.Configuration)? = null,
 ) : AutoCloseable {
     constructor(context: Context, onChanged: () -> Unit, onFeedback: (String) -> Unit) :
         this(context, onChanged, onFeedback, null)
@@ -91,10 +98,15 @@ class LyricsSettingsBinding internal constructor(
     private var preparing = false
     private var activeAttempt: AppleMusicConnection.LoginAttempt? = null
     private var pollJob: Job? = null
+    private var authorizationJob: Job? = null
+    private var authorizationCancellation: LyricsCancellationSignal? = null
     private var loginWebView: WebView? = null
     private var pageLoadTimeout: Runnable? = null
     private var currentMusicPageUrl = AppleMusicConnection.LOGIN_URL
+    // Readiness requires visible interactions, rather than a finished document containing a logo.
     private var initialPageFinished = false
+    private var pageReadinessProbe: Runnable? = null
+    private var documentRevision = 0L
     private var pollErrorShown = false
     private var pageProgress by mutableIntStateOf(0)
     private var pageError by mutableStateOf<String?>(null)
@@ -465,9 +477,27 @@ class LyricsSettingsBinding internal constructor(
     ): WebView = WebView(context).also { webView ->
         loginWebView = webView
         configureWebView(webView, attempt, ownerLifecycle, ownerLogin)
-        // This is the first load and uses only the opaque attempt's official URL.
-        webView.loadUrl(attempt.loginUrl)
-        webView.post { if (loginWebView === webView) webView.requestFocus() }
+        val cancellation = LyricsCancellationSignal()
+        authorizationCancellation = cancellation
+        authorizationJob = scope?.launch {
+            try {
+                val configuration = authorizationConfiguration?.invoke(attempt) ?: withContext(Dispatchers.IO) {
+                    val deadline = System.nanoTime() + 15_000_000_000L
+                    val developer = AppleMusicAuthBroker.get(appContext).ensureDeveloper(deadline, cancellation)
+                    AppleMusicWebAuthorization.configuration(attempt, developer.token)
+                }
+                if (isCurrentLoginView(webView, ownerLifecycle, ownerLogin, attempt)) {
+                    webView.loadUrl(configuration.startUrl, mapOf("Referer" to configuration.referrerUrl))
+                    webView.requestFocus()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                failAppleLogin(ownerLifecycle, ownerLogin, attempt, "无法准备 Apple Music 官方授权，请检查网络后重试")
+            } finally {
+                if (authorizationCancellation === cancellation) authorizationCancellation = null
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -504,8 +534,12 @@ class LyricsSettingsBinding internal constructor(
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+                AppleMusicAuthorizationCompatAssets.response(appContext, request)
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (!isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) return true
+                if (request.isForMainFrame && acceptAuthorizationCallback(request.url.toString(), ownerLifecycle, ownerLogin, attempt)) return true
                 val blocked = !isAllowedAppleUrl(request.url)
                 if (blocked && request.isForMainFrame) showLoginPageError("Apple Music 登录页面无法继续跳转，请重试")
                 return blocked
@@ -514,25 +548,33 @@ class LyricsSettingsBinding internal constructor(
             @Suppress("OverridingDeprecatedMember")
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
                 if (!isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) return true
+                if (acceptAuthorizationCallback(url, ownerLifecycle, ownerLogin, attempt)) return true
                 val blocked = !isAllowedAppleUrl(Uri.parse(url))
                 if (blocked) showLoginPageError("Apple Music 登录页面无法继续跳转，请重试")
                 return blocked
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt) &&
+                    acceptAuthorizationCallback(url, ownerLifecycle, ownerLogin, attempt)) return
                 if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt) && isAllowedAppleUrl(Uri.parse(url))) {
                     pageProgress = 0
+                    initialPageFinished = false
+                    documentRevision++
+                    cancelPageReadinessProbe()
+                    armPageLoadTimeout(view, attempt, ownerLifecycle, ownerLogin)
                     updateMusicPageUrl(url)
                 }
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt) && isAllowedAppleUrl(Uri.parse(url))) {
-                    initialPageFinished = true
-                    cancelPageLoadTimeout()
-                    pageProgress = 100
                     updateMusicPageUrl(url)
                     pollOfficialCookies(ownerLifecycle, ownerLogin, attempt)
+                    if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt) && !initialPageFinished) {
+                        pageProgress = maxOf(pageProgress, 95).coerceAtMost(99)
+                        probeLoginPageReadiness(view, attempt, ownerLifecycle, ownerLogin, documentRevision)
+                    }
                 }
             }
 
@@ -563,22 +605,83 @@ class LyricsSettingsBinding internal constructor(
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                if (isCurrentLoginView(webView, ownerLifecycle, ownerLogin, attempt) &&
+                    message.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
+                    (isAllowedAppleUrl(Uri.parse(message.sourceId().orEmpty())) ||
+                        Uri.parse(message.sourceId().orEmpty()).let { it.scheme == "https" && it.host == "appleid.cdn-apple.com" }) &&
+                    message.message().orEmpty().contains("SyntaxError", ignoreCase = true)) {
+                    // Do not log console payloads, page text, URL queries or credentials.
+                    showLoginPageError(LOGIN_SCRIPT_FAILURE_MESSAGE)
+                    return true
+                }
+                return false
+            }
+
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) {
-                    pageProgress = newProgress.coerceIn(0, 100)
+                    pageProgress = newProgress.coerceIn(0, if (initialPageFinished) 100 else 99)
                 }
             }
         }
-        if (!initialPageFinished) {
-            cancelPageLoadTimeout()
-            val timeout = Runnable {
-                if (!initialPageFinished && isCurrentLoginView(webView, ownerLifecycle, ownerLogin, attempt)) {
-                    showLoginPageError("Apple Music 官方登录页面加载超时，请检查网络后重试")
+        armPageLoadTimeout(webView, attempt, ownerLifecycle, ownerLogin)
+    }
+
+    private fun armPageLoadTimeout(
+        view: WebView, attempt: AppleMusicConnection.LoginAttempt, lifecycle: Long, login: Long,
+    ) {
+        if (initialPageFinished || pageLoadTimeout != null) return
+        val timeout = Runnable {
+            if (!initialPageFinished && isCurrentLoginView(view, lifecycle, login, attempt)) {
+                showLoginPageError("Apple Music 官方登录页面加载超时，请检查网络后重试")
+            }
+        }
+        pageLoadTimeout = timeout
+        mainHandler.postDelayed(timeout, INITIAL_PAGE_TIMEOUT_MS)
+    }
+
+    private fun probeLoginPageReadiness(
+        view: WebView, attempt: AppleMusicConnection.LoginAttempt,
+        lifecycle: Long, login: Long, document: Long,
+    ) {
+        cancelPageReadinessProbe()
+        if (initialPageFinished || documentRevision != document ||
+            !isCurrentLoginView(view, lifecycle, login, attempt)) return
+        view.evaluateJavascript(LOGIN_READINESS_SCRIPT) { raw ->
+            if (initialPageFinished || documentRevision != document ||
+                !isCurrentLoginView(view, lifecycle, login, attempt)) return@evaluateJavascript
+            when (raw) {
+                "\"ready\"" -> {
+                    initialPageFinished = true
+                    pageProgress = 100
+                    cancelPageLoadTimeout()
+                }
+                else -> {
+                    val probe = Runnable { probeLoginPageReadiness(view, attempt, lifecycle, login, document) }
+                    pageReadinessProbe = probe
+                    mainHandler.postDelayed(probe, PAGE_READINESS_INTERVAL_MS)
                 }
             }
-            pageLoadTimeout = timeout
-            mainHandler.postDelayed(timeout, INITIAL_PAGE_TIMEOUT_MS)
         }
+    }
+
+    private fun acceptAuthorizationCallback(
+        value: String, ownerLifecycle: Long, ownerLogin: Long, attempt: AppleMusicConnection.LoginAttempt,
+    ): Boolean {
+        val uri = Uri.parse(value)
+        if (!uri.host.equals("music.apple.com", true) || !uri.path.orEmpty().startsWith("/__icar03_authorization/")) return false
+        when (runCatching { appleConnection.acceptAuthorizationCallback(attempt, value) }.getOrNull()) {
+            AppleMusicConnection.CookieAcceptance.ACCEPTED -> finishAppleLogin(ownerLifecycle, ownerLogin, attempt)
+            AppleMusicConnection.CookieAcceptance.STORAGE_FAILED ->
+                failAppleLogin(ownerLifecycle, ownerLogin, attempt, "Apple Music 授权保存失败，请重试")
+            else -> failAppleLogin(ownerLifecycle, ownerLogin, attempt, "Apple Music 授权结果已失效，请重试")
+        }
+        return true
+    }
+
+    private fun cancelPageReadinessProbe() {
+        pageReadinessProbe?.let(mainHandler::removeCallbacks)
+        pageReadinessProbe = null
     }
 
     private fun cancelPageLoadTimeout() {
@@ -588,6 +691,8 @@ class LyricsSettingsBinding internal constructor(
 
     private fun resetLoginPage() {
         cancelPageLoadTimeout()
+        cancelPageReadinessProbe()
+        documentRevision++
         currentMusicPageUrl = AppleMusicConnection.LOGIN_URL
         initialPageFinished = false
         pageProgress = 0
@@ -596,6 +701,7 @@ class LyricsSettingsBinding internal constructor(
 
     private fun showLoginPageError(message: String) {
         cancelPageLoadTimeout()
+        cancelPageReadinessProbe()
         pollJob?.cancel()
         pollJob = null
         activeAttempt?.let(::cancelAttempt)
@@ -627,6 +733,11 @@ class LyricsSettingsBinding internal constructor(
     private fun releaseLoginWebView(view: WebView) {
         if (loginWebView !== view) return
         cancelPageLoadTimeout()
+        cancelPageReadinessProbe()
+        authorizationCancellation?.cancel()
+        authorizationCancellation = null
+        authorizationJob?.cancel()
+        authorizationJob = null
         loginWebView = null
         view.stopLoading()
         view.webChromeClient = null
@@ -658,6 +769,35 @@ class LyricsSettingsBinding internal constructor(
 
     private companion object {
         const val INITIAL_PAGE_TIMEOUT_MS = 30_000L
+        private const val PAGE_READINESS_INTERVAL_MS = 750L
+        private const val LOGIN_SCRIPT_FAILURE_MESSAGE = "Apple Music 官方授权页面暂时无法运行，请重试"
+        // ES5 outer syntax deliberately runs on the old engine. Inspect presence/geometry only.
+        private val LOGIN_READINESS_SCRIPT = """
+            (function() {
+                function interactive(doc, depth) {
+                    var nodes = doc.querySelectorAll('button, input:not([type="hidden"])');
+                    for (var i = 0; i < nodes.length; i++) {
+                        var node = nodes[i], rect = node.getBoundingClientRect();
+                        var style = doc.defaultView.getComputedStyle(node);
+                        if (rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
+                            style.visibility !== 'hidden' && !node.disabled) return true;
+                    }
+                    if (depth < 2) {
+                        var frames = doc.querySelectorAll('iframe');
+                        for (var j = 0; j < frames.length; j++) {
+                            try {
+                                var frame = frames[j], bounds = frame.getBoundingClientRect();
+                                if (bounds.width > 0 && bounds.height > 0 && frame.contentDocument &&
+                                    interactive(frame.contentDocument, depth + 1)) return true;
+                            } catch (e) { /* Cross-origin frames remain opaque. */ }
+                        }
+                    }
+                    return false;
+                }
+                return interactive(document, 0) ? 'ready' : 'loading';
+            })();
+        """.trimIndent()
+
         const val POLL_INTERVAL_MS = 750L
 
         fun platformForId(id: String): ContentLyricsPreferences.Platform? = when (id.trim().lowercase(Locale.ROOT)) {

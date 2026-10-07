@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "compiler": {
+    "name": "esbuild",
+    "version": "0.25.12",
+    "options": {
+      "target": "chrome66",
+      "charset": "utf8",
+      "legalComments": "inline",
+      "minify": false,
+      "sourcemap": false
+    }
+  },
+  "uuidCompatibility": {
+    "source": "tools/apple-authorize/random-uuid-compat.js",
+    "sha256": "49e47ae01352a1154d0ba1ffaa68dbba3f543b6f2c24cce0648f6bef53aa8672",
+    "algorithm": "RFC 4122 version 4, crypto.getRandomValues only, native implementation preserved"
+  },
+  "sources": [
+    {
+      "url": "https://appleid.cdn-apple.com/appleauth/static/module-assets/home-76bd5c25830b7078b52d.js",
+      "upstreamPath": "tools/apple-authorize/upstream/home-76bd5c25830b7078b52d.js",
+      "upstreamSha256": "4780584db5095b3d338291478e94cda4cbd591b9719443369a81aa6643f799bd",
+      "upstreamBytes": 500363,
+      "assetPath": "source/amap-9.5.0.600013/assets/content-apple-authorize/home-76bd5c25830b7078b52d.js",
+      "assetSha256": "839c4c5eaf3f43a9e799a048fe4617ee044029c3ff244ed0da49b15e5b404a98",
+      "assetBytes": 777819
+    },
+    {
+      "url": "https://appleid.cdn-apple.com/appleauth/static/module-assets/identityWidget-e48dc0b32509f79e9025.js",
+      "upstreamPath": "tools/apple-authorize/upstream/identityWidget-e48dc0b32509f79e9025.js",
+      "upstreamSha256": "7c2a73b176fcf68533c6cb713a9f61ab89555288ac3b9372406f8fdb6eb743cc",
+      "upstreamBytes": 520066,
+      "assetPath": "source/amap-9.5.0.600013/assets/content-apple-authorize/identityWidget-e48dc0b32509f79e9025.js",
+      "assetSha256": "6e535986e45925207daeccf499488f0ae19f7314c2b5ab2e2fc9fa37ff286345",
+      "assetBytes": 791441
+    }
+  ],
+  "scope": "Only the exact two public Apple CDN scripts; official HTML, forms, cookies and authentication network remain unchanged"
+}

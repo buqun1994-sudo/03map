@@ -1,6 +1,8 @@
 package com.icar03.content.runtime.lyrics
 
 import android.os.Looper
+import android.util.Base64
+import org.json.JSONObject
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
 import android.webkit.WebView
@@ -337,6 +339,184 @@ class AppleMusicConnectionTest {
         assertEquals(1, manager.flushes)
     }
 
+    @Test fun officialAuthorizationCompletesOneAccountAndTheBrokerResolvesItsRealStorefront() {
+        val rig = AppleMusicFixtureRig(null)
+        val attempt = begin(rig)
+        val before = rig.connection.revision
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            rig.connection.acceptAuthorizationCallback(attempt, authorizationCallback(attempt, "synthetic-authorized-user")))
+        val saved = rig.connection.account.requireCredential()
+        assertSame(saved, rig.store.value)
+        assertEquals("synthetic-authorized-user", saved.token)
+        assertEquals("", saved.storefront)
+        assertEquals(rig.clock.now, saved.savedAtMs)
+        assertEquals(rig.clock.now + AppleMusicConnection.TOKEN_LIFETIME_MS, saved.expiresAtMs)
+        assertEquals(AppleMusicConnection.Status.CONNECTED, rig.connection.refresh().status)
+        assertFalse(rig.connection.refresh().isConnecting)
+        assertTrue(rig.connection.revision > before)
+        assertTrue(rig.cookies.reads.isEmpty())
+        assertFalse(saved.toString().contains("synthetic-authorized-user"))
+        assertFalse(rig.connection.refresh().toString().contains("synthetic-authorized-user"))
+
+        rig.seedDeveloper()
+        val transport = AppleMusicFixtureTransport { call ->
+            assertEquals(AppleMusicAuthBroker.ME_STOREFRONT_URL, call.url)
+            assertEquals("synthetic-authorized-user", call.headers["Media-User-Token"])
+            """{"data":[{"id":"CN"}]}""".toByteArray()
+        }
+        val broker = AppleMusicAuthBroker(rig.connection, transport, rig.clock)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        val session = broker.session(deadline, LyricsCancellationSignal())
+        assertEquals("cn", session.storefront)
+        assertEquals(saved.generation, session.credential.generation)
+        assertEquals(saved.savedAtMs, session.credential.savedAtMs)
+        assertEquals(saved.expiresAtMs, session.credential.expiresAtMs)
+        assertEquals("cn", rig.store.value!!.storefront)
+        broker.session(deadline, LyricsCancellationSignal())
+        assertEquals(1, transport.calls.size)
+        rig.clock.now = saved.expiresAtMs
+        assertEquals(AppleMusicConnection.Status.EXPIRED, rig.connection.refresh().status)
+        assertThrows(AppleMusicAuthenticationException::class.java) {
+            broker.session(deadline, LyricsCancellationSignal())
+        }
+        assertEquals(1, transport.calls.size)
+    }
+
+    @Test fun officialAuthorizationCannotBypassPreparationCancellationOrClosedAttempts() {
+        val rig = AppleMusicFixtureRig(null)
+        rig.cookies.deferred = true
+        val results = mutableListOf<AppleMusicConnection.PreparationResult>()
+        val first = checkNotNull(rig.connection.prepareLoginAttempt(results::add))
+        val firstCallback = authorizationCallback(first, "synthetic-first-user")
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT,
+            rig.connection.acceptAuthorizationCallback(first, firstCallback))
+        assertNull(rig.store.value)
+        rig.cookies.pending[0](true)
+        assertTrue(results.single() is AppleMusicConnection.PreparationResult.Ready)
+        rig.connection.cancelLogin(first)
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT,
+            rig.connection.acceptAuthorizationCallback(first, firstCallback))
+        rig.cookies.deferred = false
+        val second = begin(rig)
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT,
+            rig.connection.acceptAuthorizationCallback(first, firstCallback))
+        assertEquals(AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN,
+            rig.connection.acceptAuthorizationCallback(second, firstCallback))
+        assertTrue(rig.connection.refresh().isConnecting)
+        rig.cookies.pending[0](true)
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            rig.connection.acceptAuthorizationCallback(second, authorizationCallback(second, "synthetic-second-user")))
+        rig.connection.disconnect()
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT,
+            rig.connection.acceptAuthorizationCallback(second, authorizationCallback(second, "synthetic-second-user")))
+        assertNull(rig.store.value)
+        assertEquals(AppleMusicConnection.Status.DISCONNECTED, rig.connection.refresh().status)
+    }
+
+    @Test fun foreignCallbackNonceOrOriginCannotModifyTheExistingAccountOrPendingLogin() {
+        val rig = AppleMusicFixtureRig()
+        val previous = rig.connection.account.requireCredential()
+        val attempt = begin(rig)
+        val before = rig.connection.revision
+        val callback = authorizationCallback(attempt, "synthetic-new-user")
+        val invalid = listOf(
+            callback.replace("music.apple.com/", "music.apple.com.evil.invalid/"),
+            callback.replace("music.apple.com/", "user@music.apple.com/"),
+            callback.replace(attempt.id, java.util.UUID.randomUUID().toString()),
+            callback.replace("#", "?approved=true#"),
+            authorizationCallback(attempt, "x".repeat(AppleMusicConnection.MAX_TOKEN_LENGTH + 1)),
+            authorizationCallback(attempt, "invalid\u0000header"),
+        )
+        invalid.forEach {
+            assertEquals(AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN,
+                rig.connection.acceptAuthorizationCallback(attempt, it))
+            assertSame(previous, rig.store.value)
+            assertSame(previous, rig.connection.account.requireCredential())
+            assertEquals(before, rig.connection.revision)
+            assertTrue(rig.connection.refresh().isConnecting)
+        }
+    }
+
+    @Test fun priorAuthorizedTokenIsRejectedAndOldResponsesCannotChangeAFreshAuthorization() {
+        val rig = AppleMusicFixtureRig()
+        val old = rig.connection.account.requireCredential()
+        val attempt = begin(rig)
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_COOKIE,
+            rig.connection.acceptAuthorizationCallback(attempt, authorizationCallback(attempt, old.token)))
+        assertSame(old, rig.store.value)
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            rig.connection.acceptAuthorizationCallback(attempt, authorizationCallback(attempt, "synthetic-fresh-user")))
+        val fresh = rig.connection.account.requireCredential()
+        assertNotEquals(old.generation, fresh.generation)
+        assertEquals("", fresh.storefront)
+        val revision = rig.connection.revision
+        rig.connection.account.markRejected(old)
+        assertFalse(rig.connection.account.saveStorefront(old, "us"))
+        assertEquals(revision, rig.connection.revision)
+        assertEquals(AppleMusicConnection.Status.CONNECTED, rig.connection.refresh().status)
+        assertEquals(0L, rig.connection.refresh().rejectedAtMs)
+    }
+
+    @Test fun authorizationStorageFailurePreservesTheOldAccountAndLeavesTheAttemptRetryable() {
+        val rig = AppleMusicFixtureRig()
+        val previous = rig.connection.account.requireCredential()
+        val attempt = begin(rig)
+        val callback = authorizationCallback(attempt, "synthetic-persisted-user")
+        rig.store.failSave = true
+        assertEquals(AppleMusicConnection.CookieAcceptance.STORAGE_FAILED,
+            rig.connection.acceptAuthorizationCallback(attempt, callback))
+        assertSame(previous, rig.store.value)
+        assertSame(previous, rig.connection.account.requireCredential())
+        assertTrue(rig.connection.refresh().isConnecting)
+        rig.store.failSave = false
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            rig.connection.acceptAuthorizationCallback(attempt, callback))
+        assertEquals("synthetic-persisted-user", rig.store.value!!.token)
+        assertFalse(rig.connection.refresh().isConnecting)
+    }
+
+    @Test fun officialCookieAndAuthorizationResultCannotCompleteTheSameAttemptTwice() {
+        val first = AppleMusicFixtureRig(null)
+        val firstAttempt = begin(first)
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            first.connection.acceptAuthorizationCallback(firstAttempt, authorizationCallback(firstAttempt, "synthetic-result-first")))
+        val firstSaved = first.store.value
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT,
+            first.connection.acceptCookies(firstAttempt, first.connection.loginUrl, cookies("synthetic-late-cookie")))
+        assertSame(firstSaved, first.store.value)
+
+        val second = AppleMusicFixtureRig(null)
+        val secondAttempt = begin(second)
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            second.connection.acceptCookies(secondAttempt, second.connection.loginUrl, cookies("synthetic-cookie-first")))
+        val secondSaved = second.store.value
+        assertEquals(AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT,
+            second.connection.acceptAuthorizationCallback(secondAttempt, authorizationCallback(secondAttempt, "synthetic-late-result")))
+        assertSame(secondSaved, second.store.value)
+    }
+
+    @Test fun authorizationResultUsesTheSameEncryptedPrivateStoreAndSurvivesAccountRecreation() {
+        val file = File(temporary.root, "applemusic-authorized-fixture.v1")
+        val store = AppleMusicEncryptedCredentialStore(file, FixtureGcmCipher())
+        val clock = AppleMusicFixtureRig.Clock()
+        val connection = AppleMusicConnection(AppleMusicAccount(store,
+            websiteCookies = AppleMusicFixtureRig.Cookies(), clock = clock))
+        var prepared: AppleMusicConnection.LoginAttempt? = null
+        assertTrue(connection.prepareLogin { prepared = it })
+        val attempt = checkNotNull(prepared)
+        val token = "synthetic-encrypted-authorized-user"
+        assertEquals(AppleMusicConnection.CookieAcceptance.ACCEPTED,
+            connection.acceptAuthorizationCallback(attempt, authorizationCallback(attempt, token)))
+        val saved = connection.account.requireCredential()
+        assertFalse(file.readBytes().toString(Charsets.ISO_8859_1).contains(token))
+        val restored = AppleMusicConnection(AppleMusicAccount(store,
+            websiteCookies = AppleMusicFixtureRig.Cookies(), clock = clock))
+        assertEquals(AppleMusicConnection.Status.CONNECTED, restored.refresh().status)
+        assertEquals(token, restored.account.requireCredential().token)
+        assertEquals(saved.generation, restored.account.requireCredential().generation)
+        assertEquals(saved.expiresAtMs, restored.refresh().expiresAtMs)
+    }
+
     private class DeferredCookieManager : CookieManager() {
         var cookie = ""
         var flushes = 0
@@ -368,6 +548,13 @@ class AppleMusicConnectionTest {
     private fun cookies(token: String, storefront: String = "cn", expiry: Long = 0L): List<AppleMusicConnection.Cookie> = buildList {
         add(AppleMusicConnection.Cookie("media-user-token", token, ".music.apple.com", expiresAtMs = expiry))
         if (storefront.isNotEmpty()) add(AppleMusicConnection.Cookie("itua", storefront, ".apple.com"))
+    }
+
+    private fun authorizationCallback(attempt: AppleMusicConnection.LoginAttempt, token: String): String {
+        val configuration = AppleMusicWebAuthorization.configuration(attempt, AppleMusicFixture.developer)
+        val result = JSONObject().put("cid", "synthetic-client").put("itre", "synthetic-expiry-metadata")
+            .put("musicUserToken", token).toString().toByteArray(Charsets.UTF_8)
+        return configuration.referrerUrl + "#" + Base64.encodeToString(result, Base64.NO_WRAP)
     }
 
     /** Real AES-GCM wire storage test; only the KeyStore key retrieval is substituted on the JVM. */

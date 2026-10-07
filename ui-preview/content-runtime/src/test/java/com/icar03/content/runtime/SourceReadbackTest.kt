@@ -56,7 +56,7 @@ class SourceReadbackTest {
             assertTrue(adapter.requestSource("网易云音乐"))
             assertEquals(9, context.lastCommand!!.getIntExtra("audio_source", -1))
             assertEquals("蓝牙音乐", snapshots.last().source)
-            service.raw = 10
+            service.raw = 14
             service.changed(); drainSource(adapter)
             assertEquals("网易云音乐", snapshots.last().source)
             assertFalse(snapshots.last().playbackAvailable)
@@ -64,6 +64,27 @@ class SourceReadbackTest {
             assertTrue(service.reads >= 2)
             assertTrue(service.transactions.all { it in listOf(1, 6) })
         } finally { adapter.stop() }
+    }
+
+    @Test fun coldStartSdk14ConfirmsCloudWithoutACommandAndCardCode10CannotConfirmIt() {
+        val context = SourceContext(RuntimeEnvironment.getApplication())
+        context.installCurrentStatusService()
+        val adapter = ContentMediaAdapter(context)
+        val store = ContentStore(context, ContentPorts.PreviewVehiclePort(), adapter, ContentPorts.AndroidSystemPort(context))
+        val service = ImbSourceBinder(14)
+        try {
+            drainSource(adapter); context.connect(service); drainSource(adapter)
+            assertNull(context.lastCommand)
+            assertEquals("网易云音乐", store.snapshot().mediaSource)
+            assertTrue(store.snapshot().mediaDataAvailable)
+            assertEquals("", store.snapshot().pendingSource)
+            service.raw = 10; service.changed(); drainSource(adapter)
+            assertFalse(store.snapshot().mediaDataAvailable)
+            service.raw = 14; service.changed(); drainSource(adapter)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(7)); drainSource(adapter)
+            assertEquals("网易云音乐", store.snapshot().mediaSource)
+            assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+        } finally { store.destroy() }
     }
 
     @Test fun sourceReadUsesInternalCodesAndUnknownOrFailedReadDoesNotConfirm() {
@@ -79,7 +100,7 @@ class SourceReadbackTest {
             assertEquals("本机音乐", snapshots.last().source)
             service.raw = 999; service.changed(); drainSource(adapter)
             assertFalse(snapshots.last().dataAvailable)
-            service.raw = 10; service.rejectRead = true; service.changed(); drainSource(adapter)
+            service.raw = 14; service.rejectRead = true; service.changed(); drainSource(adapter)
             assertFalse(snapshots.last().dataAvailable)
         } finally { adapter.stop() }
     }
@@ -145,7 +166,7 @@ class SourceReadbackTest {
         try {
             adapter.start { snapshots += it }
             drainSource(adapter); context.connect(service); drainSource(adapter)
-            service.raw = 10
+            service.raw = 14
             val data = Parcel.obtain(); val reply = Parcel.obtain()
             try {
                 data.writeInterfaceToken(CURRENT_CALLBACK_DESCRIPTOR)
@@ -177,12 +198,102 @@ class SourceReadbackTest {
         } finally { adapter.stop() }
     }
 
+    @Test fun sdk14InactiveCloudBrowserEntersFormalStoreAndZeroActionsRejectEveryControl() {
+        val context = SourceContext(RuntimeEnvironment.getApplication())
+        context.installCurrentStatusService(); context.installCommandService()
+        val cloudComponent = ComponentName("com.tencent.wecarflow", "com.mychery.cloudmusic.service.CloudMusicService")
+        val aqComponent = ComponentName("com.tencent.wecarflow", "com.tencent.wecarflow.player.MediaPlaybackService")
+        fun info(component: ComponentName) = ServiceInfo().apply {
+            packageName = component.packageName; name = component.className; enabled = true; exported = true
+            applicationInfo = ApplicationInfo().apply { packageName = component.packageName; enabled = true }
+        }
+        val cloudInfo = info(cloudComponent); val aqInfo = info(aqComponent)
+        val cloudSession = MediaSession(context, "inactive-cloud").apply { isActive = false }
+        val cloud = MediaController(context, cloudSession.sessionToken)
+        shadowOf(cloud).setPackageName(cloudComponent.packageName)
+        val audio = org.robolectric.util.ReflectionHelpers.newInstance(MediaController.PlaybackInfo::class.java).also {
+            org.robolectric.util.ReflectionHelpers.setField(it, "mAudioAttrs", android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA).setContentType(android.media.AudioAttributes.CONTENT_TYPE_UNKNOWN).build())
+        }
+        shadowOf(cloud).setPlaybackInfo(audio)
+        val cover = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
+        val lrc = "[00:00.23]First line\n[00:08.10]Second line"
+        shadowOf(cloud).setMetadata(MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, "Take Me Away")
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, "Keyshia Cole")
+            .putString(MediaMetadata.METADATA_KEY_COMPOSER, lrc)
+            .putString(MediaMetadata.METADATA_KEY_ALBUM, "The Way It Is")
+            .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "cloud-recording")
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, 214_000L)
+            .putBitmap(MediaMetadata.METADATA_KEY_ART, cover).build())
+        shadowOf(cloud).setPlaybackState(PlaybackState.Builder()
+            .setState(PlaybackState.STATE_PLAYING, 3_042L, 1f, android.os.SystemClock.elapsedRealtime())
+            .setActions(0L).build())
+        val adapter = ContentMediaAdapter(context)
+        val store = ContentStore(context, ContentPorts.PreviewVehiclePort(), adapter, ContentPorts.AndroidSystemPort(context))
+        val callbacks = linkedMapOf<ComponentName, ContentPublicMediaBrowsers.Callback>()
+        val registry = ContentPublicMediaBrowsers(context, Handler(Looper.getMainLooper()),
+            ContentPublicMediaBrowsers.Listener {
+                val epoch = ContentMediaAdapter::class.java.getDeclaredField("lifecycle").apply { isAccessible = true }.getLong(adapter)
+                ContentMediaAdapter::class.java.getDeclaredMethod("reconcileControllers", java.lang.Long.TYPE)
+                    .apply { isAccessible = true }.invoke(adapter, epoch)
+            }, ContentPublicMediaBrowsers.ClientFactory { _, component, callback ->
+                callbacks[component] = callback
+                object : ContentPublicMediaBrowsers.Client { override fun connect() {}; override fun disconnect() {} }
+            }, java.util.concurrent.Executor { it.run() })
+        try {
+            drainSource(adapter); val service = ImbSourceBinder(6); context.connect(service); drainSource(adapter)
+            val field = ContentMediaAdapter::class.java.getDeclaredField("browsers").apply { isAccessible = true }
+            (field.get(adapter) as ContentPublicMediaBrowsers).close(); field.set(adapter, registry)
+            shadowOf(context.packageManager).installPackage(android.content.pm.PackageInfo().apply {
+                packageName = cloudComponent.packageName; applicationInfo = cloudInfo.applicationInfo
+                services = arrayOf(aqInfo, cloudInfo)
+            })
+            shadowOf(context.packageManager).addResolveInfoForIntent(Intent(ContentPublicMediaBrowsers.ACTION),
+                ResolveInfo().apply { serviceInfo = aqInfo })
+            registry.refreshNow(emptySet())
+            requireNotNull(callbacks[cloudComponent]).onConnected(cloud); drainSource(adapter)
+            assertFalse(cloudSession.isActive)
+            assertEquals("蓝牙音乐", store.snapshot().mediaSource)
+            store.selectMediaSource("网易云音乐"); drainCommands(store)
+            assertEquals("网易云音乐", store.snapshot().pendingSource)
+            assertEquals("蓝牙音乐", store.snapshot().mediaSource)
+            service.raw = 10; service.changed(); drainSource(adapter)
+            assertFalse("PlayableMedia.source=10 must not confirm the IMB player source", store.snapshot().mediaDataAvailable)
+            assertEquals("网易云音乐", store.snapshot().pendingSource)
+            service.raw = 14; service.changed(); drainSource(adapter)
+            val actual = store.snapshot()
+            assertEquals("网易云音乐", actual.mediaSource); assertEquals("", actual.pendingSource)
+            assertEquals("Take Me Away", actual.mediaTitle); assertEquals("Keyshia Cole", actual.mediaArtist)
+            assertEquals(214_000L, actual.mediaDurationMs); assertTrue(actual.mediaPlaying)
+            assertSame(cover, actual.mediaArtwork)
+            assertFalse(actual.mediaPlaybackAvailable); assertFalse(actual.mediaNextAvailable)
+            assertFalse(adapter.requestPlayback(false)); assertFalse(adapter.requestPlayback(true)); assertFalse(adapter.requestNext())
+            val media = ContentStore::class.java.getDeclaredField("latestMedia").apply { isAccessible = true }.get(store) as ContentPorts.MediaSnapshot
+            assertEquals(lrc, media.embeddedLyrics); assertEquals("The Way It Is", media.album)
+            assertEquals(3_042L, media.positionMs); assertEquals(ContentPorts.MediaSongIdentity.SONG, media.songIdentity)
+            val old = shadowOf(cloud).callbacks.single()
+            service.raw = 13; service.changed(); drainSource(adapter)
+            old.onPlaybackStateChanged(cloud.playbackState); old.onMetadataChanged(cloud.metadata)
+            assertEquals("爱趣听", store.snapshot().mediaSource); assertEquals("暂无媒体", store.snapshot().mediaTitle)
+            assertNull(store.snapshot().mediaArtwork)
+            store.destroy()
+            old.onPlaybackStateChanged(cloud.playbackState); old.onMetadataChanged(cloud.metadata)
+            assertFalse(adapter.isAvailable)
+        } finally { store.destroy(); cloudSession.release() }
+    }
+
     @Test fun sdk13SelectsAiqutingBrowserDespiteRetainedBluetoothPlayingWithTheSameScore() {
         assertSource13SelectsBrowser(PlaybackState.STATE_PLAYING)
     }
 
     @Test fun sdk13SelectsPausedAiqutingBrowserDespiteHigherScoringRetainedBluetoothPlaying() {
         assertSource13SelectsBrowser(PlaybackState.STATE_PAUSED)
+    }
+
+    private fun ContentPublicMediaBrowsers.refreshNow(packages: Set<String>) {
+        refresh(packages)
+        shadowOf(Looper.getMainLooper()).idle()
     }
 
     private fun assertSource13SelectsBrowser(aqState: Int) {
@@ -206,7 +317,7 @@ class SourceReadbackTest {
         shadowOf(aq).setMetadata(metadata("爱趣听当前歌曲"))
         shadowOf(aq).setPlaybackState(playback(aqState))
         shadowOf(context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager).addController(bt)
-        val component = ComponentName("com.tencent.wecarflow", "com.tencent.wecarflow.service.MusicService")
+        val component = ComponentName("com.tencent.wecarflow", "com.tencent.wecarflow.player.MediaPlaybackService")
         val browserInfo = ResolveInfo().apply {
             serviceInfo = ServiceInfo().apply {
                 packageName = component.packageName; name = component.className; enabled = true; exported = true
@@ -225,14 +336,14 @@ class SourceReadbackTest {
             }, ContentPublicMediaBrowsers.ClientFactory { _, _, callback ->
                 browserCallback = callback
                 object : ContentPublicMediaBrowsers.Client { override fun connect() {}; override fun disconnect() {} }
-            })
+            }, java.util.concurrent.Executor { it.run() })
         try {
             drainSource(adapter); context.connect(service); drainSource(adapter)
             val browsers = ContentMediaAdapter::class.java.getDeclaredField("browsers").apply { isAccessible = true }
             (browsers.get(adapter) as ContentPublicMediaBrowsers).close()
             browsers.set(adapter, registry)
             shadowOf(context.packageManager).addResolveInfoForIntent(Intent(ContentPublicMediaBrowsers.ACTION), browserInfo)
-            registry.refresh(setOf(component.packageName)); browserCallback!!.onConnected(aq)
+            registry.refreshNow(setOf(component.packageName)); browserCallback!!.onConnected(aq)
             assertEquals("蓝牙音乐", store.snapshot().mediaSource)
             store.selectMediaSource("爱趣听"); drainCommands(store)
             assertEquals("爱趣听", store.snapshot().pendingSource)
@@ -264,8 +375,8 @@ class SourceReadbackTest {
             ContentPublicMediaBrowsers.Listener { }, ContentPublicMediaBrowsers.ClientFactory { _, component, _ ->
                 created += component
                 object : ContentPublicMediaBrowsers.Client { override fun connect() {}; override fun disconnect() {} }
-            })
-        val aq = ComponentName("com.tencent.wecarflow", "com.tencent.wecarflow.service.MusicService")
+            }, java.util.concurrent.Executor { it.run() })
+        val aq = ComponentName("com.tencent.wecarflow", "com.tencent.wecarflow.player.MediaPlaybackService")
         try {
             adapter.start { }; drainSource(adapter); context.connect(service); drainSource(adapter)
             val field = ContentMediaAdapter::class.java.getDeclaredField("browsers").apply { isAccessible = true }
@@ -278,7 +389,7 @@ class SourceReadbackTest {
                         applicationInfo = ApplicationInfo().apply { packageName = component.packageName; enabled = true }
                     } })
             }
-            registry.refresh(setOf(aq.packageName))
+            registry.refreshNow(setOf(aq.packageName))
             assertEquals(8, created.size)
             assertFalse(created.contains(aq))
             service.raw = 13; service.changed(); drainSource(adapter)
@@ -388,7 +499,7 @@ class SourceReadbackTest {
             val current = SourceBinder(4)
             drainSource(adapter); context.connect(current); drainSource(adapter)
             val before = snapshots.last().generation
-            old.raw = 10
+            old.raw = 14
             old.changed(oldCallback)
             oldConnection.onServiceConnected(COMPONENT, old)
             drainSource(adapter)
@@ -411,7 +522,7 @@ class SourceReadbackTest {
             info.permission = null; context.installStatusService(info = info)
             val snapshots = mutableListOf<ContentPorts.MediaSnapshot>()
             adapter.start { snapshots += it }
-            val wrong = SourceBinder(10, descriptor = "not.the.source.interface")
+            val wrong = SourceBinder(14, descriptor = "not.the.source.interface")
             drainSource(adapter); context.connect(wrong); drainSource(adapter)
             assertEquals(0, wrong.reads)
             assertFalse(snapshots.last().dataAvailable)

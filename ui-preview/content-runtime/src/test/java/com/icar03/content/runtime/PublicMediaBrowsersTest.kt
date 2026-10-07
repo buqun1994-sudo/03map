@@ -45,7 +45,13 @@ class PublicMediaBrowsersTest {
     }
     private fun registry(clients: MutableList<Client>, snapshots: MutableList<List<ContentPublicMediaBrowsers.Session>> = mutableListOf()) =
         ContentPublicMediaBrowsers(app, Handler(Looper.getMainLooper()), ContentPublicMediaBrowsers.Listener { snapshots += it },
-            ContentPublicMediaBrowsers.ClientFactory { _, component, callback -> Client(component, callback).also(clients::add) })
+            ContentPublicMediaBrowsers.ClientFactory { _, component, callback -> Client(component, callback).also(clients::add) },
+            java.util.concurrent.Executor { it.run() })
+
+    private fun ContentPublicMediaBrowsers.refreshNow(packages: Set<String>, preferred: ComponentName? = null) {
+        refresh(packages, preferred)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
 
     @Test fun completeInventoryIsPrioritizedBeforeEightConnectionBudgetAndSkipsInaccessibleServices() {
         repeat(9) { declare(service("player$it")) }
@@ -55,11 +61,11 @@ class PublicMediaBrowsersTest {
         shadowOf(app).denyPermissions(Manifest.permission.READ_CONTACTS)
         val clients = mutableListOf<Client>(); val registry = registry(clients)
         try {
-            registry.refresh(setOf("player8"))
+            registry.refreshNow(setOf("player8"))
             assertEquals(8, clients.size)
             assertEquals("player8", clients.first().component.packageName)
             assertTrue(clients.none { it.component.packageName in setOf("disabled", "private", "denied") })
-            registry.refresh(setOf("player8"))
+            registry.refreshNow(setOf("player8"))
             assertEquals(8, clients.size)
         } finally { registry.close() }
         assertTrue(clients.all { it.disconnected == 1 })
@@ -75,8 +81,78 @@ class PublicMediaBrowsersTest {
         }
         val clients = mutableListOf<Client>(); val registry = registry(clients)
         try {
-            registry.refresh(setOf("eligible"))
+            registry.refreshNow(setOf("eligible"))
             assertEquals(listOf("eligible"), clients.map { it.component.packageName })
+        } finally { registry.close() }
+    }
+
+    @Test fun declaredInventoryFindsUndeclaredCloudAndExactReadbackEndpointWinsTheConnectionBudget() {
+        repeat(9) { declare(service("other$it")) }
+        val declared = service("com.tencent.wecarflow", "com.tencent.wecarflow.player.MediaPlaybackService")
+        val cloud = service(declared.packageName, "com.mychery.cloudmusic.service.CloudMusicService")
+        val decoy = service(declared.packageName, "com.mychery.cloudmusic.service.DecoyCloudMusicService")
+        declare(declared)
+        shadowOf(app.packageManager).installPackage(PackageInfo().apply {
+            packageName = declared.packageName; applicationInfo = declared.applicationInfo
+            services = arrayOf(declared, decoy, cloud)
+        })
+        val clients = mutableListOf<Client>(); val registry = registry(clients)
+        try {
+            registry.refreshNow(emptySet(), ComponentName(cloud.packageName, cloud.name))
+            assertEquals(ContentPublicMediaBrowsers.MAX_CONNECTIONS, clients.size)
+            assertEquals(ComponentName(cloud.packageName, cloud.name), clients.first().component)
+            clients.first().callback.onConnected(controller(cloud.packageName))
+            assertEquals(ComponentName(cloud.packageName, cloud.name), registry.sessions.single().component)
+        } finally { registry.close() }
+    }
+
+    @Test fun inventoryReadsRunOffMainAndCoalesceWhileCacheAndStopRejectRepeatedOrStaleWork() {
+        declare(service("player"))
+        var pmReads = 0
+        val context = object : android.content.ContextWrapper(app) {
+            override fun getPackageManager(): android.content.pm.PackageManager {
+                assertNotEquals("PM/Binder inventory must stay off main", Looper.getMainLooper(), Looper.myLooper())
+                pmReads++
+                return app.packageManager
+            }
+        }
+        val work = java.util.ArrayDeque<Runnable>()
+        val clients = mutableListOf<Client>()
+        val registry = ContentPublicMediaBrowsers(context, Handler(Looper.getMainLooper()),
+            ContentPublicMediaBrowsers.Listener { },
+            ContentPublicMediaBrowsers.ClientFactory { _, component, callback -> Client(component, callback).also(clients::add) },
+            java.util.concurrent.Executor { work.addLast(it) })
+        fun runInventory() {
+            val task = work.removeFirst()
+            val failure = java.util.concurrent.atomic.AtomicReference<Throwable>()
+            val thread = Thread { try { task.run() } catch (error: Throwable) { failure.set(error) } }
+            thread.start(); thread.join(2_000L)
+            assertFalse(thread.isAlive); failure.get()?.let { throw it }
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        try {
+            repeat(100) { registry.refresh(emptySet()) }
+            assertEquals(1, work.size); assertTrue(clients.isEmpty()); assertEquals(0, pmReads)
+            runInventory(); assertEquals(1, clients.size)
+            val reads = pmReads
+            repeat(100) { registry.refreshNow(emptySet()) }
+            assertTrue(work.isEmpty()); assertEquals(reads, pmReads)
+            registry.invalidateInventory("player")
+            assertEquals(1, clients.single().disconnected); assertEquals(1, work.size)
+            registry.close()
+            runInventory()
+            assertEquals(1, clients.size); assertTrue(registry.sessions.isEmpty())
+        } finally { registry.close() }
+    }
+
+    @Test fun connectedTokenFromAnotherPackageCannotAcquireTheBrowserComponentIdentity() {
+        declare(service("player"))
+        val clients = mutableListOf<Client>(); val registry = registry(clients)
+        try {
+            registry.refreshNow(emptySet())
+            clients.single().callback.onConnected(controller("unrelated"))
+            assertTrue(registry.sessions.isEmpty())
+            assertEquals(1, clients.single().disconnected)
         } finally { registry.close() }
     }
 
@@ -85,7 +161,7 @@ class PublicMediaBrowsersTest {
         val clients = mutableListOf<Client>(); val snapshots = mutableListOf<List<ContentPublicMediaBrowsers.Session>>()
         val registry = registry(clients, snapshots)
         try {
-            registry.refresh(emptySet())
+            registry.refreshNow(emptySet())
             val first = clients.single()
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ContentPublicMediaBrowsers.CONNECT_TIMEOUT_MS))
             assertEquals(1, first.disconnected)
@@ -107,12 +183,12 @@ class PublicMediaBrowsersTest {
         declare(service("player"))
         val clients = mutableListOf<Client>(); val registry = registry(clients)
         try {
-            registry.refresh(emptySet()); clients.single().callback.onConnectionFailed()
+            registry.refreshNow(emptySet()); clients.single().callback.onConnectionFailed()
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ContentPublicMediaBrowsers.RETRY_MS))
             clients.last().callback.onConnectionFailed()
-            registry.refresh(emptySet()); assertEquals(2, clients.size)
+            registry.refreshNow(emptySet()); assertEquals(2, clients.size)
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ContentPublicMediaBrowsers.REPROBE_MS))
-            registry.refresh(emptySet()); assertEquals(3, clients.size)
+            registry.refreshNow(emptySet()); assertEquals(3, clients.size)
             val old = controller("player"); clients.last().callback.onConnected(old)
             registry.onSessionDestroyed(old.sessionToken)
             assertTrue(registry.sessions.isEmpty()); assertEquals(4, clients.size)

@@ -47,6 +47,20 @@ class AmbientUiTransitionTest {
         compose.runOnIdle { dispatch.invoke(root.view.viewTreeObserver, focused) }
     }
 
+    private fun advanceTransitionStart(hasTarget: Boolean = true) {
+        // With a stopped clock, idle does not apply the viewport/target composition.
+        // Observe retarget's zero fraction and prepared/withdrawn target one frame at a time.
+        compose.mainClock.advanceTimeUntil(AMBIENT_TRANSITION_MS.toLong()) {
+            val frame = compose.onNodeWithTag("media-ambient").fetchSemanticsNode().config
+            frame[AmbientHasContent] && frame[AmbientFraction] == 0f &&
+                (frame[AmbientPreparedGeneration] != 0) == hasTarget
+        }
+        compose.waitForIdle()
+        // animate takes its start timestamp on the next frame, before the elapsed budget.
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+    }
+
     private fun advanceMotionPublication() {
         // Apply the resume/focus input, then allow at most two bounded scene samples.
         // AmbientPhase describes the displayed scene, not the former 60Hz clock state.
@@ -71,7 +85,7 @@ class AmbientUiTransitionTest {
                 }
             }
         }
-        repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        advanceTransitionStart()
         compose.mainClock.advanceTimeBy(640); compose.waitForIdle()
         repeat(2) { index ->
             compose.runOnIdle {
@@ -98,11 +112,11 @@ class AmbientUiTransitionTest {
                 }
             }
         }
-        compose.waitForIdle(); compose.mainClock.advanceTimeBy(640)
+        advanceTransitionStart(); compose.mainClock.advanceTimeBy(640)
         assertEquals(1f, value(AmbientOpacity), .001f)
         val frozenPhase = value(AmbientPhase)
         compose.runOnIdle { target.value = scene(Color.BLUE) }
-        compose.waitForIdle(); compose.mainClock.advanceTimeBy(160)
+        advanceTransitionStart(); compose.mainClock.advanceTimeBy(160)
         var fraction = value(AmbientFraction)
         assertTrue(fraction > 0f && fraction < 1f)
         for (nextWidth in listOf(256, 272, 288, 304, 320)) {
@@ -137,6 +151,44 @@ class AmbientUiTransitionTest {
         assertEquals(ambientFrameSize(IntSize(320, 480)), value(AmbientPreparedSize))
     }
 
+    @Test fun coveringSettingsFreezeBackgroundWorkAndCollapseResumesTheExistingScene() {
+        val state = mutableStateOf(ContentUiState(previewMode = false))
+        val texture = scene(Color.BLUE)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f),
+                LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
+                ContentTheme(false) {
+                    ContentPanel(state.value, {}, Modifier.requiredSize(640.dp, 1080.dp),
+                        ambientBackground = { MediaAmbientBackground(texture, false, animating = true) })
+                }
+            }
+        }
+        advanceTransitionStart()
+        dispatchFocus(true)
+        compose.mainClock.advanceTimeBy(640)
+        compose.waitForIdle()
+        advanceMotionPublication()
+        assertTrue(value(AmbientPhase) > 0f)
+        compose.runOnIdle { state.value = state.value.copy(settingsOpen = true) }
+        compose.mainClock.advanceTimeBy(640)
+        compose.waitForIdle()
+        val frozenPhase = value(AmbientPhase)
+        val frozenFrame = value(AmbientPreparedGeneration)
+        compose.mainClock.advanceTimeBy(1500)
+        compose.waitForIdle()
+        assertEquals("opaque settings do not sample the covered background", frozenPhase, value(AmbientPhase), .001f)
+        assertEquals(frozenFrame, value(AmbientPreparedGeneration))
+        assertEquals(1f, value(AmbientOpacity), .001f)
+        compose.onNodeWithTag("settings-collapse").performClick()
+        compose.mainClock.advanceTimeBy(480)
+        compose.waitForIdle()
+        advanceMotionPublication()
+        assertTrue("revealing the page resumes the same motion phase", value(AmbientPhase) > frozenPhase)
+        assertNotEquals(frozenFrame, value(AmbientPreparedGeneration))
+        assertEquals("the retained scene never fades out on collapse", 1f, value(AmbientOpacity), .001f)
+    }
+
     @Test fun appearanceReplacementDepartureAndPauseUseThePersistentDriver() {
         val target = mutableStateOf<AmbientArtwork?>(null)
         val playing = mutableStateOf(false); val active = mutableStateOf(true)
@@ -151,7 +203,7 @@ class AmbientUiTransitionTest {
         compose.waitForIdle()
         assertEquals(0f, value(AmbientOpacity), .001f)
         compose.runOnIdle { target.value = scene(Color.RED) }
-        compose.waitForIdle(); compose.mainClock.advanceTimeBy(240)
+        advanceTransitionStart(); compose.mainClock.advanceTimeBy(240)
         val arrival = value(AmbientOpacity)
         assertTrue(arrival > .1f && arrival < .9f)
         compose.mainClock.advanceTimeBy(400)
@@ -160,16 +212,16 @@ class AmbientUiTransitionTest {
         assertTrue(preparedSize.width in 1..AMBIENT_MAX_FRAME_EDGE && preparedSize.height in 1..AMBIENT_MAX_FRAME_EDGE)
         assertTrue(value(AmbientHasContent))
         compose.runOnIdle { target.value = scene(Color.BLUE) }
-        compose.waitForIdle(); compose.mainClock.advanceTimeBy(240)
+        advanceTransitionStart(); compose.mainClock.advanceTimeBy(240)
         assertEquals(1f, value(AmbientOpacity), .001f)
         assertTrue(value(AmbientFraction) in .1f.. .9f)
         compose.runOnIdle { target.value = null }
-        compose.waitForIdle(); compose.mainClock.advanceTimeBy(240)
+        advanceTransitionStart(hasTarget = false); compose.mainClock.advanceTimeBy(240)
         assertEquals("appearance and departure share the same curve/time", arrival, 1f - value(AmbientOpacity), .04f)
         compose.mainClock.advanceTimeBy(400)
         assertEquals(0f, value(AmbientOpacity), .001f)
         compose.runOnIdle { target.value = scene(Color.GREEN); playing.value = true }
-        compose.waitForIdle(); compose.mainClock.advanceTimeBy(640)
+        advanceTransitionStart(); compose.mainClock.advanceTimeBy(640)
         val moving = value(AmbientPhase)
         assertTrue(moving > 0f)
         compose.runOnIdle { playing.value = false }
@@ -206,6 +258,7 @@ class AmbientUiTransitionTest {
         assertEquals("lifecycle stop freezes the existing phase", stopped, value(AmbientPhase), .001f)
         assertEquals(0, value(AmbientPreparedGeneration))
         compose.runOnIdle { active.value = true }
+        advanceTransitionStart()
         advanceMotionPublication()
         assertTrue("resume continues instead of restarting at zero", value(AmbientPhase) > stopped)
         assertTrue("host return never replays the background time", value(AmbientPhase) - stopped < .5f)

@@ -54,6 +54,7 @@ internal const val AMBIENT_MAX_FRAME_EDGE = 192
 internal const val AMBIENT_SCENE_INTERVAL_NS = 100_000_000L
 private val AmbientEasing = CubicBezierEasing(.42f, 0f, .58f, 1f)
 // Host tests can prepare synchronously while keeping the production worker boundary explicit.
+internal val LocalAmbientMotionAllowed = staticCompositionLocalOf { true }
 internal val LocalAmbientPreparationDispatcher = staticCompositionLocalOf<CoroutineDispatcher> { Dispatchers.Default }
 
 /**
@@ -80,7 +81,7 @@ fun MediaAmbientBackground(
     var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
     val latestViewport = rememberUpdatedState(viewport)
     val viewportReady = viewport.width > 0 && viewport.height > 0
-    val motionEnabled = animating && focused
+    val motionEnabled = animating && focused && LocalAmbientMotionAllowed.current
     val frozenGeometry = if (viewportReady && !motionEnabled) ambientFrameSize(viewport) else IntSize.Zero
     DisposableEffect(view) {
         val tree = view.viewTreeObserver

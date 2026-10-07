@@ -51,7 +51,30 @@ enum class VehicleControl(
         return next >= 0 && (level == 0) != (next == 0)
     }
 
+
+
+/**
+ * Shortcut-page vehicle features that are not seat level controls.  The Java
+ * vehicle chain consumes the stable id while keeping function/area/raw values
+ * in ContentVehicleProtocol.
+ */
+enum class VehicleFeature(
+    val id: String,
+    val label: String,
+    val action: Boolean = false,
+) {
+    RearFog("rear_fog", "后雾灯"),
+    PassengerWindowLock("passenger_window_lock", "乘客车窗禁用"),
+    WiperMaintenance("wiper_maintenance", "前雨刮维护", action = true),
+    GloveBox("glove_box", "手套箱", action = true),
+    LeftChildLock("left_child_lock", "左后排儿童锁"),
+    RightChildLock("right_child_lock", "右后排儿童锁"),
+    WirelessCharging("wireless_charging", "手机无线充电"),
+    WindowVent("window_vent", "车窗透气／车窗全关"),
+    ExternalDischarge("external_discharge", "对外放电"),
+    PassengerSeatAdjust("passenger_seat_adjust", "副驾电动调节", action = true);
+
     companion object {
-        @JvmStatic fun fromId(id: String?): VehicleControl? = entries.firstOrNull { it.id == id }
+        @JvmStatic fun fromId(id: String?): VehicleFeature? = entries.firstOrNull { it.id == id }
     }
 }

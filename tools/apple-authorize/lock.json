@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "0.25.12",
+  "compilerOptions": {
+    "target": "chrome66",
+    "charset": "utf8",
+    "legalComments": "inline",
+    "minify": false,
+    "sourcemap": false
+  },
+  "bannerSha256": "49e47ae01352a1154d0ba1ffaa68dbba3f543b6f2c24cce0648f6bef53aa8672",
+  "assets": [
+    {
+      "name": "home-76bd5c25830b7078b52d.js",
+      "url": "https://appleid.cdn-apple.com/appleauth/static/module-assets/home-76bd5c25830b7078b52d.js",
+      "upstreamSha256": "4780584db5095b3d338291478e94cda4cbd591b9719443369a81aa6643f799bd",
+      "outputSha256": "839c4c5eaf3f43a9e799a048fe4617ee044029c3ff244ed0da49b15e5b404a98"
+    },
+    {
+      "name": "identityWidget-e48dc0b32509f79e9025.js",
+      "url": "https://appleid.cdn-apple.com/appleauth/static/module-assets/identityWidget-e48dc0b32509f79e9025.js",
+      "upstreamSha256": "7c2a73b176fcf68533c6cb713a9f61ab89555288ac3b9372406f8fdb6eb743cc",
+      "outputSha256": "6e535986e45925207daeccf499488f0ae19f7314c2b5ab2e2fc9fa37ff286345"
+    }
+  ]
+}

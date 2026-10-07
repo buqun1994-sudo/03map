@@ -35,6 +35,7 @@ import com.icar03.content.runtime.media.ContentMediaSessionArbitrationDecision;
 import com.icar03.content.runtime.media.ContentMediaSessionBluetoothActivity;
 import com.icar03.content.runtime.media.ContentMediaSessionCandidate;
 import com.icar03.content.runtime.media.ContentMediaSessionTransport;
+import com.icar03.content.runtime.media.ContentMediaSourcePolicy;
 import com.icar03.content.runtime.media.ContentPublicMediaBrowsers;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -123,6 +124,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     private final ArrayDeque<Runnable> deliveries = new ArrayDeque<>();
     private boolean drainingDeliveries;
     private ContentPorts.MediaSnapshot lastPublishedSnapshot;
+    private String publicFieldLogSignature = "";
     private boolean lastPublishedSourceAvailable;
     private Bitmap snapshotArtwork;
     private int snapshotArtworkGeneration;
@@ -224,7 +226,10 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     @Override public boolean requestPlayback(boolean playing) {
         MediaController current;
-        synchronized (this) { current = controller; }
+        synchronized (this) {
+            current = commandControllerLocked(PlaybackState.ACTION_PLAY_PAUSE
+                    | (playing ? PlaybackState.ACTION_PLAY : PlaybackState.ACTION_PAUSE));
+        }
         if (current == null) return false;
         try {
             if (playing) current.getTransportControls().play();
@@ -236,9 +241,17 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         }
     }
 
+    private MediaController commandControllerLocked(long requiredActions) {
+        ObservedController item = controller == null ? null : observed.get(controller.getSessionToken());
+        if (!running || item == null || item.destroyed || !matchesActualSource(item)
+                || !item.playbackMatchesMetadata || item.facts.playback == null
+                || (item.facts.playback.getActions() & requiredActions) == 0L) return null;
+        return item.controller;
+    }
+
     @Override public boolean requestNext() {
         MediaController current;
-        synchronized (this) { current = controller; }
+        synchronized (this) { current = commandControllerLocked(PlaybackState.ACTION_SKIP_TO_NEXT); }
         if (current == null) return false;
         try {
             current.getTransportControls().skipToNext();
@@ -306,10 +319,12 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             sourceHandler = worker;
             sessionManager = manager;
             lastPublishedSnapshot = null;
+            publicFieldLogSignature = "";
             cachedAudioMode = AudioManager.MODE_NORMAL;
             artworkExecutor = Executors.newSingleThreadExecutor(runnable -> new Thread(runnable, "content-media-artwork"));
             browsers = new ContentPublicMediaBrowsers(context, handler,
-                    sessions -> { if (isCurrent(epoch)) reconcileControllers(epoch); });
+                    sessions -> { if (isCurrent(epoch)) reconcileControllers(epoch); },
+                    (Executor) runnable -> executeSource(worker, runnable));
             discovery = new Runnable() {
                 @Override public void run() {
                     if (!isCurrent(epoch)) return;
@@ -400,6 +415,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             sessionListener = null;
             listener = null;
             lastPublishedSnapshot = null;
+            publicFieldLogSignature = "";
             effectLocked(() -> {
                 unregisterReceiver(avrcp); unregisterReceiver(environment); unregisterReceiver(packages);
                 if (oldDiscovery != null) handler.removeCallbacks(oldDiscovery);
@@ -439,6 +455,8 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         BroadcastReceiver packages = new BroadcastReceiver() {
             @Override public void onReceive(Context ignored, Intent intent) {
                 if (!isCurrent(epoch)) return;
+                if (browsers != null) browsers.invalidateInventory(intent == null || intent.getData() == null
+                        ? null : intent.getData().getSchemeSpecificPart());
                 if (intent != null && intent.getData() != null
                         && MEDIA_CENTER_PACKAGE.equals(intent.getData().getSchemeSpecificPart())) {
                     onMain(() -> {
@@ -1002,20 +1020,17 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             Set<String> packages = new HashSet<>();
             for (MediaController item : inventory) if (item != null) packages.add(item.getPackageName());
             final ContentPublicMediaBrowsers registry;
-            final String marker;
+            final ComponentName preferred;
             synchronized (ContentMediaAdapter.this) {
                 if (!isCurrent(epoch)) return;
                 sessionListSequence++;
                 systemControllers = new ArrayList<>(inventory);
-                if (actualSource != null || sourceService != null) packages.add(MEDIA_CENTER_PACKAGE);
-                marker = "网易云音乐".equals(actualSource) ? "cloudmusic"
-                        : "爱趣听".equals(actualSource) ? ".musicservice"
-                        : "USB音乐".equals(actualSource) ? "usbplayer"
-                        : "本机音乐".equals(actualSource) ? "hddplayer"
-                        : "蓝牙音乐".equals(actualSource) ? "bluetooth" : null;
+                if (sourceService != null) packages.add(MEDIA_CENTER_PACKAGE);
+                preferred = ContentMediaSourcePolicy.componentForSource(actualSource);
+                if (preferred != null) packages.add(preferred.getPackageName());
                 registry = browsers;
             }
-            if (registry != null) registry.refresh(packages, marker);
+            if (registry != null) registry.refresh(packages, preferred);
             reconcileControllers(epoch);
         });
     }
@@ -1312,8 +1327,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             AudioAttributes audio = safeAudioAttributes(item.controller);
             String packageName = item.packageName;
             String sessionId = item.sessionId;
-            String sourceId = sourceForController(item.controller);
-            if (sourceId == null) sourceId = packageName;
+            String sourceId = publicSourceIdentity(item);
             Integer playbackState = state == null ? null : state.getState();
             Integer audioUsage = audio == null ? null : audio.getUsage();
             Integer audioContentType = audio == null ? null : audio.getContentType();
@@ -1384,6 +1398,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
     }
 
     private boolean matchesActualSource(ObservedController item) {
+        if (ambiguousPublicSource(item)) return false;
         String precise = sourceForController(item.controller);
         // No source service is different from an observed but unresolved readback.
         // The latter cannot authorize a retained session (e.g. Bluetooth after switching
@@ -1420,6 +1435,24 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return state.getPosition() > 0L || fields.durationMs >= 1000L;
     }
 
+    private String publicSourceIdentity(ObservedController item) {
+        Set<ComponentName> components = new HashSet<>();
+        for (ContentPublicMediaBrowsers.Session session : browserSessions) {
+            if (sameToken(item.token, session.getController())) components.add(session.getComponent());
+        }
+        return components.size() == 1 ? components.iterator().next().flattenToString() : item.sessionId;
+    }
+
+    private boolean ambiguousPublicSource(ObservedController item) {
+        Set<String> sources = new HashSet<>();
+        for (ContentPublicMediaBrowsers.Session session : browserSessions) {
+            if (!sameToken(item.token, session.getController())) continue;
+            String source = sourceForComponent(session.getComponent());
+            if (source != null) sources.add(source);
+        }
+        return sources.size() > 1;
+    }
+
     private String sourceForController(MediaController candidate) {
         if (candidate == null) return null;
         Set<String> preciseSources = new HashSet<>();
@@ -1431,21 +1464,12 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         if (preciseSources.size() > 1) return null;
         if (!preciseSources.isEmpty()) return preciseSources.iterator().next();
         ObservedController item = observed.get(candidate.getSessionToken());
-        return sourceForPackage(item == null ? null : item.packageName);
+        // This exact platform AVRCP transport is a public protocol identity, not a package-name heuristic.
+        return item != null && item.bluetooth ? "蓝牙音乐" : null;
     }
 
     private static String sourceForComponent(ComponentName component) {
-        String name = component.getClassName().toLowerCase(java.util.Locale.ROOT);
-        if (name.contains("cloudmusic") || name.contains("netease")) return "网易云音乐";
-        if (name.contains("usbplayer")) return "USB音乐";
-        if (name.contains("hddplayer") || name.contains("localmusic")) return "本机音乐";
-        if (component.getPackageName().equals("com.android.bluetooth")) return "蓝牙音乐";
-        if (MEDIA_CENTER_PACKAGE.equals(component.getPackageName()) &&
-                (name.endsWith(".musicservice") || name.endsWith(".mediaplaybackservice"))) return "爱趣听";
-        // The current car firmware exposes Aiquting through this shared public Browser endpoint.
-        // The Binder readback remains the authority when it is available; this identity only keeps
-        // a valid public session readable during the short no-readback window.
-        return null;
+        return ContentMediaSourcePolicy.sourceForComponent(component);
     }
 
     private void publishSnapshot(long epoch) {
@@ -1495,12 +1519,16 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 : ContentPorts.MediaSongIdentity.UNKNOWN;
         publishedRecording = identity;
         long actions = playback == null ? 0L : playback.getActions();
+        if (correlated && item.metadataKnown && item.playbackKnown && item.audioKnown) {
+            logPublicFieldsLocked(epoch, item, source, metadata, actions);
+        }
         Bitmap artwork = metadata.artwork;
         if (artwork != null && artwork.isRecycled()) artwork = null;
         if (songIdentity == ContentPorts.MediaSongIdentity.SONG && artwork == null && metadata.metadata != null) {
             List<String> uris = metadata.artworkUris;
             if (!uris.isEmpty() && !identity.isEmpty()) {
-                artwork = uriArtwork(epoch, source + '\u001f' + avrcpRecordingKey(fields), uris);
+                artwork = uriArtwork(epoch, source + '\u001f' + item.sessionId + '\u001f'
+                        + artworkRecordingKey(fields), uris);
             } else cancelArtwork();
         } else cancelArtwork();
         boolean recordingPlayback = correlated && item.playbackMatchesMetadata;
@@ -1530,12 +1558,28 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return new ContentPorts.MediaSnapshot(true, false, source, playing, generation,
                 fields.title.isEmpty() ? "暂无媒体" : fields.title,
                 fields.artist.isEmpty() ? "未连接" : fields.artist,
-                (actions & (PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE)) != 0L,
-                (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L, artwork,
+                recordingPlayback && (actions & (PlaybackState.ACTION_PLAY_PAUSE
+                        | (playing ? PlaybackState.ACTION_PAUSE : PlaybackState.ACTION_PLAY))) != 0L,
+                recordingPlayback && (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L, artwork,
                 fields.mediaId, fields.album, duration, position, updateTime,
                 playing ? speed : 0f, fields.embeddedLyrics, songIdentity, playbackState,
                 avrcpEventSequence, avrcpPositionMs, avrcpPlaybackState, avrcpElapsedRealtimeMs,
-                avrcpPositionElapsedRealtimeMs);
+                avrcpPositionElapsedRealtimeMs, artwork == null && artworkRequestKey != null);
+    }
+
+    private void logPublicFieldsLocked(long epoch, ObservedController item, String source,
+            MetadataFacts metadata, long actions) {
+        String signature = item.sessionId + '\u001f' + source + '\u001f'
+                + artworkRecordingKey(metadata.fields) + '\u001f' + metadata.artworkKeys
+                + '\u001f' + metadata.artworkUris;
+        if (signature.equals(publicFieldLogSignature)) return;
+        publicFieldLogSignature = signature;
+        String message = "public media fields source=" + source
+                + " hasTitle=" + !metadata.fields.title.isEmpty()
+                + " hasArtist=" + !metadata.fields.artist.isEmpty()
+                + " durationMs=" + metadata.fields.durationMs
+                + " actions=" + actions + " artworkKeys=" + metadata.artworkKeys;
+        currentEffectLocked(epoch, () -> Log.i(TAG, message));
     }
 
     private static boolean sameSnapshot(ContentPorts.MediaSnapshot first, ContentPorts.MediaSnapshot second) {
@@ -1544,6 +1588,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 && first.generation == second.generation && java.util.Objects.equals(first.title, second.title)
                 && java.util.Objects.equals(first.artist, second.artist) && first.playbackAvailable == second.playbackAvailable
                 && first.nextAvailable == second.nextAvailable && first.artwork == second.artwork
+                && first.publicArtworkPending == second.publicArtworkPending
                 && first.mediaId.equals(second.mediaId) && first.album.equals(second.album)
                 && first.durationMs == second.durationMs && first.positionMs == second.positionMs
                 && first.positionElapsedRealtimeMs == second.positionElapsedRealtimeMs
@@ -1697,7 +1742,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         final long sequence = ++artworkSequence;
         final long sourceVersion = sourceEpoch;
         final MediaSession.Token token = controller.getSessionToken();
-        final String recording = avrcpRecordingKey(observed.get(token).facts.metadata.fields);
+        final String recording = artworkRecordingKey(observed.get(token).facts.metadata.fields);
         final CancellationSignal cancellation = new CancellationSignal();
         artworkCancellation = cancellation;
         artworkTimeout = () -> {
@@ -1736,7 +1781,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                             && sequence == artworkSequence && requestKey.equals(artworkRequestKey)
                             && sameToken(token, controller) && selected != null && !selected.destroyed
                             && matchesActualSource(selected)
-                            && recording.equals(avrcpRecordingKey(currentFields))
+                            && recording.equals(artworkRecordingKey(currentFields))
                             && uris.equals(currentMetadata.artworkUris)
                             && songIdentityFor(controller, currentFields) == ContentPorts.MediaSongIdentity.SONG
                             && !cancellation.isCanceled();
@@ -1807,6 +1852,25 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return null;
     }
 
+    private static String publicArtworkKeys(MediaMetadata metadata) {
+        List<String> keys = new ArrayList<>();
+        if (metadata == null) return keys.toString();
+        for (String key : new String[] { MediaMetadata.METADATA_KEY_ALBUM_ART,
+                MediaMetadata.METADATA_KEY_ART, MediaMetadata.METADATA_KEY_DISPLAY_ICON }) {
+            try { if (metadata.getBitmap(key) != null) keys.add(key); } catch (RuntimeException ignored) { }
+        }
+        for (String key : new String[] { MediaMetadata.METADATA_KEY_ALBUM_ART_URI,
+                MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI }) {
+            if (!text(metadata, key).isEmpty()) keys.add(key);
+        }
+        try {
+            MediaDescription description = metadata.getDescription();
+            if (description.getIconBitmap() != null) keys.add("MediaDescription.iconBitmap");
+            if (description.getIconUri() != null) keys.add("MediaDescription.iconUri");
+        } catch (RuntimeException ignored) { }
+        return keys.toString();
+    }
+
     private static List<String> artworkUris(MediaMetadata metadata) {
         java.util.LinkedHashSet<String> uris = new java.util.LinkedHashSet<>();
         if (metadata == null) return new ArrayList<>();
@@ -1850,9 +1914,15 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         duration = Math.max(0L, Math.min(duration, 86_400_000L));
         String rawAlbum = text(metadata, MediaMetadata.METADATA_KEY_ALBUM);
         String embedded = firstEmbeddedLyrics(description == null ? "" : description.getDescription(),
-                text(metadata, MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION), rawAlbum);
+                text(metadata, MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION),
+                text(metadata, MediaMetadata.METADATA_KEY_COMPOSER), rawAlbum);
         String album = firstEmbeddedLyrics(rawAlbum).isEmpty() ? rawAlbum : "";
         return new MediaFields(title, artist, mediaId, album, duration, embedded);
+    }
+
+    private static String artworkRecordingKey(MediaFields fields) {
+        return fields.mediaId + '\u001f' + fields.title + '\u001f' + fields.artist
+                + '\u001f' + fields.album + '\u001f' + fields.durationMs;
     }
 
     private static String recordingIdentity(MediaFields fields) {
@@ -1883,16 +1953,6 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private static boolean sameToken(MediaController first, MediaController second) {
         return first == second || first != null && second != null && first.getSessionToken().equals(second.getSessionToken());
-    }
-
-    private String sourceForPackage(String packageName) {
-        if (packageName == null) return null;
-        String lower = packageName.toLowerCase(java.util.Locale.ROOT);
-        if (lower.contains("bluetooth") || lower.contains("btmusic")) return "蓝牙音乐";
-        if (lower.contains("netease") || lower.contains("cloudmusic")) return "网易云音乐";
-        if (lower.contains("usb")) return "USB音乐";
-        // The shared media-center package cannot distinguish online/HDD/USB providers.
-        return null;
     }
 
     private static final class ObservedController {
@@ -1930,12 +1990,14 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         final String identity;
         final Bitmap artwork;
         final List<String> artworkUris;
+        final String artworkKeys;
         MetadataFacts(MediaMetadata metadata) {
             this.metadata = metadata;
             fields = mediaFields(metadata);
             identity = recordingIdentity(fields);
             artwork = bitmapArtwork(metadata);
             artworkUris = Collections.unmodifiableList(ContentMediaAdapter.artworkUris(metadata));
+            artworkKeys = publicArtworkKeys(metadata);
         }
     }
 
@@ -2093,7 +2155,8 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         switch (source) {
             case 4: return "USB音乐";
             case 6: return "蓝牙音乐";
-            case 10: return "网易云音乐";
+            // IMB getMediaDataSoure()/player mSource uses 14; PlayableMedia.source=10 is a different domain.
+            case 14: return "网易云音乐";
             case 11: return "本机音乐";
             // OEM MediaConstant.LIVE_MUSIC_SOURCE (SDK domain); AQT_PROGRAM uses a different card-domain code.
             case 13: return "爱趣听";

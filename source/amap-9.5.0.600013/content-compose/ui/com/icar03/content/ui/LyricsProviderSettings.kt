@@ -21,6 +21,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +42,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import android.view.View
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.ContextThemeWrapper
+import android.content.res.Configuration
+import android.content.res.Resources
+import android.util.DisplayMetrics
+import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -46,11 +57,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.runtime.SideEffect
+import android.view.ViewGroup
+import android.view.Window
+import androidx.activity.ComponentDialog
+import androidx.activity.addCallback
+import androidx.compose.runtime.CompositionContext
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCompositionContext
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.AbstractComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.semantics.dialog
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import androidx.lifecycle.findViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.findViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 
 /** Stable settings projection; it contains no runtime or credential details. */
 @Immutable
@@ -103,16 +130,27 @@ fun LyricsProviderSettings(
     val design = LocalSettingsDesign.current
     val selectedOption = lyricsProviderOptions.firstOrNull { it.id == state.preferredPlatform } ?: lyricsProviderOptions.first()
     val selectionEnabled = enabled && state.available
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val providerStyle = LocalTextStyle.current.merge(design.providerOptionStyle)
+    val groupWidth = remember(textMeasurer, density, providerStyle, design.providerIconSize, design.smallGap) {
+        with(density) {
+            lyricsProviderOptions.maxOf {
+                textMeasurer.measure(it.label, style = providerStyle, maxLines = 1, softWrap = false).size.width
+            }.toDp()
+        } + design.providerIconSize + design.smallGap
+    }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
         Text("选择更倾向使用的歌词来源", style = design.optionStyle, color = design.text,
             modifier = Modifier.testTag("settings-label-歌曲平台倾向").semantics { stateDescription = "歌曲平台倾向·${selectedOption.label}" })
         BoxWithConstraints(Modifier.fillMaxWidth().selectableGroup()) {
-            val columns = if (maxWidth >= 360.dp) 2 else 1
+            val minimumChoiceWidth = groupWidth + design.smallGap * 2
+            val columns = if (maxWidth >= minimumChoiceWidth * 2 + design.itemGap) 2 else 1
             Column(verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
                 lyricsProviderOptions.chunked(columns).forEach { rowOptions ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(design.itemGap)) {
                         rowOptions.forEach { option ->
-                            ProviderChoice(option, option.id == selectedOption.id, selectionEnabled,
+                            ProviderChoice(option, option.id == selectedOption.id, selectionEnabled, groupWidth,
                                 onSelect = { onEvent(LyricsPlatformSelected(option.id)) }, modifier = Modifier.weight(1f))
                         }
                         if (rowOptions.size < columns) Spacer(Modifier.weight(1f))
@@ -129,16 +167,17 @@ fun LyricsProviderSettings(
 
 @Composable
 private fun ProviderChoice(
-    option: LyricsProviderOption, selected: Boolean, enabled: Boolean, onSelect: () -> Unit,
+    option: LyricsProviderOption, selected: Boolean, enabled: Boolean,
+    groupWidth: androidx.compose.ui.unit.Dp, onSelect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val design = LocalSettingsDesign.current
     val interactions = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val shape = RoundedCornerShape(8.dp)
+    val shape = design.segmentShape
     Box(
         modifier.heightIn(min = 56.dp).testTag("settings-platform-${option.id}")
             .clip(shape)
-            .background((if (selected) design.track else design.card).copy(alpha = if (enabled) 1f else .38f))
+            .background((if (selected) design.selected else design.card).copy(alpha = if (enabled) 1f else .38f))
             .clickable(interactionSource = interactions, indication = null, enabled = enabled && !selected,
                 role = Role.RadioButton, onClick = { if (enabled && !selected) onSelect() })
             .semantics {
@@ -149,14 +188,19 @@ private fun ProviderChoice(
         contentAlignment = Alignment.Center,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = design.pagePadding),
+            Modifier.width(groupWidth).padding(vertical = design.smallGap)
+                .testTag("settings-platform-${option.id}-group"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(design.smallGap),
         ) {
-            if (option.iconRes == null) Icon(Icons.Default.AutoAwesome, null, Modifier.size(24.dp), tint = design.text)
-            else Image(painterResource(option.iconRes), null, Modifier.size(24.dp))
-            Text(option.label, style = design.optionStyle,
-                color = design.text.copy(alpha = if (enabled) 1f else .38f), maxLines = 1)
+            val iconModifier = Modifier.size(design.providerIconSize).testTag("settings-platform-${option.id}-icon")
+            if (option.iconRes == null) Icon(Icons.Default.AutoAwesome, null, iconModifier,
+                tint = if (selected) design.selectedText else design.text)
+            else Image(painterResource(option.iconRes), null, iconModifier)
+            Text(option.label, style = design.providerOptionStyle,
+                modifier = Modifier.testTag("settings-platform-${option.id}-label"),
+                color = (if (selected) design.selectedText else design.text).copy(alpha = if (enabled) 1f else .38f),
+                maxLines = 1, softWrap = false)
         }
     }
 }
@@ -206,24 +250,10 @@ fun AppleMusicLoginPanel(
     content: @Composable () -> Unit,
 ) {
     val design = LocalSettingsDesign.current
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
-        usePlatformDefaultWidth = false, dismissOnBackPress = true,
-        dismissOnClickOutside = false, decorFitsSystemWindows = true,
-    )) {
-        val view = LocalView.current
-        @Suppress("DEPRECATION")
-        SideEffect {
-            (view.parent as? DialogWindowProvider)?.window?.let { window ->
-                // Keep the system's IME resize behavior, especially on Android 9 WebView.
-                // A large independent app window does not require hiding system bars.
-                window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            }
-        }
+    AppleMusicScreenDialog(onDismiss) {
         Box(
             modifier.fillMaxSize().padding(design.pagePadding)
-                .downwardSoftShadow(design.card, design.dark, 8.dp)
+                .settingsSurfaceShadow(design.card, design.dark, design.pageCornerRadius)
                 .clip(design.pageShape).background(design.card)
                 .testTag("settings-apple-login-panel"),
         ) {
@@ -263,4 +293,133 @@ fun AppleMusicLoginPanel(
             }
         }
     }
+}
+
+/** Configure the actual window and view context before any content or WindowManager traversal. */
+@Composable
+private fun AppleMusicScreenDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    val hostView = LocalView.current
+    val hostContext = LocalContext.current
+    // Resource-only contexts have no Activity WindowManager. Resolve ownership from the real root.
+    val hostActivity = remember(hostView, hostContext) {
+        requireNotNull(appleLoginActivity(hostView.rootView.context) ?: appleLoginActivity(hostContext)) {
+            "Apple Music login requires the host Activity"
+        }
+    }
+    // Capture physical content resources per open; map invalidations must not rebuild the window.
+    val contentContext = remember(hostView, hostActivity) { appleLoginContentContext(hostActivity) }
+    val parentComposition = rememberCompositionContext()
+    val currentDismiss = rememberUpdatedState(onDismiss)
+    val currentContent = rememberUpdatedState(content)
+    val dialog = remember(hostView, hostActivity, contentContext, parentComposition) {
+        AppleMusicDialogWindow(hostActivity, contentContext, hostView) { currentDismiss.value() }.apply {
+            setContent(parentComposition) { currentContent.value() }
+        }
+    }
+    DisposableEffect(dialog) {
+        dialog.show()
+        onDispose {
+            dialog.dismiss()
+            dialog.disposeComposition()
+        }
+    }
+}
+
+@Suppress("DEPRECATION")
+private class AppleMusicDialogWindow(
+    hostActivity: Activity, contentContext: Context, hostView: View, onDismissRequest: () -> Unit,
+) : ComponentDialog(hostActivity, android.R.style.Theme_Material_Light_NoActionBar) {
+    private val dialogLayout: AppleMusicDialogLayout
+
+    init {
+        setOwnerActivity(hostActivity)
+        val dialogWindow = requireNotNull(window)
+        dialogWindow.requestFeature(Window.FEATURE_NO_TITLE)
+        dialogWindow.setBackgroundDrawableResource(android.R.color.transparent)
+        WindowCompat.setDecorFitsSystemWindows(dialogWindow, true)
+        dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+        dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialogWindow.attributes = dialogWindow.attributes.apply {
+            // MATCH_PARENT lets the real WindowManager viewport also shrink for the system IME.
+            width = WindowManager.LayoutParams.MATCH_PARENT
+            height = WindowManager.LayoutParams.MATCH_PARENT
+            gravity = Gravity.CENTER
+            x = 0
+            y = 0
+            dimAmount = .32f
+        }
+        val hostFlags = (hostView.rootView.layoutParams as? WindowManager.LayoutParams)?.flags ?: 0
+        if (hostFlags and WindowManager.LayoutParams.FLAG_SECURE != 0) {
+            dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        dialogWindow.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        dialogWindow.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        setCanceledOnTouchOutside(false)
+        val themedContentContext = ContextThemeWrapper(contentContext, android.R.style.Theme_Material_Light_NoActionBar)
+        dialogLayout = AppleMusicDialogLayout(themedContentContext, dialogWindow).apply {
+            id = View.generateViewId()
+            layoutDirection = hostView.layoutDirection
+            setViewTreeLifecycleOwner(hostView.findViewTreeLifecycleOwner())
+            setViewTreeViewModelStoreOwner(hostView.findViewTreeViewModelStoreOwner())
+            setViewTreeSavedStateRegistryOwner(hostView.findViewTreeSavedStateRegistryOwner())
+        }
+        setContentView(dialogLayout, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        onBackPressedDispatcher.addCallback(this) { onDismissRequest() }
+    }
+
+    fun setContent(parent: CompositionContext, content: @Composable () -> Unit) {
+        dialogLayout.setContent(parent, content)
+    }
+
+    fun disposeComposition() = dialogLayout.disposeComposition()
+
+    // Dismissal remains a state change owned by the existing login binding.
+    override fun cancel() = Unit
+}
+
+/** Standard WMS measure specs avoid Compose Dialog's map-resource-derived screen remeasurement. */
+private class AppleMusicDialogLayout(context: Context, override val window: Window) :
+    AbstractComposeView(context), DialogWindowProvider {
+    private val content = mutableStateOf<@Composable () -> Unit>({})
+    override var shouldCreateCompositionOnAttachedToWindow = false
+        private set
+
+    fun setContent(parent: CompositionContext, content: @Composable () -> Unit) {
+        setParentCompositionContext(parent)
+        this.content.value = content
+        shouldCreateCompositionOnAttachedToWindow = true
+        createComposition()
+    }
+
+    @Composable
+    override fun Content() {
+        Box(Modifier.fillMaxSize().semantics { dialog() }) { content.value() }
+    }
+}
+
+/** Activity identity is never inferred from a ViewRootImpl window binder. */
+private tailrec fun appleLoginActivity(context: Context): Activity? = when (context) {
+    is Activity -> context
+    is ContextWrapper -> if (context.baseContext !== context) appleLoginActivity(context.baseContext) else null
+    else -> null
+}
+
+/** Physical resources belong to the content; the Dialog itself keeps the Activity's WindowManager. */
+@Suppress("DEPRECATION")
+internal fun appleLoginContentContext(host: Activity): Context {
+    val display = (host.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay
+    val pixels = DisplayMetrics().also(display::getRealMetrics)
+    val systemDpi = Resources.getSystem().displayMetrics.densityDpi.coerceAtLeast(1)
+    val scale = systemDpi / 160f
+    val configuration = Configuration(host.resources.configuration).apply {
+        densityDpi = systemDpi
+        screenWidthDp = (pixels.widthPixels / scale).toInt()
+        screenHeightDp = (pixels.heightPixels / scale).toInt()
+        smallestScreenWidthDp = minOf(screenWidthDp, screenHeightDp)
+        orientation = if (pixels.widthPixels >= pixels.heightPixels) Configuration.ORIENTATION_LANDSCAPE
+            else Configuration.ORIENTATION_PORTRAIT
+    }
+    return host.createConfigurationContext(configuration)
 }

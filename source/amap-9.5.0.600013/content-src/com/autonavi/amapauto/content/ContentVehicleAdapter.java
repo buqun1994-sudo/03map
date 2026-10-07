@@ -12,6 +12,9 @@ import android.os.Parcel;
 import android.os.RemoteException;
 import android.util.Log;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.icar03.content.model.VehicleControl;
 
 import static com.autonavi.amapauto.content.ContentVehicleProtocol.*;
@@ -187,8 +190,72 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     @Override
-    public synchronized boolean isLockAvailable() {
-        return binder != null;
+    public synchronized boolean isFeatureAvailable(String featureId, int target) {
+        if (!running || binder == null || workerHandler == null || featureId == null
+                || target < 0 || target > 1) return false;
+        ContentPorts.FeatureSnapshot features = latestSnapshot.featureSnapshot;
+        if (features == null) return false;
+        if ("glove_box".equals(featureId)) return target == 1;
+        if ("passenger_seat_adjust".equals(featureId)) return false;
+        if ("wiper_maintenance".equals(featureId)) return features.wiperMaintenance >= 0 && target == 1;
+        if ("window_vent".equals(featureId)) return features.windowPositionsKnown && features.windowVent >= 0;
+        return featuresFor(featureId, features) >= 0;
+    }
+
+    private static int featuresFor(String featureId, ContentPorts.FeatureSnapshot features) {
+        if ("rear_fog".equals(featureId)) return features.rearFog;
+        if ("passenger_window_lock".equals(featureId)) return features.passengerWindowLock;
+        if ("left_child_lock".equals(featureId)) return features.leftChildLock;
+        if ("right_child_lock".equals(featureId)) return features.rightChildLock;
+        if ("wireless_charging".equals(featureId)) return features.wirelessCharging;
+        if ("external_discharge".equals(featureId)) return features.externalDischarge;
+        return -1;
+    }
+
+    @Override
+    public boolean requestFeature(String featureId, int target, long requestId, long deadlineUptimeMs) {
+        if (!isFeatureAvailable(featureId, target) || requestId <= 0L
+                || deadlineUptimeMs <= android.os.SystemClock.uptimeMillis()) return false;
+        return queueCommand(ContentVehicleProtocol.featureWrite(featureId, target), requestId);
+    }
+
+    @Override
+    public synchronized boolean isCenterBrightnessAvailable(int level) {
+        return running && binder != null && workerHandler != null
+                && latestSnapshot.featureSnapshot != null
+                && latestSnapshot.featureSnapshot.centerBrightnessKnown
+                && level >= 1 && level <= 10;
+    }
+
+    @Override
+    public boolean requestCenterBrightness(final int level, final long requestId, long deadlineUptimeMs) {
+        if (!isCenterBrightnessAvailable(level) || requestId <= 0L
+                || deadlineUptimeMs <= android.os.SystemClock.uptimeMillis()) return false;
+        final int[] values = ContentVehicleProtocol.centerBrightnessWrite(level);
+        if (values == null) return false;
+        final IBinder currentBinder;
+        final Handler worker;
+        synchronized (this) {
+            currentBinder = binder;
+            worker = workerHandler;
+        }
+        return worker != null && worker.post(new Runnable() {
+            @Override public void run() {
+                try {
+                    synchronized (ContentVehicleAdapter.this) {
+                        if (!running || binder != currentBinder || worker != workerHandler) {
+                            reportCommandFailure(requestId, "车控连接中断，请稍后重试");
+                            return;
+                        }
+                    }
+                    sendDataArray(currentBinder, CENTER_BRIGHTNESS, AREA_DRIVER, values);
+                } catch (RemoteException | RuntimeException error) {
+                    reportCommandFailure(requestId, "中控亮度请求失败，请查看车机状态");
+                } finally {
+                    requestReadback(worker, currentBinder);
+                }
+            }
+        });
     }
 
     @Override
@@ -543,7 +610,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                     if (write.ensureMassageOn) {
                         sendMassageStrength(currentBinder, write.value);
                     } else {
-                        sendData(currentBinder, write.functionId, AREA_DRIVER, write.value);
+                        sendData(currentBinder, write.functionId, write.area, write.value);
                     }
                 } catch (RemoteException | RuntimeException error) {
                     Log.w(TAG, "vehicle command failed", error);
@@ -653,6 +720,33 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         boolean wiperKnown = wiper >= 0;
         int rearWiper = ContentVehicleProtocol.normalizeRearWindowLevel(readInt(currentBinder, REAR_WIPER, AREA_DRIVER));
         int rearWash = ContentVehicleProtocol.normalizeRearWindowLevel(readInt(currentBinder, REAR_WASH, AREA_DRIVER));
+        int rearFog = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, REAR_FOG, AREA_DRIVER));
+        int passengerWindowLock = normalizePassengerWindowLock(readInt(currentBinder, REAR_WINDOW_DISABLE, AREA_DRIVER));
+        int maintenance = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, FRONT_WIPER_MAINTENANCE, AREA_DRIVER));
+        int leftChild = ContentVehicleProtocol.normalizeChildLock(readInt(currentBinder, REAR_CHILD_LOCK_STATE, AREA_REAR_LEFT));
+        int rightChild = ContentVehicleProtocol.normalizeChildLock(readInt(currentBinder, REAR_CHILD_LOCK_STATE, AREA_REAR_RIGHT));
+        int wireless = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, WIRELESS_CHARGING_SWITCH, AREA_DRIVER));
+        int wirelessActual = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, WIRELESS_CHARGING_STATE, AREA_DRIVER));
+        int[] windowPositions = new int[] {
+                readInt(currentBinder, WINDOW_POSITION, WINDOW_POS_LEFT_FRONT),
+                readInt(currentBinder, WINDOW_POSITION, WINDOW_POS_RIGHT_FRONT),
+                readInt(currentBinder, WINDOW_POSITION, WINDOW_POS_LEFT_REAR),
+                readInt(currentBinder, WINDOW_POSITION, WINDOW_POS_RIGHT_REAR),
+        };
+        boolean windowPositionsKnown = allKnownWindowPositions(windowPositions);
+        int windowVent = windowPositionsKnown ? ContentVehicleProtocol.normalizeWindowMode(windowPositions) : -1;
+        int external = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, EXTERNAL_DISCHARGE_SWITCH, AREA_DRIVER));
+        List<Integer> brightnessValues = readIntArray(currentBinder, CENTER_BRIGHTNESS, AREA_DRIVER);
+        int centerBrightness = ContentVehicleProtocol.normalizeCenterBrightness(brightnessValues);
+        List<Float> externalStatus = readFloatArray(currentBinder, EXTERNAL_DISCHARGE_STATUS, AREA_DRIVER);
+        boolean externalStatusKnown = ContentVehicleProtocol.isKnownExternalStatus(externalStatus);
+        float[] externalStatusValues = toFloatArray(externalStatus);
+        int screenGear = readInt(currentBinder, SCREEN_CLEAN_GEAR, AREA_DRIVER);
+        ContentPorts.FeatureSnapshot featureSnapshot = new ContentPorts.FeatureSnapshot(
+                rearFog, passengerWindowLock, maintenance, -1, leftChild, rightChild, wireless,
+                windowVent, external, -1, centerBrightness, centerBrightness >= 0,
+                wirelessActual, wirelessActual >= 0, windowPositions, windowPositionsKnown,
+                externalStatusValues, externalStatusKnown, connection, screenGear, screenGear >= 0);
         int chargeState = resolveChargeState(connection, bms, schedule);
         // Completion is a product projection of exact full SOC + connected +
         // known idle BMS, not a newly guessed vendor enum or rounded battery value.
@@ -679,14 +773,17 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         boolean available = !Float.isNaN(temperature) || battery >= 0 || range >= 0
                 || connection >= 0 || bms >= 0 || schedule >= 0
                 || !Float.isNaN(chargePowerKw) || remainingMinutes >= 0
-                || seatKnown || lockKnown || wiperKnown || rearWiper >= 0 || rearWash >= 0;
+                || seatKnown || lockKnown || wiperKnown || rearWiper >= 0 || rearWash >= 0
+                || rearFog >= 0 || passengerWindowLock >= 0 || maintenance >= 0
+                || leftChild >= 0 || rightChild >= 0 || wireless >= 0 || windowVent >= 0
+                || external >= 0 || centerBrightness >= 0 || externalStatusKnown || screenGear >= 0;
         ContentPorts.VehicleSnapshot snapshot = new ContentPorts.VehicleSnapshot(available, false,
                 temperature, battery, range, chargeState, connection, bms, schedule, chargePowerKw,
                 remainingMinutes, ventilation, heating, heatingAutoKnown, heatingAutoActive,
                 passengerHeating, passengerHeatingAutoKnown, passengerHeatingAutoActive, steering,
                 massage, massageModeRaw, massageSwitchKnown,
                 massageActive, seatKnown, lockKnown, ContentVehicleProtocol.isLocked(lockRaw), wiper, wiperKnown,
-                rearWiper, rearWiper >= 0, rearWash, rearWash >= 0, "", 0L, false);
+                rearWiper, rearWiper >= 0, rearWash, rearWash >= 0, "", 0L, false).withFeatureSnapshot(featureSnapshot);
         synchronized (this) {
             if (running && binder == currentBinder) latestSnapshot = snapshot;
         }
@@ -736,7 +833,91 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         return ContentState.CHARGE_PLUGGED;
     }
 
-    private int readInt(IBinder currentBinder, int functionId, int area) {
+    private static boolean allKnownWindowPositions(int[] positions) {
+        if (positions == null || positions.length != 4) return false;
+        for (int position : positions) {
+            if (position < 1 || position > 5) return false;
+        }
+        return true;
+    }
+
+    private List<Integer> readIntArray(IBinder currentBinder, int functionId, int area) {
+        try {
+            List<?> values = getDataArray(currentBinder, functionId, area);
+            List<Integer> result = new ArrayList<>();
+            for (Object value : values) if (value instanceof Number) result.add(((Number) value).intValue());
+            return result;
+        } catch (RemoteException | RuntimeException error) {
+            return new ArrayList<>();
+        }
+    }
+
+    private List<Float> readFloatArray(IBinder currentBinder, int functionId, int area) {
+        try {
+            List<?> values = getDataArray(currentBinder, functionId, area);
+            if (values.size() != 7) return new ArrayList<>();
+            List<Float> result = new ArrayList<>(values.size());
+            for (Object value : values) {
+                if (!(value instanceof Number)) return new ArrayList<>();
+                result.add(((Number) value).floatValue());
+            }
+            return result;
+        } catch (RemoteException | RuntimeException error) {
+            return new ArrayList<>();
+        }
+    }
+
+    private static float[] toFloatArray(List<Float> values) {
+        if (values == null || values.isEmpty()) return new float[0];
+        float[] result = new float[values.size()];
+        for (int index = 0; index < values.size(); index++) {
+            Float value = values.get(index);
+            result[index] = value == null ? Float.NaN : value;
+        }
+        return result;
+    }
+
+    private static List<?> getDataArray(IBinder currentBinder, int functionId, int area)
+            throws RemoteException {
+        Parcel request = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            request.writeInterfaceToken(VEHICLE_DESCRIPTOR);
+            request.writeInt(functionId);
+            request.writeInt(area);
+            if (!currentBinder.transact(TRANSACTION_GET_DATA_ARRAY, request, reply, 0)) {
+                throw new RemoteException("getDataArray transaction unavailable");
+            }
+            reply.readException();
+            ArrayList<?> values = reply.readArrayList(ContentVehicleAdapter.class.getClassLoader());
+            return values == null ? new ArrayList<Object>() : values;
+        } finally {
+            reply.recycle();
+            request.recycle();
+        }
+    }
+
+    private static void sendDataArray(IBinder currentBinder, int functionId, int area, int[] values)
+            throws RemoteException {
+        Parcel request = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            request.writeInterfaceToken(VEHICLE_DESCRIPTOR);
+            request.writeInt(functionId);
+            request.writeInt(area);
+            ArrayList<Integer> list = new ArrayList<>();
+            if (values != null) for (int value : values) list.add(value);
+            request.writeList(list);
+            if (!currentBinder.transact(TRANSACTION_SEND_DATA_ARRAY, request, reply, 0)) {
+                throw new RemoteException("sendDataArray transaction unavailable");
+            }
+            reply.readException();
+        } finally {
+            reply.recycle();
+            request.recycle();
+        }
+    }
+
         try {
             return getData(currentBinder, functionId, area);
         } catch (RemoteException | RuntimeException error) {

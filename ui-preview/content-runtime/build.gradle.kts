@@ -19,8 +19,14 @@ android {
         selected.include("com/icar03/content/runtime/**")
         formalClasses.forEach { selected.include("com/autonavi/amapauto/content/$it.java") }
     }
+    sourceSets.getByName("main").assets.setSrcDirs(listOf(layout.buildDirectory.dir("formal-apple-authorize-assets")))
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
+val exportFormalAppleAuthorizeAssets by tasks.registering(Sync::class) {
+    from("../../source/amap-9.5.0.600013/assets") { include("content-apple-authorize/**") }
+    into(layout.buildDirectory.dir("formal-apple-authorize-assets"))
+}
+tasks.named("preBuild") { dependsOn(exportFormalAppleAuthorizeAssets) }
 // AGP's variant source directories do not retain legacy source-set include filters.
 // Keep the same allowlist on javac and fail if its closure changes unexpectedly.
 tasks.withType<JavaCompile>().configureEach {
