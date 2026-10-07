@@ -47,6 +47,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             ContentEvent.OpenLyricsSettings -> update { it.copy(settingsOpen = true, settingsSection = SettingsSection.Lyrics, sourcesOpen = false, scenariosOpen = false, message = null) }
             ContentEvent.EnterLyricsImmersive, ContentEvent.ExitLyricsImmersive -> Unit
             is ContentEvent.ImmersiveShowTopBarChanged -> update { it.copy(immersiveShowTopBar = event.value) }
+            is ContentEvent.ImmersiveTopBarKeepSplitChanged -> update { it.copy(immersiveTopBarKeepSplit = event.value) }
             is ContentEvent.ImmersiveShowDockChanged -> update { it.copy(immersiveShowDock = event.value) }
             ContentEvent.SettingsDismissed -> update { it.copy(settingsOpen = false, message = null) }
             is ContentEvent.SettingsSectionSelected -> update { if (it.settingsOpen) it.copy(settingsSection = event.section) else it }
@@ -54,15 +55,31 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.ShowSecondsChanged -> update { it.copy(showSeconds = event.value) }
             is ContentEvent.ShowIndoorTemperatureChanged -> update { it.copy(showIndoorTemperature = event.value) }
             is ContentEvent.ShowBatteryChanged -> update { it.copy(showBattery = event.value) }
-            is ContentEvent.ShowChargingStatusChanged -> update { it.copy(showChargingStatus = event.value) }
+            is ContentEvent.ShowRangeChanged -> update { it.copy(showRange = event.value) }
+            is ContentEvent.ShowChargingStatusChanged -> update {
+                it.copy(
+                    showChargingStatus = event.value,
+                    showPluggedStatus = event.value,
+                    showScheduledCharging = event.value,
+                    showChargingRemainingTime = event.value,
+                    showChargingPower = event.value,
+                )
+            }
+            is ContentEvent.ShowPluggedStatusChanged -> update { it.copy(showPluggedStatus = event.value) }
+            is ContentEvent.ShowScheduledChargingChanged -> update { it.copy(showScheduledCharging = event.value) }
+            is ContentEvent.ShowChargingRemainingTimeChanged -> update { it.copy(showChargingRemainingTime = event.value) }
+            is ContentEvent.ShowChargingPowerChanged -> update { it.copy(showChargingPower = event.value) }
             is ContentEvent.LyricsFontScaleChanged -> update {
                 val scale = if (event.value.isFinite()) event.value.coerceIn(.85f, 1.15f) else 1f
                 val normal = LyricPreferenceRules.fontSize(40f * scale)
+                val immersiveNormal = LyricPreferenceRules.immersiveFontSize(40f * scale * 3f)
                 it.copy(
                     lyricsFontScale = scale,
                     lyricsFontSizeSp = normal,
                     lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(48f * scale, normal),
-                    lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(40f * scale * 3f),
+                    lyricsImmersiveFontSizeSp = immersiveNormal,
+                    lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                        it.lyricsImmersiveCurrentFontSizeSp, immersiveNormal),
                 )
             }
             is ContentEvent.LyricsFontSizeChanged -> update {
@@ -94,7 +111,16 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                 it.copy(lyricsCurrentCustomColor = LyricPreferenceRules.opaqueColor(event.value))
             }
             is ContentEvent.LyricsImmersiveFontSizeChanged -> update {
-                it.copy(lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(event.value))
+                val immersiveNormal = LyricPreferenceRules.immersiveFontSize(event.value)
+                it.copy(
+                    lyricsImmersiveFontSizeSp = immersiveNormal,
+                    lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                        it.lyricsImmersiveCurrentFontSizeSp, immersiveNormal),
+                )
+            }
+            is ContentEvent.LyricsImmersiveCurrentFontSizeChanged -> update {
+                it.copy(lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                    event.value, it.lyricsImmersiveFontSizeSp))
             }
             is ContentEvent.LyricsImmersiveLineGapChanged -> update {
                 it.copy(lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(event.value))
@@ -109,6 +135,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                 )
             }
             is ContentEvent.LyricsSpeakerLayoutChanged -> update { it.copy(lyricsSpeakerLayout = event.value) }
+            is ContentEvent.LyricsShowTranslationChanged -> update { it.copy(lyricsShowTranslation = event.value) }
             is ContentEvent.LyricsHighlightChanged -> update { it.copy(lyricsHighlight = event.value) }
             is ContentEvent.ShowAmbientArtworkChanged -> update { it.copy(showAmbientArtwork = event.value) }
             is ContentEvent.ShowMediaSourceSwitcherChanged -> update { it.copy(showMediaSourceSwitcher = event.value) }

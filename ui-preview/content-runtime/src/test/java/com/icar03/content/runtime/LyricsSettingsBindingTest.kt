@@ -1,25 +1,47 @@
 package com.icar03.content.runtime
 
 import android.content.Context
+import android.net.Uri
 import android.os.Looper
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.FixtureWebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.junit4.createComposeRule
 import com.autonavi.amapauto.content.ContentStore
+import com.icar03.content.runtime.lyrics.AppleMusicConnection
 import com.icar03.content.runtime.lyrics.ContentLyricsPreferences
 import com.icar03.content.ui.AppleMusicConnectRequested
+import com.icar03.content.ui.AppleMusicLoginDismissed
 import com.icar03.content.ui.ContentEvent
+import com.icar03.content.ui.ContentTheme
+import com.icar03.content.ui.LocalSettingsDesign
 import com.icar03.content.ui.LyricsPlatformSelected
 import com.icar03.content.ui.SettingsSection
+import com.icar03.content.ui.settingsDesign
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowWebView
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 
-/** Real facade/Binding bridges; no WebView is composed and no account is fabricated. */
+/** Real facade/Binding bridges; lifecycle fixtures never load a URL or fabricate an account. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [28], shadows = [LoginWebViewShadow::class])
 class LyricsSettingsBindingTest {
+    @get:Rule val compose = createComposeRule()
+
     @Test fun providerPreferenceReachesTheShellAndSurvivesBindingRecreation() {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("content.lyrics.providers", Context.MODE_PRIVATE).edit().clear().commit()
@@ -97,7 +119,49 @@ class LyricsSettingsBindingTest {
         } finally { binding.close(); store.destroy() }
     }
 
-    @Test fun officialLoginIsExplicitAndBackOrStopCancelsOnlyItsCurrentSession() {
+    @Test fun officialWindowBackCloseAndStopReleaseOnlyTheirCurrentLogin() {
+        val context = RuntimeEnvironment.getApplication()
+        val store = ContentStore(context)
+        val binding = ContentBinding(store)
+        try {
+            binding.observeEnvironment(context)
+            binding.start()
+            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+            binding.dispatch(ContentEvent.OpenLyricsSettings)
+            beginLogin(binding)
+            val owner = settingsOwner(binding)
+            val first = attachWithoutLoading(owner)
+            val firstCallbacks = first.webViewClient
+            binding.dispatch(ContentEvent.SettingsBack)
+            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+            assertTrue(binding.state.value.settingsOpen)
+            assertEquals(SettingsSection.Lyrics, binding.state.value.settingsSection)
+            assertReleased(first)
+
+            beginLogin(binding)
+            val second = attachWithoutLoading(owner)
+            deliverLateCallbacks(firstCallbacks, first)
+            assertTrue(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+            assertEquals(0, second.destroyCalls)
+            binding.dispatch(AppleMusicLoginDismissed)
+            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+            assertTrue(binding.state.value.settingsOpen)
+            assertReleased(second)
+
+            beginLogin(binding)
+            val third = attachWithoutLoading(owner)
+            binding.stop()
+            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+            assertFalse(binding.state.value.lyricsProviderSettings.available)
+            assertReleased(third)
+            binding.dispatch(AppleMusicConnectRequested)
+            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+            binding.close()
+            assertReleased(third)
+        } finally { binding.close(); store.destroy() }
+    }
+
+    @Test fun officialLoginIsExplicitAndBackCancelsOnlyItsCurrentSession() {
         val context = RuntimeEnvironment.getApplication()
         val store = ContentStore(context)
         val binding = ContentBinding(store)
@@ -113,13 +177,233 @@ class LyricsSettingsBindingTest {
             assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
             assertTrue(binding.state.value.settingsOpen)
             assertEquals(SettingsSection.Lyrics, binding.state.value.settingsSection)
-            binding.dispatch(AppleMusicConnectRequested)
-            shadowOf(Looper.getMainLooper()).idle()
-            binding.stop()
-            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
-            assertFalse(binding.state.value.lyricsProviderSettings.available)
-            binding.dispatch(AppleMusicConnectRequested)
-            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
         } finally { binding.close(); store.destroy() }
+    }
+    @Test fun settingsDismissalEventsReleaseCurrentLogin() {
+        for (dismiss in listOf(ContentEvent.SettingsDismissed, ContentEvent.DismissSheet, ContentEvent.SettingsTapped)) {
+            val context = RuntimeEnvironment.getApplication()
+            val store = ContentStore(context)
+            val binding = ContentBinding(store)
+            try {
+                binding.observeEnvironment(context)
+                binding.start()
+                binding.dispatch(ContentEvent.OpenLyricsSettings)
+                beginLogin(binding)
+                val view = attachWithoutLoading(settingsOwner(binding))
+                val callbacks = view.webViewClient
+                binding.dispatch(dismiss)
+                assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+                assertFalse(binding.state.value.settingsOpen)
+                assertReleased(view)
+                deliverLateCallbacks(callbacks, view)
+                assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+                assertFalse(binding.state.value.settingsOpen)
+            } finally { binding.close(); store.destroy() }
+        }
+    }
+
+    @Test fun removingRealLoginCompositionCancelsAndDestroysItsWebView() {
+        LoginWebViewShadow.reset()
+        val context = RuntimeEnvironment.getApplication()
+        val visible = mutableStateOf(true)
+        val revision = mutableStateOf(0)
+        val owner = LyricsSettingsBinding(context, onChanged = { revision.value++ }, onFeedback = {})
+        try {
+            owner.start()
+            openSyntheticLogin(owner)
+            compose.setContent {
+                revision.value
+                ContentTheme(false) {
+                    CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(false)) {
+                        if (visible.value) owner.LoginContent()
+                    }
+                }
+            }
+            compose.waitForIdle()
+            assertNotNull(field(owner, "loginWebView"))
+            assertEquals(listOf(AppleMusicConnection.LOGIN_URL), LoginWebViewShadow.loadedUrls)
+            compose.runOnIdle { visible.value = false }
+            compose.waitForIdle()
+            assertFalse(owner.state.appleLoginOpen)
+            assertNull(field(owner, "pollJob"))
+            assertNull(field(owner, "loginWebView"))
+            assertEquals(1, LoginWebViewShadow.stopCalls)
+            assertEquals(1, LoginWebViewShadow.destroyCalls)
+        } finally { owner.close() }
+    }
+
+    @Test fun stoppingOwnerWhileLoginCompositionIsMountedDestroysItsWebView() {
+        LoginWebViewShadow.reset()
+        val context = RuntimeEnvironment.getApplication()
+        val visible = mutableStateOf(true)
+        val revision = mutableStateOf(0)
+        val owner = LyricsSettingsBinding(context, onChanged = { revision.value++ }, onFeedback = {})
+        try {
+            owner.start()
+            openSyntheticLogin(owner)
+            compose.setContent {
+                revision.value
+                ContentTheme(false) {
+                    CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(false)) {
+                        if (visible.value) owner.LoginContent()
+                    }
+                }
+            }
+            compose.waitForIdle()
+            owner.stop()
+            compose.waitForIdle()
+            assertFalse(owner.state.appleLoginOpen)
+            assertFalse(owner.state.available)
+            assertNull(field(owner, "pollJob"))
+            assertNull(field(owner, "loginWebView"))
+            assertEquals(1, LoginWebViewShadow.stopCalls)
+            assertEquals(1, LoginWebViewShadow.destroyCalls)
+        } finally { owner.close() }
+    }
+
+    @Test fun removedWindowCancelsItsPollerAndOldWindowDisposalCannotCancelAReplacement() {
+        val context = RuntimeEnvironment.getApplication()
+        val feedback = mutableListOf<String>()
+        val owner = LyricsSettingsBinding(context, onChanged = {}, onFeedback = feedback::add)
+        try {
+            owner.start()
+            openSyntheticLogin(owner)
+            val lifecycle = longField(owner, "lifecycleEpoch")
+            val login = longField(owner, "loginEpoch")
+            val first = attachWithoutLoading(owner)
+            val oldCallbacks = first.webViewClient
+            releaseContent(owner, lifecycle, login)
+            assertFalse(owner.state.appleLoginOpen)
+            assertNull(field(owner, "pollJob"))
+            assertReleased(first)
+
+            openSyntheticLogin(owner)
+            val second = attachWithoutLoading(owner)
+            releaseContent(owner, lifecycle, login)
+            deliverLateCallbacks(oldCallbacks, first)
+            assertTrue(owner.state.appleLoginOpen)
+            assertEquals(0, second.destroyCalls)
+            assertTrue(feedback.isEmpty())
+            owner.close()
+            assertFalse(owner.state.appleLoginOpen)
+            assertFalse(owner.state.available)
+            assertNull(field(owner, "pollJob"))
+            assertReleased(second)
+        } finally { owner.close() }
+    }
+
+    private fun beginLogin(binding: ContentBinding) {
+        openSyntheticLogin(settingsOwner(binding))
+        assertTrue(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+    }
+
+    private fun openSyntheticLogin(owner: LyricsSettingsBinding) {
+        val login = longField(owner, "loginEpoch")
+        setField(owner, "activeAttempt", AppleMusicConnection.LoginAttempt("fixture-$login", ""))
+        setField(owner, "preparing", false)
+        LyricsSettingsBinding::class.java.getDeclaredMethod("refreshState").apply { isAccessible = true }.invoke(owner)
+        assertTrue(owner.state.appleLoginOpen)
+    }
+    private fun setField(owner: LyricsSettingsBinding, name: String, value: Any?) {
+        LyricsSettingsBinding::class.java.getDeclaredField(name).apply {
+            isAccessible = true
+            set(owner, value)
+        }
+    }
+
+    private fun settingsOwner(binding: ContentBinding): LyricsSettingsBinding =
+        ContentBinding::class.java.getDeclaredField("lyricsSettings").apply { isAccessible = true }
+            .get(binding) as LyricsSettingsBinding
+
+    /** Exercise the real WebView configuration without invoking createLoginWebView/loadUrl. */
+    private fun attachWithoutLoading(owner: LyricsSettingsBinding): TrackingWebView {
+        val attempt = checkNotNull(field(owner, "activeAttempt")) as AppleMusicConnection.LoginAttempt
+        val view = TrackingWebView(RuntimeEnvironment.getApplication())
+        LyricsSettingsBinding::class.java.getDeclaredField("loginWebView").apply {
+            isAccessible = true
+            set(owner, view)
+        }
+        LyricsSettingsBinding::class.java.getDeclaredMethod(
+            "configureWebView", WebView::class.java, AppleMusicConnection.LoginAttempt::class.java,
+            java.lang.Long.TYPE, java.lang.Long.TYPE,
+        ).apply { isAccessible = true }.invoke(
+            owner, view, attempt, longField(owner, "lifecycleEpoch"), longField(owner, "loginEpoch"),
+        )
+        assertNull(view.url)
+        return view
+    }
+
+    private fun releaseContent(owner: LyricsSettingsBinding, lifecycle: Long, login: Long) {
+        LyricsSettingsBinding::class.java.getDeclaredMethod(
+            "releaseLoginContent", java.lang.Long.TYPE, java.lang.Long.TYPE,
+        ).apply { isAccessible = true }.invoke(owner, lifecycle, login)
+    }
+
+    private fun field(owner: LyricsSettingsBinding, name: String): Any? =
+        LyricsSettingsBinding::class.java.getDeclaredField(name).apply { isAccessible = true }.get(owner)
+
+    private fun longField(owner: LyricsSettingsBinding, name: String): Long =
+        LyricsSettingsBinding::class.java.getDeclaredField(name).apply { isAccessible = true }.getLong(owner)
+
+    private fun deliverLateCallbacks(callbacks: WebViewClient, view: WebView) {
+        callbacks.onPageFinished(view, AppleMusicConnection.LOGIN_URL)
+        callbacks.onReceivedError(view, request, pageError)
+        assertTrue(callbacks.onRenderProcessGone(view, object : RenderProcessGoneDetail() {
+            override fun didCrash() = true
+            override fun rendererPriorityAtExit() = 0
+        }))
+    }
+
+    private fun assertReleased(view: TrackingWebView) {
+        assertEquals(1, view.stopCalls)
+        assertEquals(1, view.destroyCalls)
+        assertNull(view.webChromeClient)
+    }
+
+    private class TrackingWebView(context: Context) : WebView(context) {
+        var stopCalls = 0
+        var destroyCalls = 0
+        override fun stopLoading() { stopCalls++; super.stopLoading() }
+        override fun destroy() { destroyCalls++; super.destroy() }
+    }
+
+    private val request = object : WebResourceRequest {
+        override fun getUrl() = Uri.parse(AppleMusicConnection.LOGIN_URL)
+        override fun isForMainFrame() = true
+        override fun isRedirect() = false
+        override fun hasGesture() = false
+        override fun getMethod() = "GET"
+        override fun getRequestHeaders(): Map<String, String> = emptyMap()
+    }
+    private val pageError = FixtureWebResourceError()
+}
+
+@Implements(WebView::class)
+class LoginWebViewShadow : ShadowWebView() {
+    companion object {
+        val loadedUrls = mutableListOf<String>()
+        var stopCalls = 0
+        var destroyCalls = 0
+
+        fun reset() {
+            loadedUrls.clear()
+            stopCalls = 0
+            destroyCalls = 0
+        }
+    }
+
+    @Implementation
+    protected override fun loadUrl(url: String) {
+        loadedUrls += url
+    }
+
+    @Implementation
+    fun stopLoading() {
+        stopCalls++
+    }
+
+    @Implementation
+    protected override fun destroy() {
+        destroyCalls++
     }
 }

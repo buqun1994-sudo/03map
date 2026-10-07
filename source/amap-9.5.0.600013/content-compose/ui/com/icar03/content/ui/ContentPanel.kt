@@ -120,7 +120,7 @@ fun ContentPanel(
             is ContentEvent.PageSelected, ContentEvent.DismissSheet,
             is ContentEvent.LyricsFontSizeChanged, is ContentEvent.LyricsCurrentFontSizeChanged,
             is ContentEvent.LyricsLineGapChanged, is ContentEvent.LyricsImmersiveFontSizeChanged,
-            is ContentEvent.LyricsImmersiveLineGapChanged -> false
+            is ContentEvent.LyricsImmersiveLineGapChanged, is ContentEvent.LyricsImmersiveCurrentFontSizeChanged -> false
             is ContentEvent.LyricsCustomColorChanged -> !event.fromDrag
             is ContentEvent.LyricsCurrentCustomColorChanged -> !event.fromDrag
             else -> true
@@ -157,6 +157,7 @@ fun ContentPanel(
             val leftWidth = if (lyricMode) splitWidth else maxWidth
             val compact = !state.previewMode && leftWidth < 600.dp
             val edge = if (compact) 8.dp else 20.dp
+            val topBarWidth = if (wide && !state.immersiveTopBarKeepSplit) fullWidth else leftWidth
             val topBarHeight = TopBarMetrics.height(compact)
             val dockHeight = if (compact) 72.dp else 112.dp
             val mediaHeight = if (compact) 80.dp else 136.dp
@@ -166,13 +167,11 @@ fun ContentPanel(
             ambientBackground?.invoke()
             CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
                 LocalPresentationInteractionEnabled provides !pageMotion) {
-                // Chrome keeps its split geometry; only the media and lyrics change endpoints.
+                if (showTop) Box(Modifier.width(topBarWidth).graphicsLayer {
+                    alpha = if (state.immersiveShowTopBar) 1f else compactOpacity()
+                }.zIndex(1f)) { PrototypeTopBar(state, clockText, compactLayout = compact) }
                 Column(Modifier.width(if (lyricMode) splitWidth else maxWidth).fillMaxHeight()) {
-                    if (showTop) Box(Modifier.fillMaxWidth().graphicsLayer {
-                        alpha = if (state.immersiveShowTopBar) 1f else compactOpacity()
-                    }) {
-                        PrototypeTopBar(state, clockText)
-                    }
+                    if (showTop) Spacer(Modifier.height(topBarHeight))
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                         if (wide) {
                             ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
@@ -278,7 +277,10 @@ fun ContentPanel(
                         top = if (showTop) topBarHeight else 12.dp,
                         bottom = if (showDock) dockHeight + if (compact) 8.dp else 16.dp else 12.dp,
                     ).zIndex(7f),
-                onVisibilityChanged = { settingsRetained = it }, appleMusicLogin = appleMusicLogin)
+                onVisibilityChanged = { settingsRetained = it })
+            if (state.lyricsProviderSettings.appleLoginOpen) {
+                CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark)) { appleMusicLogin(dispatch) }
+            }
             // Keep the moving feedback surface inside the same fixed content bounds.
             Box(Modifier.fillMaxSize().padding(top = if (showTop) topBarHeight else 12.dp, bottom = dockHeight).clipToBounds().zIndex(10f)) {
                 AnimatedVisibility(
@@ -308,12 +310,12 @@ fun ContentPanel(
 }
 
 @Composable
-private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> ClockText) {
+private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> ClockText, compactLayout: Boolean? = null) {
     val clock = clockText()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val measurer = rememberTextMeasurer()
-        val compact = !state.previewMode && maxWidth < 600.dp
+        val compact = compactLayout ?: (!state.previewMode && maxWidth < 600.dp)
         val style = MaterialTheme.typography.titleLarge.copy(fontSize = TopBarMetrics.textSize(maxWidth < 360.dp))
         val gap = if (compact) 4.dp else 8.dp
         val batterySize = if (!state.showBattery) 0.dp else TopBarMetrics.batterySize(compact)
@@ -321,14 +323,16 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
         val gapPx = with(density) { gap.toPx() }
         fun width(text: String) = measurer.measure(AnnotatedString(text), style, softWrap = false, maxLines = 1).size.width.toFloat()
         val temperature = state.temperature.replace("°C", "°").replace("°", "°C")
-        val range = state.range + state.rangeUnit
+        val range = if (state.showRange) state.range + state.rangeUnit else ""
         fun timeWithWeekday(time: String, weekday: String) = time + if (weekday.isEmpty()) "" else " " + weekday
         val weekday = clock.weekday.ifEmpty { state.weekday.takeIf { state.showWeekday }.orEmpty() }
         val fullTime = timeWithWeekday(clock.time, weekday)
         val minuteTime = timeWithWeekday(clock.time.take(5), weekday)
         val shortWeekdayTime = timeWithWeekday(clock.time.take(5), weekday.replace("星期", "周"))
         val temperatureGap = gap + 4.dp
-        val fullStatus = if (state.showChargingStatus) state.chargeStatus else null
+        // The mapper already filters the four independent preferences. The legacy master
+        // flag is migration/compatibility data, not a second gate over the projected facts.
+        val fullStatus = state.chargeStatus?.takeIf { it.isNotBlank() }
         val statusParts = fullStatus?.split("·").orEmpty()
         val powerStatus = statusParts.firstOrNull { it.contains("充电功率") || it.contains("kW") }
         val minutesStatus = statusParts.firstOrNull { it.contains("剩余") || it.contains("分钟") }
@@ -342,7 +346,7 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
                 fullStatus.contains("待确认") -> "待确认"
                 fullStatus.contains("预约") -> "预约中"
                 fullStatus.contains("已插枪") -> "已插枪"
-                state.charging || fullStatus.contains("kW") || fullStatus.contains("充电中") -> "充电中"
+                state.showPluggedStatus && (state.charging || fullStatus.contains("kW") || fullStatus.contains("充电中")) -> "充电中"
                 else -> fullStatus
             },
         ).filterNotNull().distinct()
@@ -379,7 +383,7 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
             Spacer(Modifier.weight(1f))
             if (fullStatus == null && showTemperature) TopBarText(temperature, "top-temperature", style, width(temperature))
             if (fullStatus != null) TopBarText(status, "charge-status", style, width(status), description = fullStatus)
-            TopBarText(range, "top-range", style, width(range))
+            if (state.showRange) TopBarText(range, "top-range", style, width(range))
             val base = MaterialTheme.colorScheme.primary
             val green = Color(0xFF76E65B)
             val colors = when {

@@ -131,7 +131,11 @@ data class ContentUiState(
     val settingsOpen: Boolean = false, val settingsSection: SettingsSection = SettingsSection.Home,
     val showWeekday: Boolean = true, val showSeconds: Boolean = false,
     val showIndoorTemperature: Boolean = true, val showBattery: Boolean = true,
-    val showChargingStatus: Boolean = true, val lyricsFontScale: Float = 1.0f,
+    val showRange: Boolean = true,
+    val showChargingStatus: Boolean = true,
+    val showPluggedStatus: Boolean = true, val showScheduledCharging: Boolean = true,
+    val showChargingRemainingTime: Boolean = true, val showChargingPower: Boolean = true,
+    val lyricsFontScale: Float = 1.0f,
     val lyricsLineSpacing: Int = 1, val lyricsFontSizeSp: Float = LyricPreferenceRules.DEFAULT_FONT_SP,
     val lyricsCurrentFontSizeSp: Float = LyricPreferenceRules.DEFAULT_CURRENT_SP,
     val lyricsLineGapDp: Float = LyricPreferenceRules.DEFAULT_GAP_DP,
@@ -141,12 +145,15 @@ data class ContentUiState(
     val lyricsCurrentColorMode: String = LyricPreferenceRules.DEFAULT_COLOR_MODE,
     val lyricsCurrentCustomColor: Int = LyricPreferenceRules.DEFAULT_CUSTOM_COLOR,
     val lyricsImmersiveFontSizeSp: Float = LyricPreferenceRules.DEFAULT_IMMERSIVE_FONT_SP,
+    val lyricsImmersiveCurrentFontSizeSp: Float = LyricPreferenceRules.DEFAULT_IMMERSIVE_CURRENT_SP,
     val lyricsImmersiveLineGapDp: Float = LyricPreferenceRules.DEFAULT_IMMERSIVE_GAP_DP,
+    val lyricsShowTranslation: Boolean = true,
     val lyricsSystemAccentColor: Int = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR,
     val lyricsProviderSettings: LyricsProviderUiState = LyricsProviderUiState(),
     val lyricsSpeakerLayout: Boolean = true,
     val lyricsHighlight: Boolean = true,
-    val immersiveShowTopBar: Boolean = true, val immersiveShowDock: Boolean = true,
+    val immersiveShowTopBar: Boolean = true, val immersiveTopBarKeepSplit: Boolean = true,
+    val immersiveShowDock: Boolean = true,
     val showAmbientArtwork: Boolean = true,
     val showMediaSourceSwitcher: Boolean = true, val dockButtonCount: Int = 6,
     val showActionFeedback: Boolean = true, val gestureBarReminder: Boolean = true, val uiOpacity: Float = 1.0f,
@@ -183,7 +190,12 @@ sealed interface ContentEvent {
     data class ShowSecondsChanged(val value: Boolean) : ContentEvent
     data class ShowIndoorTemperatureChanged(val value: Boolean) : ContentEvent
     data class ShowBatteryChanged(val value: Boolean) : ContentEvent
+    data class ShowRangeChanged(val value: Boolean) : ContentEvent
     data class ShowChargingStatusChanged(val value: Boolean) : ContentEvent
+    data class ShowPluggedStatusChanged(val value: Boolean) : ContentEvent
+    data class ShowScheduledChargingChanged(val value: Boolean) : ContentEvent
+    data class ShowChargingRemainingTimeChanged(val value: Boolean) : ContentEvent
+    data class ShowChargingPowerChanged(val value: Boolean) : ContentEvent
     data class LyricsFontScaleChanged(val value: Float) : ContentEvent
     data class LyricsFontSizeChanged(val value: Float) : ContentEvent
     data class LyricsCurrentFontSizeChanged(val value: Float) : ContentEvent
@@ -194,11 +206,14 @@ sealed interface ContentEvent {
     data class LyricsCurrentColorModeChanged(val value: String) : ContentEvent
     data class LyricsCurrentCustomColorChanged(val value: Int, val fromDrag: Boolean = false) : ContentEvent
     data class LyricsImmersiveFontSizeChanged(val value: Float) : ContentEvent
+    data class LyricsImmersiveCurrentFontSizeChanged(val value: Float) : ContentEvent
     data class LyricsImmersiveLineGapChanged(val value: Float) : ContentEvent
     data class LyricsLineSpacingChanged(val value: Int) : ContentEvent
     data class LyricsSpeakerLayoutChanged(val value: Boolean) : ContentEvent
+    data class LyricsShowTranslationChanged(val value: Boolean) : ContentEvent
     data class LyricsHighlightChanged(val value: Boolean) : ContentEvent
     data class ImmersiveShowTopBarChanged(val value: Boolean) : ContentEvent
+    data class ImmersiveTopBarKeepSplitChanged(val value: Boolean) : ContentEvent
     data class ImmersiveShowDockChanged(val value: Boolean) : ContentEvent
     data class ShowAmbientArtworkChanged(val value: Boolean) : ContentEvent
     data class ShowMediaSourceSwitcherChanged(val value: Boolean) : ContentEvent
@@ -215,15 +230,21 @@ fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
     ContentEvent.SettingsDismissed, ContentEvent.DismissSheet,
     is LyricsPlatformSelected, AppleMusicConnectRequested, AppleMusicLoginDismissed, AppleMusicDisconnectRequested,
     is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged,
-    is ContentEvent.ShowIndoorTemperatureChanged, is ContentEvent.ShowBatteryChanged,
-    is ContentEvent.ShowChargingStatusChanged, is ContentEvent.LyricsFontScaleChanged,
+    is ContentEvent.ShowRangeChanged, is ContentEvent.ShowIndoorTemperatureChanged, is ContentEvent.ShowBatteryChanged,
+    is ContentEvent.ShowChargingStatusChanged,
+     is ContentEvent.ShowPluggedStatusChanged,
+     is ContentEvent.ShowScheduledChargingChanged,
+     is ContentEvent.ShowChargingRemainingTimeChanged,
+     is ContentEvent.ShowChargingPowerChanged, is ContentEvent.LyricsFontScaleChanged,
     is ContentEvent.LyricsFontSizeChanged, is ContentEvent.LyricsCurrentFontSizeChanged,
     is ContentEvent.LyricsLineGapChanged, is ContentEvent.LyricsAlignmentChanged,
     is ContentEvent.LyricsColorModeChanged, is ContentEvent.LyricsCustomColorChanged,
     is ContentEvent.LyricsCurrentColorModeChanged, is ContentEvent.LyricsCurrentCustomColorChanged,
-    is ContentEvent.LyricsImmersiveFontSizeChanged, is ContentEvent.LyricsImmersiveLineGapChanged,
+    is ContentEvent.LyricsImmersiveFontSizeChanged, is ContentEvent.LyricsImmersiveCurrentFontSizeChanged, is ContentEvent.LyricsImmersiveLineGapChanged,
     is ContentEvent.LyricsLineSpacingChanged, is ContentEvent.LyricsSpeakerLayoutChanged,
+     is ContentEvent.LyricsShowTranslationChanged,
     is ContentEvent.LyricsHighlightChanged, is ContentEvent.ImmersiveShowTopBarChanged,
+     is ContentEvent.ImmersiveTopBarKeepSplitChanged,
     is ContentEvent.ImmersiveShowDockChanged, is ContentEvent.ShowAmbientArtworkChanged,
     is ContentEvent.ShowMediaSourceSwitcherChanged, is ContentEvent.DockButtonCountChanged,
     is ContentEvent.ShowActionFeedbackChanged, is ContentEvent.GestureBarReminderChanged, is ContentEvent.UiOpacityChanged -> true

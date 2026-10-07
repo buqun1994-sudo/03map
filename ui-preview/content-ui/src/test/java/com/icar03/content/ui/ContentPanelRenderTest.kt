@@ -19,6 +19,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.width
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -405,7 +406,7 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.runOnIdle { state.value = state.value.copy(showWeekday = false) }
         compose.onNodeWithTag("top-time").assertTextEquals("12:24:31")
         compose.runOnIdle { state.value = state.value.copy(showSeconds = false,
-            showIndoorTemperature = false, showBattery = false, showChargingStatus = false) }
+            showIndoorTemperature = false, showBattery = false, showChargingStatus = false, chargeStatus = null) }
         compose.waitForIdle()
         compose.onNodeWithTag("top-time").assertTextEquals("12:24")
         compose.onNodeWithTag("top-temperature").assertDoesNotExist()
@@ -415,21 +416,28 @@ open class ContentPanelLightPrototypeRenderTest {
         assertEquals("the clock retains its physical left anchor", originalTimeLeft,
             compose.onNodeWithTag("top-time").getUnclippedBoundsInRoot().left)
         assertEquals("the display preference did not alter the source clock", "12:24:31", state.value.time)
-        assertEquals("已插枪", state.value.chargeStatus)
+        assertNull(state.value.chargeStatus)
         assertEquals(80, state.value.batteryPercent)
+        compose.runOnIdle { state.value = state.value.copy(showRange = false) }
+        compose.onNodeWithTag("top-range").assertDoesNotExist()
+        assertEquals("366", state.value.range)
+        compose.runOnIdle { state.value = state.value.copy(showRange = true) }
 
         compose.runOnIdle { state.value = state.value.copy(showWeekday = true, showSeconds = true,
-            showIndoorTemperature = true, showBattery = true, showChargingStatus = true) }
+            showIndoorTemperature = true, showBattery = true, showChargingStatus = true, chargeStatus = "已插枪") }
         compose.waitForIdle()
         compose.onNodeWithTag("top-time").assertTextEquals("12:24:31 星期三")
         compose.onNodeWithTag("top-temperature").assertIsDisplayed()
         compose.onNodeWithTag("top-battery", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("charge-status").assertTextEquals("已插枪")
+        compose.runOnIdle { state.value = state.value.copy(showChargingStatus = false, showPluggedStatus = false,
+            showChargingPower = true, chargeStatus = "充电功率 72.0kW", charging = true) }
+        compose.onNodeWithTag("charge-status").assertTextEquals("充电功率 72.0kW")
     }
 
     @Test
     fun lyricsPreferencesReachTheLivePageThroughItsBodyTransition() {
-        val lines = listOf(LyricLine(0, "默认歌词不会再提前换行", side = LyricSide.Trailing),
+        val lines = listOf(LyricLine(0, "默认歌词不会再提前换行", translation = "This is the translation", side = LyricSide.Trailing),
             LyricLine(4_000, "合成下一句", side = LyricSide.Leading))
         val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
             previewMode = false, page = PanelPage.Lyrics,
@@ -474,6 +482,17 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.waitForIdle()
         body.assert(SemanticsMatcher.expectValue(LyricTextAlignment, "center"))
         assertTrue("the page retains its real immutable lyric source", state.value.lyrics.lines === lines)
+        val translatedHeights = body.fetchSemanticsNode().config[LyricRowHeights]
+        compose.runOnIdle { state.value = state.value.copy(lyricsShowTranslation = false) }
+        compose.waitForIdle()
+        body.assert(SemanticsMatcher.expectValue(LyricTranslationVisible, false))
+        assertTrue(body.fetchSemanticsNode().config[LyricRowHeights][0] < translatedHeights[0])
+        assertEquals("This is the translation", state.value.lyrics.lines[0].translation)
+        assertSame(lines, state.value.lyrics.lines)
+        compose.runOnIdle { state.value = state.value.copy(lyricsShowTranslation = true) }
+        compose.waitForIdle()
+        body.assert(SemanticsMatcher.expectValue(LyricTranslationVisible, true))
+        assertEquals(translatedHeights, body.fetchSemanticsNode().config[LyricRowHeights])
     }
 
     private fun iconEntrances(id: ControlId): List<String> = if (DockShortcuts.items.any { it.control == id })

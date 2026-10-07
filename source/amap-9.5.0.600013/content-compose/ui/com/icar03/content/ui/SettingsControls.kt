@@ -1,7 +1,11 @@
 package com.icar03.content.ui
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -10,33 +14,37 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,10 +56,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -59,9 +70,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
@@ -76,12 +89,103 @@ fun SettingsValueLabel(
     modifier: Modifier = Modifier,
 ) {
     val design = LocalSettingsDesign.current
-    Text(
-        text = "$title·$value",
-        modifier = modifier.fillMaxWidth(),
-        style = design.labelStyle,
-        color = design.text,
-    )
+    SettingsLineText("$title·$value", modifier.fillMaxWidth(), design.labelStyle, design.text)
+}
+
+@Composable
+internal fun SettingsLineText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle,
+    color: Color,
+    maxLines: Int = 1,
+    textAlign: TextAlign = TextAlign.Start,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    val lineBoxHeight = with(LocalDensity.current) { style.lineHeight.toDp() }
+    Box(modifier.height(lineBoxHeight).clipToBounds().semantics(mergeDescendants = true) {},
+        contentAlignment = Alignment.Center) {
+        Text(text, Modifier.fillMaxWidth().wrapContentHeight(unbounded = true),
+            style = style, color = color, maxLines = maxLines, overflow = overflow, textAlign = textAlign)
+    }
+}
+
+/** Section titles sit 24dp inside the card edge; the card owns its single shadow. */
+@Composable
+fun SettingsSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val design = LocalSettingsDesign.current
+    Column(modifier.fillMaxWidth().testTag("settings-section-$title"),
+        verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
+        SettingsLineText(title, Modifier.padding(start = design.pagePadding)
+            .testTag("settings-section-title-$title"), design.sectionTitleStyle, design.text)
+        SettingsGroupCard(Modifier.testTag("settings-card-$title"), contentPadding, content)
+    }
+}
+
+/** A divider carries no implicit margins, so its page owner supplies the intended inset. */
+@Composable
+fun SettingsDivider(modifier: Modifier = Modifier) {
+    HorizontalDivider(modifier.fillMaxWidth(), thickness = 1.dp, color = LocalSettingsDesign.current.divider)
+}
+
+@Composable
+fun SettingsFieldBlock(
+    title: String,
+    modifier: Modifier = Modifier,
+    tag: String = "",
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val design = LocalSettingsDesign.current
+    Column(modifier.fillMaxWidth().settingsTag(tag), verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
+        SettingsLineText(title, Modifier.fillMaxWidth().settingsTag(settingsChildTag(tag, "label")),
+            design.labelStyle, design.text)
+        content()
+    }
+}
+
+/** Related numeric rows share a 136dp label plus 12dp gap; narrow cards use a standard Column. */
+@Composable
+fun SettingsSliderRow(
+    title: String,
+    value: Float,
+    unit: String,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tag: String = "",
+    steps: Int = 0,
+) {
+    val design = LocalSettingsDesign.current
+    val boundedValue = value.takeIf { it.isFinite() }?.coerceIn(valueRange) ?: valueRange.start
+    val label: @Composable (Modifier) -> Unit = { labelModifier ->
+        SettingsValueLabel(title, "${boundedValue.roundToInt()}$unit",
+            labelModifier.testTag(if (tag.isEmpty()) "settings-label-$title" else "$tag-label"))
+    }
+    val slider: @Composable (Modifier) -> Unit = { sliderModifier ->
+        SettingsSlider(value, valueRange, onValueChange, onValueChangeFinished,
+            sliderModifier, enabled, tag, steps)
+    }
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        if (maxWidth >= 360.dp) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(design.smallGap)) {
+                label(Modifier.width(136.dp))
+                slider(Modifier.weight(1f))
+            }
+        } else {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(design.smallGap)) {
+                label(Modifier.fillMaxWidth())
+                slider(Modifier.fillMaxWidth())
+            }
+        }
+    }
 }
 
 /** Standard slider steps, focus, keyboard and accessibility actions are retained. */
@@ -109,8 +213,7 @@ fun SettingsSlider(
     )
 }
 
-/** Pairs are stable option IDs followed by their visible labels. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Equal-width standard selectable segments share one capsule, without per-option frames. */
 @Composable
 fun SettingsSegmented(
     options: List<Pair<String, String>>,
@@ -125,46 +228,54 @@ fun SettingsSegmented(
     val currentSelected by rememberUpdatedState(selected)
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnSelected by rememberUpdatedState(onSelected)
-    val colors = SegmentedButtonDefaults.colors(
-        activeContainerColor = design.selected,
-        activeContentColor = design.text,
-        activeBorderColor = Color.Transparent,
-        inactiveContainerColor = design.track,
-        inactiveContentColor = design.secondaryText,
-        inactiveBorderColor = Color.Transparent,
-        disabledActiveContainerColor = design.selected.copy(alpha = .38f),
-        disabledActiveContentColor = design.text.copy(alpha = .38f),
-        disabledActiveBorderColor = Color.Transparent,
-        disabledInactiveContainerColor = design.track.copy(alpha = .38f),
-        disabledInactiveContentColor = design.secondaryText.copy(alpha = .38f),
-        disabledInactiveBorderColor = Color.Transparent,
-    )
-    BoxWithConstraints(modifier.fillMaxWidth().heightIn(min = design.controlHeight).settingsTag(tagPrefix)) {
-        val minimumWidth = design.segmentMinimumWidth * options.size
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val optionStyle = LocalTextStyle.current.merge(design.optionStyle)
+    val selectionInset = 2.dp
+    val naturalLabelWidth = remember(options, optionStyle, textMeasurer, density) {
+        with(density) {
+            options.maxOf { textMeasurer.measure(it.second, style = optionStyle,
+                maxLines = 1, softWrap = false).size.width }.toDp()
+        }
+    }
+    BoxWithConstraints(modifier.fillMaxWidth().height(design.controlHeight).settingsTag(tagPrefix)) {
+        val minimumWidth = maxOf(design.segmentMinimumWidth, naturalLabelWidth + selectionInset * 2) * options.size
         val rowWidth = if (maxWidth == Dp.Infinity) minimumWidth else maxOf(maxWidth, minimumWidth)
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            SingleChoiceSegmentedButtonRow(
+            Surface(
                 modifier = Modifier.width(rowWidth).height(design.controlHeight)
-                    .background(design.track, design.controlShape),
-                space = 0.dp,
+                    .settingsTag(settingsChildTag(tagPrefix, "track")),
+                shape = design.controlShape,
+                color = design.track.copy(alpha = if (enabled) 1f else .38f),
+                tonalElevation = 0.dp,
+                shadowElevation = design.shadowElevation,
             ) {
-                options.forEach { (id, label) ->
-                    SegmentedButton(
-                        selected = id == selected,
-                        onClick = {
-                            if (currentEnabled && id != currentSelected) currentOnSelected(id)
-                        },
-                        enabled = enabled,
-                        modifier = Modifier.weight(1f).height(design.controlHeight)
-                            .settingsTag(settingsChildTag(tagPrefix, id)),
-                        shape = design.controlShape,
-                        colors = colors,
-                        border = BorderStroke(0.dp, Color.Transparent),
-                        icon = {},
-                        label = {
-                            Text(label, style = design.optionStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        },
-                    )
+                Row(Modifier.fillMaxSize().selectableGroup()) {
+                    options.forEach { (id, label) ->
+                        Box(
+                            Modifier.weight(1f).fillMaxHeight()
+                                .settingsTag(settingsChildTag(tagPrefix, id))
+                                .selectable(selected = id == selected, enabled = enabled, role = Role.RadioButton,
+                                    onClick = { if (currentEnabled && id != currentSelected) currentOnSelected(id) }),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Surface(
+                                modifier = Modifier.padding(selectionInset).fillMaxSize()
+                                    .settingsTag(settingsChildTag(tagPrefix, "$id-surface")),
+                                shape = design.controlShape,
+                                color = if (id == selected) design.selected.copy(alpha = if (enabled) 1f else .38f)
+                                    else Color.Transparent,
+                                tonalElevation = 0.dp,
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    SettingsLineText(label, style = optionStyle,
+                                        color = (if (id == selected) design.text else design.secondaryText)
+                                            .copy(alpha = if (enabled) 1f else .38f),
+                                        maxLines = 1, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -183,28 +294,55 @@ fun SettingsToggle(
     val design = LocalSettingsDesign.current
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnCheckedChange by rememberUpdatedState(onCheckedChange)
-    Switch(
-        checked = checked,
-        onCheckedChange = { if (currentEnabled) currentOnCheckedChange(it) },
-        enabled = enabled,
-        modifier = modifier.heightIn(min = design.controlHeight).settingsTag(tag).semantics {
-            stateDescription = if (checked) "已开启" else "已关闭"
-        },
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = design.switchThumb,
-            checkedTrackColor = design.onSwitchTrack,
-            checkedBorderColor = Color.Transparent,
-            uncheckedThumbColor = design.offSwitchThumb,
-            uncheckedTrackColor = design.offSwitchTrack,
-            uncheckedBorderColor = Color.Transparent,
-            disabledCheckedThumbColor = design.switchThumb.copy(alpha = .38f),
-            disabledCheckedTrackColor = design.onSwitchTrack.copy(alpha = .38f),
-            disabledCheckedBorderColor = Color.Transparent,
-            disabledUncheckedThumbColor = design.offSwitchThumb.copy(alpha = .38f),
-            disabledUncheckedTrackColor = design.offSwitchTrack.copy(alpha = .38f),
-            disabledUncheckedBorderColor = Color.Transparent,
-        ),
-    )
+    Box(modifier.sizeIn(minWidth = design.minimumTouchHeight, minHeight = design.minimumTouchHeight)
+        .settingsTag(tag).toggleable(checked, enabled = enabled, role = Role.Switch,
+            onValueChange = { if (currentEnabled) currentOnCheckedChange(it) })
+        .semantics { stateDescription = if (checked) "已开启" else "已关闭" },
+        contentAlignment = Alignment.Center) {
+        SettingsSwitchVisual(checked, enabled, tag)
+    }
+}
+
+/** The whole label-and-switch row exposes one toggle action; its visual has no input handler. */
+@Composable
+fun SettingsSwitchRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tag: String = "",
+) {
+    val design = LocalSettingsDesign.current
+    val currentEnabled by rememberUpdatedState(enabled)
+    val currentOnChanged by rememberUpdatedState(onCheckedChange)
+    Row(modifier.fillMaxWidth().heightIn(min = 30.dp).settingsTag(tag)
+        .toggleable(checked, enabled = enabled, role = Role.Switch,
+            onValueChange = { if (currentEnabled) currentOnChanged(it) })
+        .semantics { stateDescription = if (checked) "已开启" else "已关闭" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(design.smallGap)) {
+        SettingsLineText(title, Modifier.weight(1f).settingsTag(settingsChildTag(tag, "label")),
+            design.labelStyle, design.text.copy(alpha = if (enabled) 1f else .38f))
+        SettingsSwitchVisual(checked, enabled, tag)
+    }
+}
+
+@Composable
+private fun SettingsSwitchVisual(checked: Boolean, enabled: Boolean, tag: String) {
+    val design = LocalSettingsDesign.current
+    val thumbOffset by animateDpAsState(if (checked) 22.dp else 2.dp,
+        animationSpec = tween(180), label = "settings-switch-thumb")
+    Surface(Modifier.size(48.dp, 24.dp).alpha(if (enabled) 1f else .38f)
+        .settingsTag(settingsChildTag(tag, "track")),
+        shape = design.controlShape, color = if (checked) design.onSwitchTrack else design.offSwitchTrack,
+        tonalElevation = 0.dp, shadowElevation = design.shadowElevation) {
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.align(Alignment.CenterStart).offset(x = thumbOffset).size(24.dp, 20.dp)
+                .background(if (checked) design.switchThumb else design.offSwitchThumb, design.controlShape)
+                .settingsTag(settingsChildTag(tag, "thumb")))
+        }
+    }
 }
 
 /** One clickable Material surface owns both physical and semantic navigation clicks. */
@@ -227,30 +365,25 @@ fun SettingsNavigationItem(
         enabled = enabled,
         modifier = modifier.fillMaxWidth().heightIn(min = design.navigationHeight)
             .settingsTag(tag).semantics { role = Role.Button },
-        shape = design.cardShape,
+        shape = RectangleShape,
         color = design.card,
         contentColor = textColor,
         tonalElevation = 0.dp,
-        shadowElevation = design.shadowElevation,
     ) {
-        ListItem(
-            headlineContent = { Text(title, style = design.navigationTitleStyle, color = textColor) },
-            leadingContent = { Icon(icon, contentDescription = null, modifier = Modifier.size(30.dp)) },
-            trailingContent = {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
-                    modifier = Modifier.size(28.dp))
-            },
-            colors = ListItemDefaults.colors(
-                containerColor = Color.Transparent,
-                headlineColor = textColor,
-                leadingIconColor = iconColor,
-                trailingIconColor = iconColor,
-            ),
-        )
+        Row(Modifier.fillMaxWidth().padding(design.pagePadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(design.itemGap)) {
+            Icon(icon, contentDescription = null, tint = iconColor,
+                modifier = Modifier.size(24.dp).settingsTag(settingsChildTag(tag, "icon")))
+            SettingsLineText(title, Modifier.weight(1f).settingsTag(settingsChildTag(tag, "label")),
+                design.navigationTitleStyle, textColor)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = iconColor,
+                modifier = Modifier.size(24.dp).settingsTag(settingsChildTag(tag, "arrow")))
+        }
     }
 }
 
-/** Padding uses the actual constrained card width, in dp, rather than concept-image pixels. */
+/** A group owns one shape and shadow, with content spacing independent from its padding. */
 @Composable
 fun SettingsGroupCard(
     modifier: Modifier = Modifier,
@@ -258,27 +391,24 @@ fun SettingsGroupCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val design = LocalSettingsDesign.current
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        Surface(
-            color = design.card,
-            contentColor = design.text,
-            shape = design.cardShape,
-            tonalElevation = 0.dp,
-            shadowElevation = design.shadowElevation,
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(
-                    contentPadding ?: androidx.compose.foundation.layout.PaddingValues(design.paddingFor(maxWidth)),
-                ),
-                verticalArrangement = Arrangement.spacedBy(design.itemGap),
-                content = content,
-            )
-        }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = design.card,
+        contentColor = design.text,
+        shape = design.cardShape,
+        tonalElevation = 0.dp,
+        shadowElevation = design.shadowElevation,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(contentPadding ?: PaddingValues(design.pagePadding)),
+            verticalArrangement = Arrangement.spacedBy(design.itemGap),
+            content = content,
+        )
     }
 }
 
 /**
- * Hue selects a canonical saturated color. Swatches vary only fixed HSL lightness.
+ * Hue selects a canonical saturated color. Swatches rotate the eight reference HSL levels together.
  * External RGB synchronizes the hue without generating a preview or a commit.
  */
 @Composable
@@ -295,6 +425,7 @@ fun SettingsColorPicker(
     var hue by remember { mutableFloatStateOf(settingsColorHue(color)) }
     var lastEmittedColor by remember { mutableStateOf<Int?>(null) }
     var gestureStartColor by remember { mutableStateOf(color) }
+    var gestureStartHue by remember { mutableFloatStateOf(hue) }
     val currentColor by rememberUpdatedState(color)
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnPreview by rememberUpdatedState(onColorPreview)
@@ -302,28 +433,30 @@ fun SettingsColorPicker(
     val currentOnSwatch by rememberUpdatedState(onSwatchSelected)
     LaunchedEffect(color, enabled) {
         // Ignore our own preview/commit echo: choosing a shade cannot move its base hue.
-        if (!enabled || color != lastEmittedColor) hue = settingsColorHue(color, hue)
-        if (!enabled) lastEmittedColor = null
+        if (!enabled || color != lastEmittedColor) {
+            hue = settingsColorHue(color, hue)
+            lastEmittedColor = null
+        }
     }
     val shades = remember(hue) { settingsColorShades(hue) }
     Column(modifier.fillMaxWidth().settingsTag(tagPrefix), verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
         SettingsSliderControl(
-            value = hue,
-            valueRange = 0f..360f,
-            onValueChange = { value ->
+            value = settingsHuePosition(hue),
+            valueRange = 0f..1f,
+            onValueChange = { position ->
                 if (currentEnabled) {
-                    hue = value
-                    val preview = settingsCanonicalColor(value)
+                    hue = settingsPositionHue(position)
+                    val preview = settingsCanonicalColor(hue)
                     lastEmittedColor = preview
                     currentOnPreview(preview)
                 }
             },
-            onValueChangeStarted = { gestureStartColor = currentColor },
+            onValueChangeStarted = { gestureStartColor = currentColor; gestureStartHue = hue },
             onValueChangeFinished = {
                 if (currentEnabled) currentOnCommit(settingsCanonicalColor(hue))
             },
-            onValueCancelled = { initialHue ->
-                hue = initialHue
+            onValueCancelled = {
+                hue = gestureStartHue
                 if (currentEnabled) {
                     lastEmittedColor = gestureStartColor
                     currentOnPreview(gestureStartColor)
@@ -331,40 +464,39 @@ fun SettingsColorPicker(
             },
             enabled = enabled,
             rainbow = true,
+            rainbowColor = Color(lastEmittedColor ?: color),
+            hueDegrees = hue,
             tag = settingsChildTag(tagPrefix, "hue"),
-            modifier = Modifier.semantics {
-                contentDescription = "色相"
-                stateDescription = "${hue.roundToInt()}度"
-            },
         )
-        Row(
-            modifier = Modifier.fillMaxWidth().height(design.controlHeight)
-                .horizontalScroll(rememberScrollState()).selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        Surface(
+            modifier = Modifier.fillMaxWidth().height(design.colorHeight)
+                .settingsTag(settingsChildTag(tagPrefix, "swatches")),
+            shape = design.hueTrackShape,
+            color = Color.Transparent,
+            tonalElevation = 0.dp,
+            shadowElevation = design.shadowElevation,
         ) {
-            shades.forEachIndexed { index, shade ->
-                val selected = (shade and 0x00FFFFFF) == (color and 0x00FFFFFF)
-                Surface(
-                    selected = selected,
-                    onClick = {
-                        if (currentEnabled) {
-                            lastEmittedColor = shade
-                            currentOnPreview(shade)
-                            currentOnSwatch(shade)
-                        }
-                    },
-                    enabled = enabled,
-                    modifier = Modifier.size(design.controlHeight)
-                        .settingsTag(settingsChildTag(tagPrefix, "swatch-$index"))
-                        .semantics {
-                            contentDescription = "颜色${index + 1}"
-                            stateDescription = "${if (selected) "已选中，" else ""}${settingsColorHex(shade)}"
-                        },
-                    shape = design.swatchShape,
-                    color = Color(shade).copy(alpha = if (enabled) 1f else .38f),
-                    tonalElevation = 0.dp,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
+            Row(Modifier.fillMaxSize().selectableGroup()) {
+                shades.forEachIndexed { index, shade ->
+                    val selected = (shade and 0x00FFFFFF) == (color and 0x00FFFFFF)
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight()
+                            .background(Color(shade).copy(alpha = if (enabled) 1f else .38f))
+                            .settingsTag(settingsChildTag(tagPrefix, "swatch-$index"))
+                            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton,
+                                onClick = {
+                                    if (currentEnabled) {
+                                        lastEmittedColor = shade
+                                        currentOnPreview(shade)
+                                        currentOnSwatch(shade)
+                                    }
+                                })
+                            .semantics {
+                                contentDescription = "颜色${index + 1}"
+                                stateDescription = "${if (selected) "已选中，" else ""}${settingsColorHex(shade)}"
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         if (selected) Icon(
                             Icons.Default.Check,
                             contentDescription = null,
@@ -394,11 +526,54 @@ private fun settingsNormalizedHue(hue: Float): Float =
 internal fun settingsCanonicalColor(hue: Float): Int =
     ColorUtils.HSLToColor(floatArrayOf(settingsNormalizedHue(hue), 1f, .5f))
 
-/** Ten fixed lightness levels; no shade is generated from a previously selected shade. */
-internal fun settingsColorShades(hue: Float): List<Int> =
-    listOf(.90f, .82f, .74f, .66f, .58f, .50f, .42f, .34f, .26f, .18f).map { lightness ->
-        ColorUtils.HSLToColor(floatArrayOf(settingsNormalizedHue(hue), 1f, lightness))
+/** Reference hues and unequal stop positions are mapped independently from Slider input. */
+private val SettingsHueStops = listOf(
+    0f to 0xFFFF0000.toInt(),
+    .14f to 0xFFFF7700.toInt(),
+    .28f to 0xFFFFF202.toInt(),
+    .42f to 0xFF21FF03.toInt(),
+    .56f to 0xFF00FFEE.toInt(),
+    .70f to 0xFF00A2FF.toInt(),
+    .84f to 0xFFFF00FF.toInt(),
+    1f to 0xFFFF0004.toInt(),
+)
+private val SettingsHueDegrees = SettingsHueStops.mapIndexed { index, stop ->
+    if (index == SettingsHueStops.lastIndex) 360f else settingsColorHue(stop.second)
+}
+
+internal fun settingsHuePosition(hue: Float): Float {
+    val degrees = if (hue.isFinite() && hue == 360f) 360f else settingsNormalizedHue(hue)
+    val end = SettingsHueDegrees.indexOfFirst { it >= degrees }.coerceAtLeast(0)
+    if (end == 0) return 0f
+    val fraction = (degrees - SettingsHueDegrees[end - 1]) / (SettingsHueDegrees[end] - SettingsHueDegrees[end - 1])
+    val startPosition = SettingsHueStops[end - 1].first
+    return startPosition + fraction * (SettingsHueStops[end].first - startPosition)
+}
+
+internal fun settingsPositionHue(position: Float): Float {
+    val bounded = position.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
+    val end = SettingsHueStops.indexOfFirst { it.first >= bounded }.coerceAtLeast(0)
+    if (end == 0) return 0f
+    val startPosition = SettingsHueStops[end - 1].first
+    val fraction = (bounded - startPosition) / (SettingsHueStops[end].first - startPosition)
+    return SettingsHueDegrees[end - 1] + fraction * (SettingsHueDegrees[end] - SettingsHueDegrees[end - 1])
+}
+
+private val SettingsYellowReference = listOf(
+    0xFFFEFCE8.toInt(), 0xFFFEF08A.toInt(), 0xFFFACC15.toInt(), 0xFFCA8A04.toInt(),
+    0xFFA16207.toInt(), 0xFF854D0E.toInt(), 0xFF713F12.toInt(), 0xFF422006.toInt(),
+)
+
+/** Eight reference HSL levels rotate together from yellow; selecting a shade cannot regenerate them. */
+internal fun settingsColorShades(hue: Float): List<Int> {
+    val rotation = settingsNormalizedHue(hue) - settingsColorHue(SettingsYellowReference[2])
+    return SettingsYellowReference.map { reference ->
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(reference, hsl)
+        hsl[0] = settingsNormalizedHue(hsl[0] + rotation)
+        ColorUtils.HSLToColor(hsl)
     }
+}
 
 /**
  * Observe standard draggable interactions synchronously before Slider's finish callback.
@@ -460,6 +635,8 @@ private fun SettingsSliderControl(
     tag: String = "",
     steps: Int = 0,
     rainbow: Boolean = false,
+    rainbowColor: Color = Color.Transparent,
+    hueDegrees: Float = 0f,
     onValueChangeStarted: () -> Unit = {},
 ) {
     require(steps >= 0) { "Slider steps must be non-negative" }
@@ -499,78 +676,87 @@ private fun SettingsSliderControl(
         onDispose {}
     }
     val colors = SliderDefaults.colors(
-        thumbColor = design.selected,
-        activeTrackColor = design.selected,
-        inactiveTrackColor = design.track,
+        thumbColor = Color.Transparent,
+        activeTrackColor = Color.Transparent,
+        inactiveTrackColor = Color.Transparent,
         activeTickColor = Color.Transparent,
         inactiveTickColor = Color.Transparent,
-        disabledThumbColor = design.selected.copy(alpha = .38f),
-        disabledActiveTrackColor = design.selected.copy(alpha = .38f),
-        disabledInactiveTrackColor = design.track.copy(alpha = .38f),
+        disabledThumbColor = Color.Transparent,
+        disabledActiveTrackColor = Color.Transparent,
+        disabledInactiveTrackColor = Color.Transparent,
         disabledActiveTickColor = Color.Transparent,
         disabledInactiveTickColor = Color.Transparent,
     )
     val direction = LocalLayoutDirection.current
     val rainbowBrush = remember(direction) {
-        val colorsForHue = (0..6).map { Color(settingsCanonicalColor(it * 60f)) }
-        Brush.horizontalGradient(if (direction == LayoutDirection.Rtl) colorsForHue.reversed() else colorsForHue)
+        val stops = if (direction == LayoutDirection.Rtl)
+            SettingsHueStops.asReversed().map { (position, color) -> (1f - position) to Color(color) }
+        else SettingsHueStops.map { (position, color) -> position to Color(color) }
+        Brush.horizontalGradient(*stops.toTypedArray())
     }
-    Slider(
-        value = draft.value ?: boundedValue,
-        valueRange = valueRange,
-        steps = steps,
-        enabled = enabled,
-        colors = colors,
-        interactionSource = interactionSource,
-        modifier = modifier.fillMaxWidth().heightIn(min = design.controlHeight).settingsTag(tag),
-        onValueChange = { next ->
-            if (!interactionSource.disposed && currentEnabled && next.isFinite()) {
-                val bounded = next.coerceIn(valueRange)
-                if (bounded != (draft.value ?: currentValue)) {
-                    if (draft.initialValue == null) {
-                        interactionSource.beginValueChange()
-                        draft.initialValue = currentValue
-                        currentOnStarted()
+    val displayValue = draft.value ?: boundedValue
+    val fraction = ((displayValue - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val visualHeight = if (rainbow) design.colorHeight else design.controlHeight
+    Box(modifier.fillMaxWidth().height(visualHeight), contentAlignment = Alignment.Center) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().height(visualHeight).alpha(if (enabled) 1f else .38f)
+                .settingsTag(settingsChildTag(tag, "track")),
+            shape = if (rainbow) design.hueTrackShape else design.controlShape,
+            color = if (rainbow) Color.Transparent else design.track,
+            tonalElevation = 0.dp,
+            shadowElevation = design.shadowElevation,
+        ) {
+            if (rainbow) Box(Modifier.fillMaxSize().background(rainbowBrush))
+            else Box(Modifier.fillMaxSize()) {
+                Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(fraction)
+                    .background(design.selected).settingsTag(settingsChildTag(tag, "fill")))
+            }
+        }
+        // Disable Material's extra layout reservation, not Foundation's minimum touch target.
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+            Slider(
+                value = displayValue,
+                valueRange = valueRange,
+                steps = steps,
+                enabled = enabled,
+                colors = colors,
+                interactionSource = interactionSource,
+                modifier = Modifier.fillMaxWidth().height(visualHeight).settingsTag(tag).then(
+                    if (rainbow) Modifier.semantics {
+                        contentDescription = "色相"
+                        stateDescription = "${hueDegrees.roundToInt()}度"
+                    } else Modifier,
+                ),
+                onValueChange = { next ->
+                    if (!interactionSource.disposed && currentEnabled && next.isFinite()) {
+                        val bounded = next.coerceIn(valueRange)
+                        if (bounded != (draft.value ?: currentValue)) {
+                            if (draft.initialValue == null) {
+                                interactionSource.beginValueChange()
+                                draft.initialValue = currentValue
+                                currentOnStarted()
+                            }
+                            draft.value = bounded
+                            currentOnChange(bounded)
+                        }
                     }
-                    draft.value = bounded
-                    currentOnChange(bounded)
-                }
-            }
-        },
-        onValueChangeFinished = {
-            val accepted = !interactionSource.disposed && currentEnabled && !interactionSource.cancelled && draft.value != null
-            draft.clear()
-            if (accepted) currentOnFinished()
-        },
-        thumb = {
-            if (rainbow) {
-                Box(Modifier.size(design.rainbowThumbWidth, design.controlHeight)
-                    .alpha(if (enabled) 1f else .38f)
-                    .border(BorderStroke(3.dp, design.rainbowThumbOutline), design.rainbowThumbShape))
-            } else {
-                SliderDefaults.Thumb(
-                    interactionSource = interactionSource,
-                    colors = colors,
-                    enabled = enabled,
-                    thumbSize = DpSize(4.dp, design.controlHeight),
-                )
-            }
-        },
-        track = { state ->
-            if (rainbow) {
-                Box(Modifier.fillMaxWidth().height(design.controlHeight)
-                    .alpha(if (enabled) 1f else .38f).background(rainbowBrush, design.hueTrackShape))
-            } else {
-                SliderDefaults.Track(
-                    sliderState = state,
-                    modifier = Modifier.height(design.controlHeight),
-                    enabled = enabled,
-                    colors = colors,
-                    drawStopIndicator = {},
-                    thumbTrackGapSize = 0.dp,
-                    trackInsideCornerSize = 0.dp,
-                )
-            }
-        },
-    )
+                },
+                onValueChangeFinished = {
+                    val accepted = !interactionSource.disposed && currentEnabled && !interactionSource.cancelled && draft.value != null
+                    draft.clear()
+                    if (accepted) currentOnFinished()
+                },
+                thumb = {
+                    if (rainbow) {
+                        Box(Modifier.size(design.rainbowThumbWidth, design.colorHeight)
+                            .alpha(if (enabled) 1f else .38f).clip(design.rainbowThumbShape)
+                            .background(rainbowColor)
+                            .border(BorderStroke(4.dp, design.rainbowThumbOutline), design.rainbowThumbShape)
+                            .settingsTag(settingsChildTag(tag, "thumb")))
+                    } else Box(Modifier.size(0.dp, design.controlHeight))
+                },
+                track = { Box(Modifier.fillMaxWidth().height(visualHeight)) },
+            )
+        }
+    }
 }

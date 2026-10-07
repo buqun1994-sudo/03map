@@ -2,7 +2,7 @@ package com.icar03.content.ui
 
 import com.icar03.content.model.LyricPreferenceRules
 
-/** A single projection for the fixed settings sample and the actual lyric renderer. */
+/** The actual lyric renderer consumes the same persisted typography and color owners. */
 internal data class LyricRenderStyle(
     val normalSizeSp: Float,
     val currentSizeSp: Float,
@@ -11,6 +11,7 @@ internal data class LyricRenderStyle(
     val normalColor: Int,
     val currentColor: Int,
     val immersive: Boolean = false,
+    val showTranslation: Boolean = true,
 )
 
 internal fun lyricRenderStyle(state: ContentUiState, immersive: Boolean = false): LyricRenderStyle {
@@ -18,7 +19,10 @@ internal fun lyricRenderStyle(state: ContentUiState, immersive: Boolean = false)
     val ordinaryCurrent = if (state.lyricsHighlight)
         LyricPreferenceRules.currentFontSize(state.lyricsCurrentFontSizeSp, ordinaryNormal) else ordinaryNormal
     val normal = if (immersive) LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp) else ordinaryNormal
-    val current = if (immersive) normal * ordinaryCurrent / ordinaryNormal else ordinaryCurrent
+    val current = if (immersive) {
+        if (state.lyricsHighlight) LyricPreferenceRules.immersiveCurrentFontSize(state.lyricsImmersiveCurrentFontSizeSp, normal)
+        else normal
+    } else ordinaryCurrent
     val theme = if (state.dark) 0xFFFFFFFF.toInt() else 0xFF27303B.toInt()
     fun color(mode: String, custom: Int): Int = when (LyricPreferenceRules.colorMode(mode)) {
         "system" -> LyricPreferenceRules.opaqueColor(state.lyricsSystemAccentColor)
@@ -30,6 +34,6 @@ internal fun lyricRenderStyle(state: ContentUiState, immersive: Boolean = false)
             else LyricPreferenceRules.lineGap(state.lyricsLineGapDp),
         LyricPreferenceRules.alignment(state.lyricsAlignment),
         color(state.lyricsColorMode, state.lyricsCustomColor),
-        color(state.lyricsCurrentColorMode, state.lyricsCurrentCustomColor), immersive,
+        color(state.lyricsCurrentColorMode, state.lyricsCurrentCustomColor), immersive, state.lyricsShowTranslation,
     )
 }

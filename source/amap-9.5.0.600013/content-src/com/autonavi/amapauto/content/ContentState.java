@@ -22,7 +22,12 @@ public final class ContentState {
     public boolean showSeconds;
     public boolean showIndoorTemperature = true;
     public boolean showBattery = true;
+    public boolean showRange = true;
     public boolean showChargingStatus = true;
+    public boolean showPluggedStatus = true;
+    public boolean showScheduledCharging = true;
+    public boolean showChargingRemainingTime = true;
+    public boolean showChargingPower = true;
     public float lyricsFontScale = 1.0f;
     public int lyricsLineSpacing = 1;
     // New independent lyric preferences. The legacy scale/spacing fields above remain for API compatibility.
@@ -35,10 +40,13 @@ public final class ContentState {
     public String lyricsCurrentColorMode = "theme";
     public int lyricsCurrentCustomColor = 0xFF5C66BF;
     public float lyricsImmersiveFontSizeSp = 120.0f;
+    public float lyricsImmersiveCurrentFontSizeSp = 144.0f;
     public float lyricsImmersiveLineGapDp = 84.0f;
+    public boolean lyricsShowTranslation = true;
     public boolean lyricsSpeakerLayout = true;
     public boolean lyricsHighlight = true;
     public boolean immersiveShowTopBar = true;
+    public boolean immersiveTopBarKeepSplit = true;
     public boolean immersiveShowDock = true;
     public boolean showAmbientArtwork = true;
     public boolean showMediaSourceSwitcher = true;
@@ -179,7 +187,12 @@ public final class ContentState {
         copy.showSeconds = showSeconds;
         copy.showIndoorTemperature = showIndoorTemperature;
         copy.showBattery = showBattery;
+        copy.showRange = showRange;
         copy.showChargingStatus = showChargingStatus;
+        copy.showPluggedStatus = showPluggedStatus;
+        copy.showScheduledCharging = showScheduledCharging;
+        copy.showChargingRemainingTime = showChargingRemainingTime;
+        copy.showChargingPower = showChargingPower;
         copy.lyricsFontScale = lyricsFontScale;
         copy.lyricsLineSpacing = lyricsLineSpacing;
         copy.lyricsFontSizeSp = lyricsFontSizeSp;
@@ -191,10 +204,13 @@ public final class ContentState {
         copy.lyricsCurrentColorMode = lyricsCurrentColorMode;
         copy.lyricsCurrentCustomColor = lyricsCurrentCustomColor;
         copy.lyricsImmersiveFontSizeSp = lyricsImmersiveFontSizeSp;
+        copy.lyricsImmersiveCurrentFontSizeSp = lyricsImmersiveCurrentFontSizeSp;
         copy.lyricsImmersiveLineGapDp = lyricsImmersiveLineGapDp;
+        copy.lyricsShowTranslation = lyricsShowTranslation;
         copy.lyricsSpeakerLayout = lyricsSpeakerLayout;
         copy.lyricsHighlight = lyricsHighlight;
         copy.immersiveShowTopBar = immersiveShowTopBar;
+        copy.immersiveTopBarKeepSplit = immersiveTopBarKeepSplit;
         copy.immersiveShowDock = immersiveShowDock;
         copy.showAmbientArtwork = showAmbientArtwork;
         copy.showMediaSourceSwitcher = showMediaSourceSwitcher;

@@ -14,6 +14,14 @@ class LyricPreferenceRulesTest {
         assertEquals(48f, LyricPreferenceRules.currentFontSize(Float.NaN, 40f), 0f)
     }
 
+    @Test fun immersiveCurrentFontUsesTwoSpStepsAndNeverFallsBelowImmersiveNormal() {
+        assertEquals(64f, LyricPreferenceRules.immersiveCurrentFontSize(0f, 64f), 0f)
+        assertEquals(640f, LyricPreferenceRules.immersiveCurrentFontSize(999f, 192f), 0f)
+        assertEquals(144f, LyricPreferenceRules.immersiveCurrentFontSize(Float.NaN, 120f), 0f)
+        assertEquals(122f, LyricPreferenceRules.immersiveCurrentFontSize(121f, 120f), 0f)
+        assertEquals(192f, LyricPreferenceRules.immersiveCurrentFontSize(144f, 192f), 0f)
+    }
+
     @Test fun gapAndImmersiveRulesClampToTheirDeclaredGrids() {
         assertEquals(0f, LyricPreferenceRules.lineGap(-4f), 0f)
         assertEquals(64f, LyricPreferenceRules.lineGap(65f), 0f)

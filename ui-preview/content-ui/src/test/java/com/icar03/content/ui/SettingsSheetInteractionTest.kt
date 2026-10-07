@@ -33,7 +33,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
-/** Real Material controls, modal navigation, fixed preview and actual Android frames. */
+/** Real Material controls, modal navigation, fixed headers, uniform groups and actual Android frames. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [28], qualifiers = "w640dp-h1080dp-mdpi")
@@ -77,10 +77,18 @@ open class SettingsSheetInteractionTest {
                             is ContentEvent.SettingsSectionSelected -> current.copy(settingsSection = event.section)
                             is ContentEvent.ShowSecondsChanged -> current.copy(showSeconds = event.value)
                             is ContentEvent.ShowWeekdayChanged -> current.copy(showWeekday = event.value)
-                            is ContentEvent.LyricsFontSizeChanged -> current.copy(lyricsFontSizeSp = event.value)
+                             is ContentEvent.ShowRangeChanged -> current.copy(showRange = event.value)
+                             is ContentEvent.ShowPluggedStatusChanged -> current.copy(showPluggedStatus = event.value)
+                             is ContentEvent.ShowScheduledChargingChanged -> current.copy(showScheduledCharging = event.value)
+                             is ContentEvent.ShowChargingRemainingTimeChanged -> current.copy(showChargingRemainingTime = event.value)
+                             is ContentEvent.ShowChargingPowerChanged -> current.copy(showChargingPower = event.value)
+                             is ContentEvent.ImmersiveTopBarKeepSplitChanged -> current.copy(immersiveTopBarKeepSplit = event.value)
+                             is ContentEvent.LyricsShowTranslationChanged -> current.copy(lyricsShowTranslation = event.value)
+                            is ContentEvent.LyricsFontSizeChanged -> current.copy(lyricsFontSizeSp = event.value, lyricsCurrentFontSizeSp = current.lyricsCurrentFontSizeSp.coerceAtLeast(event.value))
                             is ContentEvent.LyricsCurrentFontSizeChanged -> current.copy(lyricsCurrentFontSizeSp = event.value)
                             is ContentEvent.LyricsLineGapChanged -> current.copy(lyricsLineGapDp = event.value)
-                            is ContentEvent.LyricsImmersiveFontSizeChanged -> current.copy(lyricsImmersiveFontSizeSp = event.value)
+                            is ContentEvent.LyricsImmersiveFontSizeChanged -> current.copy(lyricsImmersiveFontSizeSp = event.value, lyricsImmersiveCurrentFontSizeSp = current.lyricsImmersiveCurrentFontSizeSp.coerceAtLeast(event.value))
+                             is ContentEvent.LyricsImmersiveCurrentFontSizeChanged -> current.copy(lyricsImmersiveCurrentFontSizeSp = event.value)
                             is ContentEvent.LyricsImmersiveLineGapChanged -> current.copy(lyricsImmersiveLineGapDp = event.value)
                             is ContentEvent.LyricsAlignmentChanged -> current.copy(lyricsAlignment = event.value)
                             is ContentEvent.LyricsColorModeChanged -> current.copy(lyricsColorMode = event.value)
@@ -119,7 +127,7 @@ open class SettingsSheetInteractionTest {
         }
         compose.onNodeWithTag("settings-menu-Lyrics").performScrollTo().performClick()
         compose.onNodeWithTag("settings-title").assertTextEquals("歌词设置")
-        compose.onNodeWithTag("settings-lyrics-preview").assertIsDisplayed()
+        compose.onNodeWithTag("settings-lyrics-preview").assertDoesNotExist()
         assertEquals(1, events.count { it == ContentEvent.SettingsSectionSelected(SettingsSection.Lyrics) })
         capture("settings-lyrics-top")
     }
@@ -128,6 +136,11 @@ open class SettingsSheetInteractionTest {
         mount(open = true)
         compose.onNodeWithTag("settings-menu-TopBar").performClick()
         compose.onNodeWithTag("settings-title").assertTextEquals("状态栏设置")
+        capture("settings-topbar-top")
+        compose.onNodeWithTag("settings-switch-显示充电功率").performScrollTo()
+        capture("settings-topbar-battery")
+        compose.onNodeWithTag("settings-switch-状态栏保持分屏").performScrollTo()
+        capture("settings-topbar-immersive")
         compose.onNodeWithTag("settings-switch-显示秒数").performScrollTo().performClick()
         assertTrue(state.value.showSeconds)
         compose.onNodeWithTag("settings-back").performClick()
@@ -166,40 +179,40 @@ open class SettingsSheetInteractionTest {
         capture("settings-home")
     }
 
-    @Test fun previewAndHeaderStayFixedWhileOnlyTheSettingsScroll() {
+    @Test fun headerStaysFixedAndLyricsSettingsHaveNoPreview() {
         mount(open = true, section = SettingsSection.Lyrics)
-        val preview = bounds("settings-lyrics-preview")
         val header = bounds("settings-header")
+        compose.onNodeWithTag("settings-lyrics-preview").assertDoesNotExist()
         compose.onNodeWithTag("settings-lyrics-alignment").performScrollTo().assertIsDisplayed()
-        assertEquals(preview, bounds("settings-lyrics-preview"))
         capture("settings-ordinary-controls")
-        compose.onNodeWithTag("settings-immersive-line-gap").performScrollTo().assertIsDisplayed()
-        assertEquals(preview, bounds("settings-lyrics-preview"))
+        compose.onNodeWithTag("settings-switch-显示歌词翻译").performScrollTo().assertIsDisplayed().performClick()
+        assertFalse(state.value.lyricsShowTranslation)
+        assertEquals(1, events.count { it is ContentEvent.LyricsShowTranslationChanged })
         assertEquals(header, bounds("settings-header"))
-        compose.onNodeWithTag("settings-lyrics-preview").assertIsDisplayed()
-        assertTrue(bounds("settings-detail-scroll").top >= preview.bottom)
+        assertTrue(bounds("settings-detail-scroll").top >= header.bottom)
         capture("settings-lyrics-bottom")
     }
 
-    @Test fun numericLabelsAndPreviewReactToStandardSliderAccessibility() {
+    @Test fun numericRowsShowTheActualCommittedValueAndDraggingIsSilent() {
         mount(open = true, section = SettingsSection.Lyrics)
-        val slider = compose.onNodeWithTag("settings-font-size").performScrollTo()
-        slider.performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(52f)) }
+        compose.onNodeWithTag("settings-font-size").performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(52f)) }
         compose.waitForIdle()
-        compose.onNodeWithTag("settings-label-歌词字号").assertTextEquals("歌词字号·52sp")
+        compose.onNodeWithTag("settings-font-size-label").assertTextEquals("分屏·52sp")
         assertEquals(52f, state.value.lyricsFontSizeSp, .01f)
-        val actual = previewBody().fetchSemanticsNode().config[LyricFontPixels]
-        assertTrue("the same renderer changes the sample's actual font", actual > 30f * density)
-        assertEquals(0, sounds)
+        assertEquals(1, events.count { it is ContentEvent.LyricsFontSizeChanged })
         compose.onNodeWithTag("settings-line-gap").performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(40f)) }
-        compose.onNodeWithTag("settings-label-歌词间距").assertTextEquals("歌词间距·40dp")
+        compose.onNodeWithTag("settings-line-gap-label").assertTextEquals("分屏·40dp")
         assertEquals(40f, state.value.lyricsLineGapDp, .01f)
+        assertEquals(1, events.count { it is ContentEvent.LyricsLineGapChanged })
+        assertEquals(0, sounds)
+        capture("settings-numeric-controls")
     }
 
     @Test fun platformSectionPrecedesFontAndHasExactlyOneSelection() {
         mount(open = true, section = SettingsSection.Lyrics)
-        compose.onNodeWithText("歌曲平台倾向", substring = true).assertExists()
+        compose.onNodeWithTag("settings-label-歌曲平台倾向").assertExists()
         val font = compose.onNodeWithTag("settings-font-size").performScrollTo().fetchSemanticsNode().boundsInRoot
         assertTrue(font.top >= bounds("settings-detail-scroll").top)
         // The provider owner has its own persistence tests; this checks the actual page entrance.
@@ -208,65 +221,75 @@ open class SettingsSheetInteractionTest {
         assertNotEquals("auto", state.value.lyricsProviderSettings.preferredPlatform)
     }
 
-    @Test fun customColorsShowTenSwatchesAndBothColorOwnersStayIndependent() {
+    @Test fun eightColorsStayInOneBandAndBothColorOwnersStayIndependent() {
         mount(open = true, section = SettingsSection.Lyrics)
         chooseSettingOption("settings-lyrics-color-mode", "custom")
-        assertEquals("custom", state.value.lyricsColorMode)
-        compose.waitForIdle()
         compose.onNodeWithTag("settings-lyrics-color-hue").assertExists()
-        for (index in 0..9) compose.onNodeWithTag("settings-lyrics-color-swatch-$index").assertExists()
+        for (index in 0..7) compose.onNodeWithTag("settings-lyrics-color-swatch-$index").assertExists()
+        compose.onNodeWithTag("settings-lyrics-color-swatch-8").assertDoesNotExist()
         val oldCurrent = state.value.lyricsCurrentCustomColor
-        chooseSettingSwatch("settings-lyrics-color", 3)
-        assertEquals("custom", state.value.lyricsColorMode)
+        chooseSettingSwatch("settings-lyrics-color", 7)
+        val lastShade = state.value.lyricsCustomColor
+        chooseSettingSwatch("settings-lyrics-color", 7)
+        assertEquals(lastShade, state.value.lyricsCustomColor)
         assertEquals(oldCurrent, state.value.lyricsCurrentCustomColor)
-        assertEquals(state.value.lyricsCustomColor, previewBody().fetchSemanticsNode().config[LyricNormalColor])
+        val band = bounds("settings-lyrics-color-swatches")
+        val track = bounds("settings-lyrics-color-hue-track")
+        assertEquals(band.left, track.left, 1f)
+        assertEquals(band.right, track.right, 1f)
+        val first = bounds("settings-lyrics-color-swatch-0")
+        val last = bounds("settings-lyrics-color-swatch-7")
+        assertEquals(band.left, first.left, 1f)
+        assertEquals(band.right, last.right, 1f)
+        assertEquals(first.width, last.width, 1f)
         capture("settings-normal-color")
-        chooseSettingOption("settings-current-color-mode", "system")
-        assertEquals("system", state.value.lyricsCurrentColorMode)
-        compose.waitForIdle()
-        assertEquals(state.value.lyricsSystemAccentColor, previewBody().fetchSemanticsNode().config[LyricCurrentColor])
         chooseSettingOption("settings-current-color-mode", "custom")
-        chooseSettingSwatch("settings-current-color", 7)
-        assertEquals(state.value.lyricsCurrentCustomColor, previewBody().fetchSemanticsNode().config[LyricCurrentColor])
+        chooseSettingSwatch("settings-current-color", 3)
+        assertEquals(lastShade, state.value.lyricsCustomColor)
         capture("settings-current-color")
         chooseSettingOption("settings-current-color-mode", "theme")
-        assertEquals(if (dark) 0xFFFFFFFF.toInt() else 0xFF27303B.toInt(), previewBody().fetchSemanticsNode().config[LyricCurrentColor])
         compose.onNodeWithTag("settings-current-color-hue").assertDoesNotExist()
-        capture("settings-custom-color")
+        assertEquals("theme", state.value.lyricsCurrentColorMode)
     }
 
-    @Test fun disablingEnlargementKeepsCurrentColorAndTheSavedFontSize() {
+    @Test fun disablingEnlargementKeepsBothCurrentSizesAndAllowsIndependentColor() {
         mount(open = true, section = SettingsSection.Lyrics)
         val saved = state.value.lyricsCurrentFontSizeSp
+        val immersiveSaved = state.value.lyricsImmersiveCurrentFontSizeSp
         compose.onNodeWithTag("settings-switch-当前句歌词放大").performScrollTo().performClick()
         assertFalse(state.value.lyricsHighlight)
         compose.onNodeWithTag("settings-current-font-size").performScrollTo().assertIsNotEnabled()
-        val body = previewBody().fetchSemanticsNode().config
-        assertEquals(body[LyricFontPixels], body[LyricActiveFontPixels], .01f)
-        assertTrue(body[LyricEmphasizedRows].contains(1))
+        compose.onNodeWithTag("settings-immersive-current-font-size").performScrollTo().assertIsNotEnabled()
         assertEquals(saved, state.value.lyricsCurrentFontSizeSp, .01f)
+        assertEquals(immersiveSaved, state.value.lyricsImmersiveCurrentFontSizeSp, .01f)
         chooseSettingOption("settings-current-color-mode", "system")
         assertEquals("system", state.value.lyricsCurrentColorMode)
-        compose.waitForIdle()
-        assertEquals(state.value.lyricsSystemAccentColor, previewBody().fetchSemanticsNode().config[LyricCurrentColor])
+        assertEquals(1, events.count { it is ContentEvent.LyricsHighlightChanged })
     }
 
-    @Test fun immersiveSlidersAreIndependentAndPreviewTheirMode() {
+    @Test fun immersiveNormalCurrentAndGapAreIndependentAndHaveNoPreview() {
         mount(open = true, section = SettingsSection.Lyrics)
         val ordinaryFont = state.value.lyricsFontSizeSp
+        val ordinaryCurrent = state.value.lyricsCurrentFontSizeSp
         val ordinaryGap = state.value.lyricsLineGapDp
         compose.onNodeWithTag("settings-immersive-font-size").performScrollTo()
-            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(144f)) }
-        compose.onNodeWithTag("settings-label-沉浸式全屏歌词字号").assertTextEquals("沉浸式全屏歌词字号·144sp")
-        compose.onNodeWithText("全屏歌词预览").assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(128f)) }
+        compose.onNodeWithTag("settings-immersive-font-size-label").assertTextEquals("全屏·128sp")
         compose.onNodeWithTag("settings-immersive-line-gap").performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(96f)) }
-        assertEquals(144f, state.value.lyricsImmersiveFontSizeSp, .01f)
+        assertEquals(128f, state.value.lyricsImmersiveFontSizeSp, .01f)
         assertEquals(96f, state.value.lyricsImmersiveLineGapDp, .01f)
+        capture("settings-immersive-controls")
+        compose.onNodeWithTag("settings-immersive-current-font-size").performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(200f)) }
+        compose.onNodeWithTag("settings-immersive-current-font-size-label").assertTextEquals("全屏·200sp")
+        assertEquals(200f, state.value.lyricsImmersiveCurrentFontSizeSp, .01f)
         assertEquals(ordinaryFont, state.value.lyricsFontSizeSp, .01f)
+        assertEquals(ordinaryCurrent, state.value.lyricsCurrentFontSizeSp, .01f)
         assertEquals(ordinaryGap, state.value.lyricsLineGapDp, .01f)
         assertEquals(0, sounds)
-        capture("settings-immersive-controls")
+        compose.onNodeWithTag("settings-lyrics-preview").assertDoesNotExist()
+        capture("settings-immersive-current-controls")
     }
 
     @Test fun noPreferenceChangesDuringTheRetainedExitAnimation() {
@@ -304,6 +327,49 @@ open class SettingsSheetInteractionTest {
         assertEquals(original.top, bounds("settings-sheet").top, 1f)
     }
 
+
+    @Test fun homeUsesTheMeasuredHeaderAndSectionSpacingInEveryDensity() {
+        mount(open = true)
+        val sheet = bounds("settings-sheet")
+        val back = bounds("settings-back")
+        val title = bounds("settings-title")
+        val divider = bounds("settings-header-divider")
+        val sectionTitle = bounds("settings-section-title-布局")
+        val card = bounds("settings-card-布局")
+        val tolerance = maxOf(1.5f, density)
+        assertEquals(24f * density, back.left - sheet.left, tolerance)
+        assertEquals(24f * density, title.top - sheet.top, tolerance)
+        assertEquals(24f * density, divider.top - title.bottom, tolerance)
+        assertEquals(24f * density, sectionTitle.top - divider.bottom, tolerance)
+        assertEquals(48f * density, sectionTitle.left - sheet.left, tolerance)
+        assertEquals(24f * density, card.top - sectionTitle.bottom, tolerance)
+        assertEquals(24f * density, card.left - sheet.left, tolerance)
+        assertEquals(24f * density, sheet.right - card.right, tolerance)
+    }
+
+    @Test fun topBarNewSwitchesEachDispatchOnceAndRetainIndependentValues() {
+        mount(open = true, section = SettingsSection.TopBar)
+        val cases = listOf(
+            "显示续航" to { state.value.showRange },
+            "显示插枪" to { state.value.showPluggedStatus },
+            "显示预约充电" to { state.value.showScheduledCharging },
+            "显示充电剩余时长" to { state.value.showChargingRemainingTime },
+            "显示充电功率" to { state.value.showChargingPower },
+            "状态栏保持分屏" to { state.value.immersiveTopBarKeepSplit },
+        )
+        for ((name, value) in cases) {
+            assertTrue(value())
+            val count = events.size
+            val soundCount = sounds
+            compose.onNodeWithTag("settings-switch-$name").performScrollTo().performClick()
+            assertFalse(value())
+            assertEquals(count + 1, events.size)
+            assertEquals(soundCount + 1, sounds)
+        }
+        assertTrue(state.value.showBattery)
+        assertTrue(state.value.immersiveShowTopBar)
+    }
+
     private fun chooseSettingOption(group: String, id: String) {
         compose.onNodeWithTag(group).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("$group-$id").performScrollTo().assertIsDisplayed().performClick()
@@ -316,8 +382,6 @@ open class SettingsSheetInteractionTest {
         compose.waitForIdle()
     }
 
-    private fun previewBody() = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels) and
-        hasAnyAncestor(hasTestTag("settings-lyrics-preview")), useUnmergedTree = true)
     private fun bounds(tag: String) = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
 
     @OptIn(ExperimentalComposeUiApi::class)

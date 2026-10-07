@@ -4,6 +4,7 @@ import android.os.Looper
 import android.os.SystemClock
 import com.autonavi.amapauto.content.*
 import com.icar03.content.ui.ContentEvent
+import com.icar03.content.ui.isSettingsInteraction
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,6 +42,18 @@ class ContentBindingDomainsTest {
         repeat(2) { worker.submit {}.get(2, TimeUnit.SECONDS); shadowOf(Looper.getMainLooper()).idle() }
     }
 
+    @Test fun newPreferenceEventsAreSettingsInteractions() {
+        listOf(
+            ContentEvent.ShowRangeChanged(false),
+            ContentEvent.ShowPluggedStatusChanged(false),
+            ContentEvent.ShowScheduledChargingChanged(false),
+            ContentEvent.ShowChargingRemainingTimeChanged(false),
+            ContentEvent.ShowChargingPowerChanged(false),
+            ContentEvent.ImmersiveTopBarKeepSplitChanged(false),
+            ContentEvent.LyricsShowTranslationChanged(false),
+            ContentEvent.LyricsImmersiveCurrentFontSizeChanged(180f),
+        ).forEach { event -> assertTrue("$event must be settings-gated", event.isSettingsInteraction()) }
+    }
     @Test fun trustedPlaybackAnchorAndWallClockNeverRepublishTheShell() {
         val system = object : ContentPorts.SystemPort {
             override fun read(kind: Int) = ContentPorts.SystemSnapshot(true, 25)

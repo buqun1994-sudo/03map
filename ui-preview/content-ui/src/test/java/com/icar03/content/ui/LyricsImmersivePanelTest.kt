@@ -99,24 +99,40 @@ open class LyricsImmersivePanelTest {
             val current = compose.onNodeWithTag("settings-sheet-host").fetchSemanticsNode().boundsInRoot
             assertEquals("settings stay fixed at progress=$progress", original, current)
             assertTrue(current.right <= 640f)
-            compose.onNodeWithTag("settings-lyrics-preview").assertIsDisplayed()
+            compose.onNodeWithTag("settings-title").assertIsDisplayed()
+            compose.onNodeWithTag("settings-lyrics-preview").assertDoesNotExist()
             if (progress == 1f) capture("settings-left-third-$platform-${if (dark) "dark" else "light"}")
         }
     }
 
     @Test fun independentImmersiveTypographyReachesTheActualNativeLyrics() {
         state = state.copy(lyricsFontSizeSp = 32f, lyricsCurrentFontSizeSp = 48f, lyricsLineGapDp = 18f,
-            lyricsImmersiveFontSizeSp = 128f, lyricsImmersiveLineGapDp = 72f)
+            lyricsImmersiveFontSizeSp = 128f, lyricsImmersiveCurrentFontSizeSp = 180f, lyricsImmersiveLineGapDp = 72f)
         mount()
         val body = compose.onNode(SemanticsMatcher.keyIsDefined(LyricFontPixels), useUnmergedTree = true)
         assertEquals(128f, body.fetchSemanticsNode().config[LyricFontPixels], .01f)
-        assertEquals(192f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
+        assertEquals(180f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
         assertEquals(72f, body.fetchSemanticsNode().config[LyricLineGapPixels], .01f)
         compose.runOnIdle { state = state.copy(lyricsHighlight = false) }
         compose.waitForIdle()
         assertEquals(128f, body.fetchSemanticsNode().config[LyricActiveFontPixels], .01f)
         assertEquals(32f, state.lyricsFontSizeSp, .01f)
         assertEquals(18f, state.lyricsLineGapDp, .01f)
+    }
+
+    @Test fun immersiveTopBarCanUseFullWidthWhileDockAndSettingsKeepTheirSplitWidth() {
+        mount()
+        assertEquals(616f, compose.onNodeWithTag("top-bar").fetchSemanticsNode().boundsInRoot.width, 1f)
+        val dock = compose.onNodeWithTag("floating-dock").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { state = state.copy(immersiveTopBarKeepSplit = false) }
+        compose.waitForIdle()
+        assertEquals(1896f, compose.onNodeWithTag("top-bar").fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertEquals(dock, compose.onNodeWithTag("floating-dock").fetchSemanticsNode().boundsInRoot)
+        compose.runOnIdle { state = state.copy(immersiveShowTopBar = false) }
+        compose.onNodeWithTag("top-bar").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(immersiveShowTopBar = true) }
+        assertEquals(1896f, compose.onNodeWithTag("top-bar").fetchSemanticsNode().boundsInRoot.width, 1f)
+        capture("lyrics-full-width-topbar-$platform-${if (dark) "dark" else "light"}")
     }
 
     @Test fun finalGeometryKeepsMediaInLeftThirdAndLargeLyricsInRightTwoThirds() {

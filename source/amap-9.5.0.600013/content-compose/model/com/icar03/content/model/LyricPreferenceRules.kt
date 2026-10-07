@@ -13,6 +13,7 @@ object LyricPreferenceRules {
     const val DEFAULT_CURRENT_SP: Float = 48f
     const val DEFAULT_GAP_DP: Float = 28f
     const val DEFAULT_IMMERSIVE_FONT_SP: Float = 120f
+    const val DEFAULT_IMMERSIVE_CURRENT_SP: Float = 144f
     const val DEFAULT_IMMERSIVE_GAP_DP: Float = 84f
     const val DEFAULT_ALIGNMENT: String = "left"
     const val DEFAULT_COLOR_MODE: String = "theme"
@@ -23,6 +24,7 @@ object LyricPreferenceRules {
     val CURRENT_FONT_RANGE: ClosedFloatingPointRange<Float> = 24f..80f
     val GAP_RANGE: ClosedFloatingPointRange<Float> = 0f..64f
     val IMMERSIVE_FONT_RANGE: ClosedFloatingPointRange<Float> = 64f..192f
+    val IMMERSIVE_CURRENT_FONT_RANGE: ClosedFloatingPointRange<Float> = 64f..640f
     val IMMERSIVE_GAP_RANGE: ClosedFloatingPointRange<Float> = 0f..192f
 
     /** Normalize to the one-spaced slider grid, with non-finite values at the default. */
@@ -44,6 +46,14 @@ object LyricPreferenceRules {
     @JvmStatic
     fun immersiveFontSize(value: Float): Float =
         normalizeStep(value, IMMERSIVE_FONT_RANGE, DEFAULT_IMMERSIVE_FONT_SP, 2)
+
+    /** Normalize the immersive/current-line lyric font to a two-sp step grid and keep it at least as large as the immersive normal size. */
+    @JvmStatic
+    fun immersiveCurrentFontSize(value: Float, normal: Float): Float {
+        val safeNormal = immersiveFontSize(normal)
+        return normalizeStep(value, IMMERSIVE_CURRENT_FONT_RANGE, DEFAULT_IMMERSIVE_CURRENT_SP, 2)
+            .coerceAtLeast(safeNormal)
+    }
 
     /** Normalize the immersive/full-screen lyric gap to a two-dp step grid. */
     @JvmStatic

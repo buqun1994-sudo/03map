@@ -140,7 +140,11 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
             showWeekday = state.showWeekday, showSeconds = state.showSeconds,
             showIndoorTemperature = state.showIndoorTemperature, showBattery = state.showBattery,
-            showChargingStatus = state.showChargingStatus, lyricsFontScale = state.lyricsFontScale,
+            showRange = state.showRange,
+             showChargingStatus = state.showChargingStatus,
+             showPluggedStatus = state.showPluggedStatus, showScheduledCharging = state.showScheduledCharging,
+             showChargingRemainingTime = state.showChargingRemainingTime, showChargingPower = state.showChargingPower,
+             lyricsFontScale = state.lyricsFontScale,
                          lyricsLineSpacing = state.lyricsLineSpacing, lyricsFontSizeSp = LyricPreferenceRules.fontSize(state.lyricsFontSizeSp),
              lyricsCurrentFontSizeSp = LyricPreferenceRules.currentFontSize(state.lyricsCurrentFontSizeSp, state.lyricsFontSizeSp),
              lyricsLineGapDp = LyricPreferenceRules.lineGap(state.lyricsLineGapDp),
@@ -150,11 +154,16 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
              lyricsCurrentColorMode = LyricPreferenceRules.colorMode(state.lyricsCurrentColorMode),
              lyricsCurrentCustomColor = LyricPreferenceRules.opaqueColor(state.lyricsCurrentCustomColor),
              lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp),
+              lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                  state.lyricsImmersiveCurrentFontSizeSp, state.lyricsImmersiveFontSizeSp),
              lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(state.lyricsImmersiveLineGapDp),
+              lyricsShowTranslation = state.lyricsShowTranslation,
              lyricsSystemAccentColor = LyricPreferenceRules.opaqueColor(lyricsSystemAccentColor),
              lyricsSpeakerLayout = state.lyricsSpeakerLayout,
             lyricsHighlight = state.lyricsHighlight,
-            immersiveShowTopBar = state.immersiveShowTopBar, immersiveShowDock = state.immersiveShowDock,
+            immersiveShowTopBar = state.immersiveShowTopBar,
+             immersiveTopBarKeepSplit = state.immersiveTopBarKeepSplit,
+             immersiveShowDock = state.immersiveShowDock,
             showAmbientArtwork = state.showAmbientArtwork,
             showMediaSourceSwitcher = state.showMediaSourceSwitcher, dockButtonCount = state.dockButtonCount,
             showActionFeedback = state.showActionFeedback,
@@ -166,18 +175,9 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             batteryPercent = state.batteryPercent.takeIf { realVehicle && it in 0..100 },
             charging = realVehicle && state.chargeState == ContentState.CHARGE_CHARGING,
             batteryDescription = if (realVehicle && state.batteryPercent in 0..100) "电量 ${state.batteryPercent}%" else "电量未知",
-            chargeStatus = if (!realVehicle) "充电状态待确认" else when (state.chargeState) {
-                ContentState.CHARGE_DEFAULT -> null
-                ContentState.CHARGE_PLUGGED -> "已插枪"
-                ContentState.CHARGE_SCHEDULED -> "预约充电中"
-                ContentState.CHARGE_COMPLETE -> "充电完成"
-                ContentState.CHARGE_CHARGING -> buildList {
-                    if (state.chargeRemainingMinutes >= 0) add("剩余${state.chargeRemainingMinutes}分钟")
-                    if (state.chargePowerKw.isFinite() && state.chargePowerKw > 0) add("充电功率 ${String.format(locale, "%.1f", state.chargePowerKw)}kW")
-                }.joinToString("·").ifEmpty { "充电中" }
-                else -> "充电状态待确认"
-            },
-            controls = controls,
+            chargeStatus = chargeStatus(state, realVehicle),
+
+             controls = controls,
             brightness = LevelState(brightness.percent / 100f, available = brightness.available),
             volume = LevelState(volume.percent / 100f, available = volume.available),
             media = MediaState(title = state.mediaTitle.takeIf { ready && it.isNotBlank() },
@@ -242,7 +242,9 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         a.themeMode == b.themeMode && a.pageIndex == b.pageIndex &&
             a.showWeekday == b.showWeekday && a.showSeconds == b.showSeconds &&
             a.showIndoorTemperature == b.showIndoorTemperature && a.showBattery == b.showBattery &&
-            a.showChargingStatus == b.showChargingStatus && a.lyricsFontScale.toBits() == b.lyricsFontScale.toBits() &&
+            a.showRange == b.showRange && a.showChargingStatus == b.showChargingStatus &&
+             a.showPluggedStatus == b.showPluggedStatus && a.showScheduledCharging == b.showScheduledCharging &&
+             a.showChargingRemainingTime == b.showChargingRemainingTime && a.showChargingPower == b.showChargingPower && a.lyricsFontScale.toBits() == b.lyricsFontScale.toBits() &&
             a.lyricsLineSpacing == b.lyricsLineSpacing &&
              a.lyricsFontSizeSp.toBits() == b.lyricsFontSizeSp.toBits() &&
              a.lyricsCurrentFontSizeSp.toBits() == b.lyricsCurrentFontSizeSp.toBits() &&
@@ -251,16 +253,20 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
              a.lyricsCustomColor == b.lyricsCustomColor && a.lyricsCurrentColorMode == b.lyricsCurrentColorMode &&
              a.lyricsCurrentCustomColor == b.lyricsCurrentCustomColor &&
              a.lyricsImmersiveFontSizeSp.toBits() == b.lyricsImmersiveFontSizeSp.toBits() &&
+             a.lyricsImmersiveCurrentFontSizeSp.toBits() == b.lyricsImmersiveCurrentFontSizeSp.toBits() &&
              a.lyricsImmersiveLineGapDp.toBits() == b.lyricsImmersiveLineGapDp.toBits() &&
+             a.lyricsShowTranslation == b.lyricsShowTranslation &&
              a.lyricsSpeakerLayout == b.lyricsSpeakerLayout &&
             a.lyricsHighlight == b.lyricsHighlight &&
-            a.immersiveShowTopBar == b.immersiveShowTopBar && a.immersiveShowDock == b.immersiveShowDock &&
+            a.immersiveShowTopBar == b.immersiveShowTopBar && a.immersiveTopBarKeepSplit == b.immersiveTopBarKeepSplit && a.immersiveShowDock == b.immersiveShowDock &&
             a.showAmbientArtwork == b.showAmbientArtwork &&
             a.showMediaSourceSwitcher == b.showMediaSourceSwitcher && a.dockButtonCount == b.dockButtonCount &&
             a.showActionFeedback == b.showActionFeedback && a.gestureBarReminder == b.gestureBarReminder && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
             a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
-            a.chargeState == b.chargeState && a.chargePowerKw.toBits() == b.chargePowerKw.toBits() && a.chargeRemainingMinutes == b.chargeRemainingMinutes &&
+            a.chargeState == b.chargeState && a.chargeConnectionRaw == b.chargeConnectionRaw &&
+             a.chargeBmsRaw == b.chargeBmsRaw && a.chargeScheduleRaw == b.chargeScheduleRaw &&
+             a.chargePowerKw.toBits() == b.chargePowerKw.toBits() && a.chargeRemainingMinutes == b.chargeRemainingMinutes &&
             a.pendingVehicleCommand == b.pendingVehicleCommand && a.pendingSeatLevel == b.pendingSeatLevel && a.pendingLocked == b.pendingLocked &&
             a.seatControlsKnown == b.seatControlsKnown && a.lockKnown == b.lockKnown && a.locked == b.locked &&
             a.ventilationLevel == b.ventilationLevel && a.heatingLevel == b.heatingLevel &&
@@ -276,6 +282,31 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.mediaRecordingKey == b.mediaRecordingKey && a.mediaTitle == b.mediaTitle && a.mediaArtist == b.mediaArtist &&
             a.mediaPlaybackAvailable == b.mediaPlaybackAvailable && a.mediaNextAvailable == b.mediaNextAvailable &&
             a.mediaPlaybackTarget == b.mediaPlaybackTarget && a.commandStatus == b.commandStatus && a.commandMessage == b.commandMessage
+
+    private fun chargeStatus(state: ContentState, realVehicle: Boolean): String? {
+        if (!state.showPluggedStatus && !state.showScheduledCharging &&
+            !state.showChargingRemainingTime && !state.showChargingPower) return null
+        if (!realVehicle) return "充电状态待确认".takeIf { state.showPluggedStatus }
+        return when (state.chargeState) {
+            ContentState.CHARGE_DEFAULT -> null
+            ContentState.CHARGE_PLUGGED -> "已插枪".takeIf { state.showPluggedStatus }
+            ContentState.CHARGE_SCHEDULED -> "预约充电中".takeIf { state.showScheduledCharging }
+            // Completion belongs to the plugged/status switch so it does not reopen a separate completion preference.
+            ContentState.CHARGE_COMPLETE -> "充电完成".takeIf { state.showPluggedStatus }
+            ContentState.CHARGE_CHARGING -> buildList {
+                if (state.showChargingRemainingTime && state.chargeRemainingMinutes >= 0) {
+                    add("剩余${state.chargeRemainingMinutes}分钟")
+                }
+                if (state.showChargingPower && state.chargePowerKw.isFinite() && state.chargePowerKw > 0) {
+                    add("充电功率 ${String.format(locale, "%.1f", state.chargePowerKw)}kW")
+                }
+            }.joinToString("·").takeIf { it.isNotEmpty() }
+                ?: "充电中".takeIf {
+                    state.showPluggedStatus && (state.showChargingRemainingTime || state.showChargingPower)
+                }
+            else -> "充电状态待确认".takeIf { state.showPluggedStatus }
+        }
+    }
 
     private fun format(value: Float): String = if (value % 1f == 0f) value.toInt().toString() else String.format(locale, "%.1f", value)
 }

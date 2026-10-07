@@ -8,13 +8,18 @@ import android.content.SharedPreferences;
 
 public final class ContentPreferenceStore {
     private static final String PREFERENCES_NAME = "content_preferences_v1";
-    private static final int PREFERENCES_VERSION = 6;
+    private static final int PREFERENCES_VERSION = 7;
     private static final String KEY_PREFERENCES_VERSION = "preferences_version";
     private static final String KEY_SHOW_WEEKDAY = "top_bar_show_weekday";
     private static final String KEY_SHOW_SECONDS = "top_bar_show_seconds";
     private static final String KEY_SHOW_INDOOR_TEMPERATURE = "top_bar_show_indoor_temperature";
     private static final String KEY_SHOW_BATTERY = "top_bar_show_battery";
+    private static final String KEY_SHOW_RANGE = "top_bar_show_range";
     private static final String KEY_SHOW_CHARGING_STATUS = "top_bar_show_charging_status";
+    private static final String KEY_SHOW_PLUGGED_STATUS = "top_bar_show_plugged_status";
+    private static final String KEY_SHOW_SCHEDULED_CHARGING = "top_bar_show_scheduled_charging";
+    private static final String KEY_SHOW_CHARGING_REMAINING_TIME = "top_bar_show_charging_remaining_time";
+    private static final String KEY_SHOW_CHARGING_POWER = "top_bar_show_charging_power";
     private static final String KEY_LYRICS_FONT_SCALE = "lyrics_font_scale";
     private static final String KEY_LYRICS_LINE_SPACING = "lyrics_line_spacing";
     private static final String KEY_LYRICS_FONT_SIZE_SP = "lyrics_font_size_sp";
@@ -26,10 +31,13 @@ public final class ContentPreferenceStore {
     private static final String KEY_LYRICS_CURRENT_COLOR_MODE = "lyrics_current_color_mode";
     private static final String KEY_LYRICS_CURRENT_CUSTOM_COLOR = "lyrics_current_custom_color";
     private static final String KEY_LYRICS_IMMERSIVE_FONT_SIZE_SP = "lyrics_immersive_font_size_sp";
+    private static final String KEY_LYRICS_IMMERSIVE_CURRENT_FONT_SIZE_SP = "lyrics_immersive_current_font_size_sp";
     private static final String KEY_LYRICS_IMMERSIVE_LINE_GAP_DP = "lyrics_immersive_line_gap_dp";
+    private static final String KEY_LYRICS_SHOW_TRANSLATION = "lyrics_show_translation";
     private static final String KEY_LYRICS_SPEAKER_LAYOUT = "lyrics_speaker_layout";
     private static final String KEY_LYRICS_HIGHLIGHT = "lyrics_highlight";
     private static final String KEY_IMMERSIVE_SHOW_TOP_BAR = "lyrics_immersive_show_top_bar";
+    private static final String KEY_IMMERSIVE_TOP_BAR_KEEP_SPLIT = "lyrics_immersive_top_bar_keep_split";
     private static final String KEY_IMMERSIVE_SHOW_DOCK = "lyrics_immersive_show_dock";
     private static final String KEY_SHOW_AMBIENT_ARTWORK = "ambient_show_artwork";
     private static final String KEY_SHOW_MEDIA_SOURCE_SWITCHER = "media_show_source_switcher";
@@ -54,7 +62,22 @@ public final class ContentPreferenceStore {
         state.showSeconds = readBoolean(KEY_SHOW_SECONDS, false);
         state.showIndoorTemperature = readBoolean(KEY_SHOW_INDOOR_TEMPERATURE, true);
         state.showBattery = readBoolean(KEY_SHOW_BATTERY, true);
+        state.showRange = readBoolean(KEY_SHOW_RANGE, true);
         state.showChargingStatus = readBoolean(KEY_SHOW_CHARGING_STATUS, true);
+        if (version <= 6) {
+            // The legacy aggregate was the only charging visibility choice before schema 7.
+            // Preserve an explicit false as four independent false choices so migration never reopens them.
+            boolean legacyChargingVisible = state.showChargingStatus;
+            state.showPluggedStatus = legacyChargingVisible;
+            state.showScheduledCharging = legacyChargingVisible;
+            state.showChargingRemainingTime = legacyChargingVisible;
+            state.showChargingPower = legacyChargingVisible;
+        } else {
+            state.showPluggedStatus = readBoolean(KEY_SHOW_PLUGGED_STATUS, true);
+            state.showScheduledCharging = readBoolean(KEY_SHOW_SCHEDULED_CHARGING, true);
+            state.showChargingRemainingTime = readBoolean(KEY_SHOW_CHARGING_REMAINING_TIME, true);
+            state.showChargingPower = readBoolean(KEY_SHOW_CHARGING_POWER, true);
+        }
         float legacyFontScale = clampFontScale(readFloat(KEY_LYRICS_FONT_SCALE, 1.0f));
         int legacyLineSpacing = clampLineSpacing(readInt(KEY_LYRICS_LINE_SPACING, 1));
         state.lyricsFontScale = legacyFontScale;
@@ -100,9 +123,25 @@ public final class ContentPreferenceStore {
                     readFloat(KEY_LYRICS_IMMERSIVE_LINE_GAP_DP,
                             LyricPreferenceRules.DEFAULT_IMMERSIVE_GAP_DP));
         }
+        float immersiveNormal = LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp);
+        if (version <= 6) {
+            float ordinaryNormal = LyricPreferenceRules.fontSize(state.lyricsFontSizeSp);
+            float ordinaryCurrent = LyricPreferenceRules.currentFontSize(
+                    state.lyricsCurrentFontSizeSp, ordinaryNormal);
+            // Keep the existing ordinary-current/full-screen-normal ratio; the 64..640
+            // range is exactly the old 64..192 normal range times 80/24.
+            state.lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                    immersiveNormal * ordinaryCurrent / ordinaryNormal, immersiveNormal);
+        } else {
+            state.lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                    readFloat(KEY_LYRICS_IMMERSIVE_CURRENT_FONT_SIZE_SP,
+                            LyricPreferenceRules.DEFAULT_IMMERSIVE_CURRENT_SP), immersiveNormal);
+        }
+        state.lyricsShowTranslation = readBoolean(KEY_LYRICS_SHOW_TRANSLATION, true);
         state.lyricsSpeakerLayout = readBoolean(KEY_LYRICS_SPEAKER_LAYOUT, true);
         state.lyricsHighlight = readBoolean(KEY_LYRICS_HIGHLIGHT, true);
         state.immersiveShowTopBar = readBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, true);
+        state.immersiveTopBarKeepSplit = readBoolean(KEY_IMMERSIVE_TOP_BAR_KEEP_SPLIT, true);
         state.immersiveShowDock = readBoolean(KEY_IMMERSIVE_SHOW_DOCK, true);
         state.showAmbientArtwork = readBoolean(KEY_SHOW_AMBIENT_ARTWORK, true);
         state.showMediaSourceSwitcher = readBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, true);
@@ -137,7 +176,12 @@ public final class ContentPreferenceStore {
         editor.putBoolean(KEY_SHOW_SECONDS, state.showSeconds);
         editor.putBoolean(KEY_SHOW_INDOOR_TEMPERATURE, state.showIndoorTemperature);
         editor.putBoolean(KEY_SHOW_BATTERY, state.showBattery);
+        editor.putBoolean(KEY_SHOW_RANGE, state.showRange);
         editor.putBoolean(KEY_SHOW_CHARGING_STATUS, state.showChargingStatus);
+        editor.putBoolean(KEY_SHOW_PLUGGED_STATUS, state.showPluggedStatus);
+        editor.putBoolean(KEY_SHOW_SCHEDULED_CHARGING, state.showScheduledCharging);
+        editor.putBoolean(KEY_SHOW_CHARGING_REMAINING_TIME, state.showChargingRemainingTime);
+        editor.putBoolean(KEY_SHOW_CHARGING_POWER, state.showChargingPower);
         editor.putFloat(KEY_LYRICS_FONT_SCALE, clampFontScale(state.lyricsFontScale));
         editor.putInt(KEY_LYRICS_LINE_SPACING, clampLineSpacing(state.lyricsLineSpacing));
         float normalFontSize = LyricPreferenceRules.fontSize(state.lyricsFontSizeSp);
@@ -154,11 +198,17 @@ public final class ContentPreferenceStore {
                 LyricPreferenceRules.opaqueColor(state.lyricsCurrentCustomColor));
         editor.putFloat(KEY_LYRICS_IMMERSIVE_FONT_SIZE_SP,
                 LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp));
+        float immersiveNormalFontSize = LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp);
+        editor.putFloat(KEY_LYRICS_IMMERSIVE_CURRENT_FONT_SIZE_SP,
+                LyricPreferenceRules.immersiveCurrentFontSize(
+                        state.lyricsImmersiveCurrentFontSizeSp, immersiveNormalFontSize));
         editor.putFloat(KEY_LYRICS_IMMERSIVE_LINE_GAP_DP,
                 LyricPreferenceRules.immersiveLineGap(state.lyricsImmersiveLineGapDp));
+        editor.putBoolean(KEY_LYRICS_SHOW_TRANSLATION, state.lyricsShowTranslation);
         editor.putBoolean(KEY_LYRICS_SPEAKER_LAYOUT, state.lyricsSpeakerLayout);
         editor.putBoolean(KEY_LYRICS_HIGHLIGHT, state.lyricsHighlight);
         editor.putBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, state.immersiveShowTopBar);
+        editor.putBoolean(KEY_IMMERSIVE_TOP_BAR_KEEP_SPLIT, state.immersiveTopBarKeepSplit);
         editor.putBoolean(KEY_IMMERSIVE_SHOW_DOCK, state.immersiveShowDock);
         editor.putBoolean(KEY_SHOW_AMBIENT_ARTWORK, state.showAmbientArtwork);
         editor.putBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, state.showMediaSourceSwitcher);

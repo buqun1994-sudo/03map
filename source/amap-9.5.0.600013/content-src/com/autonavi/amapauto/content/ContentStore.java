@@ -263,8 +263,28 @@ public final class ContentStore {
         setBooleanPreference(PreferenceField.SHOW_BATTERY, value);
     }
 
+    public void setShowRange(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_RANGE, value);
+    }
+
     public void setShowChargingStatus(boolean value) {
         setBooleanPreference(PreferenceField.SHOW_CHARGING_STATUS, value);
+    }
+
+    public void setShowPluggedStatus(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_PLUGGED_STATUS, value);
+    }
+
+    public void setShowScheduledCharging(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_SCHEDULED_CHARGING, value);
+    }
+
+    public void setShowChargingRemainingTime(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_CHARGING_REMAINING_TIME, value);
+    }
+
+    public void setShowChargingPower(boolean value) {
+        setBooleanPreference(PreferenceField.SHOW_CHARGING_POWER, value);
     }
 
     public void setLyricsFontScale(float value) {
@@ -276,6 +296,8 @@ public final class ContentStore {
                     48.0f * scale, state.lyricsFontSizeSp);
             state.lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(
                     40.0f * scale * 3.0f);
+            state.lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                    state.lyricsImmersiveCurrentFontSizeSp, state.lyricsImmersiveFontSizeSp);
             preferenceStore.save(state);
         }
         publish();
@@ -363,6 +385,17 @@ public final class ContentStore {
     public void setLyricsImmersiveFontSizeSp(float value) {
         synchronized (this) {
             state.lyricsImmersiveFontSizeSp = LyricPreferenceRules.immersiveFontSize(value);
+            state.lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                    state.lyricsImmersiveCurrentFontSizeSp, state.lyricsImmersiveFontSizeSp);
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    public void setLyricsImmersiveCurrentFontSizeSp(float value) {
+        synchronized (this) {
+            state.lyricsImmersiveCurrentFontSizeSp = LyricPreferenceRules.immersiveCurrentFontSize(
+                    value, state.lyricsImmersiveFontSizeSp);
             preferenceStore.save(state);
         }
         publish();
@@ -393,8 +426,16 @@ public final class ContentStore {
         setBooleanPreference(PreferenceField.LYRICS_HIGHLIGHT, value);
     }
 
+    public void setLyricsShowTranslation(boolean value) {
+        setBooleanPreference(PreferenceField.LYRICS_SHOW_TRANSLATION, value);
+    }
+
     public void setImmersiveShowTopBar(boolean value) {
         setBooleanPreference(PreferenceField.IMMERSIVE_SHOW_TOP_BAR, value);
+    }
+
+    public void setImmersiveTopBarKeepSplit(boolean value) {
+        setBooleanPreference(PreferenceField.IMMERSIVE_TOP_BAR_KEEP_SPLIT, value);
     }
 
     public void setImmersiveShowDock(boolean value) {
@@ -434,8 +475,10 @@ public final class ContentStore {
     }
 
     private enum PreferenceField {
-        SHOW_INDOOR_TEMPERATURE, SHOW_BATTERY, SHOW_CHARGING_STATUS,
-        LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, IMMERSIVE_SHOW_TOP_BAR, IMMERSIVE_SHOW_DOCK,
+        SHOW_INDOOR_TEMPERATURE, SHOW_BATTERY, SHOW_RANGE, SHOW_CHARGING_STATUS,
+        SHOW_PLUGGED_STATUS, SHOW_SCHEDULED_CHARGING, SHOW_CHARGING_REMAINING_TIME, SHOW_CHARGING_POWER,
+        LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, LYRICS_SHOW_TRANSLATION,
+        IMMERSIVE_SHOW_TOP_BAR, IMMERSIVE_TOP_BAR_KEEP_SPLIT, IMMERSIVE_SHOW_DOCK,
         SHOW_AMBIENT_ARTWORK, SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK, GESTURE_BAR_REMINDER
     }
 
@@ -444,10 +487,24 @@ public final class ContentStore {
             switch (field) {
                 case SHOW_INDOOR_TEMPERATURE: state.showIndoorTemperature = value; break;
                 case SHOW_BATTERY: state.showBattery = value; break;
-                case SHOW_CHARGING_STATUS: state.showChargingStatus = value; break;
+                case SHOW_RANGE: state.showRange = value; break;
+                case SHOW_CHARGING_STATUS:
+                    // Legacy callers still have one aggregate toggle; new choices never depend on its stale value.
+                    state.showChargingStatus = value;
+                    state.showPluggedStatus = value;
+                    state.showScheduledCharging = value;
+                    state.showChargingRemainingTime = value;
+                    state.showChargingPower = value;
+                    break;
+                case SHOW_PLUGGED_STATUS: state.showPluggedStatus = value; break;
+                case SHOW_SCHEDULED_CHARGING: state.showScheduledCharging = value; break;
+                case SHOW_CHARGING_REMAINING_TIME: state.showChargingRemainingTime = value; break;
+                case SHOW_CHARGING_POWER: state.showChargingPower = value; break;
                 case LYRICS_SPEAKER_LAYOUT: state.lyricsSpeakerLayout = value; break;
                 case LYRICS_HIGHLIGHT: state.lyricsHighlight = value; break;
+                case LYRICS_SHOW_TRANSLATION: state.lyricsShowTranslation = value; break;
                 case IMMERSIVE_SHOW_TOP_BAR: state.immersiveShowTopBar = value; break;
+                case IMMERSIVE_TOP_BAR_KEEP_SPLIT: state.immersiveTopBarKeepSplit = value; break;
                 case IMMERSIVE_SHOW_DOCK: state.immersiveShowDock = value; break;
                 case SHOW_AMBIENT_ARTWORK: state.showAmbientArtwork = value; break;
                 case SHOW_MEDIA_SOURCE_SWITCHER: state.showMediaSourceSwitcher = value; break;

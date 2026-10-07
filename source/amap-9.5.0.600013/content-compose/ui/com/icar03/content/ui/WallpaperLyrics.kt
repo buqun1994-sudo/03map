@@ -43,6 +43,7 @@ internal val LyricActiveFontPixels = SemanticsPropertyKey<Float>("LyricActiveFon
 internal val LyricLineGapPixels = SemanticsPropertyKey<Float>("LyricLineGapPixels")
 internal val LyricNormalColor = SemanticsPropertyKey<Int>("LyricNormalColor")
 internal val LyricCurrentColor = SemanticsPropertyKey<Int>("LyricCurrentColor")
+internal val LyricTranslationVisible = SemanticsPropertyKey<Boolean>("LyricTranslationVisible")
 internal val LyricTextAlignment = SemanticsPropertyKey<String>("LyricTextAlignment")
 internal val LyricRowHeights = SemanticsPropertyKey<List<Int>>("LyricRowHeights")
 internal val LyricWordProgress = SemanticsPropertyKey<Float>("LyricWordProgress")
@@ -102,15 +103,15 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
     highlightCurrent: Boolean = true, onLayoutReady: () -> Unit = {},
     presentationScale: Float = 1f, externalGestureActive: Boolean = false,
     interactionEnabled: Boolean = true, onGeometryReady: (Boolean) -> Unit = {},
-    renderStyle: LyricRenderStyle? = null, settingsPreview: Boolean = false) {
+    renderStyle: LyricRenderStyle? = null) {
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().testTag("wallpaper-lyrics")) {
         val density = LocalDensity.current
         val assets = LocalContext.current.assets
         val face = remember(assets) { lyricTypeface(assets) }
         val cjk = remember(assets) { lyricCjkTypeface(assets) }
         val sceneScale = presentationScale.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val requestedInset = with(density) { (if (settingsPreview) 14.dp else 48.dp).toPx() } * sceneScale
-        val anchorFraction = if (settingsPreview) .5f else .41f
+        val requestedInset = with(density) { 48.dp.toPx() } * sceneScale
+        val anchorFraction = .41f
         val textAlignment = renderStyle?.alignment ?: "left"
         val width = with(density) { maxWidth.toPx() }.minus(requestedInset * 2f).roundToInt().coerceAtLeast(1)
         val height = with(density) { maxHeight.toPx() }
@@ -126,7 +127,8 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
                 ?: (14.dp.toPx() * gapScale * sceneScale)
             LyricMetrics(normal, active, normal * .55f, normal * .5f,
                 rowPadding, 4.dp.toPx() * sceneScale,
-                LyricVisuals.INACTIVE_BLUR_DP.dp.toPx() * sceneScale, LyricVisuals.LIFT_DP.dp.toPx() * sceneScale)
+                LyricVisuals.INACTIVE_BLUR_DP.dp.toPx() * sceneScale, LyricVisuals.LIFT_DP.dp.toPx() * sceneScale,
+                showTranslation = renderStyle?.showTranslation ?: true)
         }
         val displayLines = remember(lyrics.lines, speakerLayout) {
             if (speakerLayout) lyrics.lines else lyrics.lines.map { it.copy(side = LyricSide.Unspecified) }
@@ -259,11 +261,6 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         }
         LaunchedEffect(followTarget, origin, geometry, hasFollowAnchor, browsingTravel != null, scrollBlocked, paused) {
             val target = followTarget - origin
-            if (settingsPreview && layoutReady) {
-                travel.reset(target)
-                travel.layoutKey = geometry
-                return@LaunchedEffect
-            }
             val previous = commands.value
             val command = LyricFollowCommand(geometry, target, focus, browsingTravel != null,
                 !scrollBlocked && hasFollowAnchor, paused)
@@ -464,6 +461,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             this[LyricNormalColor] = renderStyle?.normalColor ?: if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
             this[LyricCurrentColor] = renderStyle?.currentColor ?: if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
             this[LyricTextAlignment] = ready.request.alignment
+            this[LyricTranslationVisible] = metrics.showTranslation
             this[LyricRowHeights] = heights
             this[LyricWordProgress] = words.firstOrNull()?.let { lyricWordFraction(it, position) } ?: 0f
             this[LyricScrollAnchor] = lyrics.scrollIndex

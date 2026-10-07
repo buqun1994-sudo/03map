@@ -14,10 +14,25 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.RenderProcessGoneDetail
+import android.widget.ProgressBar
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.icar03.content.runtime.lyrics.AppleMusicConnection
@@ -29,6 +44,7 @@ import com.icar03.content.ui.AppleMusicLoginDismissed
 import com.icar03.content.ui.ContentEvent
 import com.icar03.content.ui.LyricsPlatformSelected
 import com.icar03.content.ui.LyricsProviderUiState
+import com.icar03.content.ui.LocalSettingsDesign
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +82,8 @@ class LyricsSettingsBinding(
     private var pollJob: Job? = null
     private var loginWebView: WebView? = null
     private var pollErrorShown = false
+    private var pageProgress by mutableIntStateOf(0)
+    private var pageError by mutableStateOf<String?>(null)
 
     /** UI projection; it contains no cookies, token, or opaque attempt id. */
     val state: LyricsProviderUiState
@@ -114,6 +132,7 @@ class LyricsSettingsBinding(
         activeAttempt = null
         preparing = false
         pollErrorShown = false
+        resetLoginPage()
         destroyLoginWebView()
         scope?.cancel()
         scope = null
@@ -158,7 +177,7 @@ class LyricsSettingsBinding(
     }
 
     /**
-     * Renders the official login surface only while the current login request is open.
+     * Supplies the official webpage to the shared login window; its parent owns window geometry.
      * The WebView is created after [AppleMusicConnection.prepareLogin] returns its opaque attempt.
      */
     @Composable
@@ -168,23 +187,60 @@ class LyricsSettingsBinding(
         val attempt = activeAttempt
         val ownerLifecycle = lifecycleEpoch
         val ownerLogin = loginEpoch
+        val design = LocalSettingsDesign.current
+        DisposableEffect(ownerLifecycle, ownerLogin) {
+            // A removed window must not leave a cookie poller running without its login surface.
+            onDispose { releaseLoginContent(ownerLifecycle, ownerLogin) }
+        }
         AppleMusicLoginPanel(
             preparing = snapshot.applePreparing,
             onDismiss = { onEvent(AppleMusicLoginDismissed) },
         ) {
-            // During prepareLogin there is intentionally no WebView and therefore no URL load.
-            if (attempt != null && !snapshot.applePreparing) {
-                key(attempt) {
+            Box(Modifier.fillMaxSize().testTag("settings-apple-login-web-content")) {
+                // During prepareLogin there is intentionally no WebView and therefore no URL load.
+                if (attempt != null && !snapshot.applePreparing) {
+                    key(attempt) {
+                        AndroidView(
+                            factory = { context ->
+                                createLoginWebView(context, attempt, ownerLifecycle, ownerLogin)
+                            },
+                            modifier = Modifier.fillMaxSize().testTag("settings-apple-login-webview"),
+                            update = {},
+                            onRelease = ::releaseLoginWebView,
+                        )
+                    }
+                }
+                val error = pageError
+                if (error != null) {
+                    Box(
+                        Modifier.fillMaxSize().background(design.card).padding(24.dp)
+                            .testTag("settings-apple-login-web-error"),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        BasicText(error, style = design.supportingStyle.copy(
+                            color = design.text, textAlign = TextAlign.Center,
+                        ))
+                    }
+                } else if (!snapshot.applePreparing && pageProgress < 100) {
                     AndroidView(
                         factory = { context ->
-                            createLoginWebView(context, attempt, ownerLifecycle, ownerLogin)
+                            ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
                         },
-                        modifier = Modifier.fillMaxSize(),
-                        update = {},
-                        onRelease = ::releaseLoginWebView,
+                        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(4.dp)
+                            .testTag("settings-apple-login-web-progress"),
+                        update = { progressBar ->
+                            progressBar.isIndeterminate = pageProgress == 0
+                            progressBar.progress = pageProgress
+                        },
                     )
                 }
             }
+        }
+    }
+
+    private fun releaseLoginContent(ownerLifecycle: Long, ownerLogin: Long) {
+        if (isCurrentLogin(ownerLifecycle, ownerLogin) && (preparing || activeAttempt != null)) {
+            cancelAppleLogin()
         }
     }
 
@@ -197,6 +253,7 @@ class LyricsSettingsBinding(
         val ownerLifecycle = lifecycleEpoch
         val ownerLogin = ++loginEpoch
         pollErrorShown = false
+        resetLoginPage()
         preparing = true
         refreshState()
         val accepted = runCatching {
@@ -290,6 +347,7 @@ class LyricsSettingsBinding(
         pollJob = null
         activeAttempt = null
         preparing = false
+        resetLoginPage()
         destroyLoginWebView()
         refreshState()
         feedback("Apple Music 已连接")
@@ -314,6 +372,7 @@ class LyricsSettingsBinding(
         activeAttempt = null
         preparing = false
         pollErrorShown = false
+        resetLoginPage()
         destroyLoginWebView()
         refreshState()
     }
@@ -395,8 +454,15 @@ class LyricsSettingsBinding(
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean =
                 !isAllowedAppleUrl(Uri.parse(url))
 
+            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt) && isAllowedAppleUrl(Uri.parse(url))) {
+                    resetLoginPage()
+                }
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt) && isAllowedAppleUrl(Uri.parse(url))) {
+                    pageProgress = 100
                     // Page completion is an additional trigger; the bounded timer handles SPA pages.
                     pollOfficialCookies(ownerLifecycle, ownerLogin, attempt)
                 }
@@ -405,13 +471,13 @@ class LyricsSettingsBinding(
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
                 handler.cancel()
                 if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt)) {
-                    feedback("Apple Music 登录安全连接失败")
+                    showLoginPageError("Apple Music 登录安全连接失败")
                 }
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame && isCurrentLogin(ownerLifecycle, ownerLogin, attempt)) {
-                    feedback("Apple Music 官方登录页面加载失败")
+                    showLoginPageError("Apple Music 官方登录页面加载失败")
                 }
             }
 
@@ -422,7 +488,24 @@ class LyricsSettingsBinding(
                 return true
             }
         }
-        webView.webChromeClient = WebChromeClient()
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView, newProgress: Int) {
+                if (isCurrentLogin(ownerLifecycle, ownerLogin, attempt) && loginWebView === view && pageError == null) {
+                    pageProgress = newProgress.coerceIn(0, 100)
+                }
+            }
+        }
+    }
+
+    private fun resetLoginPage() {
+        pageProgress = 0
+        pageError = null
+    }
+
+    private fun showLoginPageError(message: String) {
+        pageProgress = 100
+        pageError = message
+        feedback(message)
     }
 
     private fun isAllowedAppleUrl(uri: Uri): Boolean {

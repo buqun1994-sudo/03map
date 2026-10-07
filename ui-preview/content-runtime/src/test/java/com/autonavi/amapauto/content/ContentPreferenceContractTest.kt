@@ -44,7 +44,7 @@ class ContentPreferenceContractTest {
             val expected = valuesOf(original)
             ContentPreferenceStore(app).save(original)
             assertStoredValues(expected, "round trip $index")
-            assertEquals(6, preferences.getInt(VERSION, -1))
+            assertEquals(7, preferences.getInt(VERSION, -1))
             val loaded = freshLoad()
             assertValues(expected, loaded, "round trip $index")
             assertLegacyValues(original, loaded, "round trip $index")
@@ -85,8 +85,8 @@ class ContentPreferenceContractTest {
             assertEquals("load must not eagerly rewrite v1", before, preferences.all)
 
             ContentPreferenceStore(app).save(migrated)
-            assertEquals(6, preferences.getInt(VERSION, -1))
-            assertStoredValues(expected, "v1 saved as v5")
+            assertEquals(7, preferences.getInt(VERSION, -1))
+            assertStoredValues(expected, "v1 saved as v7")
             val reloaded = freshLoad()
             assertValues(expected, reloaded, "v1 after migration save")
             assertLegacyValues(legacy, reloaded, "v1 after migration save")
@@ -114,7 +114,7 @@ class ContentPreferenceContractTest {
             assertEquals(before, preferences.all)
             loaded.immersiveShowTopBar = false
             ContentPreferenceStore(app).save(loaded)
-            assertEquals(6, preferences.getInt(VERSION, -1))
+            assertEquals(7, preferences.getInt(VERSION, -1))
             val reloaded = freshLoad()
             assertFalse(reloaded.immersiveShowTopBar)
             assertTrue(reloaded.immersiveShowDock)
@@ -134,19 +134,50 @@ class ContentPreferenceContractTest {
         assertEquals(55f, loaded.lyricsCurrentFontSizeSp, 0f)
         assertEquals(38f, loaded.lyricsLineGapDp, 0f)
         assertEquals(138f, loaded.lyricsImmersiveFontSizeSp, 0f)
+        assertEquals(166f, loaded.lyricsImmersiveCurrentFontSizeSp, 0f)
         assertEquals(114f, loaded.lyricsImmersiveLineGapDp, 0f)
         assertEquals("left", loaded.lyricsAlignment)
         assertEquals("theme", loaded.lyricsColorMode)
         assertEquals(0xFF5C66BF.toInt(), loaded.lyricsCustomColor)
         ContentPreferenceStore(app).save(loaded)
-        assertEquals(6, preferences.getInt(VERSION, -1))
+        assertEquals(7, preferences.getInt(VERSION, -1))
         assertValues(valuesOf(loaded), freshLoad(), "v5 migration after save")
     }
+    @Test fun v6MigratesImmersiveCurrentFromTheExistingOrdinaryCurrentRatio() {
+        assertTrue(preferences.edit().clear()
+            .putInt(VERSION, 6)
+            .putFloat(FONT_SIZE, 48f)
+            .putFloat(CURRENT_FONT_SIZE, 72f)
+            .putFloat(IMMERSIVE_FONT_SIZE, 192f)
+            .commit())
+        val loaded = freshLoad()
+        assertEquals(288f, loaded.lyricsImmersiveCurrentFontSizeSp, 0f)
+    }
+
+    @Test fun v6LegacyChargingOffMigratesEveryNewChargingChoiceOffWithoutReopeningIt() {
+        assertTrue(preferences.edit().clear()
+            .putInt(VERSION, 6)
+            .putBoolean("top_bar_show_charging_status", false)
+            .commit())
+        val loaded = freshLoad()
+        assertFalse(loaded.showPluggedStatus)
+        assertFalse(loaded.showScheduledCharging)
+        assertFalse(loaded.showChargingRemainingTime)
+        assertFalse(loaded.showChargingPower)
+        loaded.showChargingPower = true
+        ContentPreferenceStore(app).save(loaded)
+        val reloaded = freshLoad()
+        assertFalse(reloaded.showPluggedStatus)
+        assertFalse(reloaded.showScheduledCharging)
+        assertFalse(reloaded.showChargingRemainingTime)
+        assertTrue(reloaded.showChargingPower)
+    }
+
     @Test fun everyMissingPreferenceFallsBackAloneAndKeepsOtherSavedValues() {
         for ((key, fallback) in DEFAULTS) {
             val original = seedCustomizedPreferences()
             assertTrue(preferences.edit().remove(key).commit())
-            val expected = valuesOf(original) + (key to fallback)
+            val expected = valuesOf(original) + (key to fallbackValue(key, original))
             val loaded = freshLoad()
             assertValues(expected, loaded, "missing $key")
             assertLegacyValues(original, loaded, "missing $key")
@@ -160,7 +191,7 @@ class ContentPreferenceContractTest {
                 assertTrue(preferences.edit().putValue(key, wrongValue).commit())
                 val before = preferences.all.toMap()
                 val loaded = freshLoad()
-                assertValues(valuesOf(original) + (key to fallback), loaded,
+                assertValues(valuesOf(original) + (key to fallbackValue(key, original)), loaded,
                     "wrong type $key=${wrongValue.javaClass.simpleName}")
                 assertLegacyValues(original, loaded, "wrong type $key")
                 assertEquals("recovery on read does not overwrite the saved file", before, preferences.all)
@@ -183,7 +214,7 @@ class ContentPreferenceContractTest {
             for (invalidValue in field.invalidValues) {
                 val original = seedCustomizedPreferences()
                 assertTrue(preferences.edit().putValue(field.key, invalidValue).commit())
-                val expected = valuesOf(original) + (field.key to DEFAULTS.getValue(field.key))
+                val expected = valuesOf(original) + (field.key to fallbackValue(field.key, original))
                 val loaded = freshLoad()
                 assertValues(expected, loaded, "stored invalid ${field.key}=$invalidValue")
                 assertLegacyValues(original, loaded, "stored invalid ${field.key}")
@@ -195,7 +226,7 @@ class ContentPreferenceContractTest {
         for (field in numericPreferences) {
             for (invalidValue in field.invalidValues) {
                 val original = customizedState()
-                val expected = valuesOf(original) + (field.key to DEFAULTS.getValue(field.key))
+                val expected = valuesOf(original) + (field.key to fallbackValue(field.key, original))
                 field.assign(original, invalidValue)
                 ContentPreferenceStore(app).save(original)
                 assertStoredValues(expected, "save invalid ${field.key}=$invalidValue")
@@ -249,12 +280,24 @@ class ContentPreferenceContractTest {
         assertValues(DEFAULTS, original, "original after copy preferences change")
     }
 
-    private fun customizedState() = ContentState().apply {
-        showWeekday = false
+    private fun fallbackValue(key: String, state: ContentState): Any = when (key) {
+        IMMERSIVE_CURRENT_FONT_SIZE -> LyricPreferenceRules.immersiveCurrentFontSize(
+            LyricPreferenceRules.DEFAULT_IMMERSIVE_CURRENT_SP, state.lyricsImmersiveFontSizeSp)
+        else -> DEFAULTS.getValue(key)
+    }
+
+
+            private fun customizedState() = ContentState().apply {
+         showWeekday = false
         showSeconds = true
         showIndoorTemperature = false
         showBattery = false
-        showChargingStatus = false
+        showRange = false
+         showChargingStatus = false
+         showPluggedStatus = false
+         showScheduledCharging = true
+         showChargingRemainingTime = false
+         showChargingPower = true
         lyricsFontScale = 1.15f
         lyricsLineSpacing = 2
         lyricsFontSizeSp = 44f
@@ -266,11 +309,14 @@ class ContentPreferenceContractTest {
         lyricsCurrentColorMode = "system"
         lyricsCurrentCustomColor = 0x00112233
         lyricsImmersiveFontSizeSp = 160f
+         lyricsImmersiveCurrentFontSizeSp = 260f
         lyricsImmersiveLineGapDp = 114f
+         lyricsShowTranslation = false
         lyricsSpeakerLayout = false
         lyricsHighlight = false
         immersiveShowTopBar = false
-        immersiveShowDock = false
+        immersiveTopBarKeepSplit = false
+         immersiveShowDock = false
         showAmbientArtwork = false
         showMediaSourceSwitcher = false
         dockButtonCount = 3
@@ -291,7 +337,12 @@ class ContentPreferenceContractTest {
         "top_bar_show_seconds" to state.showSeconds,
         "top_bar_show_indoor_temperature" to state.showIndoorTemperature,
         "top_bar_show_battery" to state.showBattery,
-        "top_bar_show_charging_status" to state.showChargingStatus,
+        "top_bar_show_range" to state.showRange,
+         "top_bar_show_charging_status" to state.showChargingStatus,
+         "top_bar_show_plugged_status" to state.showPluggedStatus,
+         "top_bar_show_scheduled_charging" to state.showScheduledCharging,
+         "top_bar_show_charging_remaining_time" to state.showChargingRemainingTime,
+         "top_bar_show_charging_power" to state.showChargingPower,
         FONT_SCALE to state.lyricsFontScale,
         LINE_SPACING to state.lyricsLineSpacing,
          FONT_SIZE to LyricPreferenceRules.fontSize(state.lyricsFontSizeSp),
@@ -302,11 +353,15 @@ class ContentPreferenceContractTest {
          CUSTOM_COLOR to LyricPreferenceRules.opaqueColor(state.lyricsCustomColor),
          CURRENT_COLOR_MODE to LyricPreferenceRules.colorMode(state.lyricsCurrentColorMode),
          CURRENT_CUSTOM_COLOR to LyricPreferenceRules.opaqueColor(state.lyricsCurrentCustomColor),
-         IMMERSIVE_FONT_SIZE to LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp),
+         IMMERSIVE_CURRENT_FONT_SIZE to LyricPreferenceRules.immersiveCurrentFontSize(
+              state.lyricsImmersiveCurrentFontSizeSp, state.lyricsImmersiveFontSizeSp),
+          IMMERSIVE_FONT_SIZE to LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp),
          IMMERSIVE_LINE_GAP to LyricPreferenceRules.immersiveLineGap(state.lyricsImmersiveLineGapDp),
+         "lyrics_show_translation" to state.lyricsShowTranslation,
         "lyrics_speaker_layout" to state.lyricsSpeakerLayout,
         "lyrics_highlight" to state.lyricsHighlight,
         "lyrics_immersive_show_top_bar" to state.immersiveShowTopBar,
+         "lyrics_immersive_top_bar_keep_split" to state.immersiveTopBarKeepSplit,
         "lyrics_immersive_show_dock" to state.immersiveShowDock,
         "ambient_show_artwork" to state.showAmbientArtwork,
         "media_show_source_switcher" to state.showMediaSourceSwitcher,
@@ -368,7 +423,10 @@ class ContentPreferenceContractTest {
          NumericPreference(IMMERSIVE_FONT_SIZE, listOf(64f, 120f, 192f),
              listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY),
              { state, value -> state.lyricsImmersiveFontSizeSp = value as Float }),
-         NumericPreference(IMMERSIVE_LINE_GAP, listOf(0f, 84f, 192f),
+         NumericPreference(IMMERSIVE_CURRENT_FONT_SIZE, listOf(64f, 144f, 640f),
+             listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY),
+             { state, value -> state.lyricsImmersiveCurrentFontSizeSp = value as Float }),
+ NumericPreference(IMMERSIVE_LINE_GAP, listOf(0f, 84f, 192f),
              listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY),
              { state, value -> state.lyricsImmersiveLineGapDp = value as Float }),
         NumericPreference(DOCK_COUNT, listOf(3, 4, 5, 6), listOf(Int.MIN_VALUE, -1, 0, 2, 7, Int.MAX_VALUE),
@@ -396,6 +454,7 @@ class ContentPreferenceContractTest {
          const val CURRENT_COLOR_MODE = "lyrics_current_color_mode"
          const val CURRENT_CUSTOM_COLOR = "lyrics_current_custom_color"
          const val IMMERSIVE_FONT_SIZE = "lyrics_immersive_font_size_sp"
+          const val IMMERSIVE_CURRENT_FONT_SIZE = "lyrics_immersive_current_font_size_sp"
          const val IMMERSIVE_LINE_GAP = "lyrics_immersive_line_gap_dp"
         const val DOCK_COUNT = "dock_button_count"
         const val OPACITY = "ui_opacity"
@@ -404,7 +463,13 @@ class ContentPreferenceContractTest {
             "top_bar_show_weekday" to true,
             "top_bar_show_seconds" to false,
             "top_bar_show_indoor_temperature" to true,
-            "top_bar_show_battery" to true,
+             "top_bar_show_battery" to true,
+             "top_bar_show_range" to true,
+
+             "top_bar_show_plugged_status" to true,
+             "top_bar_show_scheduled_charging" to true,
+             "top_bar_show_charging_remaining_time" to true,
+             "top_bar_show_charging_power" to true,
             "top_bar_show_charging_status" to true,
             FONT_SCALE to 1.0f,
             LINE_SPACING to 1,
@@ -417,10 +482,13 @@ class ContentPreferenceContractTest {
              CURRENT_COLOR_MODE to "theme",
              CURRENT_CUSTOM_COLOR to 0xFF5C66BF.toInt(),
              IMMERSIVE_FONT_SIZE to 120f,
+              IMMERSIVE_CURRENT_FONT_SIZE to 144f,
+              "lyrics_show_translation" to true,
              IMMERSIVE_LINE_GAP to 84f,
             "lyrics_speaker_layout" to true,
             "lyrics_highlight" to true,
             "lyrics_immersive_show_top_bar" to true,
+             "lyrics_immersive_top_bar_keep_split" to true,
             "lyrics_immersive_show_dock" to true,
             "ambient_show_artwork" to true,
             "media_show_source_switcher" to true,

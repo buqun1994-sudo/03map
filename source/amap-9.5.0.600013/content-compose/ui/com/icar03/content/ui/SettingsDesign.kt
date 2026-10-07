@@ -5,12 +5,22 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Settings-only tokens. The page owner supplies the already resolved Amap theme. */
+/** Exact sp line boxes without Android's legacy font padding; retain the system sans font. */
+private fun settingsTextStyle(size: Int, line: Int, weight: FontWeight = FontWeight.Normal) = TextStyle(
+    fontSize = size.sp, lineHeight = line.sp, fontWeight = weight, fontFamily = FontFamily.SansSerif,
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+)
+
+/** Settings-only Figma tokens; the host supplies the already resolved Amap theme. */
 @Immutable
 data class SettingsDesign(
     val dark: Boolean,
@@ -28,74 +38,44 @@ data class SettingsDesign(
     val rainbowThumbOutline: Color = Color.White,
     val swatchLightInk: Color = Color.White,
     val swatchDarkInk: Color = Color(0xFF27303B),
-    val rainbowThumbWidth: Dp = 20.dp,
-    val rainbowThumbShape: RoundedCornerShape = RoundedCornerShape(8.dp),
     val pagePadding: Dp = 24.dp,
-    val narrowPagePadding: Dp = 16.dp,
-    val sectionGap: Dp = 28.dp,
-    val itemGap: Dp = 12.dp,
-    val controlHeight: Dp = 48.dp,
-    val navigationHeight: Dp = 76.dp,
+    val sectionGap: Dp = 48.dp,
+    val itemGap: Dp = 24.dp,
+    val smallGap: Dp = 12.dp,
+    val controlHeight: Dp = 40.dp,
+    val minimumTouchHeight: Dp = 48.dp,
+    val colorHeight: Dp = 60.dp,
+    val rainbowThumbWidth: Dp = 60.dp,
+    val rainbowThumbShape: RoundedCornerShape = RoundedCornerShape(4.dp),
+    val navigationHeight: Dp = 78.dp,
     val segmentMinimumWidth: Dp = 64.dp,
-    val cardShape: RoundedCornerShape = RoundedCornerShape(10.dp),
-    val previewShape: RoundedCornerShape = RoundedCornerShape(10.dp),
+    val cardShape: RoundedCornerShape = RoundedCornerShape(8.dp),
+    val pageShape: RoundedCornerShape = RoundedCornerShape(12.dp),
     val controlShape: RoundedCornerShape = RoundedCornerShape(50),
     val hueTrackShape: RoundedCornerShape = RoundedCornerShape(8.dp),
-    val swatchShape: RoundedCornerShape = RoundedCornerShape(4.dp),
-    val shadowElevation: Dp = 1.dp,
-    val labelStyle: TextStyle = TextStyle(
-        fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold,
-    ),
-    val valueStyle: TextStyle = TextStyle(
-        fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Normal,
-    ),
-    val navigationTitleStyle: TextStyle = TextStyle(
-        fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold,
-    ),
-    val pageTitleStyle: TextStyle = TextStyle(
-        fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Normal,
-    ),
-    val supportingStyle: TextStyle = TextStyle(
-        fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal,
-    ),
-    val optionStyle: TextStyle = TextStyle(
-        fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium,
-    ),
+    val shadowElevation: Dp = 3.dp,
+    val labelStyle: TextStyle = settingsTextStyle(24, 30),
+    val valueStyle: TextStyle = settingsTextStyle(24, 30),
+    val navigationTitleStyle: TextStyle = settingsTextStyle(24, 30),
+    val sectionTitleStyle: TextStyle = settingsTextStyle(26, 33, FontWeight.Bold),
+    val pageTitleStyle: TextStyle = settingsTextStyle(28, 36),
+    val supportingStyle: TextStyle = settingsTextStyle(18, 24),
+    val optionStyle: TextStyle = settingsTextStyle(22, 28),
 ) {
-    fun paddingFor(viewportWidth: Dp): Dp =
-        if (viewportWidth < 400.dp) narrowPagePadding else pagePadding
+    fun paddingFor(@Suppress("UNUSED_PARAMETER") viewportWidth: Dp): Dp = pagePadding
 }
 
 private val LightSettingsDesign = SettingsDesign(
-    dark = false,
-    page = Color(0xFFF4F4F4),
-    card = Color.White,
-    track = Color(0xFFE9E9E9),
-    selected = Color.White,
-    text = Color(0xFF27303B),
-    secondaryText = Color(0xFF6B7078),
-    divider = Color(0xFFD8D8D8),
-    offSwitchTrack = Color(0xFFE1E1E1),
+    dark = false, page = Color(0xFFF4F4F4), card = Color.White, track = Color(0xFFE9E9E9),
+    selected = Color.White, text = Color(0xFF27303B), secondaryText = Color(0xFF6B7078),
+    divider = Color(0xFFE7E7E7), offSwitchTrack = Color(0xFFE1E1E1),
 )
-
 private val DarkSettingsDesign = SettingsDesign(
-    dark = true,
-    page = Color(0xFF0F0F0F),
-    card = Color(0xFF1A1A1A),
-    track = Color(0xFF303030),
-    selected = Color(0xFF484848),
-    text = Color(0xFFF2F2F2),
-    secondaryText = Color(0xFFB9B9B9),
-    divider = Color(0xFF3A3A3A),
-    offSwitchTrack = Color(0xFF454545),
-    onSwitchTrack = Color(0xFFE8E8E8),
-    switchThumb = Color(0xFF1A1A1A),
-    offSwitchThumb = Color(0xFFE8E8E8),
+    dark = true, page = Color(0xFF0F0F0F), card = Color(0xFF1A1A1A), track = Color(0xFF303030),
+    selected = Color(0xFF484848), text = Color(0xFFF2F2F2), secondaryText = Color(0xFFB9B9B9),
+    divider = Color(0xFF353535), offSwitchTrack = Color(0xFF454545),
+    onSwitchTrack = Color(0xFFE8E8E8), switchThumb = Color(0xFF1A1A1A), offSwitchThumb = Color(0xFFE8E8E8),
 )
 
-/** Does not inspect uiMode or change ContentThemeColors and its vehicle selected surfaces. */
-fun settingsDesign(dark: Boolean): SettingsDesign =
-    if (dark) DarkSettingsDesign else LightSettingsDesign
-
-/** Provide this at the settings page root, alongside the existing ContentTheme. */
+fun settingsDesign(dark: Boolean): SettingsDesign = if (dark) DarkSettingsDesign else LightSettingsDesign
 val LocalSettingsDesign = staticCompositionLocalOf { settingsDesign(dark = false) }
