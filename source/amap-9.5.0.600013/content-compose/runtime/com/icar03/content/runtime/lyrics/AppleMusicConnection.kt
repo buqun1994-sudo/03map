@@ -174,6 +174,10 @@ internal class AppleMusicAccount(
         value
     }
 
+    fun isReadyLoginAttempt(attempt: AppleMusicConnection.LoginAttempt): Boolean = synchronized(lock) {
+        loginAttempt === attempt && loginReady
+    }
+
     fun isCurrent(value: AppleMusicCredential): Boolean = synchronized(lock) {
         credential?.generation == value.generation &&
             credential?.status(clock.nowMs()) == AppleMusicConnection.Status.CONNECTED

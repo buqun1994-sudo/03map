@@ -187,6 +187,33 @@ class LyricsSettingsBindingTest {
             assertEquals(SettingsSection.Lyrics, binding.state.value.settingsSection)
         } finally { binding.close(); store.destroy() }
     }
+    @Test fun confirmedParkDepartureClosesSettingsAndReleasesOnlyTheCurrentLoginWindow() {
+        val context = RuntimeEnvironment.getApplication()
+        val store = ContentStore(context)
+        val binding = ContentBinding(store)
+        try {
+            binding.observeEnvironment(context)
+            binding.start()
+            binding.dispatch(ContentEvent.OpenLyricsSettings)
+            beginLogin(binding)
+            val view = attachWithoutLoading(settingsOwner(binding))
+            val callbacks = view.webViewClient
+            store.setAutoCloseSettingsOnDrive(true)
+            store.acceptVehicleSnapshot(com.autonavi.amapauto.content.ContentPorts.VehicleSnapshot.unavailable()
+                .withGear(com.icar03.content.model.VehicleGear.Park))
+            store.acceptVehicleSnapshot(com.autonavi.amapauto.content.ContentPorts.VehicleSnapshot.unavailable()
+                .withGear(com.icar03.content.model.VehicleGear.Drive))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(binding.state.value.settingsOpen)
+            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+            assertFalse(binding.state.value.settingsCollapsed)
+            assertReleased(view)
+            deliverLateCallbacks(callbacks, view)
+            assertFalse(binding.state.value.settingsOpen)
+            assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+        } finally { binding.close(); store.destroy() }
+    }
+
     @Test fun settingsDismissalEventsReleaseCurrentLogin() {
         for (dismiss in listOf(ContentEvent.SettingsDismissed, ContentEvent.DismissSheet, ContentEvent.SettingsTapped)) {
             val context = RuntimeEnvironment.getApplication()
@@ -447,6 +474,74 @@ class LyricsSettingsBindingTest {
             assertNull(field(owner, "loginWebView"))
             assertEquals(1, LoginWebViewShadow.stopCalls)
             assertEquals(1, LoginWebViewShadow.destroyCalls)
+        } finally { owner.close() }
+    }
+
+    @Test fun bootstrapFailureRetryUsesTheRealBrokerAndLoadsOnlyTheReplacementAuthorization() {
+        LoginWebViewShadow.reset()
+        val rig = AppleMusicFixtureRig(null)
+        val transport = com.icar03.content.runtime.lyrics.AppleMusicFixtureTransport {
+            throw com.icar03.content.runtime.lyrics.LyricsHttpStatusException(503,
+                com.icar03.content.runtime.lyrics.LyricsFailureReason.SERVER, true)
+        }
+        val broker = com.icar03.content.runtime.lyrics.AppleMusicAuthBroker(rig.connection, transport, rig.clock)
+        val revision = mutableStateOf(0)
+        val messages = mutableListOf<String>()
+        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), { revision.value++ }, messages::add,
+            rig.connection, authorizationConfiguration = { attempt -> broker.prepareWebAuthorization(attempt,
+                System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10),
+                com.icar03.content.runtime.lyrics.LyricsCancellationSignal()) })
+        try {
+            beginRealLogin(owner)
+            compose.setContent {
+                revision.value
+                ContentTheme(false) {
+                    CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(false)) { owner.LoginContent() }
+                }
+            }
+            compose.waitForIdle()
+            compose.onNodeWithTag("settings-apple-login-web-error").assertIsDisplayed()
+            assertEquals(1, transport.calls.size)
+             assertEquals("Apple Music 登录准备失败，请重试", pageError(owner))
+             assertTrue(messages.contains("Apple Music 登录准备失败，请重试"))
+            assertTrue(LoginWebViewShadow.loadedUrls.isEmpty())
+            assertFalse(rig.connection.refresh().isConnecting)
+            assertNull(field(owner, "activeAttempt"))
+            assertNull(field(owner, "loginWebView"))
+            transport.response = com.icar03.content.runtime.lyrics.AppleMusicFixture::bootstrapResponse
+            compose.onNodeWithTag("settings-apple-login-retry").performClick()
+            shadowOf(Looper.getMainLooper()).idle()
+            compose.waitForIdle()
+            assertNull(pageError(owner))
+            assertEquals(4, transport.calls.size)
+            assertEquals(2, rig.cookies.clears)
+            assertEquals(1, LoginWebViewShadow.loadedUrls.size)
+            val attempt = field(owner, "activeAttempt") as AppleMusicConnection.LoginAttempt
+            val start = Uri.parse(LoginWebViewShadow.loadedUrls.single())
+            assertEquals("authorize.music.apple.com", start.host)
+            assertTrue(checkNotNull(start.getQueryParameter("referrer")).endsWith(attempt.id))
+            assertEquals(start.getQueryParameter("referrer"), LoginWebViewShadow.loadedHeaders.single()["Referer"])
+            assertEquals(AppleMusicConnection.Status.DISCONNECTED, rig.connection.refresh().status)
+            assertNull(rig.store.value)
+            assertEquals(1, messages.size)
+        } finally { owner.close() }
+    }
+
+    @Test fun defaultLoginLoadsTheOfficialUrlWithoutAuthorizationBroker() {
+        LoginWebViewShadow.reset()
+        val rig = AppleMusicFixtureRig(null)
+        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, {}, rig.connection)
+        try {
+            beginRealLogin(owner)
+            val attempt = field(owner, "activeAttempt") as AppleMusicConnection.LoginAttempt
+            LyricsSettingsBinding::class.java.getDeclaredMethod("createLoginWebView", Context::class.java,
+                AppleMusicConnection.LoginAttempt::class.java, java.lang.Long.TYPE, java.lang.Long.TYPE)
+                .apply { isAccessible = true }.invoke(owner, RuntimeEnvironment.getApplication(), attempt,
+                    longField(owner, "lifecycleEpoch"), longField(owner, "loginEpoch"))
+            assertEquals(listOf(AppleMusicConnection.LOGIN_URL), LoginWebViewShadow.loadedUrls)
+            assertEquals(listOf(emptyMap<String, String>()), LoginWebViewShadow.loadedHeaders)
+            assertNull(field(owner, "authorizationJob"))
+            assertNull(field(owner, "authorizationCancellation"))
         } finally { owner.close() }
     }
 

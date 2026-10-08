@@ -9,8 +9,10 @@ import android.os.Build
 import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -55,6 +57,7 @@ open class QuickControlsNativeTest {
     @get:Rule val compose = createComposeRule()
     private val events = mutableListOf<ContentEvent>()
     private val state = mutableStateOf(ContentUiState(previewMode = false))
+    private val washAction = mutableIntStateOf(0)
     private val panelWidth = mutableStateOf(640.dp)
     private val owner = object : LifecycleOwner {
         override val lifecycle = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
@@ -176,21 +179,36 @@ open class QuickControlsNativeTest {
     @Test fun offAndAutomaticChangesDoNotReplayOrColorEitherManualWiperIcon() {
         preload()
         mountPanel()
-        assertManualWiperIcons(0)
-        val off = capture("manual-wiper-off-reference")
         compose.mainClock.autoAdvance = false
+        val expected = vehicleControlIconRecipe(ControlId.Wiper, 0, dark)
+        val tags = listOf("shortcut-icon-Wiper", "dock-icon-Wiper")
+        fun assertNeutralTail() {
+            for (tag in tags) compose.onNodeWithTag(tag, useUnmergedTree = true)
+                .assert(SemanticsMatcher.expectValue(OemResource, expected.resource))
+                .assert(SemanticsMatcher.expectValue(OemTint, Color.Unspecified.value.toLong()))
+                .assert(SemanticsMatcher.expectValue(IconAnimationAsset, expected.asset))
+                .assert(SemanticsMatcher.expectValue(IconAnimationReady, true))
+                .assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
+                .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                .assert(SemanticsMatcher.expectValue(IconMotion, 1f))
+        }
+        compose.runOnIdle { Snapshot.sendApplyNotifications() }
+        advanceNativeFrames(32)
+        assertManualWiperIcons(0)
+        advanceNativeFrames(assertFrame = ::assertNeutralTail)
+        val geometry = tags.associateWith { compose.onNodeWithTag(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot }
+        val off = capture("manual-wiper-off-reference")
         val values = listOf(ControlState(actual = 0, target = 5, available = false),
             ControlState(actual = 5), ControlState(actual = 5, target = 0, available = false), ControlState(actual = 0))
         for (value in values) {
-            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Wiper to value)) }
-            compose.mainClock.advanceTimeByFrame()
-            compose.waitForIdle()
+            publishNativeState { it.copy(controls = it.controls + (ControlId.Wiper to value)) }
+            advanceNativeFrames(96, ::assertNeutralTail)
             assertManualWiperIcons(0)
             val frame = capture("manual-wiper-off-auto-${value.actual}-${value.target}")
-            for (tag in listOf("shortcut-icon-Wiper", "dock-icon-Wiper")) {
-                compose.onNodeWithTag(tag, useUnmergedTree = true)
-                    .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
-                    .assert(SemanticsMatcher.expectValue(IconMotion, 1f))
+            for (tag in tags) {
+                assertEquals("$tag keeps its native OFF geometry for $value", geometry.getValue(tag),
+                    compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot)
                 assertArrayEquals("$tag stays at the neutral OFF frame for $value", iconPixels(off, tag), iconPixels(frame, tag))
             }
             compose.onNodeWithTag("control-Wiper").assertIsNotSelected()
@@ -198,6 +216,23 @@ open class QuickControlsNativeTest {
         }
         compose.mainClock.autoAdvance = true
         assertTrue(events.isEmpty())
+    }
+
+    private fun advanceNativeFrames(durationMs: Long = 16L, assertFrame: () -> Unit = {}) {
+        check(!compose.mainClock.autoAdvance)
+        val deadline = compose.mainClock.currentTime + durationMs
+        while (compose.mainClock.currentTime < deadline) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            assertFrame()
+        }
+    }
+
+    private fun publishNativeState(update: (ContentUiState) -> ContentUiState) {
+        compose.runOnIdle {
+            state.value = update(state.value)
+            Snapshot.sendApplyNotifications()
+        }
     }
 
     private fun assertManualWiperIcons(level: Int) {
@@ -843,14 +878,18 @@ open class QuickControlsNativeTest {
                         Modifier.size(160.dp).testTag("native-front"))
                     ShortcutOemIcon(ShortcutId.RearWiper, state.value.copy(dark = dark), rearWiperIconRecipe(false, dark).resource,
                         Modifier.size(160.dp).testTag("native-rear"))
-                    ShortcutOemIcon(ShortcutId.RearWash, state.value.copy(dark = dark), rearWashIconRecipe(false, dark).resource,
-                        Modifier.size(160.dp).testTag("native-wash"))
+                    Box(Modifier.size(160.dp).clickable { washAction.intValue++ }.testTag("native-wash-action")) {
+                        CompositionLocalProvider(LocalIconAction provides washAction.intValue) {
+                            ShortcutOemIcon(ShortcutId.RearWash, state.value.copy(dark = dark), rearWashIconRecipe(false, dark).resource,
+                                Modifier.fillMaxSize().testTag("native-wash"))
+                        }
+                    }
                 }
             }
         }
         compose.waitForIdle()
         compose.waitUntil(3_000) { listOf("native-front", "native-rear", "native-wash").all {
-            compose.onNodeWithTag(it).fetchSemanticsNode().config[IconAnimationReady]
+            compose.onNodeWithTag(it, useUnmergedTree = true).fetchSemanticsNode().config[IconAnimationReady]
         } }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
@@ -859,17 +898,17 @@ open class QuickControlsNativeTest {
     /** Advance the real production animation to an explicit early/middle phase. */
     private fun advanceIconTo(tag: String, minimum: Float, maximum: Float) {
         compose.mainClock.advanceTimeUntil(1_500) {
-            val current = compose.onNodeWithTag(tag).fetchSemanticsNode().config
+            val current = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().config
             current[IconAnimationReady] && current[IconAnimationPlaying] && current[IconAnimationProgress] >= minimum
         }
         compose.waitForIdle()
-        val progress = compose.onNodeWithTag(tag).fetchSemanticsNode().config[IconAnimationProgress]
+        val progress = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().config[IconAnimationProgress]
         assertTrue("$tag captured in the requested animation phase: $progress", progress >= minimum && progress < maximum)
     }
 
     private fun advanceIconToTail(tag: String) {
         compose.mainClock.advanceTimeUntil(1_500) {
-            val current = compose.onNodeWithTag(tag).fetchSemanticsNode().config
+            val current = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().config
             current[IconAnimationReady] && !current[IconAnimationPlaying] && current[IconAnimationProgress] == 1f
         }
         compose.waitForIdle()
@@ -907,7 +946,7 @@ open class QuickControlsNativeTest {
                 assertPalette(tail, tag, level > 0)
             }
             assertFrontLevelMark(tail, level > 0)
-            compose.onNodeWithTag("native-front").assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+            compose.onNodeWithTag("native-front", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
         }
         compose.mainClock.autoAdvance = true
     }
@@ -915,7 +954,56 @@ open class QuickControlsNativeTest {
     @Test fun washUserCyclePlaysOnceThenFalseAndPauseKeepTheRealTailWithoutReplay() {
         mountActualIconAdapters()
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.RearWash to ControlState(actual = 1))) }
+        fun assertWashSettled() {
+            compose.onNodeWithTag("native-wash", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource,
+                rearWashIconRecipe(false, dark).resource))
+                .assert(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_wash_rear_derived.json"))
+                .assert(SemanticsMatcher.expectValue(OemTint, Color.Unspecified.value.toLong()))
+                .assert(SemanticsMatcher.expectValue(IconAnimationReady, true))
+                .assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
+                .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+        }
+        fun assertWashHidden() {
+            compose.onNodeWithTag("native-wash", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource,
+                rearWashIconRecipe(false, dark).resource))
+                .assert(SemanticsMatcher.expectValue(OemTint, Color.Unspecified.value.toLong()))
+                .assert(SemanticsMatcher.expectValue(IconAnimationVisible, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationAsset, ""))
+                .assert(SemanticsMatcher.expectValue(IconAnimationRetained, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+        }
+        fun assertWashCancelledTail() {
+            compose.onNodeWithTag("native-wash", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource,
+                rearWashIconRecipe(false, dark).resource))
+                .assert(SemanticsMatcher.expectValue(OemTint, Color.Unspecified.value.toLong()))
+                .assert(SemanticsMatcher.expectValue(IconAnimationAsset, ""))
+                .assert(SemanticsMatcher.expectValue(IconAnimationReady, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationRetained, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+        }
+        fun acceptWash(target: Int, actual: Int) {
+            val before = washAction.intValue
+            compose.onNodeWithTag("native-wash-action").performClick()
+            assertEquals("accepted wash intent increments only its local action token", before + 1, washAction.intValue)
+            publishNativeState { current -> current.copy(controls = current.controls +
+                (ControlId.RearWash to ControlState(actual = actual, target = target, available = false))) }
+            assertEquals("accepted wash target is published independently of confirmed actual", target,
+                state.value.controls.getValue(ControlId.RearWash).target)
+            assertEquals(actual, state.value.controls.getValue(ControlId.RearWash).actual)
+        }
+        fun assertOtherAdaptersIdle() {
+            for (tag in listOf("native-front", "native-rear")) compose.onNodeWithTag(tag, useUnmergedTree = true)
+                .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                .assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+        }
+        advanceIconToTail("native-front")
+        assertOtherAdaptersIdle()
+        advanceNativeFrames(64)
+        assertWashSettled()
+        acceptWash(target = 1, actual = 0)
         advanceIconTo("native-wash", .05f, .18f)
         assertPalette(capture("wash-on-first"), "native-wash", true)
         advanceIconTo("native-wash", .32f, .50f)
@@ -932,27 +1020,64 @@ open class QuickControlsNativeTest {
         val tail = capture("wash-on-tail")
         assertPalette(tail, "native-wash", true)
         assertWashWater(tail, true)
-        compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
-        compose.mainClock.advanceTimeBy(160)
-        assertArrayEquals(iconPixels(tail, "native-wash"), iconPixels(capture("wash-on-held"), "native-wash"))
-        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.RearWash to ControlState(actual = 0))) }
+        assertWashSettled()
+        assertOtherAdaptersIdle()
+
+        // Confirmed state is a pure readback: it recolors the same tail without replaying it.
+        publishNativeState { it.copy(time = "12:25", controls = it.controls +
+            (ControlId.RearWash to ControlState(actual = 1))) }
+        advanceNativeFrames(160) { assertWashSettled() }
+        assertArrayEquals("confirmed ON readback keeps the accepted wash tail", iconPixels(tail, "native-wash"),
+            iconPixels(capture("wash-on-readback-held"), "native-wash"))
+
+        acceptWash(target = 0, actual = 1)
         advanceIconTo("native-wash", .05f, .18f)
         assertPalette(capture("wash-off-first"), "native-wash", false)
         advanceIconTo("native-wash", .32f, .50f)
-        compose.runOnIdle { owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE) }
-        compose.mainClock.advanceTimeBy(64)
-        compose.onNodeWithTag("native-wash").assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+        compose.runOnIdle {
+            owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+            Snapshot.sendApplyNotifications()
+        }
+        advanceNativeFrames(64) {
+            assertWashHidden()
+            assertOtherAdaptersIdle()
+        }
+        // Hidden drawing is immediate; LaunchedEffect settles the retained recipe on a later frame.
+        val cancellationDeadline = compose.mainClock.currentTime + 64L
+        while (compose.mainClock.currentTime < cancellationDeadline &&
+            compose.onNodeWithTag("native-wash", useUnmergedTree = true).fetchSemanticsNode().config[IconAnimationReady]) {
+            advanceNativeFrames {
+                assertWashHidden()
+                assertOtherAdaptersIdle()
+            }
+        }
+        assertWashCancelledTail()
+        assertOtherAdaptersIdle()
         val paused = capture("wash-only-pause-tail")
         assertPalette(paused, "native-wash", false)
-        compose.runOnIdle { owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_RESUME) }
-        compose.mainClock.advanceTimeBy(160)
-        compose.onNodeWithTag("native-wash").assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+        assertOtherAdaptersIdle()
+        compose.runOnIdle {
+            owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            Snapshot.sendApplyNotifications()
+        }
+        advanceNativeFrames(160) {
+            assertWashCancelledTail()
+            assertOtherAdaptersIdle()
+        }
         assertArrayEquals(iconPixels(paused, "native-wash"), iconPixels(capture("wash-resume-no-replay"), "native-wash"))
+        // The OFF confirmation is also a state readback, and still cannot synthesize a third action.
+        publishNativeState { it.copy(controls = it.controls + (ControlId.RearWash to ControlState(actual = 0))) }
+        advanceNativeFrames(96) {
+            assertWashCancelledTail()
+            assertOtherAdaptersIdle()
+        }
+        assertArrayEquals("confirmed OFF readback keeps the paused tail", iconPixels(paused, "native-wash"),
+            iconPixels(capture("wash-off-readback-held"), "native-wash"))
         compose.mainClock.autoAdvance = true
     }
 
     private fun assertWashWater(bitmap: Bitmap, visible: Boolean) {
-        val bounds = compose.onNodeWithTag("native-wash").fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onNodeWithTag("native-wash", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val width = bounds.width.toInt(); val height = bounds.height.toInt()
         val pixels = iconPixels(bitmap, "native-wash")
         var waterInk = 0; var waterBlue = 0; var windowBlue = 0
@@ -975,7 +1100,7 @@ open class QuickControlsNativeTest {
     }
 
     private fun assertFrontLevelMark(bitmap: Bitmap, visible: Boolean) {
-        val bounds = compose.onNodeWithTag("native-front").fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onNodeWithTag("native-front", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val width = bounds.width.toInt(); val height = bounds.height.toInt()
         val pixels = iconPixels(bitmap, "native-front")
         var ink = 0

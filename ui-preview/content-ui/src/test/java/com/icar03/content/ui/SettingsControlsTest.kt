@@ -564,6 +564,23 @@ open class SettingsControlsTest {
         assertTrue(commits.isEmpty())
     }
 
+    @Test fun sliderCornersStayOnTheSettingsCardInsteadOfExposingAWhiteBacking() {
+        val enabled = mutableStateOf(true)
+        mount {
+            SettingsGroupCard(Modifier.testTag("slider-card")) {
+                SettingsSlider(.5f, 0f..1f, {}, {}, enabled = enabled.value, tag = "card-slider")
+            }
+        }
+        val design = settingsDesign(dark)
+        assertEquals("top-left rounded corner stays on the card", design.card.toArgb(), pixelAt("card-slider-track", .01f, .01f))
+        assertEquals("top-right rounded corner stays on the card", design.card.toArgb(), pixelAt("card-slider-track", .99f, .01f))
+        assertEquals("track center keeps its own color", design.track.toArgb(), pixelAt("card-slider-track", .5f, .5f))
+        compose.runOnIdle { enabled.value = false }
+        val disabled = ColorUtils.compositeColors(
+            design.track.copy(alpha = .38f).toArgb(), design.card.toArgb())
+        assertEquals("disabled track blends with its card", disabled, pixelAt("card-slider-track", .5f, .5f))
+    }
+
     @Test fun switchAndNumericSliderUseTheirOwnRenderedStateColors() {
         mount {
             SettingsSwitchRow("显示星期", true, {}, tag = "green")

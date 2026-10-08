@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.view.View
 import android.view.WindowManager
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -504,7 +505,8 @@ open class ContentPanelLightPrototypeRenderTest {
     private fun iconEntrances(id: ControlId): List<String> = if (DockShortcuts.items.any { it.control == id })
         listOf("shortcut-icon", "dock-icon") else listOf("shortcut-icon")
 
-    private fun mountInteractionState(state: androidx.compose.runtime.State<ContentUiState>, lifecycleOwner: androidx.lifecycle.LifecycleOwner? = null, onEvent: (ContentEvent) -> Unit = {}) {
+    private fun mountInteractionState(state: androidx.compose.runtime.State<ContentUiState>, lifecycleOwner: androidx.lifecycle.LifecycleOwner? = null,
+        useStateTheme: Boolean = false, onEvent: (ContentEvent) -> Unit = {}) {
         compose.setContent {
             val view = LocalView.current
             @Suppress("DEPRECATION")
@@ -517,7 +519,8 @@ open class ContentPanelLightPrototypeRenderTest {
             }
             val parentOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
             androidx.compose.runtime.CompositionLocalProvider(androidx.lifecycle.compose.LocalLifecycleOwner provides (lifecycleOwner ?: parentOwner)) {
-                ContentTheme(dark) { ContentPanel(state.value.copy(dark = dark), { events += it; onEvent(it) }, Modifier.testTag(hostTag)) }
+                val current = state.value.copy(dark = if (useStateTheme) state.value.dark else dark)
+                ContentTheme(current.dark) { ContentPanel(current, { events += it; onEvent(it) }, Modifier.testTag(hostTag)) }
             }
         }
         compose.waitForIdle()
@@ -723,7 +726,7 @@ open class ContentPanelLightPrototypeRenderTest {
             compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
                 (ControlId.Lock to ControlState(actual = target))) }
             compose.waitForIdle()
-            val expected = if (target == 0) ContentFunctionalBlue
+            val expected = if (target == 1) ContentFunctionalBlue
                 else if (dark) androidx.compose.ui.graphics.Color(0xFFE8E8E8) else androidx.compose.ui.graphics.Color(0xFF27303B)
             listOf("shortcut-icon-Lock", "dock-icon-Lock").forEach { tag ->
                 compose.onNodeWithTag(tag, useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemTint, expected.value.toLong()))
@@ -942,27 +945,36 @@ open class ContentPanelLightPrototypeRenderTest {
             ControlId.SteeringHeat to listOf(0, 2, 1, 3, 0))
         for ((id, levels) in cycles) for (prefix in if (DockShortcuts.items.any { it.control == id }) listOf("control", "dock") else listOf("control")) {
             for ((actual, target) in levels.zipWithNext()) {
-                compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (id to ControlState(actual = actual))) }
-                compose.mainClock.advanceTimeByFrame()
+                assertEquals("fixture follows $id's formal next-level cycle", id.nextLevel(actual), target)
+                publishOemState(state) { it.copy(controls = it.controls + (id to ControlState(actual = actual))) }
+                sampleOemFrames()
                 val tag = "$prefix-${id.name}"
+                val node = compose.onNodeWithTag(tag).assertIsEnabled()
+                val description = when {
+                    actual == 0 -> "关闭"
+                    id.isAutomatic(actual) -> "自动"
+                    else -> "${actual}档"
+                }
+                node.assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, description))
                 val area = compose.onNodeWithTag(if (prefix == "dock") "$tag-press-area" else tag, useUnmergedTree = true)
                 val boundary = (actual == 0) != (target == 0)
-                compose.onNodeWithTag(tag).performTouchInput { down(center) }
-                compose.mainClock.advanceTimeBy(320)
+                node.performTouchInput { down(center) }
+                sampleOemFrames(320)
                 area.assert(SemanticsMatcher.expectValue(RippleRunning, boundary))
-                compose.onNodeWithTag(tag).performTouchInput { up() }
+                node.performTouchInput { up() }
                 // Emulate Binding's immediate target projection; this is not a
                 // fabricated vehicle success. Confirmed actual remains old.
-                compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
+                publishOemState(state) { it.copy(controls = it.controls +
                     (id to ControlState(actual = actual, target = target, available = false))) }
-                compose.mainClock.advanceTimeByFrame()
-                compose.onNodeWithTag(tag).assertIsNotEnabled().assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
+                sampleOemFrames()
+                node.assertIsNotEnabled().assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
                 assertTrue("target never changes actual", state.value.controls.getValue(id).actual == actual)
                 area.assert(SemanticsMatcher.expectValue(RippleRunning, boundary))
                 assertTrue("one shared event per accepted tap", events.last() == ContentEvent.ControlTapped(id))
-                compose.mainClock.advanceTimeBy(320)
+                sampleOemFrames(320)
                 area.assert(SemanticsMatcher.expectValue(RippleRunning, false))
-                compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (id to ControlState(actual = target))) }
+                publishOemState(state) { it.copy(controls = it.controls + (id to ControlState(actual = target))) }
+                sampleOemFrames()
             }
         }
         captureHost("complete-gear-cycles")
@@ -1398,20 +1410,39 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_lock_close))
         compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationVisible, true))
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + (ControlId.Lock to ControlState(actual = 0))) }
-        compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(96)
-        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_lock_open))
-        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_lock_open_f.json"))
-        captureHost("oem-lock-open-mid")
-        compose.mainClock.advanceTimeBy(1600)
-        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
-        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
-        val lockTail = iconPixels(captureHost("oem-lock-open-tail"), "dock-icon-Lock")
-        compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
-        compose.mainClock.advanceTimeBy(96)
-        compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
-        assertTrue("timestamp must preserve the rendered last frame", lockTail.contentEquals(iconPixels(captureHost("oem-lock-open-tail-tick"), "dock-icon-Lock")))
+        fun assertLockReadbackIdle() {
+            for (prefix in listOf("shortcut-icon", "dock-icon")) {
+                compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
+                    .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                    .assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                    .assert(SemanticsMatcher.expectValue(IconMotion, 1f))
+            }
+        }
+        publishOemState(state) { it.copy(controls = it.controls + (ControlId.Lock to ControlState(actual = 0))) }
+        sampleOemFrames(96, ::assertLockReadbackIdle)
+        for (prefix in listOf("shortcut-icon", "dock-icon")) {
+            compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
+                .assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_lock_open))
+                .assert(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_lock_open_f.json"))
+        }
+        val readback = captureHost("oem-lock-open-readback")
+        sampleOemFrames(1600, ::assertLockReadbackIdle)
+        val lockTail = captureHost("oem-lock-open-tail")
+        for (prefix in listOf("shortcut-icon", "dock-icon")) {
+            val tag = "$prefix-Lock"
+            compose.onNodeWithTag(tag, useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
+            assertNativeVehiclePalette(lockTail, tag, ControlId.Lock, 0)
+            assertTrue("programmatic lock readback keeps $prefix native tail static",
+                iconPixels(readback, tag).contentEquals(iconPixels(lockTail, tag)))
+        }
+        publishOemState(state) { it.copy(time = "12:25") }
+        sampleOemFrames(96, ::assertLockReadbackIdle)
+        val lockHeld = captureHost("oem-lock-open-tail-tick")
+        for (prefix in listOf("shortcut-icon", "dock-icon")) {
+            val tag = "$prefix-Lock"
+            assertTrue("timestamp preserves $prefix native lock readback frame",
+                iconPixels(lockTail, tag).contentEquals(iconPixels(lockHeld, tag)))
+        }
         compose.onNodeWithTag("media-next").performClick()
         compose.mainClock.advanceTimeBy(96)
         compose.onNode(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_media_next_f.json"), useUnmergedTree = true).assertExists()
@@ -1455,46 +1486,96 @@ open class ContentPanelLightPrototypeRenderTest {
         return IntArray(w * h).also { frame.getPixels(it, 0, w, bounds.left.toInt(), bounds.top.toInt(), w, h) }
     }
 
-    @Test fun allSeatLevelsUseOriginalSegmentsAndRetainTheirTail() {
+    private fun sampleOemFrames(durationMs: Long = 16L, assertFrame: () -> Unit = {}) {
+        check(!compose.mainClock.autoAdvance)
+        val deadline = compose.mainClock.currentTime + durationMs
+        while (compose.mainClock.currentTime < deadline) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            assertFrame()
+        }
+    }
+
+    private fun publishOemState(state: androidx.compose.runtime.MutableState<ContentUiState>, update: (ContentUiState) -> ContentUiState) {
+        compose.runOnIdle {
+            state.value = update(state.value)
+            Snapshot.sendApplyNotifications()
+        }
+    }
+
+    private fun assertNativeVehiclePalette(frame: Bitmap, tag: String, id: ControlId, level: Int) {
+        val matching = iconPixels(frame, tag).count { pixel ->
+            val red = android.graphics.Color.red(pixel)
+            val green = android.graphics.Color.green(pixel)
+            val blue = android.graphics.Color.blue(pixel)
+            when {
+                level == 0 -> if (dark) red > 200 && green > 200 && blue > 200
+                    else red < 100 && green < 100 && blue < 100
+                id == ControlId.Ventilation || id == ControlId.Wiper || id == ControlId.Lock -> blue > 180 && blue > red + 70 && green > red + 30
+                id == ControlId.Massage -> blue > 140 && blue > green + 50 && red > green + 25
+                else -> red > 180 && red > green + 50 && blue < 120
+            }
+        }
+        assertTrue("$tag/$level retains its native ${if (level == 0) "neutral" else "functional"} glyph color: $matching pixels", matching > 2)
+    }
+
+    @Test fun allSeatLevelReadbacksSelectOriginalSegmentsWithoutPlayingEitherEntrance() {
         val suffix = if (dark) "wh" else "bk"
         val families = mapOf(ControlId.Ventilation to "ventilate", ControlId.Heating to "heat", ControlId.Massage to "massage")
         preloadOemAnimations(families.values.map { "ico_skin_seat_${it}_l_$suffix.json" })
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
         mountInteractionState(state)
         compose.mainClock.autoAdvance = false
+        sampleOemFrames()
+        val geometry = families.keys.flatMap { id -> iconEntrances(id).map { "$it-${id.name}" } }
+            .associateWith { compose.onNodeWithTag(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot }
+        fun assertNoPlayback() {
+            geometry.forEach { (tag, bounds) ->
+                val icon = compose.onNodeWithTag(tag, useUnmergedTree = true)
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                icon.assert(SemanticsMatcher.expectValue(IconMotion, 1f))
+                assertEquals("readback keeps $tag geometry", bounds, icon.fetchSemanticsNode().boundsInRoot)
+            }
+        }
         for (level in listOf(3, 2, 1, 0)) {
-            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls.mapValues { (id, value) -> if (id in families) value.copy(actual = level) else value }) }
-            compose.waitForIdle()
-            compose.mainClock.advanceTimeBy(384)
+            publishOemState(state) { current -> current.copy(controls = current.controls.mapValues { (id, value) ->
+                if (id in families) value.copy(actual = level) else value
+            }) }
+            sampleOemFrames(384, ::assertNoPlayback)
             families.forEach { (id, family) ->
-                val asset = "ico_skin_seat_${family}_l_$suffix.json"
-                for (prefix in listOf("shortcut-icon", "dock-icon")) {
-                    val node = compose.onNodeWithTag("$prefix-${id.name}", useUnmergedTree = true)
-                    node.assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
-                    val progress = node.fetchSemanticsNode().config[IconAnimationProgress]
-                    assertTrue("selected OEM segment must be moving", progress > .1f && progress < .8f)
+                val recipe = vehicleControlIconRecipe(id, level, dark)
+                for (prefix in iconEntrances(id)) {
+                    val icon = compose.onNodeWithTag("$prefix-${id.name}", useUnmergedTree = true)
+                    icon.assert(SemanticsMatcher.expectValue(OemResource, recipe.resource))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationAsset, "ico_skin_seat_${family}_l_$suffix.json"))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationReady, true))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
                 }
             }
-            val first = captureHost("oem-seat-$level-mid-a")
-            compose.mainClock.advanceTimeBy(384)
-            val second = captureHost("oem-seat-$level-mid-b")
-            if (level > 0) families.keys.forEach { id ->
-                assertTrue("${id.name} must change actual path pixels after generic 260ms pulse settles",
-                    !iconPixels(first, "dock-icon-${id.name}").contentEquals(iconPixels(second, "dock-icon-${id.name}")))
-            }
-            compose.mainClock.advanceTimeBy(400)
-            val tail = captureHost("oem-seat-$level-tail")
+            val first = captureHost("oem-seat-$level-readback-a")
+            sampleOemFrames(384, ::assertNoPlayback)
+            val second = captureHost("oem-seat-$level-readback-b")
             families.keys.forEach { id ->
-                val node = compose.onNodeWithTag("dock-icon-${id.name}", useUnmergedTree = true)
-                node.assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
-                node.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
-                node.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                for (prefix in iconEntrances(id)) {
+                    val tag = "$prefix-${id.name}"
+                    assertNativeVehiclePalette(first, tag, id, level)
+                    assertTrue("$tag programmatic readback keeps native path pixels static",
+                        iconPixels(first, tag).contentEquals(iconPixels(second, tag)))
+                }
             }
-            compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
-            compose.mainClock.advanceTimeBy(96)
+            sampleOemFrames(400, ::assertNoPlayback)
+            val tail = captureHost("oem-seat-$level-tail")
+            publishOemState(state) { it.copy(time = "12:25") }
+            sampleOemFrames(96, ::assertNoPlayback)
             val held = captureHost("oem-seat-$level-held")
             families.keys.forEach { id ->
-                assertTrue("${id.name} last frame must survive unchanged truth and timestamp updates", iconPixels(tail, "dock-icon-${id.name}").contentEquals(iconPixels(held, "dock-icon-${id.name}")))
+                for (prefix in iconEntrances(id)) {
+                    val tag = "$prefix-${id.name}"
+                    assertTrue("$tag native readback frame stays stable through time updates",
+                        iconPixels(first, tag).contentEquals(iconPixels(tail, tag)) &&
+                            iconPixels(tail, tag).contentEquals(iconPixels(held, tag)))
+                }
             }
         }
         compose.mainClock.autoAdvance = true
@@ -1651,15 +1732,17 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun expandedEntrancesKeepMetadataRowsVerticalGeometryAndFullCenteredNames() {
         val ready = ContentUiState(previewMode = false, screenCleanAvailable = true,
+            shortcutButtons = ShortcutGrid.productionButtons,
             features = com.icar03.content.model.VehicleFeature.entries.associateWith {
                 FeatureState(actual = 0, known = true, available = true)
             })
         mountInteractionState(androidx.compose.runtime.mutableStateOf(ready))
-        val catalog = ShortcutGrid.buttons + ShortcutGrid.lowerToggles + ShortcutGrid.verticals
+        compose.onNodeWithTag(shortcutTag(ShortcutId.PassengerSeatAdjust)).assertDoesNotExist()
+        val catalog = ShortcutGrid.productionButtons + ShortcutGrid.lowerToggles + ShortcutGrid.verticals
         val bounds = catalog.associateWith { compose.onNodeWithTag(shortcutTag(it)).assertExists().getUnclippedBoundsInRoot() }
-        val ordered = ShortcutGrid.buttons.sortedWith(compareBy({ bounds.getValue(it).top.value }, { bounds.getValue(it).left.value }))
-        assertTrue("button rows follow metadata order", ordered == ShortcutGrid.buttons)
-        ShortcutGrid.buttons.take(4).forEach { assertTrue("first row remains 135dp", bounds.getValue(it).bottom - bounds.getValue(it).top == 135.dp) }
+        val ordered = ShortcutGrid.productionButtons.sortedWith(compareBy({ bounds.getValue(it).top.value }, { bounds.getValue(it).left.value }))
+        assertTrue("button rows follow production metadata order", ordered == ShortcutGrid.productionButtons)
+        ShortcutGrid.productionButtons.take(4).forEach { assertTrue("first row remains 135dp", bounds.getValue(it).bottom - bounds.getValue(it).top == 135.dp) }
         val brightness = compose.onNodeWithContentDescription("屏幕亮度").getUnclippedBoundsInRoot()
         val volume = compose.onNodeWithContentDescription("媒体音量").getUnclippedBoundsInRoot()
         val wiper = bounds.getValue(ShortcutId.Wiper)
@@ -1690,13 +1773,15 @@ open class ContentPanelLightPrototypeRenderTest {
     @Test fun compactSixSlotsScrollWithoutShrinkingHitRegionsOrTruncatingNames() {
         val width = androidx.compose.runtime.mutableStateOf(400.dp)
         val ready = ContentUiState(previewMode = false, dark = dark, screenCleanAvailable = true,
+            shortcutButtons = ShortcutGrid.productionButtons,
             features = com.icar03.content.model.VehicleFeature.entries.associateWith {
                 FeatureState(actual = 0, known = true, available = true)
             })
-        val catalog = ShortcutGrid.buttons + ShortcutGrid.lowerToggles + ShortcutGrid.verticals
+        val catalog = ShortcutGrid.productionButtons + ShortcutGrid.lowerToggles + ShortcutGrid.verticals
         compose.setContent { ContentTheme(dark) { ContentPanel(ready, {}, Modifier.width(width.value).testTag(hostTag)) } }
         for (value in listOf(400.dp, 320.dp)) {
             compose.runOnIdle { width.value = value }
+            compose.onNodeWithTag(shortcutTag(ShortcutId.PassengerSeatAdjust)).assertDoesNotExist()
             catalog.forEach { id ->
                 val tile = compose.onNodeWithTag(shortcutTag(id)).performScrollTo().assertIsDisplayed()
                 tile.assertHasClickAction()
@@ -1716,128 +1801,176 @@ open class ContentPanelLightPrototypeRenderTest {
         }
     }
 
-    @Test fun driverPassengerAndWheelCyclesPlayOneShotInBothEntrances() {
-        val ids = listOf(ControlId.Heating, ControlId.PassengerHeating, ControlId.SteeringHeat)
-        preloadOemAnimations(ids.flatMap { id -> (0..id.maxLevel).map { vehicleControlIconRecipe(id, it, dark).asset } }.distinct())
+    @Test fun driverPassengerWheelAndWiperReadbacksStayStaticInBothEntrances() {
+        val ids = listOf(ControlId.Heating, ControlId.PassengerHeating, ControlId.SteeringHeat, ControlId.Wiper)
+        preloadOemAnimations(ids.flatMap { id -> (0..id.maxLevel).map { vehicleControlIconRecipe(id, it, dark).asset } }
+            .filter { it.isNotEmpty() }.distinct())
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
         mountInteractionState(state)
         compose.mainClock.autoAdvance = false
+        sampleOemFrames()
+        val geometry = ids.flatMap { id -> iconEntrances(id).map { "$it-${id.name}" } }
+            .associateWith { compose.onNodeWithTag(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot }
+        fun assertNoPlayback() {
+            geometry.forEach { (tag, bounds) ->
+                val icon = compose.onNodeWithTag(tag, useUnmergedTree = true)
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                icon.assert(SemanticsMatcher.expectValue(IconMotion, 1f))
+                assertEquals("shared readback preserves $tag geometry", bounds, icon.fetchSemanticsNode().boundsInRoot)
+            }
+        }
         val seats = listOf(3, 2, 1, 4, 0)
         val wheel = listOf(2, 1, 3, 0, 2)
+        val wiper = listOf(4, 3, 2, 1, 0)
         seats.indices.forEach { step ->
-            val modes = mapOf(ControlId.Heating to seats[step], ControlId.PassengerHeating to seats[step], ControlId.SteeringHeat to wheel[step])
-            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls + modes.mapValues { ControlState(actual = it.value) }) }
-            compose.waitForIdle()
-            compose.mainClock.advanceTimeBy(128)
+            val modes = mapOf(ControlId.Heating to seats[step], ControlId.PassengerHeating to seats[step],
+                ControlId.SteeringHeat to wheel[step], ControlId.Wiper to wiper[step])
+            publishOemState(state) { it.copy(controls = it.controls + modes.mapValues { mode -> ControlState(actual = mode.value) }) }
+            sampleOemFrames(128, ::assertNoPlayback)
             modes.forEach { (id, level) ->
                 val recipe = vehicleControlIconRecipe(id, level, dark)
                 for (prefix in iconEntrances(id)) {
                     val icon = compose.onNodeWithTag("$prefix-${id.name}", useUnmergedTree = true)
                     icon.assert(SemanticsMatcher.expectValue(OemResource, recipe.resource))
                     icon.assert(SemanticsMatcher.expectValue(IconAnimationAsset, recipe.asset))
-                    icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, true))
-                    val progress = icon.fetchSemanticsNode().config[IconAnimationProgress]
-                    assertTrue("$id/$level enters its selected OEM segment once", progress > 0f && progress < .5f)
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationReady, true))
+                    icon.assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
                 }
             }
-            compose.mainClock.advanceTimeBy(208)
-            val middle = captureHost("new-vehicle-$step-mid")
-            compose.mainClock.advanceTimeBy(352)
-            val later = captureHost("new-vehicle-$step-later")
-            ids.forEach { id ->
-                for (prefix in iconEntrances(id)) assertTrue("$id must move original path pixels after the 260ms generic transition has ended",
-                    !iconPixels(middle, "$prefix-${id.name}").contentEquals(iconPixels(later, "$prefix-${id.name}")))
+            sampleOemFrames(208, ::assertNoPlayback)
+            val middle = captureHost("new-vehicle-$step-readback-a")
+            sampleOemFrames(352, ::assertNoPlayback)
+            val later = captureHost("new-vehicle-$step-readback-b")
+            modes.forEach { (id, level) ->
+                for (prefix in iconEntrances(id)) {
+                    val tag = "$prefix-${id.name}"
+                    assertNativeVehiclePalette(middle, tag, id, level)
+                    assertTrue("$tag does not replay native path pixels on shared actual updates",
+                        iconPixels(middle, tag).contentEquals(iconPixels(later, tag)))
+                }
             }
-            compose.mainClock.advanceTimeBy(600)
+            sampleOemFrames(600, ::assertNoPlayback)
             val tail = captureHost("new-vehicle-$step-tail")
-            compose.runOnIdle { state.value = state.value.copy(time = "12:25") }
-            compose.mainClock.advanceTimeBy(96)
+            publishOemState(state) { it.copy(time = "12:25") }
+            sampleOemFrames(96, ::assertNoPlayback)
             val held = captureHost("new-vehicle-$step-held")
             for (id in ids) for (prefix in iconEntrances(id)) {
                 val tag = "$prefix-${id.name}"
-                val icon = compose.onNodeWithTag(tag, useUnmergedTree = true)
-                icon.assert(SemanticsMatcher.expectValue(IconAnimationRetained, true))
-                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
-                icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
-                assertTrue("same snapshot/time does not replay or replace $id tail", iconPixels(tail, tag).contentEquals(iconPixels(held, tag)))
+                assertTrue("same snapshot/time does not replace $tag native readback frame",
+                    iconPixels(middle, tag).contentEquals(iconPixels(tail, tag)) &&
+                        iconPixels(tail, tag).contentEquals(iconPixels(held, tag)))
             }
         }
         compose.mainClock.autoAdvance = true
     }
 
-    @Test fun lockPendingPaletteAndConfirmationKeepTheOneShotTimeline() {
+    @Test fun lockPendingPaletteAndConfirmationKeepTheClickedEntrancesOneShotTimeline() {
         preloadOemAnimations(listOf("ico_lock_close_f.json", "ico_lock_open_f.json"))
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, dark = dark))
         var requested: Int? = null
-        mountInteractionState(state) { event ->
-            if (event == ContentEvent.ControlTapped(ControlId.Lock)) requested = ControlId.Lock.nextLevel(state.value.controls.getValue(ControlId.Lock).actual)
+        mountInteractionState(state, useStateTheme = true) { event ->
+            if (event == ContentEvent.ControlTapped(ControlId.Lock)) {
+                requested = ControlId.Lock.nextLevel(state.value.controls.getValue(ControlId.Lock).actual)
+                // Acceptance publishes only an unknown pending target. Own readback confirms it later.
+                state.value = state.value.copy(controls = state.value.controls +
+                    (ControlId.Lock to ControlState(actual = -1, target = requested, known = false, available = false)))
+                Snapshot.sendApplyNotifications()
+            }
         }
         compose.mainClock.autoAdvance = false
+        sampleOemFrames()
+        val prefixes = listOf("shortcut-icon", "dock-icon")
         fun node(prefix: String) = compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
-        fun assertMoving(previous: Float = 0f): Float {
-            var progress = 0f
-            for (prefix in listOf("shortcut-icon", "dock-icon")) {
+        val geometry = prefixes.associateWith { node(it).fetchSemanticsNode().boundsInRoot }
+        fun assertOtherIdle(clickedPrefix: String) {
+            prefixes.filter { it != clickedPrefix }.forEach { prefix ->
                 val icon = node(prefix)
-                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, true))
-                progress = icon.fetchSemanticsNode().config[IconAnimationProgress]
-                assertTrue("pending/readback/palette must not cancel, reset or tail-snap lock", progress > previous && progress < 1f)
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                icon.assert(SemanticsMatcher.expectValue(IconMotion, 1f))
+                assertEquals("unclicked $prefix keeps its geometry", geometry.getValue(prefix), icon.fetchSemanticsNode().boundsInRoot)
             }
+        }
+        fun assertMoving(clickedPrefix: String, target: Int, previous: Float = 0f): Float {
+            assertOtherIdle(clickedPrefix)
+            val icon = node(clickedPrefix)
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, true))
+            val progress = icon.fetchSemanticsNode().config[IconAnimationProgress]
+            assertTrue("$clickedPrefix pending/readback/palette keeps its own forward lock timeline", progress > previous && progress < 1f)
+            val tint = if (target == 1) ContentFunctionalBlue else contentIconNeutral(state.value.dark)
+            prefixes.forEach { node(it).assert(SemanticsMatcher.expectValue(OemTint, tint.value.toLong())) }
             return progress
         }
         for ((entrance, target) in listOf("control-Lock" to 0, "dock-Lock" to 1)) {
+            val clickedPrefix = if (entrance == "control-Lock") "shortcut-icon" else "dock-icon"
+            val beforeClicks = events.size
             requested = null
             val actual = state.value.controls.getValue(ControlId.Lock).actual
             compose.onNodeWithTag(entrance).performTouchInput { down(center) }
-            compose.mainClock.advanceTimeBy(64)
+            sampleOemFrames(64) { assertOtherIdle(clickedPrefix) }
             compose.onNodeWithTag(entrance).performTouchInput { up() }
-            compose.mainClock.advanceTimeBy(96)
-            assertTrue("real click must request the next lock mode", requested == target)
-            for (prefix in listOf("shortcut-icon", "dock-icon")) {
-                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
-                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
+            val pending = state.value.controls.getValue(ControlId.Lock)
+            assertEquals("real click requests the next lock mode", target, requested)
+            assertTrue("accepted click immediately publishes target without inventing a known actual",
+                !pending.known && pending.actual == -1 && pending.target == target && !pending.available)
+            assertEquals("one accepted lock event", beforeClicks + 1, events.size)
+            val asset = if (target == 0) "ico_lock_open_f.json" else "ico_lock_close_f.json"
+            val resource = if (target == 0) R.drawable.content_oem_ico_lock_open else R.drawable.content_oem_ico_lock_close
+            prefixes.forEach { prefix ->
+                node(prefix).assert(SemanticsMatcher.expectValue(OemResource, resource))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
             }
-            // No optimistic mode is created by the glyph: the real parent now
-            // supplies an unknown pending target. Opening uses primary tint here.
-            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
-                (ControlId.Lock to ControlState(actual = -1, target = target, known = false))) }
-            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
-            var progress = assertMoving()
-            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
-                (ControlId.Lock to ControlState(actual = actual, target = target, known = true))) }
-            // Opening changes primary -> blue, same displayed/asset/frames. The
-            // previous effect-key regression snaps to 1 here and fails this check.
-            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
-            progress = assertMoving(progress)
-            compose.runOnIdle { state.value = state.value.copy(time = "12:26", controls = state.value.controls +
-                (ControlId.Lock to ControlState(actual = target, target = null, known = true))) }
-            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
-            progress = assertMoving(progress)
+            var progress = assertMoving(clickedPrefix, target)
+            publishOemState(state) { it.copy(controls = it.controls +
+                (ControlId.Lock to ControlState(actual = actual, target = target, known = true, available = false))) }
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
+            progress = assertMoving(clickedPrefix, target, progress)
+            // OFF stays theme-neutral; ON keeps functional blue throughout the palette swap.
+            publishOemState(state) { it.copy(dark = !dark) }
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
+            progress = assertMoving(clickedPrefix, target, progress)
+            publishOemState(state) { it.copy(dark = dark, time = "12:26", controls = it.controls +
+                (ControlId.Lock to ControlState(actual = target, known = true, available = true))) }
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
+            progress = assertMoving(clickedPrefix, target, progress)
             val middle = captureHost("lock-pending-$target-mid")
+            // A cancelled press cannot create a second command or rewind this accepted action.
             compose.onNodeWithTag(entrance).performTouchInput { down(center) }
-            compose.mainClock.advanceTimeBy(64)
-            progress = assertMoving(progress)
-            compose.onNodeWithTag(entrance).performTouchInput { up() }
-            compose.mainClock.advanceTimeBy(64)
-            assertMoving(progress)
-            compose.mainClock.advanceTimeBy(2400)
+            sampleOemFrames(64) { assertOtherIdle(clickedPrefix) }
+            progress = assertMoving(clickedPrefix, target, progress)
+            compose.onNodeWithTag(entrance).performTouchInput { cancel() }
+            sampleOemFrames(64) { assertOtherIdle(clickedPrefix) }
+            assertMoving(clickedPrefix, target, progress)
+            assertEquals("cancelled touch adds no lock event", beforeClicks + 1, events.size)
+            sampleOemFrames(2400) { assertOtherIdle(clickedPrefix) }
             val tail = captureHost("lock-pending-$target-tail")
-            for (prefix in listOf("shortcut-icon", "dock-icon")) {
+            for (prefix in prefixes) {
                 val tag = "$prefix-Lock"
                 node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
                 node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
-                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationAsset, if (target == 0) "ico_lock_open_f.json" else "ico_lock_close_f.json"))
-                assertTrue("both lock directions have actual intermediate glyph pixels", !iconPixels(middle, tag).contentEquals(iconPixels(tail, tag)))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
+                assertEquals("settled $prefix retains geometry", geometry.getValue(prefix), node(prefix).fetchSemanticsNode().boundsInRoot)
+                assertNativeVehiclePalette(tail, tag, ControlId.Lock, target)
+                val samePixels = iconPixels(middle, tag).contentEquals(iconPixels(tail, tag))
+                assertTrue("$prefix native paths ${if (prefix == clickedPrefix) "move only for the accepted click" else "stay at the unclicked tail"}",
+                    if (prefix == clickedPrefix) !samePixels else samePixels)
             }
-            compose.runOnIdle { state.value = state.value.copy(time = "12:27") }
-            compose.mainClock.advanceTimeBy(96)
+            publishOemState(state) { it.copy(time = "12:27") }
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
             val held = captureHost("lock-pending-$target-held")
-            for (prefix in listOf("shortcut-icon", "dock-icon")) assertTrue("confirmed/time update retains lock tail",
-                iconPixels(tail, "$prefix-Lock").contentEquals(iconPixels(held, "$prefix-Lock")))
+            prefixes.forEach { prefix ->
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                assertTrue("$prefix confirmed/time update retains its native lock tail",
+                    iconPixels(tail, "$prefix-Lock").contentEquals(iconPixels(held, "$prefix-Lock")))
+            }
         }
         compose.mainClock.autoAdvance = true
     }
 
-    @Test fun knownLockClicksPublishTargetsImmediatelyAndReadbackKeepsPlaying() {
+    @Test fun knownLockClicksPublishTargetsImmediatelyAndOnlyTheClickedEntranceKeepsPlaying() {
         preloadOemAnimations(listOf("ico_lock_close_f.json", "ico_lock_open_f.json"))
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
         mountInteractionState(state) { event ->
@@ -1845,53 +1978,82 @@ open class ContentPanelLightPrototypeRenderTest {
                 val actual = state.value.controls.getValue(ControlId.Lock)
                 state.value = state.value.copy(controls = state.value.controls +
                     (ControlId.Lock to actual.copy(target = ControlId.Lock.nextLevel(actual.actual), available = false)))
+                Snapshot.sendApplyNotifications()
             }
         }
         compose.mainClock.autoAdvance = false
-        fun progress(previous: Float = 0f): Float {
-            var current = 0f
-            for (prefix in listOf("shortcut-icon", "dock-icon")) {
-                val icon = compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
-                icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, true))
-                current = icon.fetchSemanticsNode().config[IconAnimationProgress]
-                assertTrue("known pending/ACK/confirmation preserves forward lock progress", current > previous && current < 1f)
+        sampleOemFrames()
+        val prefixes = listOf("shortcut-icon", "dock-icon")
+        fun node(prefix: String) = compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
+        val geometry = prefixes.associateWith { node(it).fetchSemanticsNode().boundsInRoot }
+        fun assertOtherIdle(clickedPrefix: String) {
+            prefixes.filter { it != clickedPrefix }.forEach { prefix ->
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconMotion, 1f))
+                assertEquals("unclicked $prefix keeps its geometry", geometry.getValue(prefix), node(prefix).fetchSemanticsNode().boundsInRoot)
             }
+        }
+        fun progress(clickedPrefix: String, previous: Float = 0f): Float {
+            assertOtherIdle(clickedPrefix)
+            val icon = node(clickedPrefix)
+            icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, true))
+            val current = icon.fetchSemanticsNode().config[IconAnimationProgress]
+            assertTrue("$clickedPrefix known pending/ACK/confirmation preserves forward lock progress", current > previous && current < 1f)
             return current
         }
         for ((entrance, target) in listOf("control-Lock" to 0, "dock-Lock" to 1)) {
+            val clickedPrefix = if (entrance == "control-Lock") "shortcut-icon" else "dock-icon"
+            val beforeClicks = events.size
             compose.onNodeWithTag(entrance).performTouchInput { down(center) }
-            compose.mainClock.advanceTimeBy(64)
+            sampleOemFrames(64) { assertOtherIdle(clickedPrefix) }
             compose.onNodeWithTag(entrance).performTouchInput { up() }
-            compose.waitForIdle()
-            compose.mainClock.advanceTimeBy(96)
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
             val pending = state.value.controls.getValue(ControlId.Lock)
             assertTrue("click publishes a target immediately and preserves actual evidence",
                 pending.known && pending.target == target && pending.actual != target && !pending.available)
-            var prior = progress()
+            assertEquals("only one lock request per accepted click", beforeClicks + 1, events.size)
+            var prior = progress(clickedPrefix)
             val asset = if (target == 0) "ico_lock_open_f.json" else "ico_lock_close_f.json"
-            for (prefix in listOf("shortcut-icon", "dock-icon")) compose.onNodeWithTag("$prefix-Lock", useUnmergedTree = true)
-                .assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
-            // Binder ACK and an unchanged actual report leave the accepted target pending.
-            compose.runOnIdle { state.value = state.value.copy(time = "12:26", controls = state.value.controls.toMap()) }
-            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
-            prior = progress(prior)
-            // Own readback confirms actual and clears pending, keeping the same displayed mode.
-            compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls +
-                (ControlId.Lock to ControlState(actual = target, known = true, available = true))) }
-            compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
-            progress(prior)
-            compose.mainClock.advanceTimeBy(2400)
-            val tail = captureHost("lock-known-$target-tail")
-            compose.runOnIdle { state.value = state.value.copy(time = "12:27", controls = state.value.controls.toMap()) }
-            compose.mainClock.advanceTimeBy(96)
-            val held = captureHost("lock-known-$target-held")
-            for (prefix in listOf("shortcut-icon", "dock-icon")) {
-                val tag = "$prefix-Lock"
-                compose.onNodeWithTag(tag, useUnmergedTree = true)
-                    .assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
-                    .assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
-                assertTrue("known confirmation and repeated snapshot keep the correct lock tail", iconPixels(tail, tag).contentEquals(iconPixels(held, tag)))
+            val resource = if (target == 0) R.drawable.content_oem_ico_lock_open else R.drawable.content_oem_ico_lock_close
+            val tint = if (target == 1) ContentFunctionalBlue else contentIconNeutral(dark)
+            for (prefix in prefixes) {
+                node(prefix).assert(SemanticsMatcher.expectValue(OemResource, resource))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
+                node(prefix).assert(SemanticsMatcher.expectValue(OemTint, tint.value.toLong()))
             }
+            // Binder ACK and an unchanged actual report leave the accepted target pending.
+            publishOemState(state) { it.copy(time = "12:26", controls = it.controls.toMap()) }
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
+            prior = progress(clickedPrefix, prior)
+            // Own readback confirms actual and clears pending without driving the other entrance.
+            publishOemState(state) { it.copy(controls = it.controls +
+                (ControlId.Lock to ControlState(actual = target, known = true, available = true))) }
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
+            progress(clickedPrefix, prior)
+            val middle = captureHost("lock-known-$target-mid")
+            sampleOemFrames(2400) { assertOtherIdle(clickedPrefix) }
+            val tail = captureHost("lock-known-$target-tail")
+            for (prefix in prefixes) {
+                val tag = "$prefix-Lock"
+                val samePixels = iconPixels(middle, tag).contentEquals(iconPixels(tail, tag))
+                assertTrue("known $prefix native paths ${if (prefix == clickedPrefix) "move only after its click" else "remain at the shared target tail"}",
+                    if (prefix == clickedPrefix) !samePixels else samePixels)
+                assertNativeVehiclePalette(tail, tag, ControlId.Lock, target)
+                assertEquals("known $prefix tail retains geometry", geometry.getValue(prefix), node(prefix).fetchSemanticsNode().boundsInRoot)
+            }
+            publishOemState(state) { it.copy(time = "12:27", controls = it.controls.toMap()) }
+            sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
+            val held = captureHost("lock-known-$target-held")
+            for (prefix in prefixes) {
+                val tag = "$prefix-Lock"
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
+                node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
+                node(prefix).assert(SemanticsMatcher.expectValue(OemTint, tint.value.toLong()))
+                assertTrue("known confirmation and repeated snapshot keep $prefix native lock tail",
+                    iconPixels(tail, tag).contentEquals(iconPixels(held, tag)))
+            }
+            assertEquals("readback and timestamp add no request", beforeClicks + 1, events.size)
         }
         compose.mainClock.autoAdvance = true
     }

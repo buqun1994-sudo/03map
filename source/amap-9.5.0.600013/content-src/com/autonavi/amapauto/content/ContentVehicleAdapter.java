@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.icar03.content.model.VehicleControl;
+import com.icar03.content.model.VehicleGear;
+import com.icar03.content.runtime.AutomotiveGearReader;
 
 import static com.autonavi.amapauto.content.ContentVehicleProtocol.*;
 
@@ -69,15 +71,29 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
             IBinder currentBinder;
             Handler worker;
             synchronized (ContentVehicleAdapter.this) {
-                if (!running || binder == null) {
+                if (!running || workerHandler == null) {
                     return;
                 }
                 currentBinder = binder;
                 worker = workerHandler;
             }
-            publish(readSnapshot(currentBinder), currentBinder);
+            ContentPorts.VehicleSnapshot snapshot;
+            if (currentBinder != null) {
+                snapshot = readSnapshot(currentBinder);
+            } else {
+                AutomotiveGearReader reader;
+                synchronized (ContentVehicleAdapter.this) { reader = gearReader; }
+                snapshot = ContentPorts.VehicleSnapshot.unavailable().withGear(
+                        reader == null ? VehicleGear.Unknown : reader.readGear());
+            }
             synchronized (ContentVehicleAdapter.this) {
-                if (running && binder == currentBinder && worker == workerHandler) {
+                if (!running || binder != currentBinder || worker != workerHandler) return;
+                latestSnapshot = snapshot;
+            }
+            publish(snapshot, currentBinder, worker);
+            synchronized (ContentVehicleAdapter.this) {
+                if (running && worker == workerHandler) {
+                    worker.removeCallbacks(this);
                     worker.postDelayed(this, POLL_INTERVAL_MS);
                 }
             }
@@ -149,9 +165,10 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 latestSnapshot = ContentPorts.VehicleSnapshot.unavailable();
                 if (workerHandler != null) {
                     workerHandler.removeCallbacks(pollRunnable);
+                    workerHandler.post(pollRunnable);
                 }
             }
-            publish(ContentPorts.VehicleSnapshot.unavailable(), null);
+            publishOemUnavailable();
             mainHandler.removeCallbacks(bindTimeout);
             mainHandler.postDelayed(bindTimeout, BIND_TIMEOUT_MS);
         }
@@ -170,6 +187,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private ContentPorts.VehicleSnapshotListener listener;
     private HandlerThread workerThread;
     private Handler workerHandler;
+    private AutomotiveGearReader gearReader;
     private IBinder binder;
     private boolean serviceBound;
     private boolean running;
@@ -502,7 +520,13 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         workerThread = new HandlerThread("ContentVehicleReader");
         workerThread.start();
         workerHandler = new Handler(workerThread.getLooper());
+        final Handler gearWorker = workerHandler;
+        gearReader = new AutomotiveGearReader(context, gearWorker, new Runnable() {
+            @Override public void run() { invalidateGear(gearWorker); }
+        });
         publish(ContentPorts.VehicleSnapshot.unavailable(), null);
+        gearReader.start();
+        workerHandler.post(pollRunnable);
         bindVehicleService();
     }
 
@@ -523,6 +547,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         latestSnapshot = ContentPorts.VehicleSnapshot.unavailable();
         if (workerHandler != null) {
             workerHandler.removeCallbacksAndMessages(null);
+            if (gearReader != null) gearReader.stop();
+            gearReader = null;
             workerHandler = null;
         }
         if (workerThread != null) {
@@ -554,7 +580,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         if (bound) {
             mainHandler.postDelayed(bindTimeout, BIND_TIMEOUT_MS);
         } else {
-            publish(ContentPorts.VehicleSnapshot.unavailable(), null);
+            publishOemUnavailable();
             mainHandler.postDelayed(retryBind, REBIND_INTERVAL_MS);
         }
     }
@@ -569,6 +595,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
             latestSnapshot = ContentPorts.VehicleSnapshot.unavailable();
             if (workerHandler != null) {
                 workerHandler.removeCallbacks(pollRunnable);
+                workerHandler.post(pollRunnable);
             }
             if (serviceBound) {
                 try {
@@ -579,7 +606,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 serviceBound = false;
             }
         }
-        publish(ContentPorts.VehicleSnapshot.unavailable(), null);
+        publishOemUnavailable();
         mainHandler.removeCallbacks(bindTimeout);
         mainHandler.removeCallbacks(retryBind);
         mainHandler.postDelayed(retryBind, REBIND_INTERVAL_MS);
@@ -674,13 +701,59 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         });
     }
 
-    private void publish(final ContentPorts.VehicleSnapshot snapshot, final IBinder sourceBinder) {
+    private void invalidateGear(Handler gearWorker) {
+        final ContentPorts.VehicleSnapshot snapshot;
+        synchronized (this) {
+            if (!running || workerHandler != gearWorker) return;
+            // A Car disconnect invalidates the independent gear fact even if the OEM Binder has
+            // already rebound. Do not carry OEM facts across that service boundary.
+            snapshot = ContentPorts.VehicleSnapshot.unavailable();
+            latestSnapshot = snapshot;
+        }
+        publishGearInvalidation(snapshot, gearWorker);
+    }
+
+    private void publishGearInvalidation(final ContentPorts.VehicleSnapshot snapshot,
+            final Handler sourceWorker) {
         mainHandler.post(new Runnable() {
             @Override
             public void run() {
                 ContentPorts.VehicleSnapshotListener currentListener;
                 synchronized (ContentVehicleAdapter.this) {
-                    currentListener = running && binder == sourceBinder ? listener : null;
+                    // This event belongs to the vehicle reader generation, not to the OEM Binder
+                    // generation. A Binder reconnect must not resurrect the previous Park fact.
+                    currentListener = running && workerHandler == sourceWorker ? listener : null;
+                }
+                if (currentListener != null) {
+                    currentListener.onVehicleSnapshot(snapshot);
+                }
+            }
+        });
+    }
+
+    private void publishOemUnavailable() {
+        final Handler worker;
+        synchronized (this) {
+            if (!running || workerHandler == null) return;
+            worker = workerHandler;
+            worker.removeCallbacks(pollRunnable);
+            worker.post(pollRunnable);
+        }
+    }
+
+    private void publish(final ContentPorts.VehicleSnapshot snapshot, final IBinder sourceBinder) {
+        final Handler sourceWorker;
+        synchronized (this) { sourceWorker = workerHandler; }
+        publish(snapshot, sourceBinder, sourceWorker);
+    }
+
+    private void publish(final ContentPorts.VehicleSnapshot snapshot, final IBinder sourceBinder, final Handler sourceWorker) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                ContentPorts.VehicleSnapshotListener currentListener;
+                synchronized (ContentVehicleAdapter.this) {
+                    currentListener = running && binder == sourceBinder && workerHandler == sourceWorker ? listener : null;
                 }
                 if (currentListener != null) {
                     currentListener.onVehicleSnapshot(snapshot);
@@ -690,6 +763,10 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     private ContentPorts.VehicleSnapshot readSnapshot(IBinder currentBinder) {
+        final Handler readWorker;
+        final AutomotiveGearReader reader;
+        synchronized (this) { readWorker = workerHandler; reader = gearReader; }
+        VehicleGear gear = reader == null ? VehicleGear.Unknown : reader.readGear();
         float temperature = readFloat(currentBinder, CABIN_TEMPERATURE, 1);
         float soc = readFloat(currentBinder, BATTERY_SOC, AREA_DRIVER);
         int battery = Float.isNaN(soc) || soc < 0.0f || soc > 100.0f ? -1 : Math.round(soc);
@@ -789,9 +866,10 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 passengerHeating, passengerHeatingAutoKnown, passengerHeatingAutoActive, steering,
                 massage, massageModeRaw, massageSwitchKnown,
                 massageActive, seatKnown, lockKnown, ContentVehicleProtocol.isLocked(lockRaw), wiper, wiperKnown,
-                rearWiper, rearWiper >= 0, rearWash, rearWash >= 0, "", 0L, false).withFeatureSnapshot(featureSnapshot);
+                rearWiper, rearWiper >= 0, rearWash, rearWash >= 0, "", 0L, false)
+                .withFeatureSnapshot(featureSnapshot).withGear(gear);
         synchronized (this) {
-            if (running && binder == currentBinder) latestSnapshot = snapshot;
+            if (running && binder == currentBinder && workerHandler == readWorker) latestSnapshot = snapshot;
         }
         return snapshot;
     }

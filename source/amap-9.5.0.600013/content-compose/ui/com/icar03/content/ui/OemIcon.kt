@@ -177,9 +177,11 @@ internal fun OemIcon(
     animationPathOpacities: Map<List<String>, Int> = emptyMap(),
     playbackSpeed: Float = 1f,
     animateOnPress: Boolean = false, animateOnAction: Boolean = true,
+    acceptedActionOnly: Boolean = false,
 ) {
     val mediaGlyph = resource == R.drawable.content_oem_ico_media_play_f || resource == R.drawable.content_oem_ico_media_pause_f
-    val action = if (animateOnAction) LocalIconAction.current else 0
+    val action = LocalIconAction.current
+    val stateTrigger = motionKey ?: resource
     val transition = remember { Animatable(1f) }
     val owner = LocalLifecycleOwner.current
     val view = LocalView.current
@@ -207,7 +209,8 @@ internal fun OemIcon(
     // The trigger is the business/presentation event that is allowed to play an
     // animation. It intentionally excludes the current resource/theme recipe so
     // a day/night resource swap cannot replay a completed gear transition.
-    val triggerKey = listOf(motionKey ?: resource, action, pressAction)
+    val triggerKey = if (acceptedActionOnly) listOf(action, pressAction)
+    else listOf(stateTrigger, if (animateOnAction) action else 0, pressAction)
     var previous by remember { mutableStateOf(triggerKey) }
     LaunchedEffect(triggerKey, visible) {
         val changed = previous != triggerKey
@@ -237,10 +240,9 @@ internal fun OemIcon(
         animationColors, animationStrokeColors, animationStrokePathColors, animationPathOpacities,
         if (playbackSpeed.isFinite() && playbackSpeed > 0f) playbackSpeed else 1f, mediaGlyph)
     var renderedFrame by remember { mutableStateOf(targetFrame) }
-    // Empty means that no business trigger has been consumed yet. This is
-    // distinct from a trigger that has been consumed while its asset was later
-    // replaced by a theme recipe.
-    var playedKey by remember { mutableStateOf<List<Any?>>(emptyList()) }
+    // Mounting/rebinding publishes an existing state, not a user or readback
+    // transition. Only a later change of this icon's own trigger may play.
+    var playedKey by remember { mutableStateOf(triggerKey) }
     var cancelledTrigger by remember { mutableStateOf<List<Any?>?>(null) }
     val loaded = composition
     val canRender = visible

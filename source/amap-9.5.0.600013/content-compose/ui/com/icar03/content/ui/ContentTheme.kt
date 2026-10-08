@@ -10,6 +10,9 @@ import androidx.compose.ui.graphics.Color
 
 /** Settings-page blue is the single fallback when an OEM icon package declares no functional color. */
 internal val ContentFunctionalBlue = Color(0xFF0086FD)
+internal val ContentLightIconNeutral = Color(0xFF27303B)
+internal val ContentDarkIconNeutral = Color(0xFFE8E8E8)
+internal fun contentIconNeutral(dark: Boolean): Color = if (dark) ContentDarkIconNeutral else ContentLightIconNeutral
 
 /**
  * Semantic surfaces owned by the content panel. Base, slider and feedback roles remain

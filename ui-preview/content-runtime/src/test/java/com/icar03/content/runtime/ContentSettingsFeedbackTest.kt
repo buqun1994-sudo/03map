@@ -11,6 +11,7 @@ import com.icar03.content.ui.ControlId
 import com.icar03.content.ui.MediaSource
 import com.icar03.content.ui.PanelPage
 import com.icar03.content.ui.SettingsSection
+import com.icar03.content.model.VehicleGear
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -431,6 +432,88 @@ class ContentSettingsFeedbackTest {
         assertNull("enabling feedback must not replay the hidden failure", fixture.binding.state.value.message)
         fixture.rejectPlayback()
         assertEquals(3, fixture.media.playbackRequests.get())
+    }
+
+    @Test fun departureClosesExpandedAndCollapsedSettingsEvenWhenVehicleUpdatesCoalesce() = withFixture { fixture ->
+        fixture.store.setAutoCloseSettingsOnDrive(true)
+        for (collapsed in listOf(false, true)) {
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+            fixture.drain()
+            fixture.binding.dispatch(ContentEvent.SettingsTapped)
+            fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Interaction))
+            if (collapsed) fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
+            assertEquals(collapsed, fixture.binding.state.value.settingsCollapsed)
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Drive))
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+            fixture.drain()
+            assertFalse("the P departure survives a merged latest P snapshot", fixture.binding.state.value.settingsOpen)
+            assertFalse(fixture.binding.state.value.settingsCollapsed)
+            assertFalse(fixture.binding.canDispatch(ContentEvent.SettingsRestored))
+            assertEquals(0, fixture.vehicle.requests.get())
+            assertEquals(0, fixture.media.playbackRequests.get())
+            assertEquals(0, fixture.media.nextRequests.get())
+        }
+    }
+
+    @Test fun disablingAutomaticCloseAndUnknownGearDoNotDismissSettings() = withFixture { fixture ->
+        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+        fixture.drain()
+        fixture.binding.dispatch(ContentEvent.SettingsTapped)
+        fixture.binding.dispatch(ContentEvent.AutoCloseSettingsOnDriveChanged(false))
+        fixture.drain()
+        assertFalse(fixture.binding.state.value.autoCloseSettingsOnDrive)
+        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Neutral))
+        fixture.drain()
+        assertTrue(fixture.binding.state.value.settingsOpen)
+        fixture.binding.dispatch(ContentEvent.AutoCloseSettingsOnDriveChanged(true))
+        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+        fixture.store.acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable())
+        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Drive))
+        fixture.drain()
+        assertTrue("unavailable breaks the transition baseline", fixture.binding.state.value.settingsOpen)
+        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Reverse))
+        fixture.drain()
+        assertFalse(fixture.binding.state.value.settingsOpen)
+    }
+
+    @Test fun collapseIsLyricsOnlyAndRestorationPreservesTheSectionAndModalCommandGate() = withFixture { fixture ->
+        fixture.store.setPageIndex(0)
+        fixture.drain()
+        fixture.binding.dispatch(ContentEvent.SettingsTapped)
+        fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Lyrics))
+        assertFalse(fixture.binding.canDispatch(ContentEvent.SettingsCollapseTapped))
+        fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
+        assertFalse(fixture.binding.state.value.settingsCollapsed)
+        fixture.store.setPageIndex(1)
+        fixture.drain()
+        fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
+        assertTrue(fixture.binding.state.value.settingsCollapsed)
+        fixture.binding.dispatch(ContentEvent.ShowSecondsChanged(true))
+        fixture.binding.dispatch(ContentEvent.PlayPause)
+        fixture.binding.dispatch(ContentEvent.NextTrack)
+        fixture.binding.dispatch(ContentEvent.ControlTapped(ControlId.Lock))
+        fixture.binding.dispatch(ContentEvent.SettingsRestored)
+        assertTrue(fixture.binding.state.value.settingsOpen)
+        assertFalse(fixture.binding.state.value.settingsCollapsed)
+        assertEquals(SettingsSection.Lyrics, fixture.binding.state.value.settingsSection)
+        assertEquals(0, fixture.media.playbackRequests.get())
+        assertEquals(0, fixture.media.nextRequests.get())
+        assertEquals(0, fixture.vehicle.requests.get())
+        assertFalse(fixture.binding.canDispatch(ContentEvent.SettingsRestored))
+    }
+
+    @Test fun pendingDepartureRejectsAStalePreferenceCallbackBeforeItsQueuedProjection() = withFixture { fixture ->
+        fixture.store.setAutoCloseSettingsOnDrive(true)
+        fixture.store.setShowSeconds(false)
+        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+        fixture.drain()
+        fixture.binding.dispatch(ContentEvent.SettingsTapped)
+        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Drive))
+        fixture.binding.dispatch(ContentEvent.ShowSecondsChanged(true))
+        fixture.drain()
+        assertFalse(fixture.binding.state.value.settingsOpen)
+        assertFalse(fixture.store.snapshot().showSeconds)
     }
 
     private fun withFixture(test: (Fixture) -> Unit) {

@@ -62,6 +62,9 @@ object ShortcutGrid {
     }
     val lowerToggles = ShortcutId.entries.filter { it.placement == QuickControlPlacement.LowerToggles }
     val verticals = ShortcutId.entries.filter { it.placement == QuickControlPlacement.Vertical }
+    /** Registration is a product definition, never a filter of a live command/readback state. */
+    val productionButtons = buttons.filter { it != ShortcutId.PassengerSeatAdjust }
+    val coreButtons = buttons.filter { it.feature == null && it != ShortcutId.ScreenClean }
 }
 
 /** Dock membership is explicit; new shortcut-page entries never add Dock buttons. */
@@ -165,6 +168,8 @@ data class ContentUiState(
     val media: MediaState = MediaState(), val lyrics: LyricsState = LyricsState(), val sourcesOpen: Boolean = false,
     val scenariosOpen: Boolean = false, val message: String? = null, val messageRevision: Long = 0L,
     val settingsOpen: Boolean = false, val settingsSection: SettingsSection = SettingsSection.Home,
+    val settingsCollapsed: Boolean = false,
+    val autoCloseSettingsOnDrive: Boolean = true,
     val showWeekday: Boolean = true, val showSeconds: Boolean = false,
     val showIndoorTemperature: Boolean = true, val showBattery: Boolean = true,
     val showRange: Boolean = true,
@@ -196,9 +201,11 @@ data class ContentUiState(
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,
     val placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap(),
+    // Default fixtures preserve the compact core; production registration is explicit in ContentUiMapper.
+    val shortcutButtons: List<ShortcutId> = ShortcutGrid.coreButtons,
+    val systemControls: List<SystemQuickControl> = SystemQuickControl.gridItems,
     val features: Map<VehicleFeature, FeatureState> = VehicleFeature.entries.associateWith { FeatureState() },
     val systemLevels: Map<SystemQuickControl, LevelState> = SystemQuickControl.entries.associateWith { LevelState(0f, available = false) },
-    val screenCleaning: Boolean = false,
     val screenCleanAvailable: Boolean = false,
 )
 sealed interface ContentEvent {
@@ -224,6 +231,8 @@ sealed interface ContentEvent {
     data object OpenScenarios : ContentEvent
     data object SettingsTapped : ContentEvent
     data object SettingsBack : ContentEvent
+    data object SettingsCollapseTapped : ContentEvent
+    data object SettingsRestored : ContentEvent
     data object OpenLyricsSettings : ContentEvent
     // The map host consumes these intents through its existing presentation port.
     data object EnterLyricsImmersive : ContentEvent
@@ -264,6 +273,7 @@ sealed interface ContentEvent {
     data class ShowMediaSourceSwitcherChanged(val value: Boolean) : ContentEvent
     data class DockButtonCountChanged(val value: Int) : ContentEvent
     data class ShowActionFeedbackChanged(val value: Boolean) : ContentEvent
+    data class AutoCloseSettingsOnDriveChanged(val value: Boolean) : ContentEvent
     data class GestureBarReminderChanged(val value: Boolean) : ContentEvent
     data class UiOpacityChanged(val value: Float) : ContentEvent
     data object DismissSheet : ContentEvent
@@ -272,7 +282,7 @@ sealed interface ContentEvent {
 /** Settings remains modal until its content-layer exit finishes. */
 fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
     ContentEvent.SettingsTapped, ContentEvent.SettingsBack, ContentEvent.OpenLyricsSettings,
-    ContentEvent.SettingsDismissed, ContentEvent.DismissSheet,
+    ContentEvent.SettingsDismissed, ContentEvent.SettingsCollapseTapped, ContentEvent.SettingsRestored, ContentEvent.DismissSheet,
     is LyricsPlatformSelected, AppleMusicConnectRequested, AppleMusicLoginDismissed, AppleMusicDisconnectRequested,
     is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged,
     is ContentEvent.ShowRangeChanged, is ContentEvent.ShowIndoorTemperatureChanged, is ContentEvent.ShowBatteryChanged,
@@ -292,7 +302,8 @@ fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
      is ContentEvent.ImmersiveTopBarKeepSplitChanged,
     is ContentEvent.ImmersiveShowDockChanged, is ContentEvent.ShowAmbientArtworkChanged,
     is ContentEvent.ShowMediaSourceSwitcherChanged, is ContentEvent.DockButtonCountChanged,
-    is ContentEvent.ShowActionFeedbackChanged, is ContentEvent.GestureBarReminderChanged, is ContentEvent.UiOpacityChanged -> true
+    is ContentEvent.ShowActionFeedbackChanged, is ContentEvent.AutoCloseSettingsOnDriveChanged,
+    is ContentEvent.GestureBarReminderChanged, is ContentEvent.UiOpacityChanged -> true
     else -> false
 }
 

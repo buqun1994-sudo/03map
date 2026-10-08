@@ -55,6 +55,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.CompositionLocalProvider
@@ -100,8 +101,9 @@ fun ContentPanel(
     var settingsObscured by remember { mutableStateOf(false) }
     val settingsActive = state.settingsOpen || settingsRetained
     val contentInteractive = !state.sourcesOpen && !state.scenariosOpen && !settingsActive
-    val lyricAutoFollowEnabled = contentInteractive ||
-        (state.settingsOpen && state.settingsSection == SettingsSection.Lyrics)
+    // Input stays modal; the settings layer does not suspend the underlying lyric presentation.
+    val lyricAutoFollowEnabled = !state.sourcesOpen && !state.scenariosOpen &&
+        !state.lyricsProviderSettings.appleLoginOpen
     SideEffect {
         presentation?.updateModalActive(!contentInteractive)
     }
@@ -115,10 +117,12 @@ fun ContentPanel(
     var geometryReady by remember { mutableStateOf(true) }
     var blankTapRevision by remember { mutableLongStateOf(0L) }
     val pageMotion by remember(presentation) { derivedStateOf { presentation?.moving == true } }
-    val dispatch: (ContentEvent) -> Unit = dispatch@{ event ->
-        if (!latestCanDispatch(event)) return@dispatch
-        if (pageMotion && event != ContentEvent.ExitLyricsImmersive) return@dispatch
-        if (settingsActive && !event.isSettingsInteraction()) return@dispatch
+    val acceptsQuickControlClick: (ContentEvent) -> Boolean = { event ->
+        latestCanDispatch(event) && (!pageMotion || event == ContentEvent.ExitLyricsImmersive) &&
+            (!settingsActive || event.isSettingsInteraction()) && latestPanelState.value.acceptsQuickControlEvent(event)
+    }
+    val dispatchAccepted: (ContentEvent) -> Boolean = dispatch@{ event ->
+        if (!acceptsQuickControlClick(event)) return@dispatch false
         // Compose does not call View.performClick(): use the same system sound path
         // as the old Android buttons, respecting the user's sound-effects setting.
         val audible = when (event) {
@@ -131,9 +135,11 @@ fun ContentPanel(
             is ContentEvent.LyricsCurrentCustomColorChanged -> !event.fromDrag
             else -> true
         }
-        if (audible) clickSound(view)
         latestEvent(event)
+        if (audible) clickSound(view)
+        true
     }
+    val dispatch: (ContentEvent) -> Unit = { dispatchAccepted(it) }
     Surface(modifier.fillMaxSize().graphicsLayer {
         alpha = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f
     }, color = MaterialTheme.colorScheme.background) {
@@ -175,7 +181,9 @@ fun ContentPanel(
                     ambientBackground?.invoke()
                 }
                 CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
-                    LocalPresentationInteractionEnabled provides !pageMotion) {
+                    LocalQuickControlClickAcceptance provides acceptsQuickControlClick,
+                    LocalQuickControlDispatch provides dispatchAccepted,
+                     LocalPresentationInteractionEnabled provides !pageMotion) {
                     if (showTop) Box(Modifier.width(topBarWidth).graphicsLayer {
                         alpha = if (state.immersiveShowTopBar) 1f else compactOpacity()
                     }.zIndex(1f)) { PrototypeTopBar(state, clockText, compactLayout = compact) }
@@ -270,13 +278,6 @@ fun ContentPanel(
                         dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
                     }
                 }
-                if (state.screenCleaning) {
-                     Box(Modifier.fillMaxSize().background(Color.Black).zIndex(20f)
-                         .clickable { dispatch(ContentEvent.ScreenCleanTapped) },
-                         contentAlignment = Alignment.Center) {
-                         Text("清洁屏幕中 · 点击退出", color = Color.White.copy(alpha = .72f), fontSize = 18.sp)
-                     }
-                 }
                  DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
                     VehicleControlOemIcon(control, state.controls.getValue(control).copy(target = level), state.dark, modifier)
                 }
@@ -286,6 +287,21 @@ fun ContentPanel(
                     exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { 24 },
                 ) { PrototypeSources(state, dispatch, anchorWidth = leftWidth.takeIf { wide }) }
                 if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
+                // A collapsed sheet owns the next tap on exposed content, including semantic activation.
+                // Keep this above underlying controls and below the sheet; no media/vehicle intent can leak through.
+                if (state.settingsOpen && state.settingsCollapsed && state.page == PanelPage.Lyrics &&
+                    !state.lyricsProviderSettings.appleLoginOpen) {
+                    Box(Modifier.fillMaxSize().zIndex(6f).testTag("settings-restore-content")
+                        .observeUnconsumedPageTap(!pageMotion) { dispatch(ContentEvent.SettingsRestored) }
+                        .semantics {
+                            contentDescription = "恢复设置页"
+                            role = Role.Button
+                            if (pageMotion) disabled() else onClick("恢复设置页") {
+                                dispatch(ContentEvent.SettingsRestored)
+                                true
+                            }
+                        })
+                }
                 // Settings always belong to the original left content region, including full-screen lyrics.
                 ProvideContentSliderTickSound {
                     SettingsSheet(state, dispatch,
@@ -428,14 +444,6 @@ private fun TopBarText(text: String, tag: String, style: TextStyle, naturalWidth
     }, style = style, maxLines = 1, softWrap = false)
 }
 
-private fun visibleShortcutButtons(state: ContentUiState): List<ShortcutId> = ShortcutGrid.buttons.filter { id ->
-    when {
-        id == ShortcutId.ScreenClean -> state.screenCleanAvailable
-        id.feature == null -> true
-        else -> state.features[id.feature]?.available == true || state.features[id.feature]?.known == true
-    }
-}
-
 @Composable
 private fun PrototypeGrid(state: ContentUiState, onEvent: (ContentEvent) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -444,52 +452,55 @@ private fun PrototypeGrid(state: ContentUiState, onEvent: (ContentEvent) -> Unit
         val columnWidth = (maxWidth - gap * 3) / 4
         val columns = if (columnWidth < 88.dp) 2 else 4
         val density = LocalDensity.current
-        val buttons = visibleShortcutButtons(state)
+        val buttons = state.shortcutButtons
         val labelMeasurer = rememberTextMeasurer()
         val tileWidth = if (columns == 4) columnWidth else (maxWidth - gap) / 2
         val labelWidth = with(density) { (tileWidth - 4.dp).roundToPx().coerceAtLeast(1) }
-        val labelHeight = buttons.maxOfOrNull { id ->
-            labelMeasurer.measure(AnnotatedString(id.label), quickControlLabelStyle(), maxLines = 2,
-                constraints = androidx.compose.ui.unit.Constraints(maxWidth = labelWidth)).size.height
-        } ?: 0
+        val labelStyle = quickControlLabelStyle()
+        val labelHeight = remember(buttons, labelWidth, labelStyle, labelMeasurer) {
+            buttons.maxOfOrNull { id ->
+                labelMeasurer.measure(AnnotatedString(id.label), labelStyle, maxLines = 2,
+                    constraints = androidx.compose.ui.unit.Constraints(maxWidth = labelWidth)).size.height
+            } ?: 0
+        }
         val tileHeight = maxOf(if (narrow) 112.dp else 135.dp, with(density) { labelHeight.toDp() } + 68.dp)
         val verticalHeight = maxOf(290.dp, tileHeight * 2 + gap)
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
             buttons.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    row.forEach { id -> Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, tileHeight) } }
+                    row.forEach { id -> key(id) { Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, tileHeight) } } }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             val verticals = ShortcutGrid.verticals.map { QuickVerticalCell.Shortcut(it) } +
-                (SystemQuickControl.gridItems + SystemQuickControl.entries.drop(2).filter { state.systemLevels[it]?.available == true })
+                state.systemControls
                     .map { QuickVerticalCell.System(it) }
             if (columns == 4) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     Column(Modifier.width(columnWidth), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        ShortcutGrid.lowerToggles.forEach { id -> ShortcutTile(id, state, onEvent, (verticalHeight - gap) / 2) }
+                        ShortcutGrid.lowerToggles.forEach { id -> key(id) { ShortcutTile(id, state, onEvent, (verticalHeight - gap) / 2) } }
                     }
                     verticals.take(3).forEach { cell ->
-                        Box(Modifier.width(columnWidth)) { QuickVerticalCellContent(cell, state, onEvent, verticalHeight) }
+                        key(cell) { Box(Modifier.width(columnWidth)) { QuickVerticalCellContent(cell, state, onEvent, verticalHeight) } }
                     }
                     repeat((3 - verticals.size).coerceAtLeast(0)) { Spacer(Modifier.width(columnWidth)) }
                 }
                 verticals.drop(3).chunked(4).forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        row.forEach { cell -> Box(Modifier.width(columnWidth)) { QuickVerticalCellContent(cell, state, onEvent, verticalHeight) } }
+                        row.forEach { cell -> key(cell) { Box(Modifier.width(columnWidth)) { QuickVerticalCellContent(cell, state, onEvent, verticalHeight) } } }
                         repeat(4 - row.size) { Spacer(Modifier.width(columnWidth)) }
                     }
                 }
             } else {
                 ShortcutGrid.lowerToggles.chunked(2).forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        row.forEach { id -> Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, tileHeight) } }
+                        row.forEach { id -> key(id) { Box(Modifier.weight(1f)) { ShortcutTile(id, state, onEvent, tileHeight) } } }
                         repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
                 verticals.chunked(2).forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        row.forEach { cell -> Box(Modifier.weight(1f)) { QuickVerticalCellContent(cell, state, onEvent, verticalHeight) } }
+                        row.forEach { cell -> key(cell) { Box(Modifier.weight(1f)) { QuickVerticalCellContent(cell, state, onEvent, verticalHeight) } } }
                         repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
@@ -551,12 +562,20 @@ private fun ShortcutVertical(id: ShortcutId, state: ContentUiState, onEvent: (Co
         current.displayed == 0 -> "关闭"
         else -> "${current.displayed}档"
     }
-    SteppedVerticalControl(id.label, control.maxManualLevel, manualLevel, "control-${id.name}", height = height,
-        enabled = enabled, status = status,
-        onPower = { onEvent(ContentEvent.ControlPowerTapped(control)) },
-        onCommit = { onEvent(ContentEvent.ControlLevelChanged(control, it)) }) { level, modifier ->
-        val iconState = if (level != null && (current.known || current.pending)) current.copy(target = level) else current
-        VehicleControlOemIcon(control, iconState, state.dark, modifier.testTag("shortcut-icon-${id.name}"))
+    val dispatchClick = LocalQuickControlDispatch.current
+    val acceptClick = LocalQuickControlClickAcceptance.current
+    val powerEvent = ContentEvent.ControlPowerTapped(control)
+    val effectiveEnabled = enabled && acceptClick(powerEvent)
+    var action by remember { mutableIntStateOf(0) }
+    CompositionLocalProvider(LocalIconAction provides action) {
+        SteppedVerticalControl(id.label, control.maxManualLevel, manualLevel, "control-${id.name}", height = height,
+            enabled = effectiveEnabled, status = status,
+            onPower = { if (effectiveEnabled && dispatchClick(powerEvent)) action++ },
+            onCommit = { if (effectiveEnabled && dispatchClick(ContentEvent.ControlLevelChanged(control, it))) action++ }) { level, modifier ->
+            val iconState = if (level != null && (current.known || current.pending)) current.copy(target = level) else current
+            VehicleControlOemIcon(control, iconState, state.dark, modifier.testTag("shortcut-icon-${id.name}"),
+                acceptedActionOnly = true)
+        }
     }
 }
 
@@ -572,7 +591,7 @@ private fun shortcutStatus(id: ShortcutId, state: ContentUiState): String {
             else -> "关闭"
         }
     }
-    if (id == ShortcutId.ScreenClean) return if (state.screenCleaning) "清洁屏幕中" else if (state.screenCleanAvailable) "可用" else "能力不可用"
+    if (id == ShortcutId.ScreenClean) return if (state.screenCleanAvailable) "可用" else "能力不可用"
     val control = id.control?.let { state.controls.getValue(it) }
     if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) {
         val value = control ?: return "状态未知"
@@ -614,13 +633,19 @@ internal fun steeringHeatIcon(level: Int, dark: Boolean = false): Int =
     vehicleControlIconRecipe(ControlId.SteeringHeat, level, dark).resource
 
 @Composable
-private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color = when {
-    id == ShortcutId.Lock && state.controls.getValue(ControlId.Lock).known && state.controls.getValue(ControlId.Lock).displayed == 0 -> ContentFunctionalBlue
-    id.feature != null && shortcutSelected(id, state) -> ContentFunctionalBlue
-    id == ShortcutId.ScreenClean && state.screenCleaning -> ContentFunctionalBlue
-    id == ShortcutId.SteeringHeat -> Color.Unspecified
-    id.control != null && id.control != ControlId.Lock -> Color.Unspecified
-    else -> MaterialTheme.colorScheme.primary
+private fun shortcutTint(id: ShortcutId, state: ContentUiState): Color {
+    val base = contentIconNeutral(state.dark)
+    return when {
+        id == ShortcutId.Lock -> {
+            val value = state.controls.getValue(ControlId.Lock)
+            if ((value.known || value.pending) && value.displayed == 1) ContentFunctionalBlue else base
+        }
+        id.feature != null && shortcutSelected(id, state) -> ContentFunctionalBlue
+        id == ShortcutId.ScreenClean -> base
+        id == ShortcutId.SteeringHeat -> Color.Unspecified
+        id.control != null && id.control != ControlId.Lock -> Color.Unspecified
+        else -> base
+    }
 }
 
 @Composable
@@ -631,7 +656,7 @@ private fun shortcutSelected(id: ShortcutId, state: ContentUiState): Boolean {
         val value = state.features[feature] ?: return false
         return value.pending && value.target == 1 || !value.pending && value.known && value.actual == 1
     }
-    if (id == ShortcutId.ScreenClean) return state.screenCleaning
+    if (id == ShortcutId.ScreenClean) return false
     val control = id.control?.let { state.controls.getValue(it) } ?: return false
     if (id == ShortcutId.AutoWiper) return (control.known || control.pending) && ControlId.Wiper.isAutomatic(control.displayed)
     if (id == ShortcutId.Wiper) return (control.known || control.pending) && ControlId.Wiper.isManualLevel(control.manualWiperDisplayed)
@@ -648,6 +673,23 @@ private fun shortcutEvent(id: ShortcutId, state: ContentUiState): ContentEvent? 
     else -> if (id.feature != null) ContentEvent.FeatureTapped(id) else id.control?.let { ContentEvent.ControlTapped(it) }
 }
 
+/** Read current presentation facts at the release/semantic boundary, not only on composition. */
+private fun ContentUiState.acceptsQuickControlEvent(event: ContentEvent): Boolean {
+    fun accepts(id: ControlId) = controls[id]?.let { it.available && it.known && !it.pending && id.isLevel(it.actual) } == true
+    return when (event) {
+        is ContentEvent.ControlTapped -> accepts(event.id)
+        is ContentEvent.ControlPowerTapped -> accepts(event.id)
+        is ContentEvent.ControlAutomaticTapped -> accepts(event.id)
+        is ContentEvent.ControlLevelChanged -> accepts(event.id)
+        ContentEvent.RearWashTapped -> accepts(ControlId.RearWash)
+        is ContentEvent.FeatureTapped -> event.id.feature?.let { feature ->
+            features[feature]?.let { it.available && !it.pending && (it.known || feature.action) }
+        } == true
+        ContentEvent.ScreenCleanTapped -> screenCleanAvailable
+        else -> true
+    }
+}
+
 private fun dockEvent(id: ShortcutId, state: ContentUiState): ContentEvent? = shortcutEvent(id, state)
 
 internal fun shortcutRippleEnabled(id: ShortcutId, state: ContentUiState): Boolean {
@@ -655,7 +697,7 @@ internal fun shortcutRippleEnabled(id: ShortcutId, state: ContentUiState): Boole
         val value = state.features[feature] ?: return false
         return value.available && !value.pending && (feature.action || value.known)
     }
-    if (id == ShortcutId.ScreenClean) return state.screenCleanAvailable || state.screenCleaning
+    if (id == ShortcutId.ScreenClean) return state.screenCleanAvailable
     val idControl = id.control ?: return true
     val control = state.controls.getValue(idControl)
     if (!control.available || !control.known || control.pending || !idControl.isLevel(control.actual)) return false
@@ -667,22 +709,30 @@ private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (Conten
     val control = id.control?.let { state.controls.getValue(it) }
     val enabled = when {
         id.feature != null -> state.features[id.feature]?.available == true
-        id == ShortcutId.ScreenClean -> state.screenCleanAvailable || state.screenCleaning
+        id == ShortcutId.ScreenClean -> state.screenCleanAvailable
         control == null -> true
         else -> control.available && control.known && !control.pending && id.control!!.isLevel(control.actual)
     }
     val tag = shortcutTag(id)
+    val acceptClick = LocalQuickControlClickAcceptance.current
+    val dispatchClick = LocalQuickControlDispatch.current
+    val event = shortcutEvent(id, state)
+    val accepted = event != null && acceptClick(event)
+    val effectiveEnabled = enabled && accepted
     val icon: @Composable (Modifier) -> Unit = { modifier ->
         ShortcutOemIcon(id, state, shortcutIcon(id, state), modifier.testTag("shortcut-icon-${id.name}"))
     }
+    val onClick: () -> Boolean = {
+        effectiveEnabled && event != null && dispatchClick(event)
+    }
     if (id.type == QuickControlType.OrdinaryToggle) {
-        OrdinaryToggle(id.label, shortcutStatus(id, state), shortcutSelected(id, state), enabled,
+        OrdinaryToggle(id.label, shortcutStatus(id, state), shortcutSelected(id, state), effectiveEnabled,
              shortcutRippleEnabled(id, state), tag,
-            Modifier.height(height), onClick = { shortcutEvent(id, state)?.let(onEvent) }, icon = icon)
+            Modifier.height(height), onClick = onClick, icon = icon)
     } else {
-        DynamicIconSwitch(id.label, shortcutStatus(id, state), shortcutSelected(id, state), enabled,
+        DynamicIconSwitch(id.label, shortcutStatus(id, state), shortcutSelected(id, state), effectiveEnabled,
             shortcutRippleEnabled(id, state), tag, Modifier.height(height),
-            onClick = { shortcutEvent(id, state)?.let(onEvent) }, icon = icon)
+            onClick = onClick, icon = icon)
     }
 }
 
@@ -708,18 +758,18 @@ private fun PrototypeMediaCard(
             }
             RoundedPressButton(Modifier.size(button), "media-play", if (media.playing) "暂停" else "播放",
                 media.available && media.playbackAvailable && !media.pending, compact,
-                onClick = { onEvent(ContentEvent.PlayPause) }) {
+                onClick = { onEvent(ContentEvent.PlayPause); true }) {
                 OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f, Modifier.size(icon).testTag("media-play-icon"), animateOnAction = false)
             }
             Spacer(Modifier.width(if (compact) 0.dp else 12.dp))
             RoundedPressButton(Modifier.size(button), "media-next", "下一首", media.available && media.nextAvailable && !media.pending, compact,
-                onClick = { onEvent(ContentEvent.NextTrack) }) { OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(icon).testTag("media-next-icon")) }
+                onClick = { onEvent(ContentEvent.NextTrack); true }) { OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(icon).testTag("media-next-icon")) }
             if (showSourceSwitcher) {
                 Spacer(Modifier.width(if (compact) 0.dp else 12.dp))
                 VerticalDivider(Modifier.height(64.dp), color = MaterialTheme.colorScheme.outline)
                 RoundedPressButton(Modifier.width(if (compact) 48.dp else 96.dp).fillMaxHeight()
                     .semantics { stateDescription = if (media.targetSource != null) "切换中：${media.targetSource.label}" else media.source.label },
-                    "source-button", "选择来源", sourcesEnabled, compact, onClick = { onEvent(ContentEvent.OpenSources) }) {
+                    "source-button", "选择来源", sourcesEnabled, compact, onClick = { onEvent(ContentEvent.OpenSources); true }) {
                     OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(icon).testTag("media-source-icon"), tint = sourceTint())
                 }
             }
@@ -770,18 +820,18 @@ private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                     horizontalArrangement = Arrangement.spacedBy(if (compact) 14.dp else 20.dp)) {
                     RoundedPressButton(Modifier.size(buttonSize), "immersive-play", if (media.playing) "暂停" else "播放",
                         media.available && media.playbackAvailable && !media.pending, compact, pressAreaSize = buttonSize,
-                        onClick = { onEvent(ContentEvent.PlayPause) }) {
+                        onClick = { onEvent(ContentEvent.PlayPause); true }) {
                         OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f,
                             Modifier.size(iconSize), animateOnAction = false)
                     }
                     RoundedPressButton(Modifier.size(buttonSize), "immersive-next", "下一首",
                         media.available && media.nextAvailable && !media.pending, compact, pressAreaSize = buttonSize,
-                        onClick = { onEvent(ContentEvent.NextTrack) }) {
+                        onClick = { onEvent(ContentEvent.NextTrack); true }) {
                         OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(iconSize))
                     }
                     if (state.showMediaSourceSwitcher) {
                         RoundedPressButton(Modifier.size(buttonSize), "immersive-source", "选择来源", media.sourceAvailable, compact, pressAreaSize = buttonSize,
-                            onClick = { onEvent(ContentEvent.OpenSources) }) {
+                            onClick = { onEvent(ContentEvent.OpenSources); true }) {
                             OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(iconSize), tint = sourceTint())
                         }
                     }
@@ -813,6 +863,8 @@ internal fun dockItemsForCount(count: Int): List<ShortcutId> {
 private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit, compact: Boolean,
     overlay: DockLevelOverlayState, interactive: Boolean, backgroundOpacity: () -> Float = { 1f }) {
     val colors = LocalContentColors.current
+    val acceptClick = LocalQuickControlClickAcceptance.current
+    val dispatchClick = LocalQuickControlDispatch.current
     val items = dockItemsForCount(state.dockButtonCount)
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
         Box(Modifier.fillMaxSize().testTag("floating-dock")) {
@@ -825,21 +877,25 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                 val dockWidth = maxWidth.coerceAtLeast(minDockWidth)
                 Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
                     Row(Modifier.width(dockWidth).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
-                        items.forEach { id ->
+                        items.forEach { id -> key(id) {
                             val control = id.control?.let { state.controls.getValue(it) }
                             val selected = shortcutSelected(id, state)
-                            val enabled = (interactive || id == ShortcutId.Settings) &&
-                                (control == null || control.available && control.known && !control.pending && id.control!!.isLevel(control.actual))
+                            val glyphStateKnown = control == null ||
+                                control.known && id.control!!.isLevel(control.actual)
+                            val event = dockEvent(id, state)
+                            val accepted = event != null && acceptClick(event)
+                            val interactionEnabled = (interactive || id == ShortcutId.Settings) && accepted
                             val stepped = id.type == QuickControlType.SteppedVertical
-                            val rippleEnabled = if (stepped) enabled else shortcutRippleEnabled(id, state)
+                            val rippleEnabled = if (stepped) interactionEnabled else shortcutRippleEnabled(id, state) && interactionEnabled
                             val levelGesture = if (stepped) dockLevelGesture(id.control!!, control!!, overlay) {
                                 onEvent(ContentEvent.ControlLevelChanged(id.control, it))
                             } else Modifier
                             val slot = (if (!compact && id == ShortcutId.Lock) Modifier.width(114.dp) else Modifier.weight(1f))
                                 .fillMaxHeight().then(levelGesture)
                                 .semantics { this.selected = selected; stateDescription = shortcutStatus(id, state) }
-                            RoundedPressButton(slot, "dock-${id.name}", id.label, enabled, compact,
-                                onClick = { dockEvent(id, state)?.let(onEvent) }, rectangular = false,
+                            RoundedPressButton(slot, "dock-${id.name}", id.label, glyphStateKnown, compact,
+                                interactionEnabled = interactionEnabled,
+                                onClick = { event != null && dispatchClick(event) }, rectangular = false,
                                 selected = selected && id != ShortcutId.Lock,
                                 selectedColor = colors.selectedSurface,
                                 baseColor = Color.Transparent,
@@ -847,7 +903,7 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
                                 rippleColor = if (selected && id != ShortcutId.Lock) colors.dockBase else colors.selectedSurface) {
                                 ShortcutOemIcon(id, state, shortcutIcon(id, state), Modifier.size(if (compact) 32.dp else 48.dp).testTag("dock-icon-${id.name}"))
                             }
-                        }
+                        } }
                     }
                 }
             }
@@ -858,8 +914,9 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
 @Composable
 private fun RoundedPressButton(
     modifier: Modifier, tag: String, description: String, enabled: Boolean, compact: Boolean,
+    interactionEnabled: Boolean = enabled,
     pressAreaSize: androidx.compose.ui.unit.Dp? = null,
-    onClick: () -> Unit, rectangular: Boolean = true, selected: Boolean = false,
+    onClick: () -> Boolean, rectangular: Boolean = true, selected: Boolean = false,
     baseColor: Color? = null,
     selectedColor: Color? = null,
     rippleEnabled: Boolean = !rectangular,
@@ -867,7 +924,7 @@ private fun RoundedPressButton(
     content: @Composable () -> Unit,
 ) {
     val colors = LocalContentColors.current
-    val canInteract = enabled && LocalPresentationInteractionEnabled.current
+    val canInteract = enabled && interactionEnabled && LocalPresentationInteractionEnabled.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val active = pressed && canInteract
@@ -884,7 +941,7 @@ private fun RoundedPressButton(
     Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(tag)
         .then(feedback.touchCoordinates)
             .then(feedback.pointerDownLatch)
-        .clickable(interactionSource = interactions, indication = null, enabled = canInteract, role = Role.Button, onClick = { action++; onClick() })
+        .clickable(interactionSource = interactions, indication = null, enabled = canInteract, role = Role.Button, onClick = { if (onClick()) action++ })
         .excludeDisabledActionTap(canInteract)
         .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong(); this[PressScale] = scale; this[PressFeedback] = if (rectangular || rippleEnabled) if (rectangular) "opacity-rectangle" else "touch-ripple" else "none" },
         contentAlignment = Alignment.Center) {
@@ -893,7 +950,7 @@ private fun RoundedPressButton(
             .clip(shape)
             .then(if (rectangular) Modifier.background(background, shape) else feedback.area(base))
             .testTag("$tag-press-area")
-        Box(pressArea, contentAlignment = Alignment.Center) {
+        Box(pressArea.graphicsLayer { alpha = if (enabled) 1f else .38f }, contentAlignment = Alignment.Center) {
             CompositionLocalProvider(LocalIconPressed provides active, LocalIconAction provides action) { content() }
         }
     }
@@ -973,7 +1030,7 @@ private fun PreviewScenarioSheet(state: ContentUiState, onEvent: (ContentEvent) 
 @Composable
 private fun LyricsPage(state: ContentUiState, onEvent: (ContentEvent) -> Unit, lyricsState: @Composable () -> LyricsState,
     presentationScale: Float = 1f, externalGestureActive: Boolean = false,
-    interactionEnabled: Boolean = true, autoFollowEnabled: Boolean = interactionEnabled,
+    interactionEnabled: Boolean = true, autoFollowEnabled: Boolean = true,
     onGeometryReady: (Boolean) -> Unit = {},
     presentationOpacity: () -> Float = { 1f },
 ) {
@@ -1064,14 +1121,14 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
     val control = id.control
     val projected = control?.let { state.controls.getValue(it) }
     if (projected != null && !projected.known && !projected.pending) {
-        OemIcon(icon, modifier, tint = MaterialTheme.colorScheme.primary.copy(alpha = .45f),
-            motionKey = "unknown", animationAsset = null, animateOnAction = false)
+        OemIcon(icon, modifier, tint = MaterialTheme.colorScheme.primary,
+            motionKey = "unknown", animationAsset = null, animateOnAction = false, acceptedActionOnly = true)
         return
     }
     val base = MaterialTheme.colorScheme.primary
     if (id == ShortcutId.AutoWiper) {
         OemIcon(icon, modifier, tint = if (shortcutSelected(id, state)) ContentFunctionalBlue else base,
-            motionKey = projected?.displayed, animationAsset = null, animateOnAction = false)
+            motionKey = projected?.displayed, animationAsset = null, animateOnAction = false, acceptedActionOnly = true)
         return
     }
     if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) {
@@ -1084,7 +1141,7 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
             motionKey = if (value.known || value.pending) selected else "unknown", animationAsset = recipe.asset,
             animationFrames = recipe.frames, animationColors = recipe.animationColors,
             animationStrokePathColors = recipe.animationStrokePathColors,
-            playbackSpeed = recipe.playbackSpeed, animateOnAction = false)
+            playbackSpeed = recipe.playbackSpeed, animateOnAction = false, acceptedActionOnly = true)
         return
     }
     val feature = id.feature
@@ -1093,42 +1150,42 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
         val known = value.known || value.pending
         val displayed = value.displayed.takeIf { it == 0 || it == 1 } ?: 0
         val recipe = vehicleFeatureIconRecipe(feature, displayed, state.dark, base)
-        OemIcon(recipe.resource, modifier, tint = if (known) Color.Unspecified else base.copy(alpha = .45f),
-            pathColors = if (known) recipe.pathColors else emptyMap(),
+        OemIcon(recipe.resource, modifier, tint = recipe.tint,
+            pathColors = recipe.pathColors,
             motionKey = if (known) displayed else "unknown",
             animationAsset = recipe.asset.takeIf { known && !it.isNullOrEmpty() },
             animationFrames = recipe.frames, animationColors = recipe.animationColors,
             animationStrokePathColors = recipe.animationStrokePathColors,
-            playbackSpeed = recipe.playbackSpeed, animateOnAction = false)
+            playbackSpeed = recipe.playbackSpeed, animateOnAction = feature.action, acceptedActionOnly = true)
         return
     }
     if (id == ShortcutId.ScreenClean) {
-        OemIcon(icon, modifier, tint = if (state.screenCleaning) ContentFunctionalBlue else base,
-            motionKey = state.screenCleaning, animateOnAction = false)
+        OemIcon(icon, modifier, tint = base,
+            motionKey = "screen-clean", animateOnAction = false, acceptedActionOnly = true)
         return
     }
     if (control == null || control == ControlId.Lock) {
         OemIcon(icon, modifier, tint = if (id == ShortcutId.RearWash && shortcutSelected(id, state)) ContentFunctionalBlue else shortcutTint(id, state),
             motionKey = if (control == null) state.placeholderSwitches[id] ?: false else state.controls.getValue(control).displayed,
-            animateOnAction = control == null)
+            animateOnAction = control == null, acceptedActionOnly = true)
         return
     }
-    VehicleControlOemIcon(control, state.controls.getValue(control), state.dark, modifier)
+    VehicleControlOemIcon(control, state.controls.getValue(control), state.dark, modifier, acceptedActionOnly = true)
 }
 
 @Composable
-internal fun VehicleControlOemIcon(control: ControlId, value: ControlState, dark: Boolean, modifier: Modifier) {
+internal fun VehicleControlOemIcon(control: ControlId, value: ControlState, dark: Boolean, modifier: Modifier,
+    acceptedActionOnly: Boolean = false) {
     val base = MaterialTheme.colorScheme.primary
     val level = (if (control == ControlId.Wiper) value.manualWiperDisplayed else value.displayed).coerceIn(0, control.maxLevel)
-    val recipe = if (control == ControlId.Wiper) vehicleControlIconRecipe(control, level, dark, base)
-        else vehicleControlIconRecipe(control, level, dark)
+    val recipe = vehicleControlIconRecipe(control, level, dark, base)
     val known = value.known || value.pending
-    OemIcon(recipe.resource, modifier, tint = if (known) Color.Unspecified else base.copy(alpha = .45f),
+    OemIcon(recipe.resource, modifier, tint = if (known) Color.Unspecified else base,
         pathColors = if (known) recipe.pathColors else emptyMap(),
         motionKey = if (known) level else "unknown", animationAsset = recipe.asset.takeIf { known && it.isNotEmpty() },
         animationColors = recipe.animationColors, animationFrames = recipe.frames,
         animationStrokePathColors = recipe.animationStrokePathColors,
-        animationPathOpacities = recipe.animationPathOpacities, animateOnAction = false)
+        animationPathOpacities = recipe.animationPathOpacities, animateOnAction = false, acceptedActionOnly = acceptedActionOnly)
 }
 
 @Preview(name = "原型浅色默认态", widthDp = 640, heightDp = 1080, locale = "zh")

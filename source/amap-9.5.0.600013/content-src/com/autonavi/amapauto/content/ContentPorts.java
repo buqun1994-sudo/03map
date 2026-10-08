@@ -1,8 +1,12 @@
 package com.autonavi.amapauto.content;
 
 import com.icar03.content.model.VehicleControl;
+import com.icar03.content.model.VehicleGear;
 
+import android.app.ActivityOptions;
 import android.content.ComponentName;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
@@ -30,6 +34,16 @@ public final class ContentPorts {
         SystemSnapshot read(int kind);
 
         boolean write(int kind, int percent);
+
+        /** Whether the vehicle exposes its native full-screen screen-cleaning entry point. */
+        default boolean screenCleaningAvailable() {
+            return false;
+        }
+
+        /** Requests the vehicle's native screen-cleaning surface; no local overlay is created. */
+        default boolean startScreenCleaning() {
+            return false;
+        }
 
         /** Releases a cached vendor Binder connection when the owning Store is destroyed. */
         default void close() {
@@ -122,6 +136,39 @@ public final class ContentPorts {
 
         public AndroidSystemPort(Context context) {
             this.context = context.getApplicationContext();
+        }
+
+        private static final ComponentName SCREEN_CLEAN_COMPONENT = new ComponentName(
+                "com.mengbo.smartscene", "com.chery.smartscene.UI.ScreenCleanActivity");
+
+        /** Verified ordinary-app entry; availability does not infer a vehicle gear requirement. */
+        @Override public boolean screenCleaningAvailable() {
+            if (closed || Build.VERSION.SDK_INT < 28) return false;
+            try {
+                ActivityInfo activity = context.getPackageManager().getActivityInfo(SCREEN_CLEAN_COMPONENT, 0);
+                return activity.enabled && activity.applicationInfo != null && activity.applicationInfo.enabled
+                        && activity.exported
+                        && (activity.permission == null || activity.permission.isEmpty()
+                            || context.checkSelfPermission(activity.permission) == PackageManager.PERMISSION_GRANTED);
+            } catch (PackageManager.NameNotFoundException | RuntimeException exception) {
+                return false;
+            }
+        }
+
+        /** The OEM long-press exit owns restoration; do not interrupt it or create a local overlay. */
+        @Override public boolean startScreenCleaning() {
+            if (!screenCleaningAvailable()) return false;
+            try {
+                ActivityOptions options = ActivityOptions.makeBasic();
+                options.setLaunchDisplayId(0);
+                ActivityOptions.class.getMethod("setLaunchWindowingMode", int.class).invoke(options, 5);
+                options.setLaunchBounds(new android.graphics.Rect(0, 0, 1920, 1080));
+                context.startActivity(new Intent().setComponent(SCREEN_CLEAN_COMPONENT)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), options.toBundle());
+                return true;
+            } catch (ReflectiveOperationException | RuntimeException exception) {
+                return false;
+            }
         }
 
         @Override public SystemSnapshot read(int kind) {
@@ -572,6 +619,9 @@ public final class ContentPorts {
     public static final class VehicleSnapshot {
         public final boolean dataAvailable;
         public final boolean preview;
+        public final VehicleGear gear;
+        // Keep non-gear availability independent so invalidating the gear cannot retain a stale connection.
+        private final boolean propertyDataAvailable;
         public final float temperatureC;
         public final int batteryPercent;
         public final int rangeRaw;
@@ -674,7 +724,7 @@ public final class ContentPorts {
                     passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive,
                     steeringHeatLevel, massageLevel, massageModeRaw, massageSwitchKnown, massageActive,
                     seatControlsKnown, lockKnown, locked, wiperLevel, wiperKnown,
-                    -1, false, -1, false, "", 0L, false);
+                    -1, false, -1, false, "", 0L, false, VehicleGear.Unknown);
         }
 
         /** Rear-window actuals and scoped post-write proof are independent from every seat/front-wiper. */
@@ -689,7 +739,30 @@ public final class ContentPorts {
                 int wiperLevel, boolean wiperKnown, int rearWiperLevel, boolean rearWiperKnown,
                 int rearWashLevel, boolean rearWashKnown, String rearReadbackControlId,
                 long rearReadbackRequestId, boolean rearWashActivationObserved) {
-            this.dataAvailable = dataAvailable;
+            this(dataAvailable, preview, temperatureC, batteryPercent, rangeRaw, chargeState,
+                    chargeConnectionRaw, chargeBmsRaw, chargeScheduleRaw, chargePowerKw,
+                    chargeRemainingMinutes, ventilationLevel, heatingLevel, heatingAutoKnown, heatingAutoActive,
+                    passengerHeatingLevel, passengerHeatingAutoKnown, passengerHeatingAutoActive,
+                    steeringHeatLevel, massageLevel, massageModeRaw, massageSwitchKnown, massageActive,
+                    seatControlsKnown, lockKnown, locked, wiperLevel, wiperKnown,
+                    rearWiperLevel, rearWiperKnown, rearWashLevel, rearWashKnown,
+                    rearReadbackControlId, rearReadbackRequestId, rearWashActivationObserved, VehicleGear.Unknown);
+        }
+
+        private VehicleSnapshot(boolean dataAvailable, boolean preview, float temperatureC,
+                int batteryPercent, int rangeRaw, int chargeState, int chargeConnectionRaw,
+                int chargeBmsRaw, int chargeScheduleRaw, float chargePowerKw,
+                int chargeRemainingMinutes, int ventilationLevel, int heatingLevel,
+                boolean heatingAutoKnown, boolean heatingAutoActive,
+                int passengerHeatingLevel, boolean passengerHeatingAutoKnown, boolean passengerHeatingAutoActive,
+                int steeringHeatLevel, int massageLevel, int massageModeRaw, boolean massageSwitchKnown,
+                boolean massageActive, boolean seatControlsKnown, boolean lockKnown, boolean locked,
+                int wiperLevel, boolean wiperKnown, int rearWiperLevel, boolean rearWiperKnown,
+                int rearWashLevel, boolean rearWashKnown, String rearReadbackControlId,
+                long rearReadbackRequestId, boolean rearWashActivationObserved, VehicleGear gear) {
+            this.gear = gear == null ? VehicleGear.Unknown : gear;
+            this.propertyDataAvailable = dataAvailable;
+            this.dataAvailable = dataAvailable || (!preview && this.gear != VehicleGear.Unknown);
             this.preview = preview;
             this.temperatureC = temperatureC;
             this.batteryPercent = batteryPercent;
@@ -736,13 +809,26 @@ public final class ContentPorts {
             return this;
         }
 
+        /** A gear reading is immutable and survives unrelated scoped readback copies. */
+        public VehicleSnapshot withGear(VehicleGear gear) {
+            return new VehicleSnapshot(propertyDataAvailable, preview, temperatureC, batteryPercent,
+                    rangeRaw, chargeState, chargeConnectionRaw, chargeBmsRaw, chargeScheduleRaw,
+                    chargePowerKw, chargeRemainingMinutes, ventilationLevel, heatingLevel,
+                    heatingAutoKnown, heatingAutoActive, passengerHeatingLevel, passengerHeatingAutoKnown,
+                    passengerHeatingAutoActive, steeringHeatLevel, massageLevel, massageModeRaw,
+                    massageSwitchKnown, massageActive, seatControlsKnown, lockKnown, locked, wiperLevel, wiperKnown,
+                    rearWiperLevel, rearWiperKnown, rearWashLevel, rearWashKnown,
+                    rearReadbackControlId, rearReadbackRequestId, rearWashActivationObserved, gear)
+                    .withFeatureSnapshot(featureSnapshot);
+        }
+
         /** Copy cached unrelated facts while replacing one actually read rear property. */
         public VehicleSnapshot withRearWindowReadback(String controlId, int level,
                 long requestId, boolean washActivationObserved) {
             VehicleControl control = VehicleControl.fromId(controlId);
             if (control == null || !control.isRearWindow()) throw new IllegalArgumentException("not a rear control");
             boolean known = control.isLevel(level);
-            return new VehicleSnapshot(dataAvailable || known, preview, temperatureC, batteryPercent,
+            return new VehicleSnapshot(propertyDataAvailable || known, preview, temperatureC, batteryPercent,
                     rangeRaw, chargeState, chargeConnectionRaw, chargeBmsRaw, chargeScheduleRaw,
                     chargePowerKw, chargeRemainingMinutes, ventilationLevel, heatingLevel,
                     heatingAutoKnown, heatingAutoActive, passengerHeatingLevel, passengerHeatingAutoKnown,
@@ -752,7 +838,7 @@ public final class ContentPorts {
                     control == VehicleControl.RearWiper ? known : rearWiperKnown,
                     control == VehicleControl.RearWash ? level : rearWashLevel,
                     control == VehicleControl.RearWash ? known : rearWashKnown,
-                    controlId, requestId, washActivationObserved).withFeatureSnapshot(featureSnapshot);
+                    controlId, requestId, washActivationObserved, gear).withFeatureSnapshot(featureSnapshot);
         }
 
         /** Normalized-mode invariant, shared by Snapshot, Store, State copies and Mapper. */

@@ -108,10 +108,12 @@ internal fun SettingsLineText(
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val lineBoxHeight = with(LocalDensity.current) { style.lineHeight.toDp() }
-    Box(modifier.height(lineBoxHeight).clipToBounds().semantics(mergeDescendants = true) {},
+    var lineCount by remember(text, style, maxLines) { mutableIntStateOf(1) }
+    Box(modifier.height(lineBoxHeight * lineCount).clipToBounds().semantics(mergeDescendants = true) {},
         contentAlignment = Alignment.Center) {
         Text(text, Modifier.fillMaxWidth().wrapContentHeight(unbounded = true),
-            style = style, color = color, maxLines = maxLines, overflow = overflow, textAlign = textAlign)
+            style = style, color = color, maxLines = maxLines, overflow = overflow, textAlign = textAlign,
+            onTextLayout = { lineCount = it.lineCount.coerceIn(1, maxLines) })
     }
 }
 
@@ -398,7 +400,7 @@ fun SettingsSwitchRow(
         horizontalArrangement = Arrangement.spacedBy(design.smallGap),
     ) {
         SettingsLineText(title, Modifier.weight(1f).settingsTag(settingsChildTag(tag, "label")),
-            design.labelStyle, design.text.copy(alpha = if (enabled) 1f else .38f))
+            design.labelStyle, design.text.copy(alpha = if (enabled) 1f else .38f), maxLines = 2)
         SettingsToggle(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -806,7 +808,8 @@ private fun SettingsSliderControl(
         Box(
             Modifier.fillMaxWidth().height(visualHeight).alpha(if (enabled) 1f else .38f)
                 .settingsTag(settingsChildTag(tag, "track"))
-                .downwardSoftShadow(design.track, design.dark)
+                .downwardSoftShadow(design.track, design.dark,
+                    if (rainbow) design.hueTrackCornerRadius else visualHeight / 2)
                 .clip(trackShape)
                 .background(if (rainbow) Color.Transparent else design.track),
         ) {

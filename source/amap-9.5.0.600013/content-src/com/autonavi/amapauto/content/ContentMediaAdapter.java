@@ -35,6 +35,7 @@ import com.icar03.content.runtime.media.ContentMediaSessionArbitrationDecision;
 import com.icar03.content.runtime.media.ContentMediaSessionBluetoothActivity;
 import com.icar03.content.runtime.media.ContentMediaSessionCandidate;
 import com.icar03.content.runtime.media.ContentMediaSessionTransport;
+import com.icar03.content.runtime.media.ContentMediaSourceCapabilities;
 import com.icar03.content.runtime.media.ContentMediaSourcePolicy;
 import com.icar03.content.runtime.media.ContentPublicMediaBrowsers;
 import java.util.ArrayDeque;
@@ -243,10 +244,29 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     private MediaController commandControllerLocked(long requiredActions) {
         ObservedController item = controller == null ? null : observed.get(controller.getSessionToken());
+        ContentMediaSourceCapabilities capabilities = commandCapabilitiesLocked();
+        boolean needsPlayback = (requiredActions & (PlaybackState.ACTION_PLAY
+                | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_PAUSE)) != 0L;
+        boolean needsNext = (requiredActions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L;
         if (!running || item == null || item.destroyed || !matchesActualSource(item)
                 || !item.playbackMatchesMetadata || item.facts.playback == null
+                || needsPlayback && !capabilities.getPlaybackAvailable()
+                || needsNext && !capabilities.getNextAvailable()
                 || (item.facts.playback.getActions() & requiredActions) == 0L) return null;
         return item.controller;
+    }
+
+    /**
+     * Source status and a pending source switch are part of command authorization.
+     * A retained public session cannot authorize a command while the source is
+     * unknown, being rebound, or awaiting fresh readback.
+     */
+    private ContentMediaSourceCapabilities commandCapabilitiesLocked() {
+        String confirmedSource = actualSource;
+        if (!sourceInventoryReady || pendingSourceCommandSequence != 0L || sourceReadFailed) {
+            confirmedSource = null;
+        }
+        return ContentMediaSourcePolicy.capabilitiesForSource(confirmedSource);
     }
 
     @Override public boolean requestNext() {
@@ -264,27 +284,41 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
 
     @Override public boolean requestSource(String source) {
         int code = sourceCode(source);
+        final String target = ContentRegistry.normalizeMediaSource(source);
         final long epoch;
+        final long commandSequence;
         synchronized (this) {
             if (!running || code < 0) return false;
             epoch = lifecycle;
+            commandSequence = ++nextSourceCommandSequence;
+            pendingSourceCommandSequence = commandSequence;
+            pendingSourceCommandTarget = target;
+            pendingSourceCommandService = sourceService;
+            pendingSourceCommandServiceVersion = sourceServiceVersion;
         }
         Intent intent = new Intent(MEDIA_SOURCE_ACTION);
         intent.setComponent(new ComponentName(MEDIA_CENTER_PACKAGE, MEDIA_CENTER_CLASS));
         intent.putExtra("audio_source", code);
         try {
             if (context.startService(intent) == null) {
+                synchronized (this) {
+                    if (isCurrent(epoch) && pendingSourceCommandSequence == commandSequence) {
+                        pendingSourceCommandSequence = 0L;
+                        pendingSourceCommandService = null;
+                        pendingSourceCommandTarget = null;
+                    }
+                }
                 invalidateSource(epoch, false, false, true, false);
                 return false;
             }
             onMain(() -> {
                 synchronized (ContentMediaAdapter.this) {
                     if (!isCurrent(epoch)) return;
-                    pendingSourceCommandSequence = ++nextSourceCommandSequence;
-                    pendingSourceCommandTarget = ContentRegistry.normalizeMediaSource(source);
-                    pendingSourceCommandService = sourceService;
-                    pendingSourceCommandServiceVersion = sourceServiceVersion;
+                    // Publish immediately so the Store/UI receives the same read-only
+                    // capability while source status is still awaiting readback.
+                    queueSnapshotLocked(epoch);
                 }
+                drainDeliveries();
             });
             handler.postDelayed(new Runnable() {
                 @Override public void run() {
@@ -295,6 +329,13 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
             return true;
         } catch (RuntimeException error) {
             Log.w(TAG, "media source command failed", error);
+            synchronized (this) {
+                if (isCurrent(epoch) && pendingSourceCommandSequence == commandSequence) {
+                    pendingSourceCommandSequence = 0L;
+                    pendingSourceCommandService = null;
+                    pendingSourceCommandTarget = null;
+                }
+            }
             invalidateSource(epoch, false, false, true, false);
             return false;
         }
@@ -1519,6 +1560,7 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
                 : ContentPorts.MediaSongIdentity.UNKNOWN;
         publishedRecording = identity;
         long actions = playback == null ? 0L : playback.getActions();
+        ContentMediaSourceCapabilities capabilities = commandCapabilitiesLocked();
         if (correlated && item.metadataKnown && item.playbackKnown && item.audioKnown) {
             logPublicFieldsLocked(epoch, item, source, metadata, actions);
         }
@@ -1558,9 +1600,9 @@ public final class ContentMediaAdapter implements ContentPorts.MediaPort {
         return new ContentPorts.MediaSnapshot(true, false, source, playing, generation,
                 fields.title.isEmpty() ? "暂无媒体" : fields.title,
                 fields.artist.isEmpty() ? "未连接" : fields.artist,
-                recordingPlayback && (actions & (PlaybackState.ACTION_PLAY_PAUSE
+                capabilities.getPlaybackAvailable() && recordingPlayback && (actions & (PlaybackState.ACTION_PLAY_PAUSE
                         | (playing ? PlaybackState.ACTION_PAUSE : PlaybackState.ACTION_PLAY))) != 0L,
-                recordingPlayback && (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L, artwork,
+                capabilities.getNextAvailable() && recordingPlayback && (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0L, artwork,
                 fields.mediaId, fields.album, duration, position, updateTime,
                 playing ? speed : 0f, fields.embeddedLyrics, songIdentity, playbackState,
                 avrcpEventSequence, avrcpPositionMs, avrcpPlaybackState, avrcpElapsedRealtimeMs,

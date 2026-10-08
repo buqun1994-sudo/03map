@@ -44,7 +44,7 @@ class ContentPreferenceContractTest {
             val expected = valuesOf(original)
             ContentPreferenceStore(app).save(original)
             assertStoredValues(expected, "round trip $index")
-            assertEquals(7, preferences.getInt(VERSION, -1))
+            assertEquals(8, preferences.getInt(VERSION, -1))
             val loaded = freshLoad()
             assertValues(expected, loaded, "round trip $index")
             assertLegacyValues(original, loaded, "round trip $index")
@@ -85,8 +85,8 @@ class ContentPreferenceContractTest {
             assertEquals("load must not eagerly rewrite v1", before, preferences.all)
 
             ContentPreferenceStore(app).save(migrated)
-            assertEquals(7, preferences.getInt(VERSION, -1))
-            assertStoredValues(expected, "v1 saved as v7")
+            assertEquals(8, preferences.getInt(VERSION, -1))
+            assertStoredValues(expected, "v1 saved as v8")
             val reloaded = freshLoad()
             assertValues(expected, reloaded, "v1 after migration save")
             assertLegacyValues(legacy, reloaded, "v1 after migration save")
@@ -114,7 +114,7 @@ class ContentPreferenceContractTest {
             assertEquals(before, preferences.all)
             loaded.immersiveShowTopBar = false
             ContentPreferenceStore(app).save(loaded)
-            assertEquals(7, preferences.getInt(VERSION, -1))
+            assertEquals(8, preferences.getInt(VERSION, -1))
             val reloaded = freshLoad()
             assertFalse(reloaded.immersiveShowTopBar)
             assertTrue(reloaded.immersiveShowDock)
@@ -140,7 +140,7 @@ class ContentPreferenceContractTest {
         assertEquals("theme", loaded.lyricsColorMode)
         assertEquals(0xFF5C66BF.toInt(), loaded.lyricsCustomColor)
         ContentPreferenceStore(app).save(loaded)
-        assertEquals(7, preferences.getInt(VERSION, -1))
+        assertEquals(8, preferences.getInt(VERSION, -1))
         assertValues(valuesOf(loaded), freshLoad(), "v5 migration after save")
     }
     @Test fun v6MigratesImmersiveCurrentFromTheExistingOrdinaryCurrentRatio() {
@@ -334,6 +334,7 @@ class ContentPreferenceContractTest {
         showMediaSourceSwitcher = false
         dockButtonCount = 3
         showActionFeedback = false
+        autoCloseSettingsOnDrive = false
         gestureBarReminder = false
         uiOpacity = .2f
         pageIndex = 0
@@ -380,7 +381,8 @@ class ContentPreferenceContractTest {
         "media_show_source_switcher" to state.showMediaSourceSwitcher,
         DOCK_COUNT to state.dockButtonCount,
         "interaction_show_action_feedback" to state.showActionFeedback,
-        "interaction_gesture_bar_reminder" to state.gestureBarReminder,
+        "interaction_auto_close_settings_on_drive" to state.autoCloseSettingsOnDrive,
+         "interaction_gesture_bar_reminder" to state.gestureBarReminder,
         OPACITY to state.uiOpacity,
     )
 
@@ -507,7 +509,8 @@ class ContentPreferenceContractTest {
             "media_show_source_switcher" to true,
             DOCK_COUNT to 6,
             "interaction_show_action_feedback" to true,
-            "interaction_gesture_bar_reminder" to true,
+            "interaction_auto_close_settings_on_drive" to true,
+             "interaction_gesture_bar_reminder" to true,
              OPACITY to 1.0f,
         )
     }

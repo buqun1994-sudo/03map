@@ -1,6 +1,7 @@
 package com.autonavi.amapauto.content;
 
 import com.icar03.content.model.VehicleControl;
+import com.icar03.content.model.VehicleGear;
 import com.icar03.content.model.LyricPreferenceRules;
 
 import android.graphics.Bitmap;
@@ -53,11 +54,15 @@ public final class ContentState {
     public boolean showMediaSourceSwitcher = true;
     public int dockButtonCount = 6;
     public boolean showActionFeedback = true;
+    public boolean autoCloseSettingsOnDrive = true;
     public boolean gestureBarReminder = true;
     public float uiOpacity = 1.0f;
     public long nowMillis;
     public boolean vehicleDataAvailable;
     public boolean vehiclePreview;
+    public VehicleGear gear = VehicleGear.Unknown;
+    // A reducer event cursor, never persisted or inferred from a UI frame.
+    public long settingsAutoCloseSequence;
     // Derived only by ContentStore when publishing a snapshot, never a second policy owner.
     public boolean vehicleWriteAvailable;
     public boolean lockWriteAvailable;
@@ -265,11 +270,14 @@ public final class ContentState {
         copy.showMediaSourceSwitcher = showMediaSourceSwitcher;
         copy.dockButtonCount = dockButtonCount;
         copy.showActionFeedback = showActionFeedback;
+        copy.autoCloseSettingsOnDrive = autoCloseSettingsOnDrive;
         copy.gestureBarReminder = gestureBarReminder;
         copy.uiOpacity = uiOpacity;
         copy.nowMillis = nowMillis;
         copy.vehicleDataAvailable = vehicleDataAvailable;
         copy.vehiclePreview = vehiclePreview;
+        copy.gear = gear;
+        copy.settingsAutoCloseSequence = settingsAutoCloseSequence;
         copy.vehicleWriteAvailable = vehicleWriteAvailable;
         copy.lockWriteAvailable = lockWriteAvailable;
         copy.writableSeatControls = writableSeatControls;

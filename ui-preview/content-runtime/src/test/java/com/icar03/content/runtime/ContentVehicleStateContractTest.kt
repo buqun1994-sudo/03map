@@ -608,8 +608,42 @@ class ContentVehicleStateContractTest {
         ))
         assertTrue(mapped.features.getValue(VehicleFeature.RearFog).known)
         assertEquals(1, mapped.features.getValue(VehicleFeature.WirelessCharging).actual)
-        assertTrue(mapped.screenCleanAvailable)
+        assertFalse(mapped.screenCleanAvailable)
+        val nativeCapabilities = RuntimeCapabilities(vehicle = true, screenClean = true)
+        assertTrue(ContentUiMapper().map(state, capabilities = nativeCapabilities).screenCleanAvailable)
+        val gearUnknown = state.copy().apply { screenGearKnown = false; screenGearRaw = -1 }
+        assertTrue(ContentUiMapper().map(gearUnknown, capabilities = nativeCapabilities).screenCleanAvailable)
         assertEquals(5, mapped.systemLevels.size)
+    }
+
+    @Test fun clickAdmissionReadsTheLatestPendingAndCapabilityFacts() {
+        val vehicle = Vehicle()
+        val store = store(vehicle)
+        val binding = binding(store)
+        store.acceptVehicleSnapshot(jointSnapshot().withFeatureSnapshot(featureSnapshot(rearFog = 0)))
+        shadowOf(Looper.getMainLooper()).idle()
+        val lock = ContentEvent.ControlTapped(ControlId.Lock)
+        val fog = ContentEvent.FeatureTapped(ShortcutId.RearFog)
+        val registered = binding.state.value.shortcutButtons
+        assertEquals(ShortcutGrid.productionButtons, registered)
+        assertEquals(SystemQuickControl.entries, binding.state.value.systemControls)
+        assertTrue(binding.canDispatch(lock))
+        assertTrue(binding.canDispatch(fog))
+        store.requestFeature("rear_fog", 1)
+        // Do not drain the UI handler: admission must not depend on a new collected frame.
+        assertFalse(binding.canDispatch(lock))
+        assertFalse(binding.canDispatch(fog))
+        assertFalse(binding.canDispatch(ContentEvent.ControlLevelChanged(ControlId.Heating, 1)))
+        store.acceptVehicleSnapshot(jointSnapshot().withFeatureSnapshot(featureSnapshot(rearFog = 1)))
+        assertTrue(binding.canDispatch(lock))
+        assertTrue(binding.canDispatch(fog))
+        store.acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable())
+        assertFalse(binding.canDispatch(lock))
+        assertFalse(binding.canDispatch(fog))
+        assertFalse(binding.canDispatch(ContentEvent.ScreenCleanTapped))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("pending/readback/disconnection never change registered cells", registered, binding.state.value.shortcutButtons)
+        assertEquals(SystemQuickControl.entries, binding.state.value.systemControls)
     }
 
     @Test fun featureRequestRemainsPendingUntilAChangedVehicleReadbackArrives() {

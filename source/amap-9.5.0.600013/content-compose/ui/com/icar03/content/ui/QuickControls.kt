@@ -141,6 +141,9 @@ internal val LocalQuickControlInteractionEnabled = androidx.compose.runtime.stat
 internal val LocalQuickControlClickAcceptance = androidx.compose.runtime.staticCompositionLocalOf<((ContentEvent) -> Boolean)> {
     { _: ContentEvent -> true }
 }
+internal val LocalQuickControlDispatch = androidx.compose.runtime.staticCompositionLocalOf<(ContentEvent) -> Boolean> {
+    { false }
+}
 
 /** Immediately invalidated from pause/focus callbacks, even without a recomposer frame. */
 internal class QuickControlGestureGate {

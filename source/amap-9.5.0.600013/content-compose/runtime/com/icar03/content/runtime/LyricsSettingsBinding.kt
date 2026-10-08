@@ -44,7 +44,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.icar03.content.runtime.lyrics.AppleMusicConnection
-import com.icar03.content.runtime.lyrics.AppleMusicAuthBroker
 import com.icar03.content.runtime.lyrics.AppleMusicWebAuthorization
 import com.icar03.content.runtime.lyrics.AppleMusicAuthorizationCompatAssets
 import com.icar03.content.runtime.lyrics.LyricsCancellationSignal
@@ -67,7 +66,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
@@ -308,7 +306,7 @@ class LyricsSettingsBinding internal constructor(
         }.getOrNull()
         if (isCurrentLogin(ownerLifecycle, ownerLogin)) {
             activeAttempt = attempt
-            if (attempt == null) showLoginPageError("无法准备 Apple Music 官方登录页面，请重试")
+            if (attempt == null) showLoginPageError("Apple Music 登录准备失败，请重试")
             else refreshState()
         } else if (attempt != null) {
             cancelAttempt(attempt)
@@ -477,26 +475,29 @@ class LyricsSettingsBinding internal constructor(
     ): WebView = WebView(context).also { webView ->
         loginWebView = webView
         configureWebView(webView, attempt, ownerLifecycle, ownerLogin)
-        val cancellation = LyricsCancellationSignal()
-        authorizationCancellation = cancellation
-        authorizationJob = scope?.launch {
-            try {
-                val configuration = authorizationConfiguration?.invoke(attempt) ?: withContext(Dispatchers.IO) {
-                    val deadline = System.nanoTime() + 15_000_000_000L
-                    val developer = AppleMusicAuthBroker.get(appContext).ensureDeveloper(deadline, cancellation)
-                    AppleMusicWebAuthorization.configuration(attempt, developer.token)
+        authorizationConfiguration?.let { configurationFactory ->
+            val cancellation = LyricsCancellationSignal()
+            authorizationCancellation = cancellation
+            authorizationJob = scope?.launch {
+                try {
+                    val configuration = configurationFactory(attempt)
+                    if (isCurrentLoginView(webView, ownerLifecycle, ownerLogin, attempt)) {
+                        webView.loadUrl(configuration.startUrl, mapOf("Referer" to configuration.referrerUrl))
+                        webView.requestFocus()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    failAppleLogin(ownerLifecycle, ownerLogin, attempt, "Apple Music 登录准备失败，请重试")
+                } finally {
+                    if (authorizationCancellation === cancellation) authorizationCancellation = null
                 }
-                if (isCurrentLoginView(webView, ownerLifecycle, ownerLogin, attempt)) {
-                    webView.loadUrl(configuration.startUrl, mapOf("Referer" to configuration.referrerUrl))
-                    webView.requestFocus()
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                failAppleLogin(ownerLifecycle, ownerLogin, attempt, "无法准备 Apple Music 官方授权，请检查网络后重试")
-            } finally {
-                if (authorizationCancellation === cancellation) authorizationCancellation = null
             }
+        } ?: run {
+            // The official login page is the authentication surface. Public developer-token
+            // extraction belongs to the post-login catalog/lyrics session and cannot gate it.
+            webView.loadUrl(AppleMusicConnection.LOGIN_URL)
+            webView.requestFocus()
         }
     }
 

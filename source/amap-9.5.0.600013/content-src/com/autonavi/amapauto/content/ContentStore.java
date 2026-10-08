@@ -1,6 +1,7 @@
 package com.autonavi.amapauto.content;
 
 import com.icar03.content.model.VehicleControl;
+import com.icar03.content.model.VehicleGear;
 import com.icar03.content.model.LyricPreferenceRules;
 
 import android.content.Context;
@@ -490,6 +491,10 @@ public final class ContentStore {
         setBooleanPreference(PreferenceField.SHOW_ACTION_FEEDBACK, value);
     }
 
+    public void setAutoCloseSettingsOnDrive(boolean value) {
+        setBooleanPreference(PreferenceField.AUTO_CLOSE_SETTINGS_ON_DRIVE, value);
+    }
+
     public void setGestureBarReminder(boolean value) {
         setBooleanPreference(PreferenceField.GESTURE_BAR_REMINDER, value);
     }
@@ -507,7 +512,7 @@ public final class ContentStore {
         SHOW_PLUGGED_STATUS, SHOW_SCHEDULED_CHARGING, SHOW_CHARGING_REMAINING_TIME, SHOW_CHARGING_POWER,
         LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, LYRICS_SHOW_TRANSLATION,
         IMMERSIVE_SHOW_TOP_BAR, IMMERSIVE_TOP_BAR_KEEP_SPLIT, IMMERSIVE_SHOW_DOCK,
-        SHOW_AMBIENT_ARTWORK, SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK, GESTURE_BAR_REMINDER
+        SHOW_AMBIENT_ARTWORK, SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK, AUTO_CLOSE_SETTINGS_ON_DRIVE, GESTURE_BAR_REMINDER
     }
 
     private void setBooleanPreference(PreferenceField field, boolean value) {
@@ -537,6 +542,7 @@ public final class ContentStore {
                 case SHOW_AMBIENT_ARTWORK: state.showAmbientArtwork = value; break;
                 case SHOW_MEDIA_SOURCE_SWITCHER: state.showMediaSourceSwitcher = value; break;
                 case SHOW_ACTION_FEEDBACK: state.showActionFeedback = value; break;
+                case AUTO_CLOSE_SETTINGS_ON_DRIVE: state.autoCloseSettingsOnDrive = value; break;
                 case GESTURE_BAR_REMINDER: state.gestureBarReminder = value; break;
             }
             preferenceStore.save(state);
@@ -550,6 +556,14 @@ public final class ContentStore {
         }
         synchronized (this) {
             if (destroyed) return;
+            // Detect the edge at the fact reducer, before coalesced UI projections can hide it.
+            VehicleGear nextGear = snapshot.dataAvailable && !snapshot.preview && snapshot.gear != null
+                    ? snapshot.gear : VehicleGear.Unknown;
+            if (state.gear == VehicleGear.Park && nextGear != VehicleGear.Unknown
+                    && nextGear != VehicleGear.Park && state.autoCloseSettingsOnDrive) {
+                state.settingsAutoCloseSequence++;
+            }
+            state.gear = nextGear;
             state.vehicleDataAvailable = snapshot.dataAvailable;
             state.vehiclePreview = snapshot.preview;
             state.temperatureC = snapshot.temperatureC;

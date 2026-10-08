@@ -17,6 +17,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.ViewRootForTest
 import android.view.ViewTreeObserver
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlin.coroutines.CoroutineContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.test.*
@@ -222,14 +224,16 @@ class AmbientUiTransitionTest {
     }
 
     @Test fun coveringSettingsFreezeBackgroundWorkAndCollapseResumesTheExistingScene() {
-        val state = mutableStateOf(ContentUiState(previewMode = false))
+        val state = mutableStateOf(ContentUiState(previewMode = false, page = PanelPage.Lyrics))
         val texture = scene(Color.BLUE)
         compose.mainClock.autoAdvance = false
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f),
                 LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
                 ContentTheme(false) {
-                    ContentPanel(state.value, {}, Modifier.requiredSize(640.dp, 1080.dp),
+                    ContentPanel(state.value, { event ->
+                        if (event == ContentEvent.SettingsCollapseTapped) state.value = state.value.copy(settingsCollapsed = !state.value.settingsCollapsed)
+                    }, Modifier.requiredSize(640.dp, 1080.dp),
                         ambientBackground = { MediaAmbientBackground(texture, false, animating = true) })
                 }
             }

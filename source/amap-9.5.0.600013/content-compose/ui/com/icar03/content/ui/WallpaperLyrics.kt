@@ -102,7 +102,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
     fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
     highlightCurrent: Boolean = true, onLayoutReady: () -> Unit = {},
     presentationScale: Float = 1f, externalGestureActive: Boolean = false,
-    interactionEnabled: Boolean = true, autoFollowEnabled: Boolean = interactionEnabled, onGeometryReady: (Boolean) -> Unit = {},
+    interactionEnabled: Boolean = true, autoFollowEnabled: Boolean = true, onGeometryReady: (Boolean) -> Unit = {},
     renderStyle: LyricRenderStyle? = null) {
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().testTag("wallpaper-lyrics")) {
         val density = LocalDensity.current
@@ -250,11 +250,11 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             externalGestureActive || !autoFollowEnabled
         val commands = remember(presentationKey) { LyricFollowHistory() }
         val commandSample = remember { LyricScrollSample() }
-        // One delayed return, cancelled during any gesture/modal and restarted on a timed viewport.
+        // Presentation follows the same timed viewport even while an overlay owns touch input.
         LaunchedEffect(workEnabled, holdFollow, lyrics.timed, browsingTravel, dragging, pointerDown,
-            externalGestureActive, interactionEnabled) {
+            externalGestureActive, autoFollowEnabled) {
             if (workEnabled && !holdFollow && lyrics.timed && browsingTravel != null && !dragging && !pointerDown &&
-                !externalGestureActive && interactionEnabled) {
+                !externalGestureActive && autoFollowEnabled) {
                 delay(4_000L)
                 browsingTravel = null
             }

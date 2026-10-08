@@ -72,8 +72,11 @@ open class SettingsSheetInteractionTest {
                         events += event
                         val current = state.value
                         state.value = when (event) {
-                            ContentEvent.SettingsTapped -> current.copy(settingsOpen = !current.settingsOpen, settingsSection = SettingsSection.Home)
-                            ContentEvent.SettingsDismissed -> current.copy(settingsOpen = false)
+                            ContentEvent.SettingsTapped -> current.copy(settingsOpen = !current.settingsOpen, settingsCollapsed = false, settingsSection = SettingsSection.Home)
+                            ContentEvent.SettingsDismissed -> current.copy(settingsOpen = false, settingsCollapsed = false)
+                            ContentEvent.SettingsCollapseTapped -> current.copy(settingsCollapsed = !current.settingsCollapsed)
+                            ContentEvent.SettingsRestored -> current.copy(settingsCollapsed = false)
+                            is ContentEvent.AutoCloseSettingsOnDriveChanged -> current.copy(autoCloseSettingsOnDrive = event.value)
                             ContentEvent.SettingsBack -> if (current.settingsSection == SettingsSection.Home)
                                 current.copy(settingsOpen = false) else current.copy(settingsSection = SettingsSection.Home)
                             is ContentEvent.SettingsSectionSelected -> current.copy(settingsSection = event.section)
@@ -447,6 +450,7 @@ open class SettingsSheetInteractionTest {
     }
 
     @Test fun collapseFlipsTheSuppliedArrowAroundTheSameVisibleCenterAndKeepsPreferences() {
+        state.value = state.value.copy(page = PanelPage.Lyrics)
         mount(open = true, section = SettingsSection.Lyrics)
         val saved = state.value
         val eventCount = events.size
@@ -471,8 +475,8 @@ open class SettingsSheetInteractionTest {
         assertEquals(originalSheet.left, collapsedSheet.left, 1f)
         assertEquals(originalButton.left - originalSheet.left, collapsedButton.left - collapsedSheet.left, 1f)
         assertEquals(1, sounds)
-        assertEquals(saved, state.value)
-        assertEquals(eventCount, events.size)
+        assertEquals(saved.copy(settingsCollapsed = true), state.value)
+        assertEquals(eventCount + 1, events.size)
 
         compose.onNodeWithTag("settings-collapse").performClick()
         compose.mainClock.advanceTimeBy(600)
@@ -483,7 +487,98 @@ open class SettingsSheetInteractionTest {
         assertTrue(restored.spanAt(.25f) > restored.spanAt(.75f) + 2f * density)
         assertEquals(2, sounds)
         assertEquals(saved, state.value)
-        assertEquals(eventCount, events.size)
+        assertEquals(eventCount + 2, events.size)
+    }
+
+    @Test fun collapseEntryBelongsOnlyToTheUnderlyingLyricsPage() {
+        mount(open = true, section = SettingsSection.Lyrics)
+        compose.onNodeWithTag("settings-collapse").assertDoesNotExist()
+        compose.runOnIdle { state.value = state.value.copy(page = PanelPage.Lyrics) }
+        compose.onNodeWithTag("settings-collapse").assertIsDisplayed()
+        compose.runOnIdle { state.value = state.value.copy(settingsSection = SettingsSection.Interaction) }
+        compose.onNodeWithTag("settings-collapse").assertIsDisplayed()
+        compose.runOnIdle { state.value = state.value.copy(page = PanelPage.Shortcuts) }
+        compose.onNodeWithTag("settings-collapse").assertDoesNotExist()
+    }
+
+    @Test fun exposedContentRestoresTheSameSectionWithoutDispatchingItsUnderlyingAction() {
+        state.value = state.value.copy(page = PanelPage.Lyrics)
+        mount(open = true, section = SettingsSection.Lyrics)
+        compose.onNodeWithTag("settings-collapse").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        val count = events.size
+        val exposedButton = bounds("dock-Lock").center
+        val root = bounds("settings-native-root")
+        compose.onNodeWithTag("settings-native-root").performTouchInput { click(exposedButton - root.topLeft) }
+        compose.mainClock.advanceTimeBy(600)
+        assertFalse(state.value.settingsCollapsed)
+        assertTrue(state.value.settingsOpen)
+        assertEquals(SettingsSection.Lyrics, state.value.settingsSection)
+        assertEquals(listOf(ContentEvent.SettingsRestored), events.drop(count))
+        assertEquals(2, sounds)
+        compose.onNodeWithTag("settings-restore-content").assertDoesNotExist()
+        capture("settings-restored-by-content")
+    }
+
+    @Test fun restoreRejectsDragCancelLongPressAndAcceptsOneSemanticClick() {
+        state.value = state.value.copy(page = PanelPage.Lyrics)
+        mount(open = true, section = SettingsSection.Interaction)
+        compose.onNodeWithTag("settings-collapse").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        val count = events.size
+        val restore = compose.onNodeWithTag("settings-restore-content")
+        restore.performTouchInput { swipe(Offset(width * .5f, height * .2f), Offset(width * .5f, height * .4f)) }
+        restore.performTouchInput { down(Offset(width * .5f, height * .2f)); cancel() }
+        restore.performTouchInput { down(Offset(width * .5f, height * .2f)); advanceEventTime(700); up() }
+        assertTrue(state.value.settingsCollapsed)
+        assertEquals(count, events.size)
+        assertEquals(1, sounds)
+        restore.performClick()
+        compose.mainClock.advanceTimeBy(600)
+        assertEquals(listOf(ContentEvent.SettingsRestored), events.drop(count))
+        assertFalse(state.value.settingsCollapsed)
+        assertEquals(2, sounds)
+    }
+
+    @Test fun closingACollapsedSheetLeavesDirectlyFromItsCurrentPoseWithoutRestoringFirst() {
+        state.value = state.value.copy(page = PanelPage.Lyrics)
+        mount(open = true)
+        compose.onNodeWithTag("settings-collapse").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        var previousTop = unclippedBounds("settings-sheet").top
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { state.value = state.value.copy(settingsOpen = false, settingsCollapsed = false) }
+        compose.mainClock.advanceTimeByFrame()
+        repeat(3) {
+            compose.mainClock.advanceTimeBy(64)
+            val top = unclippedBounds("settings-sheet").top
+            assertTrue("dismissal never raises the collapsed sheet", top >= previousTop - 1f)
+            previousTop = top
+        }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("settings-sheet").assertDoesNotExist()
+        compose.onNodeWithTag("settings-restore-content").assertDoesNotExist()
+        assertEquals("automatic state dismissal is silent", 1, sounds)
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun drivingPreferenceDefaultsOnSavesOnceAndItsFullNameRemainsReadable() {
+        mount(open = true, section = SettingsSection.Interaction)
+        val tag = "settings-switch-行车时自动关闭设置页"
+        compose.onNodeWithTag(tag).performScrollTo().assertIsOn()
+        compose.onNodeWithTag("$tag-label").assertTextEquals("行车时自动关闭设置页")
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
+                val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                assertTrue(action(layouts))
+                val layout = layouts.single()
+                assertEquals("行车时自动关闭设置页".length, layout.getLineEnd(layout.lineCount - 1))
+                assertFalse(layout.hasVisualOverflow)
+            }
+        compose.onNodeWithTag(tag).performClick().assertIsOff()
+        assertFalse(state.value.autoCloseSettingsOnDrive)
+        assertEquals(listOf(ContentEvent.AutoCloseSettingsOnDriveChanged(false)), events)
+        assertEquals(1, sounds)
+        capture("settings-interaction-auto-close")
     }
 
     @Test fun lyricDefaultsAndCurrentFontRangesComeFromTheActualControls() {

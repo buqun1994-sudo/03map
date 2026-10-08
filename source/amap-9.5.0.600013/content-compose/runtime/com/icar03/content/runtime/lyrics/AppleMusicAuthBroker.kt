@@ -128,11 +128,31 @@ internal class AppleMusicAuthBroker(
         return bytes
     }
 
+    /** Login is an explicit retry, but only the account's current, cookie-cleared attempt owns it. */
+    fun prepareWebAuthorization(attempt: AppleMusicConnection.LoginAttempt, deadline: Long,
+        cancellation: LyricsCancellationSignal): AppleMusicWebAuthorization.Configuration {
+        fun requireAttempt() {
+            appleMusicCheckBudget(deadline, cancellation)
+            if (connection?.account?.isReadyLoginAttempt(attempt) != true) {
+                throw CancellationException("Apple Music login attempt no longer owns authorization")
+            }
+        }
+        requireAttempt()
+        val token = developerToken(deadline, cancellation, retryFailedFetch = true, beforeFetch = ::requireAttempt)
+        requireAttempt()
+        return AppleMusicWebAuthorization.configuration(attempt, token.token)
+    }
+
     fun ensureDeveloper(deadline: Long, cancellation: LyricsCancellationSignal): AppleMusicDeveloperToken =
+        developerToken(deadline, cancellation)
+
+    private fun developerToken(deadline: Long, cancellation: LyricsCancellationSignal,
+        retryFailedFetch: Boolean = false, beforeFetch: () -> Unit = {}): AppleMusicDeveloperToken =
         withDeveloperLock(deadline, cancellation) {
+            beforeFetch()
             usable(developer)?.let { return@withDeveloperLock it }
             usable(tokenStore.load())?.let { developer = it; return@withDeveloperLock it }
-            if (failedAtMs > 0L && clock.nowMs() - failedAtMs < FETCH_COOLDOWN_MS) {
+            if (!retryFailedFetch && failedAtMs > 0L && clock.nowMs() - failedAtMs < FETCH_COOLDOWN_MS) {
                 throw LyricsSourceException(LyricsFailureReason.SERVER, false, "Apple Music web bearer temporarily unavailable")
             }
             try {
@@ -238,16 +258,13 @@ internal class AppleMusicAuthBroker(
     }
 }
 
-/** Existing GET transport, bounded separately for public web bootstrap and authenticated API. */
+/** Separate request policies for public website bootstrap and authenticated API traffic. */
 internal class AppleMusicTransport(
     private val api: LyricsTransport = HttpLyricsTransport(
         connectTimeoutMs = 1_500, readTimeoutMs = 8_000,
         maximumResponseBytes = AppleMusicAuthBroker.MAX_API_BYTES, followRedirects = false
     ),
-    private val web: LyricsTransport = HttpLyricsTransport(
-        connectTimeoutMs = 1_500, readTimeoutMs = 8_000,
-        maximumResponseBytes = AppleMusicAuthBroker.MAX_WEB_BYTES, followRedirects = false
-    )
+    private val web: LyricsTransport = AppleMusicPublicWebTransport()
 ) : LyricsTransport {
     override fun getText(url: String, headers: Map<String, String>, deadlineNanos: Long, cancellation: LyricsCancellationSignal): String =
         getBytes(url, headers, deadlineNanos, cancellation).toString(Charsets.UTF_8)

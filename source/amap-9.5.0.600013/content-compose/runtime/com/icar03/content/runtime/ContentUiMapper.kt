@@ -16,6 +16,7 @@ data class RuntimeCapabilities(
     val source: Boolean = false,
     val writableSeatControls: Set<String> = emptySet(),
     val writableFeatures: Set<String> = emptySet(),
+    val screenClean: Boolean = false,
 )
 
 /** Each domain is projected before publication; a lyrics event never allocates the shell. */
@@ -170,8 +171,9 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         } else LevelState(0f, available = false)
         val projectedSystemLevels = SystemQuickControl.entries.associateWith { id ->
             val snapshot = systemLevels[id] ?: if (id == SystemQuickControl.Volume) volume else ContentPorts.SystemSnapshot(false, 0)
-            LevelState(snapshot.percent / 100f, available = snapshot.available && vehicleIdle)
+            LevelState(snapshot.percent / 100f, available = snapshot.available)
         }
+        val screenCleanAvailable = realVehicle && capabilities.screenClean
         return ContentUiState(
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
@@ -204,6 +206,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             showAmbientArtwork = state.showAmbientArtwork,
             showMediaSourceSwitcher = state.showMediaSourceSwitcher, dockButtonCount = state.dockButtonCount,
             showActionFeedback = state.showActionFeedback,
+            autoCloseSettingsOnDrive = state.autoCloseSettingsOnDrive,
             gestureBarReminder = state.gestureBarReminder,
              uiOpacity = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f,
             temperature = if (realVehicle && state.temperatureC.isFinite()) "${format(state.temperatureC)}°C" else "--",
@@ -215,11 +218,13 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             chargeStatus = chargeStatus(state, realVehicle),
 
              controls = controls,
+             shortcutButtons = ShortcutGrid.productionButtons,
+             systemControls = SystemQuickControl.entries,
             brightness = centerBrightness,
             volume = projectedSystemLevels.getValue(SystemQuickControl.Volume),
              features = featureStates,
              systemLevels = projectedSystemLevels,
-             screenCleanAvailable = realVehicle && state.screenGearKnown && state.screenGearRaw == 11,
+             screenCleanAvailable = screenCleanAvailable,
             media = MediaState(title = state.mediaTitle.takeIf { ready && it.isNotBlank() },
                 artist = state.mediaArtist.takeIf { ready && it.isNotBlank() },
                 isSong = song(state), playing = realMedia && state.mediaPlaying,
@@ -310,7 +315,8 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.immersiveShowTopBar == b.immersiveShowTopBar && a.immersiveTopBarKeepSplit == b.immersiveTopBarKeepSplit && a.immersiveShowDock == b.immersiveShowDock &&
             a.showAmbientArtwork == b.showAmbientArtwork &&
             a.showMediaSourceSwitcher == b.showMediaSourceSwitcher && a.dockButtonCount == b.dockButtonCount &&
-            a.showActionFeedback == b.showActionFeedback && a.gestureBarReminder == b.gestureBarReminder && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
+            a.showActionFeedback == b.showActionFeedback && a.autoCloseSettingsOnDrive == b.autoCloseSettingsOnDrive &&
+            a.gestureBarReminder == b.gestureBarReminder && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
             a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
             a.chargeState == b.chargeState && a.chargeConnectionRaw == b.chargeConnectionRaw &&

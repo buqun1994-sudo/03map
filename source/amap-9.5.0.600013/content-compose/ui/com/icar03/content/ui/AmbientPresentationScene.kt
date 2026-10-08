@@ -33,39 +33,62 @@ internal class AmbientPresentationScene(
     val phase: Float,
 )
 
-/** A small mutable owner for one map-presentation request. */
+/**
+ * Requested geometry never withdraws the drawable frame. A prepared scene is committed atomically
+ * for its artwork/geometry/session key; until then the canonical compact transition remains the
+ * render source. This also covers a draw that precedes the preparation effect's first execution.
+ */
 internal class AmbientPresentationState {
     var scene by mutableStateOf<AmbientPresentationScene?>(null)
         private set
-    var fallbackCompact by mutableStateOf<Bitmap?>(null)
-        private set
     private var requestId = 0L
-    private var preparedKey: AmbientPresentationKey? = null
+    private var requestedKey by mutableStateOf<AmbientPresentationKey?>(null)
+    private var preparedKey by mutableStateOf<AmbientPresentationKey?>(null)
+    private var compactTransition by mutableStateOf<AmbientTransition?>(null)
+    private var committedProgress = 0f
 
-    fun begin(key: AmbientPresentationKey, fallback: Bitmap?): Long {
+    fun begin(key: AmbientPresentationKey, compact: AmbientTransition): Long {
         requestId += 1L
-        preparedKey = null
-        scene = null
-        fallbackCompact = fallback
+        requestedKey = key
+        compactTransition = compact
         return requestId
     }
 
     fun isCurrent(id: Long): Boolean = id == requestId
-
     fun isPrepared(key: AmbientPresentationKey): Boolean = preparedKey == key && scene != null
 
-    fun install(id: Long, key: AmbientPresentationKey, value: AmbientPresentationScene) {
-        if (id != requestId) return
+    fun install(id: Long, key: AmbientPresentationKey, value: AmbientPresentationScene, progress: Float = 0f) {
+        if (id != requestId || requestedKey != key) return
         scene = value
         preparedKey = key
-        fallbackCompact = null
+        committedProgress = progress.coerceIn(0f, 1f)
     }
+
+    fun handoffBlend(progress: Float): Float {
+        if (scene == null || compactTransition == null) return 1f
+        if (committedProgress >= .999f) return 1f
+        return ((progress.coerceIn(0f, 1f) - committedProgress) / .04f).coerceIn(0f, 1f)
+    }
+
+    fun sceneProgress(progress: Float): Float {
+        val current = progress.coerceIn(0f, 1f)
+        if (committedProgress >= .999f) return 0f
+        return ((current - committedProgress) / (1f - committedProgress)).coerceIn(0f, 1f)
+    }
+
+    fun committedScene(key: AmbientPresentationKey): AmbientPresentationScene? =
+        scene.takeIf { preparedKey == key }
+
+    fun compactFrame(key: AmbientPresentationKey, live: AmbientTransition): AmbientTransition =
+        if (requestedKey == key) compactTransition ?: live else live
 
     fun clear() {
         requestId += 1L
         scene = null
-        fallbackCompact = null
+        compactTransition = null
+        requestedKey = null
         preparedKey = null
+        committedProgress = 0f
     }
 }
 
@@ -108,12 +131,13 @@ internal class AmbientBridgeBaker {
         dark: Boolean,
         fullSize: IntSize,
         compactSize: IntSize,
+        background: Int = if (dark) Color.BLACK else Color.WHITE,
     ): Bitmap? {
         val output = ambientFrameSize(fullSize)
         val frame = Bitmap.createBitmap(output.width, output.height, Bitmap.Config.ARGB_8888)
         try {
             val canvas = AndroidCanvas(frame)
-            val theme = if (dark) Color.BLACK else Color.WHITE
+            val theme = background
             if (compact == null || compact.isRecycled) {
                 canvas.drawColor(theme)
                 return frame
@@ -197,12 +221,83 @@ internal class AmbientBridgeBaker {
  */
 internal class AmbientPresentationPainter {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val compactPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val source = Rect()
     private val bounds = RectF()
-    private val compactBounds = RectF()
     private val extensionBounds = RectF()
     private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var edgeSource: Bitmap? = null
+    private var secondEdgeSource: Bitmap? = null
+    private var cachedEdge = Color.BLACK
+    private var secondCachedEdge = Color.BLACK
+    private var gradientWidth = -1f
+    private var gradientCompactWidth = -1f
+    private var gradientColour = 0
+    private var gradientBackground = 0
+
+    /** One rendering contract for live, requested and committed presentation frames. */
+    fun drawFrame(
+        canvas: AndroidCanvas, width: Float, height: Float,
+        owner: AmbientPresentationState, key: AmbientPresentationKey,
+        live: AmbientTransition, liveFraction: Float, compactPainter: AmbientPainter,
+        progress: Float, background: Int,
+    ): Int {
+        val committed = owner.committedScene(key)
+        if (committed != null) {
+            val handoff = owner.handoffBlend(progress)
+            if (handoff >= 1f) {
+                val drawn = draw(canvas, width, height, committed, owner.sceneProgress(progress))
+                if (drawn > 0) return drawn
+            } else {
+                val fallbackDrawn = drawCompactFrame(canvas, width, height, owner, key, live, liveFraction,
+                    compactPainter, background)
+                val sceneDrawn = if (handoff > 0f) draw(canvas, width, height, committed,
+                    owner.sceneProgress(progress), handoff) else 0
+                if (fallbackDrawn > 0 || sceneDrawn > 0) return fallbackDrawn + sceneDrawn
+            }
+        }
+        return drawCompactFrame(canvas, width, height, owner, key, live, liveFraction,
+            compactPainter, background)
+    }
+
+    private fun drawCompactFrame(
+        canvas: AndroidCanvas, width: Float, height: Float,
+        owner: AmbientPresentationState, key: AmbientPresentationKey,
+        live: AmbientTransition, liveFraction: Float, compactPainter: AmbientPainter,
+        background: Int,
+    ): Int {
+        val compact = owner.compactFrame(key, live)
+        val fraction = if (compact === live) liveFraction else 1f
+        val compactWidth = key.compactSize.width.toFloat().coerceAtLeast(1f)
+        val drawn = compactPainter.drawTransition(canvas, compactWidth, height, compact, fraction)
+        if (drawn == 0) return 0
+        val previous = compact.previous?.takeUnless { it.isRecycled }
+        val target = compact.target?.takeUnless { it.isRecycled }
+        val colour = when {
+            previous != null && target != null -> blend(edgeColour(previous), edgeColour(target), fraction)
+            target != null -> edgeColour(target)
+            previous != null -> edgeColour(previous)
+            else -> background
+        }
+        val visibleColour = blend(background, colour, compact.opacity(fraction))
+        drawExtension(canvas, width, height, compactWidth, visibleColour, background)
+        return drawn
+    }
+
+    private fun drawExtension(canvas: AndroidCanvas, width: Float, height: Float,
+        compactWidth: Float, colour: Int, background: Int) {
+        if (width <= compactWidth) return
+        if (gradientWidth != width || gradientCompactWidth != compactWidth ||
+            gradientColour != colour || gradientBackground != background) {
+            edgePaint.shader = LinearGradient(compactWidth, 0f, width, 0f,
+                colour, blend(colour, background, .72f), Shader.TileMode.CLAMP)
+            gradientWidth = width
+            gradientCompactWidth = compactWidth
+            gradientColour = colour
+            gradientBackground = background
+        }
+        extensionBounds.set(compactWidth, 0f, width, height)
+        canvas.drawRect(extensionBounds, edgePaint)
+    }
 
     fun draw(
         canvas: AndroidCanvas,
@@ -210,6 +305,7 @@ internal class AmbientPresentationPainter {
         height: Float,
         scene: AmbientPresentationScene,
         progress: Float,
+        sceneAlpha: Float = 1f,
     ): Int {
         val fraction = progress.coerceIn(0f, 1f)
         val previous = scene.bridge?.takeUnless { it.isRecycled }
@@ -217,47 +313,10 @@ internal class AmbientPresentationPainter {
         if (previous != null && target != null) {
             val incoming = fraction
             val outgoing = if (incoming >= 1f) 0f else (1f - fraction) / (1f - incoming).coerceAtLeast(.0001f)
-            return drawCanonical(canvas, width, height, scene.fullSize, previous, outgoing) +
-                drawCanonical(canvas, width, height, scene.fullSize, target, incoming)
+            return drawCanonical(canvas, width, height, scene.fullSize, previous, outgoing * sceneAlpha) +
+                drawCanonical(canvas, width, height, scene.fullSize, target, incoming * sceneAlpha)
         }
-        return (target ?: previous)?.let { drawCanonical(canvas, width, height, scene.fullSize, it, 1f) } ?: 0
-    }
-
-    /** Fallback while the bridge worker is running: compact pixels stay compact. */
-    fun drawCompactFallback(
-        canvas: AndroidCanvas,
-        width: Float,
-        height: Float,
-        compact: Bitmap?,
-        fullSize: IntSize,
-        compactSize: IntSize,
-        dark: Boolean,
-    ): Int {
-        val bitmap = compact?.takeUnless { it.isRecycled }
-        val compactWidth = compactSize.width.toFloat().coerceAtLeast(1f)
-        val visibleCompactWidth = min(width, compactWidth)
-        if (bitmap != null) {
-            val sourceRight = (bitmap.width * (visibleCompactWidth / compactWidth)).roundToInt().coerceIn(1, bitmap.width)
-            source.set(0, 0, sourceRight, bitmap.height)
-            compactBounds.set(0f, 0f, visibleCompactWidth, height)
-            canvas.drawBitmap(bitmap, source, compactBounds, compactPaint)
-        }
-        if (bitmap == null) {
-            canvas.drawColor(if (dark) Color.BLACK else Color.WHITE)
-            return 0
-        }
-        val colour = edgeColour(bitmap)
-        val theme = if (dark) Color.BLACK else Color.WHITE
-        val end = blend(colour, theme, .72f)
-        if (width > visibleCompactWidth) {
-            extensionBounds.set(visibleCompactWidth, 0f, width, height)
-            edgePaint.shader = LinearGradient(
-                visibleCompactWidth, 0f, width, 0f, colour, end, Shader.TileMode.CLAMP,
-            )
-            canvas.drawRect(extensionBounds, edgePaint)
-            edgePaint.shader = null
-        }
-        return 1
+        return (target ?: previous)?.let { drawCanonical(canvas, width, height, scene.fullSize, it, sceneAlpha) } ?: 0
     }
 
     private fun drawCanonical(
@@ -283,6 +342,8 @@ internal class AmbientPresentationPainter {
     }
 
     private fun edgeColour(bitmap: Bitmap): Int {
+        if (bitmap === edgeSource) return cachedEdge
+        if (bitmap === secondEdgeSource) return secondCachedEdge
         if (bitmap.width <= 0 || bitmap.height <= 0) return Color.BLACK
         val x = bitmap.width - 1
         var red = 0L
@@ -301,12 +362,17 @@ internal class AmbientPresentationPainter {
             count++
             y += step
         }
-        return Color.argb(
+        val colour = Color.argb(
             (alpha / count).toInt().coerceIn(0, 255),
             (red / count).toInt().coerceIn(0, 255),
             (green / count).toInt().coerceIn(0, 255),
             (blue / count).toInt().coerceIn(0, 255),
         )
+        secondEdgeSource = edgeSource
+        secondCachedEdge = cachedEdge
+        edgeSource = bitmap
+        cachedEdge = colour
+        return colour
     }
 
     private fun blend(from: Int, to: Int, amount: Float): Int {

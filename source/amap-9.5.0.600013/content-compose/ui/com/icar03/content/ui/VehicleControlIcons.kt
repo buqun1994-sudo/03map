@@ -13,6 +13,8 @@ internal data class VehicleControlIconRecipe(
     val animationStrokePathColors: Map<List<String>, Color> = emptyMap(),
     val animationPathOpacities: Map<List<String>, Int> = emptyMap(),
     val playbackSpeed: Float = 1f,
+    /** The same palette applies to the static Vector and every animated frame. */
+    val tint: Color = Color.Unspecified,
 )
 
 internal val OemHeatingAutoBadgeColor = Color(0xFFFF6526)
@@ -26,7 +28,7 @@ internal val OemHeatingAutoBadgeColor = Color(0xFFFF6526)
  */
 internal fun vehicleControlIconRecipe(
     control: ControlId, displayed: Int, dark: Boolean,
-    base: Color = if (dark) Color.White else Color.Black,
+    base: Color = contentIconNeutral(dark),
 ): VehicleControlIconRecipe {
     require(control != ControlId.Lock)
     if (control == ControlId.Wiper) return frontWiperIconRecipe(displayed, dark, base)
@@ -125,7 +127,7 @@ internal fun vehicleFeatureIconRecipe(
     feature: VehicleFeature,
     displayed: Int,
     dark: Boolean,
-    base: Color = if (dark) Color.White else Color.Black,
+    base: Color = contentIconNeutral(dark),
 ): VehicleControlIconRecipe {
     val active = displayed == 1
     val resource = when (feature) {
@@ -151,14 +153,14 @@ internal fun vehicleFeatureIconRecipe(
         else -> ""
     }
     val color = if (active) ContentFunctionalBlue else base
-    return VehicleControlIconRecipe(resource, asset ?: "", 0..29,
-        pathColors = emptyMap(),
-        animationColors = if (asset.isEmpty()) emptyMap() else mapOf(listOf("**") to color),
-        playbackSpeed = if (feature == VehicleFeature.WindowVent) 1f else 1f)
+    // These registered feature glyphs declare no visible OEM functional hue.
+    // A single tint preserves source geometry/alpha in both Vector and Lottie.
+    return VehicleControlIconRecipe(resource, asset, 0..29,
+        pathColors = emptyMap(), animationColors = emptyMap(), tint = color)
 }
 
 internal fun frontWiperIconRecipe(
-    displayed: Int, dark: Boolean, base: Color = if (dark) Color.White else Color.Black,
+    displayed: Int, dark: Boolean, base: Color = contentIconNeutral(dark),
 ): VehicleControlIconRecipe {
     val level = displayed.coerceIn(0, 5)
     val color = if (level > 0) ContentFunctionalBlue else base
@@ -187,7 +189,7 @@ internal fun frontWiperIconRecipe(
 }
 
 internal fun rearWiperIconRecipe(selected: Boolean, dark: Boolean,
-    base: Color = if (dark) Color.White else Color.Black): VehicleControlIconRecipe {
+    base: Color = contentIconNeutral(dark)): VehicleControlIconRecipe {
     val color = if (selected) ContentFunctionalBlue else base
     return VehicleControlIconRecipe(
         if (dark) R.drawable.content_oem_ico_rear_wiper_night else R.drawable.content_oem_ico_rear_wiper_day,
@@ -197,7 +199,7 @@ internal fun rearWiperIconRecipe(selected: Boolean, dark: Boolean,
 }
 
 internal fun rearWashIconRecipe(selected: Boolean, dark: Boolean,
-    base: Color = if (dark) Color.White else Color.Black): VehicleControlIconRecipe {
+    base: Color = contentIconNeutral(dark)): VehicleControlIconRecipe {
     val color = if (selected) ContentFunctionalBlue else base
     return VehicleControlIconRecipe(R.drawable.content_oem_ico_wash_rear,
         "ico_wash_rear_derived.json", 0..59, (0..9).associateWith { color },

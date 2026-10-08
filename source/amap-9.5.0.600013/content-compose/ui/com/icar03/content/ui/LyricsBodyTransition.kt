@@ -32,7 +32,7 @@ internal fun LyricsBodyTransition(
     fontScale: Float = 1.0f, lineSpacing: Int = 1, speakerLayout: Boolean = true,
     highlightCurrent: Boolean = true, presentationScale: Float = 1f,
     externalGestureActive: Boolean = false, interactionEnabled: Boolean = true,
-    autoFollowEnabled: Boolean = interactionEnabled,
+    autoFollowEnabled: Boolean = true,
     presentationOpacity: () -> Float = { 1f }, onGeometryReady: (Boolean) -> Unit = {},
     renderStyle: LyricRenderStyle? = null,
     emptyContent: @Composable () -> Unit = {},

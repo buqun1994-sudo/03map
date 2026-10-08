@@ -91,6 +91,96 @@ class AppleMusicWebAuthorizationTest {
         assertFalse(AppleMusicWebAuthorization.isCallbackForAttempt(invalidAttempt, "https://music.apple.com/"))
     }
 
+    @Test fun explicitLoginRetryBypassesBackgroundFailureCooldownAndKeepsAccountDisconnected() {
+        val rig = AppleMusicFixtureRig(null)
+        val transport = AppleMusicFixtureTransport {
+            throw LyricsHttpStatusException(503, LyricsFailureReason.SERVER, true)
+        }
+        val broker = AppleMusicAuthBroker(rig.connection, transport, rig.clock)
+        val first = begin(rig)
+        assertThrows(LyricsHttpStatusException::class.java) {
+            broker.prepareWebAuthorization(first, deadline(), LyricsCancellationSignal())
+        }
+        assertEquals(1, transport.calls.size)
+        assertThrows(LyricsSourceException::class.java) {
+            broker.ensureDeveloper(deadline(), LyricsCancellationSignal())
+        }
+        assertEquals(1, transport.calls.size)
+        rig.connection.cancelLogin(first)
+        transport.response = AppleMusicFixture::bootstrapResponse
+        val retry = begin(rig)
+        val configuration = broker.prepareWebAuthorization(retry, deadline(), LyricsCancellationSignal())
+        assertEquals(configuration.referrerUrl, Uri.parse(configuration.startUrl).getQueryParameter("referrer"))
+        assertTrue(configuration.referrerUrl.endsWith(retry.id))
+        assertEquals(4, transport.calls.size)
+        assertEquals(AppleMusicFixture.NOW, rig.clock.now)
+        assertEquals(AppleMusicConnection.Status.DISCONNECTED, rig.connection.refresh().status)
+        assertNull(rig.store.value)
+        assertTrue(rig.connection.refresh().isConnecting)
+        assertEquals(AppleMusicFixture.developer, broker.ensureDeveloper(deadline(), LyricsCancellationSignal()).token)
+        assertEquals(4, transport.calls.size)
+        transport.calls.forEach { assertFalse(it.headers.containsKey("Media-User-Token")) }
+    }
+
+    @Test fun pendingCancelledForeignAndForgedAttemptsCannotBootstrapOrUseCachedDeveloper() {
+        val rig = AppleMusicFixtureRig(null)
+        rig.cookies.deferred = true
+        val transport = AppleMusicFixtureTransport(AppleMusicFixture::bootstrapResponse)
+        val broker = AppleMusicAuthBroker(rig.connection, transport, rig.clock)
+        val pending = checkNotNull(rig.connection.prepareLoginAttempt {})
+        assertThrows(java.util.concurrent.CancellationException::class.java) {
+            broker.prepareWebAuthorization(pending, deadline(), LyricsCancellationSignal())
+        }
+        assertTrue(transport.calls.isEmpty())
+        rig.cookies.pending.single()(true)
+        assertNotNull(broker.prepareWebAuthorization(pending, deadline(), LyricsCancellationSignal()))
+        assertEquals(3, transport.calls.size)
+        val foreign = begin()
+        val forged = AppleMusicConnection.LoginAttempt(pending.id, "")
+        rig.connection.cancelLogin(pending)
+        for (attempt in listOf(pending, foreign, forged)) {
+            assertThrows(java.util.concurrent.CancellationException::class.java) {
+                broker.prepareWebAuthorization(attempt, deadline(), LyricsCancellationSignal())
+            }
+        }
+        assertEquals(3, transport.calls.size)
+        assertNull(rig.store.value)
+    }
+
+    @Test fun cancellationOrAccountReplacementDuringBootstrapCannotReturnAnOldAuthorization() {
+        for (cancelSignal in listOf(false, true)) {
+            val rig = AppleMusicFixtureRig(null)
+            val attempt = begin(rig)
+            val cancellation = LyricsCancellationSignal()
+            val transport = AppleMusicFixtureTransport { call ->
+                if (call.url == AppleMusicAuthBroker.PROBE_URL) {
+                    if (cancelSignal) cancellation.cancel() else rig.connection.cancelLogin(attempt)
+                }
+                AppleMusicFixture.bootstrapResponse(call)
+            }
+            val broker = AppleMusicAuthBroker(rig.connection, transport, rig.clock)
+            assertThrows(java.util.concurrent.CancellationException::class.java) {
+                broker.prepareWebAuthorization(attempt, deadline(), cancellation)
+            }
+            assertNull(rig.store.value)
+            transport.response = AppleMusicFixture::bootstrapResponse
+            if (cancelSignal) rig.connection.cancelLogin(attempt)
+            val replacement = begin(rig)
+            val configuration = broker.prepareWebAuthorization(replacement, deadline(), LyricsCancellationSignal())
+            assertTrue(configuration.referrerUrl.endsWith(replacement.id))
+            assertFalse(configuration.referrerUrl.endsWith(attempt.id))
+            assertEquals(AppleMusicConnection.Status.DISCONNECTED, rig.connection.refresh().status)
+        }
+    }
+
+    private fun deadline(): Long = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+
+    private fun begin(rig: AppleMusicFixtureRig): AppleMusicConnection.LoginAttempt {
+        var attempt: AppleMusicConnection.LoginAttempt? = null
+        assertTrue(rig.connection.prepareLogin { attempt = it })
+        return checkNotNull(attempt)
+    }
+
     private fun begin(): AppleMusicConnection.LoginAttempt {
         val rig = AppleMusicFixtureRig(null)
         var attempt: AppleMusicConnection.LoginAttempt? = null

@@ -33,7 +33,6 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.semantics
@@ -62,38 +61,35 @@ internal fun SettingsSheet(
             val headerHeight = with(density) { design.pageTitleStyle.lineHeight.toDp() } + design.pagePadding * 2
             val headerHeightPx = with(density) { headerHeight.toPx() }
             val peekHeightPx = with(density) { (design.minimumTouchHeight + 16.dp).toPx() }
+            // One interruptible pose for open, collapsed and dismissed endpoints.
             val verticalOffset = remember { Animatable(1f) }
-            val collapseOffset = remember { Animatable(0f) }
             var wasOpen by remember { mutableStateOf(false) }
-            var collapsed by remember { mutableStateOf(false) }
             val open = state.settingsOpen
-            val view = LocalView.current
-            val clickSound = LocalContentClickSound.current
+            val collapsed = open && state.settingsCollapsed && state.page == PanelPage.Lyrics
+            val controlsEnabled = open && !collapsed && !state.lyricsProviderSettings.appleLoginOpen
             val settingsEvent: (ContentEvent) -> Unit = {
                 if (currentState.settingsOpen && (!currentState.lyricsProviderSettings.appleLoginOpen ||
                         it == AppleMusicLoginDismissed || it == ContentEvent.SettingsBack)) currentEvent(it)
             }
-            LaunchedEffect(open, heightPx) {
+            LaunchedEffect(open, collapsed, heightPx, headerHeightPx, peekHeightPx) {
                 if (heightPx <= 0f) return@LaunchedEffect
                 if (open) {
-                    if (!wasOpen) {
+                    val entering = !wasOpen
+                    if (entering) {
                         verticalOffset.snapTo(heightPx)
                         wasOpen = true
-                        collapsed = false
                     }
-                    verticalOffset.animateTo(0f, tween(360, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)))
+                    val target = if (collapsed) (heightPx - headerHeightPx - peekHeightPx).coerceAtLeast(0f) else 0f
+                    verticalOffset.animateTo(target, tween(if (entering) 360 else 340,
+                        easing = CubicBezierEasing(.16f, .84f, .24f, 1f)))
                 } else if (wasOpen) {
+                    // Dismiss directly from the current pose; never restore a collapsed sheet on its way out.
                     verticalOffset.animateTo(heightPx, tween(300, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)))
                     wasOpen = false
-                    collapsed = false
                 }
             }
-            LaunchedEffect(open, collapsed, heightPx, headerHeightPx) {
-                val target = if (open && collapsed) (heightPx - headerHeightPx - peekHeightPx).coerceAtLeast(0f) else 0f
-                collapseOffset.animateTo(target, tween(340, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)))
-            }
-            val fullyCovering = remember(open, verticalOffset, collapseOffset) {
-                derivedStateOf { open && verticalOffset.value == 0f && collapseOffset.value == 0f }
+            val fullyCovering = remember(open, verticalOffset) {
+                derivedStateOf { open && verticalOffset.value == 0f }
             }.value
             SideEffect {
                 onVisibilityChanged(open || wasOpen)
@@ -103,7 +99,7 @@ internal fun SettingsSheet(
             Box(
                 Modifier.fillMaxSize()
                     .graphicsLayer {
-                        translationY = verticalOffset.value + collapseOffset.value
+                        translationY = verticalOffset.value
                     }
                     .settingsSurfaceShadow(design.page, design.dark, design.pageCornerRadius)
                     .clip(design.pageShape)
@@ -129,10 +125,10 @@ internal fun SettingsSheet(
                         SettingsLineText(title,
                             Modifier.align(Alignment.Center).padding(horizontal = 72.dp).testTag("settings-title"),
                             design.pageTitleStyle, design.text, textAlign = TextAlign.Center)
-                        SettingsIconButton(
-                            onClick = { clickSound(view); collapsed = !collapsed },
+                        if (state.page == PanelPage.Lyrics) SettingsIconButton(
+                            onClick = { settingsEvent(ContentEvent.SettingsCollapseTapped) },
                             contentDescription = if (collapsed) "恢复设置页" else "下移收起设置页",
-                            enabled = open,
+                            enabled = open && !state.lyricsProviderSettings.appleLoginOpen,
                             modifier = Modifier.align(Alignment.CenterEnd).padding(end = design.pagePadding),
                             tag = "settings-collapse",
                         ) { iconModifier ->
@@ -165,9 +161,9 @@ internal fun SettingsSheet(
                         label = "settings-page-transition",
                     ) { section ->
                         when (section) {
-                            SettingsSection.Home -> SettingsHome(settingsEvent, open, Modifier.fillMaxSize())
-                            SettingsSection.Lyrics -> LyricsSettings(state, settingsEvent, open, Modifier.fillMaxSize())
-                            else -> SettingsDetail(state, settingsEvent, open, Modifier.fillMaxSize())
+                            SettingsSection.Home -> SettingsHome(settingsEvent, controlsEnabled, Modifier.fillMaxSize())
+                            SettingsSection.Lyrics -> LyricsSettings(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
+                            else -> SettingsDetail(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
                         }
                     }
                 }
@@ -390,7 +386,13 @@ private fun SettingsDetail(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                             enabled = enabled, tagPrefix = "settings-opacity")
                     }
                 }
-                SettingsSection("交互") { flag("操作结果提示", state.showActionFeedback) { onEvent(ContentEvent.ShowActionFeedbackChanged(it)) } }
+                SettingsSection("交互") {
+                    flag("操作结果提示", state.showActionFeedback) { onEvent(ContentEvent.ShowActionFeedbackChanged(it)) }
+                    SettingsDivider()
+                    flag("行车时自动关闭设置页", state.autoCloseSettingsOnDrive) {
+                        onEvent(ContentEvent.AutoCloseSettingsOnDriveChanged(it))
+                    }
+                }
             }
             SettingsSection.Home, SettingsSection.Lyrics -> Unit
         }

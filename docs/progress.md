@@ -1,4 +1,12 @@
-## 设置阴影、手势条与Apple窗口阶段归档（2026-10-08，本机检查与签名核验通过；用户验收不完全通过）
+## 七项反馈修复（2026-10-08，源码、定向检查、签名、包级核验与保留数据安装通过；车上手测待用户完成）
+
+正式源码和测试已冻结，背景首 draw／异步交接、Apple 默认官方登录与错误、滑条 backing、固定生产注册、独立动作令牌及功能色均已回写。既有双主题页面与门禁 81 项、运行时 63 项、双主题图标原生绘制 4 项定向证据保留；更新后的暂停／取消尾帧夹具和清洁接入定向检查均通过。正式 Mapper 固定完整快捷和五系统清单，纯 UI 核心预览使用独立固定夹具。
+
+清洁屏幕已按[研究契约 §4.3.2](<research/车机控制能力扩展研究-20261008.md#L142>)接入正式 `AndroidSystemPort`：检查 SmartScene 导出组件后，以 display 0、windowing mode 5 和 1920×1080 边界显式启动原厂 `ScreenCleanActivity`，异常返回 false，不创建宿主遮罩，也不写 `screen_clean`。新增的两个 Port 测试和两个车辆状态门禁测试共 4 项通过；报告见[validation.t7D9zf](<../apk-work/validation.t7D9zf/report.json>)。前一阶段五模块 all+lint 的有效证据见[validation.O3YXUJ](<../apk-work/validation.O3YXUJ/report.json>)，清洁接入后按用户要求未重跑全量。
+
+最终正式包 [signed.apk](<../apk-work/9.5.0.600013/source-build.xIoGXD/signed.apk>) SHA-256=`6e24696d1cf3d2cdc0b4b24631e881e1fc724b08bd005413458ec8845b7a4ba7`，源码指纹=`6a2482e88c7f1b756a0e2ea565a4a7f2c721beef9434b38c1dae268278cad747`；包级核验见[host report](<../apk-work/9.5.0.600013/host-package-test.tHR9K9/report.json>)。包身份、同证书签名、DEX/native 闭包、ZIP 对齐和 64 个 Deflate native 库均通过。该包已在重新发现的 `192.168.0.203:5555`（S56_HQX／MENGBO／Android 9 SDK28）执行保留数据 `adb install -r` 并返回 `Success`；设备端 APK SHA 与最终包完全一致，dataDir 和首次安装时间保持不变。未启动应用或自动操作车机，Apple、清洁屏幕及七项视觉由用户手测。
+
+## 此前设置阴影、手势条与Apple窗口阶段归档（2026-10-08，本机检查与签名核验通过；用户验收不完全通过）
 
 最新反馈为“验收不完全通过”，要求迅速提交。源码与候选包已归档主分支 `ad2b709`；此次只登记反馈，保留现有实现和本机证据，停止继续施工。具体未通过项尚未提供，后续按实际反馈定位，不将本机通过等同于用户验收完成。
 

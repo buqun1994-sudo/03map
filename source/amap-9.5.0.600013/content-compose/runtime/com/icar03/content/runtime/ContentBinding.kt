@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import com.autonavi.amapauto.content.ContentPorts
+import com.autonavi.amapauto.content.ContentRegistry
 import com.autonavi.amapauto.content.ContentState
 import com.autonavi.amapauto.content.ContentStore
 import com.icar03.content.ui.*
@@ -53,10 +54,12 @@ class ContentBinding(
     private var listener: ContentStore.Listener? = null
     private var brightness = ContentPorts.SystemSnapshot(false, 0)
     private var volume = ContentPorts.SystemSnapshot(false, 0)
+    private var screenCleaningAvailable = false
     private var systemLevels: Map<SystemQuickControl, ContentPorts.SystemSnapshot> =
         SystemQuickControl.entries.associateWith { ContentPorts.SystemSnapshot(false, 0) }
     private var sourcesOpen = false
     private var settingsOpen = false
+    private var settingsCollapsed = false
     private var settingsSection = SettingsSection.Home
     private var lyricsSettings: LyricsSettingsBinding? = null
     private var placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap()
@@ -65,7 +68,6 @@ class ContentBinding(
     private var themeObserverRegistered = false
     private var feedback: String? = null
     private var feedbackRevision = 0L
-    private var screenCleaning = false
     private val feedbackTimeout = Runnable {
         if (feedback != null) {
             feedback = null
@@ -198,6 +200,7 @@ class ContentBinding(
         systemReadInFlight = false
         systemReadDirty = false
         systemTargets.fill(null)
+        screenCleaningAvailable = false
         listener?.let(store::removeListener)
         listener = null
         detachObservers()
@@ -207,9 +210,9 @@ class ContentBinding(
         synchronized(handler) { queuedProjectionEpoch = null }
         sourcesOpen = false
         settingsOpen = false
+        settingsCollapsed = false
         settingsSection = SettingsSection.Home
         replaceFeedback(null)
-        screenCleaning = false
         mutableArtwork.value = null
         mutableAmbient.value = null
         retainedAmbient = null
@@ -219,7 +222,7 @@ class ContentBinding(
     }
 
     private fun inactive(state: ContentUiState) = state.copy(
-        sourcesOpen = false, settingsOpen = false, settingsSection = SettingsSection.Home,
+        sourcesOpen = false, settingsOpen = false, settingsCollapsed = false, settingsSection = SettingsSection.Home,
         lyricsSystemAccentColor = IcarThemeAccent.DEFAULT_ACCENT, message = null,
         lyricsProviderSettings = (lyricsSettings?.state ?: state.lyricsProviderSettings).copy(
             available = false, appleLoginOpen = false, applePreparing = false),
@@ -228,8 +231,8 @@ class ContentBinding(
         media = state.media.copy(playbackAvailable = false, nextAvailable = false, sourceAvailable = false),
         features = state.features.mapValues { it.value.copy(available = false, target = null) },
         systemLevels = state.systemLevels.mapValues { it.value.copy(available = false, target = null) },
-        screenCleaning = false,
-    )
+        screenCleanAvailable = false,
+            )
 
     override fun close() {
         checkMain()
@@ -256,20 +259,45 @@ class ContentBinding(
         return true
     }
 
+    /** All dismissal causes share the same owner, including the credential-window lifecycle. */
+    private fun closeSettings() {
+        settingsOpen = false
+        settingsCollapsed = false
+        replaceFeedback(null)
+        lyricsSettings?.dispatch(AppleMusicLoginDismissed)
+    }
+
     internal fun canDispatch(event: ContentEvent): Boolean {
         if (!running || closed) return false
         if (!settingsOpen && event.isSettingsInteraction() && event !in setOf(
                 ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings, ContentEvent.SettingsBack,
                 ContentEvent.SettingsDismissed, ContentEvent.DismissSheet)) return false
         if (settingsOpen && !event.isSettingsInteraction()) return false
+        if (event == ContentEvent.SettingsCollapseTapped && (!settingsOpen || state.value.page != PanelPage.Lyrics)) return false
+        if (event == ContentEvent.SettingsRestored && (!settingsOpen || !settingsCollapsed)) return false
+        if (settingsCollapsed && event !in setOf(ContentEvent.SettingsCollapseTapped, ContentEvent.SettingsRestored,
+                ContentEvent.SettingsTapped, ContentEvent.SettingsBack, ContentEvent.SettingsDismissed,
+                ContentEvent.OpenLyricsSettings, ContentEvent.DismissSheet)) return false
         if (lyricsSettings?.state?.appleLoginOpen == true && event !in setOf(
                 ContentEvent.SettingsBack, AppleMusicLoginDismissed, ContentEvent.SettingsDismissed,
                 ContentEvent.SettingsTapped, ContentEvent.DismissSheet)) return false
-        return true
+        return when (event) {
+            is ContentEvent.ControlTapped -> shell(store.snapshot()).controls[event.id]?.available == true
+            is ContentEvent.ControlPowerTapped -> shell(store.snapshot()).controls[event.id]?.available == true
+            is ContentEvent.ControlAutomaticTapped -> shell(store.snapshot()).controls[event.id]?.available == true
+            is ContentEvent.ControlLevelChanged -> shell(store.snapshot()).controls[event.id]?.available == true
+            is ContentEvent.FeatureTapped -> event.id.feature?.let { shell(store.snapshot()).features[it]?.available } == true
+            ContentEvent.RearWashTapped -> shell(store.snapshot()).controls[ControlId.RearWash]?.available == true
+            ContentEvent.ScreenCleanTapped -> screenCleaningAvailable && state.value.screenCleanAvailable
+            else -> true
+        }
     }
 
     fun dispatch(event: ContentEvent) {
         checkMain()
+        if (!canDispatch(event)) return
+        // Reduce fresh cached facts before accepting an intent; a queued departure cannot write a closing sheet.
+        project(store.snapshot())
         if (!canDispatch(event)) return
         if (lyricsSettings?.state?.appleLoginOpen == true && event == ContentEvent.SettingsBack) {
             lyricsSettings?.dispatch(AppleMusicLoginDismissed)
@@ -282,7 +310,6 @@ class ContentBinding(
             event is ContentEvent.SourceSelected || event is ContentEvent.BrightnessChanged || event is ContentEvent.VolumeChanged ||
              event is ContentEvent.SystemVolumeChanged || event is ContentEvent.FeatureTapped || event == ContentEvent.ScreenCleanTapped) replaceFeedback(null)
         // A fresh capability snapshot is a cached fact, never a synchronous service probe.
-        project(store.snapshot())
         when (event) {
             is ContentEvent.ControlTapped -> {
                 if (state.value.controls[event.id]?.available != true) return
@@ -307,10 +334,14 @@ class ContentBinding(
                     else store.requestFeature(feature.id, if (current.displayed == 0) 1 else 0)
                 }
             }
+            // This is an OEM system command. A failed native launch invalidates the cached fact;
+            // the content layer never creates a local cleaning overlay.
             ContentEvent.ScreenCleanTapped -> {
-                if (state.value.screenCleaning || state.value.screenCleanAvailable) {
-                    screenCleaning = !screenCleaning
+                if (state.value.screenCleanAvailable && !store.systemPort().startScreenCleaning()) {
+                    screenCleaningAvailable = false
+                    replaceFeedback("系统清洁屏幕不可用，请稍后重试")
                     publishShell()
+                    requestSystemRead()
                 }
             }
             is ContentEvent.BrightnessChanged -> store.setCenterBrightness((1 + event.value.coerceIn(0f, 1f) * 9f).roundToInt())
@@ -328,16 +359,15 @@ class ContentBinding(
             is ContentEvent.PageSelected -> store.setPageIndex(if (event.page == PanelPage.Lyrics) 1 else 0)
             ContentEvent.OpenSources -> { if (state.value.media.sourceAvailable) sourcesOpen = true; publishShell() }
             ContentEvent.DismissSheet -> {
-                lyricsSettings?.dispatch(AppleMusicLoginDismissed)
                 sourcesOpen = false
-                settingsOpen = false
-                replaceFeedback(null)
+                closeSettings()
                 publishShell()
             }
             ContentEvent.SettingsTapped -> {
                 lyricsSettings?.dispatch(AppleMusicLoginDismissed)
                 sourcesOpen = false
-                settingsOpen = !settingsOpen
+                if (settingsOpen) closeSettings() else settingsOpen = true
+                settingsCollapsed = false
                 settingsSection = SettingsSection.Home
                 replaceFeedback(null)
                 publishShell()
@@ -345,16 +375,26 @@ class ContentBinding(
             ContentEvent.SettingsBack -> {
                 if (settingsOpen) {
                     if (settingsSection == SettingsSection.Home) {
-                        settingsOpen = false
+                        closeSettings()
                     } else {
                         settingsSection = SettingsSection.Home
+                        settingsCollapsed = false
                     }
                     replaceFeedback(null)
                     publishShell()
                 }
             }
+            ContentEvent.SettingsCollapseTapped -> {
+                settingsCollapsed = !settingsCollapsed
+                publishShell()
+            }
+            ContentEvent.SettingsRestored -> {
+                settingsCollapsed = false
+                publishShell()
+            }
             ContentEvent.OpenLyricsSettings -> {
                 sourcesOpen = false
+                settingsCollapsed = false
                 settingsSection = SettingsSection.Lyrics
                 settingsOpen = true
                 replaceFeedback(null)
@@ -369,9 +409,7 @@ class ContentBinding(
                 }
             }
             ContentEvent.SettingsDismissed -> {
-                lyricsSettings?.dispatch(AppleMusicLoginDismissed)
-                settingsOpen = false
-                replaceFeedback(null)
+                closeSettings()
                 publishShell()
             }
             is ContentEvent.ShowWeekdayChanged -> store.setShowWeekday(event.value)
@@ -412,6 +450,7 @@ class ContentBinding(
             is ContentEvent.ShowMediaSourceSwitcherChanged -> store.setShowMediaSourceSwitcher(event.value)
             is ContentEvent.DockButtonCountChanged -> store.setDockButtonCount(event.value)
             is ContentEvent.ShowActionFeedbackChanged -> store.setShowActionFeedback(event.value)
+            is ContentEvent.AutoCloseSettingsOnDriveChanged -> store.setAutoCloseSettingsOnDrive(event.value)
             is ContentEvent.GestureBarReminderChanged -> store.setGestureBarReminder(event.value)
             is ContentEvent.UiOpacityChanged -> store.setUiOpacity(event.value)
             else -> Unit
@@ -435,10 +474,11 @@ class ContentBinding(
             val call = read(2)
             val navigation = read(3)
             val voice = read(4)
+            val screenClean = try { store.systemPort().screenCleaningAvailable() } catch (_: RuntimeException) { false }
             handler.post {
                 if (!running || generation != epoch) return@post
                 systemReadInFlight = false
-                applySystem(sequence, light, sound, call, navigation, voice)
+                applySystem(sequence, light, sound, call, navigation, voice, screenClean)
                 if (systemReadDirty) { systemReadDirty = false; requestSystemRead() }
             }
         }
@@ -451,6 +491,7 @@ class ContentBinding(
         call: ContentPorts.SystemSnapshot,
         navigation: ContentPorts.SystemSnapshot,
         voice: ContentPorts.SystemSnapshot,
+        screenClean: Boolean,
     ) {
         if (sequence <= appliedSystemObservation) return
         appliedSystemObservation = sequence
@@ -463,6 +504,7 @@ class ContentBinding(
             SystemQuickControl.NavigationVolume to navigation,
             SystemQuickControl.VoiceVolume to voice,
         )
+        screenCleaningAvailable = screenClean
         publishShell()
     }
 
@@ -501,7 +543,7 @@ class ContentBinding(
                 if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner) {
                     replaceFeedback(if (accepted && actual.matches(target)) null else "系统状态未确认")
                 }
-                applySystem(observation, light, sound, call, navigation, voice)
+                applySystem(observation, light, sound, call, navigation, voice, screenCleaningAvailable)
                 publishShell()
                 handler.postDelayed({
                     if (running && generation == epoch && systemWriteSequence == requestSequence) {
@@ -531,7 +573,7 @@ class ContentBinding(
             handler.post {
                 if (!running || generation != epoch) return@post
                 if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner && accepted && actual.matches(target)) replaceFeedback(null)
-                applySystem(observation, light, sound, call, navigation, voice)
+                applySystem(observation, light, sound, call, navigation, voice, screenCleaningAvailable)
                 publishShell()
             }
         }
@@ -545,8 +587,8 @@ class ContentBinding(
         }.map { it.id }.toSet()
         return mapper.mapShell(snapshot, brightness, volume, RuntimeCapabilities(
             snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, snapshot.mediaSourceWriteAvailable, snapshot.writableSeatControls,
-            writableFeatures),
-            lyricsSystemAccentColor, systemLevels).copy(lyricsProviderSettings = lyricsSettings?.state ?: LyricsProviderUiState(), screenCleaning = screenCleaning)
+            writableFeatures, screenCleaningAvailable),
+            lyricsSystemAccentColor, systemLevels).copy(lyricsProviderSettings = lyricsSettings?.state ?: LyricsProviderUiState())
     }
 
     private fun publishShell() {
@@ -559,12 +601,13 @@ class ContentBinding(
             systemTargets[id.systemKind()]?.let { level.copy(target = it) } ?: level
         }
         val result = if (projected.sourcesOpen == sourcesOpen && projected.settingsOpen == settingsOpen &&
-            projected.settingsSection == settingsSection && projected.message == message && projected.messageRevision == messageRevision &&
+            projected.settingsCollapsed == settingsCollapsed && projected.settingsSection == settingsSection && projected.message == message && projected.messageRevision == messageRevision &&
             light === projected.brightness && sound === projected.volume && system == projected.systemLevels &&
-            projected.placeholderSwitches == placeholderSwitches && projected.screenCleaning == screenCleaning) projected
-            else projected.copy(sourcesOpen = sourcesOpen, settingsOpen = settingsOpen, settingsSection = settingsSection,
+            projected.placeholderSwitches == placeholderSwitches) projected
+            else projected.copy(sourcesOpen = sourcesOpen, settingsOpen = settingsOpen, settingsCollapsed = settingsCollapsed,
+                settingsSection = settingsSection,
                 message = message, messageRevision = messageRevision, brightness = light, volume = sound,
-                systemLevels = system, placeholderSwitches = placeholderSwitches, screenCleaning = screenCleaning)
+                systemLevels = system, placeholderSwitches = placeholderSwitches)
         if (mutableState.value != result) mutableState.value = result
     }
 
@@ -581,6 +624,10 @@ class ContentBinding(
     private fun project(snapshot: ContentState) {
         val previous = latestSnapshot
         latestSnapshot = snapshot
+        if (snapshot.settingsAutoCloseSequence != previous.settingsAutoCloseSequence && settingsOpen) closeSettings()
+        if (settingsCollapsed && ContentRegistry.visiblePageIds().getOrNull(snapshot.pageIndex) != ContentRegistry.Pages.LYRICS) {
+            settingsCollapsed = false
+        }
         lyricsSystemAccentColor = IcarThemeAccent.resolve(
             themeKey, snapshot.themeMode == ContentState.THEME_DARK)
         if (!snapshot.showActionFeedback && previous.showActionFeedback) replaceFeedback(null)

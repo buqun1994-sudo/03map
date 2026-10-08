@@ -89,7 +89,7 @@ class VehicleControlIconsTest {
     @Test fun massageRecolorsOnlyNamedWaveStrokesAndKeepsAcceptedPalette() {
         for (dark in listOf(false, true)) for (level in 0..3) {
             val recipe = vehicleControlIconRecipe(ControlId.Massage, level, dark)
-            val expected = if (level == 0) if (dark) Color.White else Color.Black else Color(0xFFA14FEC)
+            val expected = if (level == 0) if (dark) Color(0xFFE8E8E8) else Color(0xFF27303B) else Color(0xFFA14FEC)
             assertEquals(setOf(listOf("color1", "**", "填充 1")), recipe.animationColors.keys)
             assertEquals((2..11).map { listOf("color$it", "**", "描边 1") }.toSet(), recipe.animationStrokePathColors.keys)
             assertTrue(recipe.animationStrokePathColors.values.all { it == expected })
@@ -101,7 +101,7 @@ class VehicleControlIconsTest {
         for (dark in listOf(false, true)) for (level in 1..3) {
             val recipe = vehicleControlIconRecipe(ControlId.Ventilation, level, dark)
             val blue = ContentFunctionalBlue
-            val base = if (dark) Color.White else Color.Black
+            val base = if (dark) Color(0xFFE8E8E8) else Color(0xFF27303B)
             assertEquals(blue, recipe.animationColors[listOf("**", "组 4", "填充 1")])
             assertEquals(blue, recipe.animationColors[listOf("**", "组 5", "填充 1")])
             for (wave in 1..3) assertEquals(if (level >= 4 - wave) blue else base,
@@ -213,12 +213,12 @@ class VehicleControlIconNativeTest {
         }
         for (dark in listOf(false, true)) {
             val recipe = vehicleControlIconRecipe(ControlId.Massage, 0, dark)
-            val expected = if (dark) 255 else 0
+            val expected = if (dark) 0xFFE8E8E8.toInt() else 0xFF27303B.toInt()
             assertTrue("OFF retains neutral theme outline/waves, not purple", render(recipe, recipe.frames.last).filter {
                 android.graphics.Color.alpha(it) >= 24
-            }.all { kotlin.math.abs(android.graphics.Color.red(it) - expected) <= 12 &&
-                kotlin.math.abs(android.graphics.Color.green(it) - expected) <= 12 &&
-                kotlin.math.abs(android.graphics.Color.blue(it) - expected) <= 12 })
+            }.all { kotlin.math.abs(android.graphics.Color.red(it) - android.graphics.Color.red(expected)) <= 12 &&
+                kotlin.math.abs(android.graphics.Color.green(it) - android.graphics.Color.green(expected)) <= 12 &&
+                kotlin.math.abs(android.graphics.Color.blue(it) - android.graphics.Color.blue(expected)) <= 12 })
         }
     }
 }
