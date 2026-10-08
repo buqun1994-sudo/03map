@@ -2,6 +2,7 @@ package com.icar03.content.preview
 
 import com.icar03.content.ui.*
 import com.icar03.content.model.LyricPreferenceRules
+import com.icar03.content.model.ContentMediaControlPolicy
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +22,9 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                 ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings,
                 ContentEvent.SettingsBack, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet)) return
         if (state.value.settingsOpen && !event.isSettingsInteraction()) return
+        if (state.value.settingsCollapsed && event !in setOf(ContentEvent.SettingsCollapseTapped,
+                ContentEvent.SettingsRestored, ContentEvent.SettingsTapped, ContentEvent.SettingsBack,
+                ContentEvent.SettingsDismissed, ContentEvent.OpenLyricsSettings, ContentEvent.DismissSheet)) return
         when (event) {
             is ContentEvent.ScenarioSelected -> {
                 cancelPending()
@@ -33,6 +37,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             ContentEvent.SettingsTapped -> update {
                 it.copy(
                     settingsOpen = !it.settingsOpen,
+                    settingsCollapsed = false,
                     settingsSection = SettingsSection.Home,
                     sourcesOpen = false,
                     scenariosOpen = false,
@@ -41,15 +46,19 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             }
             ContentEvent.SettingsBack -> update {
                 if (!it.settingsOpen) it
-                else if (it.settingsSection == SettingsSection.Home) it.copy(settingsOpen = false, message = null)
-                else it.copy(settingsSection = SettingsSection.Home, message = null)
+                else if (it.settingsSection == SettingsSection.Home) it.copy(settingsOpen = false, settingsCollapsed = false, message = null)
+                else it.copy(settingsSection = SettingsSection.Home, settingsCollapsed = false, message = null)
             }
-            ContentEvent.OpenLyricsSettings -> update { it.copy(settingsOpen = true, settingsSection = SettingsSection.Lyrics, sourcesOpen = false, scenariosOpen = false, message = null) }
+            ContentEvent.OpenLyricsSettings -> update { it.copy(settingsOpen = true, settingsCollapsed = false, settingsSection = SettingsSection.Lyrics, sourcesOpen = false, scenariosOpen = false, message = null) }
             ContentEvent.EnterLyricsImmersive, ContentEvent.ExitLyricsImmersive -> Unit
             is ContentEvent.ImmersiveShowTopBarChanged -> update { it.copy(immersiveShowTopBar = event.value) }
             is ContentEvent.ImmersiveTopBarKeepSplitChanged -> update { it.copy(immersiveTopBarKeepSplit = event.value) }
             is ContentEvent.ImmersiveShowDockChanged -> update { it.copy(immersiveShowDock = event.value) }
-            ContentEvent.SettingsDismissed -> update { it.copy(settingsOpen = false, message = null) }
+            ContentEvent.SettingsDismissed -> update { it.copy(settingsOpen = false, settingsCollapsed = false, message = null) }
+            ContentEvent.SettingsCollapseTapped -> update {
+                if (it.settingsOpen && it.page == PanelPage.Lyrics) it.copy(settingsCollapsed = !it.settingsCollapsed) else it
+            }
+            ContentEvent.SettingsRestored -> update { it.copy(settingsCollapsed = false) }
             is ContentEvent.SettingsSectionSelected -> update { if (it.settingsOpen) it.copy(settingsSection = event.section) else it }
             is ContentEvent.ShowWeekdayChanged -> update { it.copy(showWeekday = event.value) }
             is ContentEvent.ShowSecondsChanged -> update { it.copy(showSeconds = event.value) }
@@ -163,6 +172,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.ShowMediaSourceSwitcherChanged -> update { it.copy(showMediaSourceSwitcher = event.value) }
             is ContentEvent.DockButtonCountChanged -> update { it.copy(dockButtonCount = event.value.coerceIn(3, 6)) }
             is ContentEvent.ShowActionFeedbackChanged -> update { it.copy(showActionFeedback = event.value, message = if (event.value) it.message else null) }
+            is ContentEvent.AutoCloseSettingsOnDriveChanged -> update { it.copy(autoCloseSettingsOnDrive = event.value) }
             is ContentEvent.GestureBarReminderChanged -> update { it.copy(gestureBarReminder = event.value) }
               is ContentEvent.UiOpacityChanged -> update { it.copy(uiOpacity = if (event.value.isFinite()) event.value.coerceIn(.20f, 1.0f) else 1.0f) }
             ContentEvent.OpenScenarios -> update { it.copy(scenariosOpen = true, sourcesOpen = false) }
@@ -173,7 +183,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                 it.copy(message = "预览不连接 Apple Music 账号 · 请使用正式地图设置")
             }
             AppleMusicLoginDismissed -> Unit
-            ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false, settingsOpen = false) }
+            ContentEvent.DismissSheet -> update { it.copy(sourcesOpen = false, scenariosOpen = false, settingsOpen = false, settingsCollapsed = false) }
             is ContentEvent.ControlTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.nextLevel(control.actual) }
             is ContentEvent.ControlPowerTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.powerToggleLevel(control.actual, control.rememberedLevel) }
             is ContentEvent.ControlAutomaticTapped -> if (event.id != ControlId.RearWash) requestControl(event.id) { control -> event.id.automaticToggleLevel(control.actual) }
@@ -196,8 +206,8 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                  }
              }
              ContentEvent.ScreenCleanTapped -> {
-                 if (active && (state.value.screenCleanAvailable || state.value.screenCleaning)) {
-                     update { it.copy(screenCleaning = !it.screenCleaning) }
+                 if (active && (state.value.screenCleanAvailable)) {
+                     update { it.copy(message = "预览清洁屏幕已触发 · 未执行真实操作") }
                  }
              }
              ContentEvent.RearWashTapped -> {
@@ -213,7 +223,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.VolumeChanged -> changeLevel(false, event.value)
             ContentEvent.PlayPause -> {
                 val media = state.value.media
-                if (!media.available || media.title == null || media.pending || !active) return
+                if (!media.available || !media.playbackAvailable || media.title == null || media.pending || !active) return
                 update { it.copy(media = media.copy(targetPlaying = !media.playing), message = null) }
                 simulate("media") { success -> update { it.copy(media = media.copy(playing = if (success) !media.playing else media.playing)) } }
             }
@@ -222,11 +232,16 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                 if (!media.available || media.pending || !active) return
                 if (media.source == event.source) { dispatch(ContentEvent.DismissSheet); return }
                 update { it.copy(sourcesOpen = false, media = media.copy(targetSource = event.source), message = null) }
-                simulate("media") { success -> update { it.copy(media = media.copy(source = if (success) event.source else media.source)) } }
+                simulate("media") { success ->
+                    val confirmed = if (success) event.source else media.source
+                    val canControl = ContentMediaControlPolicy.acceptsCommands(confirmed.label)
+                    update { it.copy(media = if (success) media.copy(source = confirmed,
+                        playbackAvailable = media.available && canControl, nextAvailable = media.available && canControl) else media) }
+                }
             }
             ContentEvent.NextTrack -> {
                 val media = state.value.media
-                if (!media.available || media.title == null || media.pending || !active) return
+                if (!media.available || !media.nextAvailable || media.title == null || media.pending || !active) return
                 update { it.copy(media = media.copy(targetPlaying = media.playing), message = null) }
                 simulate("media") { success -> update { it.copy(media = media.copy(title = if (success) if (media.title == "沿途的风") "下一段旅程" else "沿途的风" else media.title)) } }
             }
@@ -293,6 +308,6 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
     private fun cancelPending() {
         generation++
         jobs.values.forEach { it.cancel() }; jobs.clear()
-        update { s -> s.copy(controls = s.controls.mapValues { it.value.copy(target = null) }, brightness = s.brightness.copy(target = null), volume = s.volume.copy(target = null), media = s.media.copy(targetPlaying = null, targetSource = null), sourcesOpen = false, scenariosOpen = false, settingsOpen = false, settingsSection = SettingsSection.Home, message = null) }
+        update { s -> s.copy(controls = s.controls.mapValues { it.value.copy(target = null) }, brightness = s.brightness.copy(target = null), volume = s.volume.copy(target = null), media = s.media.copy(targetPlaying = null, targetSource = null), sourcesOpen = false, scenariosOpen = false, settingsOpen = false, settingsCollapsed = false, settingsSection = SettingsSection.Home, message = null) }
     }
 }

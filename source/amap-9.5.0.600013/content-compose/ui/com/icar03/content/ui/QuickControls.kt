@@ -93,7 +93,7 @@ internal fun QuickControlLabel(label: String, tag: String, modifier: Modifier = 
 /** Dynamic switches retain their configurable cycle, with no persistent grid fill. */
 @Composable
 internal fun DynamicIconSwitch(label: String, status: String, selected: Boolean, enabled: Boolean,
-    rippleEnabled: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit,
+    rippleEnabled: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Boolean,
     icon: @Composable (Modifier) -> Unit) {
     QuickControlButton(label, status, selected, enabled, rippleEnabled, false,
         QuickControlType.DynamicIconSwitch, tag, modifier, onClick, icon)
@@ -102,7 +102,7 @@ internal fun DynamicIconSwitch(label: String, status: String, selected: Boolean,
 /** A normal toggle differs only by retaining the selected surface after its Ripple. */
 @Composable
 internal fun OrdinaryToggle(label: String, status: String, selected: Boolean, enabled: Boolean,
-    rippleEnabled: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit, icon: @Composable (Modifier) -> Unit) {
+    rippleEnabled: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Boolean, icon: @Composable (Modifier) -> Unit) {
     QuickControlButton(label, status, selected, enabled, rippleEnabled, true,
         QuickControlType.OrdinaryToggle, tag, modifier, onClick, icon)
 }
@@ -110,7 +110,7 @@ internal fun OrdinaryToggle(label: String, status: String, selected: Boolean, en
 @Composable
 private fun QuickControlButton(label: String, status: String, selected: Boolean, enabled: Boolean,
     rippleEnabled: Boolean, retainSelection: Boolean, type: QuickControlType, tag: String,
-    modifier: Modifier, onClick: () -> Unit, icon: @Composable (Modifier) -> Unit) {
+    modifier: Modifier, onClick: () -> Boolean, icon: @Composable (Modifier) -> Unit) {
     val colors = LocalContentColors.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
@@ -124,7 +124,7 @@ private fun QuickControlButton(label: String, status: String, selected: Boolean,
         .clip(RoundedCornerShape(12.dp)).then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
         .then(feedback.area(idle))
         .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Button) {
-            action++; onClick()
+            if (onClick()) action++
         }.semantics {
             contentDescription = label; stateDescription = status; this.selected = selected
             this[QuickControlKind] = type; this[PressActive] = pressed && enabled
@@ -138,6 +138,9 @@ private fun QuickControlButton(label: String, status: String, selected: Boolean,
 }
 
 internal val LocalQuickControlInteractionEnabled = androidx.compose.runtime.staticCompositionLocalOf { true }
+internal val LocalQuickControlClickAcceptance = androidx.compose.runtime.staticCompositionLocalOf<((ContentEvent) -> Boolean)> {
+    { _: ContentEvent -> true }
+}
 
 /** Immediately invalidated from pause/focus callbacks, even without a recomposer frame. */
 internal class QuickControlGestureGate {
