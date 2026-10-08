@@ -1,6 +1,7 @@
 package com.icar03.content.ui
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,29 @@ class AmbientUiTransitionTest {
     private fun <T> value(key: SemanticsPropertyKey<T>) = compose.onNodeWithTag("media-ambient").fetchSemanticsNode().config[key]
 
     @OptIn(ExperimentalComposeUiApi::class)
+    private fun captureAmbient(): Bitmap {
+        val semantics = compose.onNodeWithTag("media-ambient").fetchSemanticsNode()
+        val root = semantics.root as ViewRootForTest
+        val bounds = semantics.boundsInRoot
+        return compose.runOnIdle {
+            Bitmap.createBitmap(bounds.width.toInt(), bounds.height.toInt(), Bitmap.Config.ARGB_8888).also { image ->
+                Canvas(image).apply {
+                    translate(-bounds.left, -bounds.top)
+                    root.view.draw(this)
+                }
+            }
+        }
+    }
+
+    private fun assertSameAmbientPixels(expected: Bitmap, actual: Bitmap, message: String) {
+        assertEquals(message + " width", expected.width, actual.width)
+        assertEquals(message + " height", expected.height, actual.height)
+        for (y in 0 until expected.height step 17) for (x in 0 until expected.width step 13) {
+            assertEquals(message + " at $x/$y", expected.getPixel(x, y), actual.getPixel(x, y))
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
     private fun dispatchFocus(focused: Boolean) {
         val root = compose.onNodeWithTag("media-ambient").fetchSemanticsNode().root as ViewRootForTest
         val dispatch = ViewTreeObserver::class.java.getDeclaredMethod("dispatchOnWindowFocusChange", java.lang.Boolean.TYPE)
@@ -68,6 +92,52 @@ class AmbientUiTransitionTest {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(2L * AMBIENT_SCENE_INTERVAL_NS / 1_000_000L)
         compose.waitForIdle()
+    }
+
+    @Test fun stalePressAndBlockedPhasesKeepTheAmbientBitmapWithoutPreparingAPresentationScene() {
+        val presentation = ContentPresentation().apply { updateGeometry(240f, 240f, 480f, 480) }
+        val texture = scene(Color.BLUE)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f),
+                LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
+                ContentTheme(true) {
+                    MediaAmbientBackground(texture, true, Modifier.requiredSize(240.dp, 480.dp),
+                        animating = false, presentation = presentation)
+                }
+            }
+        }
+        advanceTransitionStart()
+        compose.mainClock.advanceTimeBy(640)
+        compose.waitForIdle()
+        val stable = captureAmbient()
+        assertFalse("stable content has no presentation scene", value(AmbientPresentationPrepared))
+
+        compose.runOnIdle {
+            presentation.updatePhase(2)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        assertFalse("legacy press phase cannot prepare a presentation scene", value(AmbientPresentationPrepared))
+        assertSameAmbientPixels(stable, captureAmbient(), "press phase must keep the current bitmap")
+
+        compose.runOnIdle {
+            presentation.updatePhase(6)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        assertFalse("legacy blocked phase cannot prepare a presentation scene", value(AmbientPresentationPrepared))
+        assertSameAmbientPixels(stable, captureAmbient(), "blocked phase must keep the current bitmap")
+
+        compose.runOnIdle {
+            presentation.updatePhase(3)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        assertTrue("a real drag phase still prepares the presentation scene", value(AmbientPresentationPrepared))
     }
 
     @Test fun aSecondEntryAcknowledgesItsOwnRequestWhenThePreparedSceneIsReused() {

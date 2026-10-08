@@ -51,20 +51,27 @@ open class DownwardSoftShadowTest {
     private val fill: Int get() = if (dark) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
     private val rootTag = "shadow-test-root"
 
-    @Test fun rasterMatchesAcceptedNativeShadowWithoutStretchSeamsOrFillTint() {
+    @Test fun smallNativeMaskMatchesAcceptedShadowWithoutStretchSeamsOrFillTint() {
         val cache = DownwardShadowTextureCache()
-        // Dock/media-sized surfaces, a small switch, and a large independent window at two densities.
+        // Dock/media-sized surfaces, a small switch, and a large independent window at three densities.
         for ((size, density, radius) in listOf(
             Triple(Size(616f, 100f), 1f, 12f),
             Triple(Size(600f, 120f), 1f, 12f),
             Triple(Size(574f, 78f), 1f, 8f),
             Triple(Size(60f, 30f), 1f, 15f),
-            Triple(Size(1920f, 1080f), .88125f, 10.575f),
+            Triple(Size(1920f, 1080f), .88125f, 10.575f), // 141dpi
+            Triple(Size(52.875f, 26.4375f), .88125f, 13.21875f), // 141dpi, 60x30dp switch
+            Triple(Size(49.35f, 49.35f), .88125f, 7.05f), // 141dpi, 56dp/8dp control
             Triple(Size(600f, 120f), .88125f, 10.575f),
             Triple(Size(574f, 78f), .88125f, 7.05f),
-            Triple(Size(1200f, 1800f), 2f, 24f),
+            Triple(Size(1200f, 1800f), 1.325f, 15.9f), // 212dpi
+            Triple(Size(79.5f, 39.75f), 1.325f, 19.875f), // 212dpi, 60x30dp switch
+            Triple(Size(74.2f, 74.2f), 1.325f, 10.6f), // 212dpi, 56dp/8dp control
+            Triple(Size(1200f, 1800f), 2f, 24f), // 320dpi
+            Triple(Size(120f, 60f), 2f, 30f), // 320dpi, 60x30dp switch
+            Triple(Size(112f, 112f), 2f, 16f), // 320dpi, 56dp/8dp control
         )) {
-            val padding = ceil(5f * density * 3f + 3f * density).toInt() + 4
+            val padding = ceil(5f * density * 3f + 3f * density).toInt() + 1
             val expected = Bitmap.createBitmap(size.width.toInt() + padding * 2,
                 size.height.toInt() + padding * 2, Bitmap.Config.ARGB_8888)
             val actual = Bitmap.createBitmap(expected.width, expected.height, Bitmap.Config.ARGB_8888)
@@ -81,9 +88,14 @@ open class DownwardSoftShadowTest {
             Canvas(actual).apply {
                 drawColor(background)
                 translate(padding.toFloat(), padding.toFloat())
-                requireNotNull(cache.texture(size, density, radius, fill, dark)).frame(size).draw(this)
+                val texture = requireNotNull(cache.texture(size, density, radius, fill, dark))
+                texture.frame(size, if (dark) 0xA0000000.toInt() else 0x30000000).draw(this)
+                // The surface is painted independently, exactly as the production modifier chain.
+                drawRoundRect(0f, 0f, size.width, size.height, radius, radius,
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill })
             }
-            // Compare the entire border, including all corners and the stretched straight edges.
+            // Compare the border, including corners and stretched straight edges. The native mask
+            // is quantized at 1/16px for fractional density, so a small pixel delta is expected.
             var worst = 0
             var worstAt = ""
             for (y in 0 until expected.height step 2) for (x in 0 until expected.width step 2) {
@@ -95,12 +107,12 @@ open class DownwardSoftShadowTest {
                     worstAt = "$x,$y expected=${expected.getPixel(x, y).toUInt().toString(16)} actual=${actual.getPixel(x, y).toUInt().toString(16)}"
                 }
             }
-            if (worst > 2) {
+            if (worst > 8) {
                 save(expected, "fractional-shadow-expected")
                 save(actual, "fractional-shadow-actual")
             }
-            assertTrue("cached shadow must retain legacy falloff at $size/$density; channel delta=$worst at $worstAt", worst <= 2)
-            assertEquals("a stretched center must retain the exact fill", fill,
+            assertTrue("small cached mask must retain native falloff at $size/$density; channel delta=$worst at $worstAt", worst <= 8)
+            assertEquals("a transparent mask must retain the exact separately-painted fill", fill,
                 actual.getPixel(padding + size.width.toInt() / 2, padding + size.height.toInt() / 2))
             for (x in padding + radius.toInt() + 3 until padding + size.width.toInt() - radius.toInt() - 3 step 7) {
                 assertEquals("stretch seams must not tint the surface", fill, actual.getPixel(x, padding + (4 * density).toInt()))
@@ -109,13 +121,67 @@ open class DownwardSoftShadowTest {
         }
     }
 
+    @Test fun fixedMaskIsSideSymmetricAndProjectsDownInBothThemes() {
+        for (isDark in listOf(false, true)) {
+            val cache = DownwardShadowTextureCache()
+            val size = Size(180f, 96f)
+            val density = 1f
+            val radius = 12f
+            val padding = ceil(5f * density * 3f + 3f * density).toInt() + 1
+            val image = Bitmap.createBitmap(size.width.toInt() + padding * 2, size.height.toInt() + padding * 2,
+                Bitmap.Config.ARGB_8888)
+            val page = if (isDark) 0xFF0F0F0F.toInt() else 0xFFEFF0F7.toInt()
+            val surface = if (isDark) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
+            Canvas(image).apply {
+                drawColor(page)
+                translate(padding.toFloat(), padding.toFloat())
+                requireNotNull(cache.texture(size, density, radius, surface, isDark))
+                    .frame(size, if (isDark) 0xA0000000.toInt() else 0x30000000).draw(this)
+                drawRoundRect(0f, 0f, size.width, size.height, radius, radius,
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply { color = surface })
+            }
+            val centerX = padding + size.width.toInt() / 2
+            val centerY = padding + size.height.toInt() / 2
+            val left = image.getPixel(padding - 2, centerY)
+            val right = image.getPixel(padding + size.width.toInt() + 1, centerY)
+            assertTrue("${if (isDark) "dark" else "light"} side shadow must stay centered",
+                colorDistance(left, right) <= 2)
+            val top = brightness(image.getPixel(centerX, padding - 2))
+            val nearBottom = brightness(image.getPixel(centerX, padding + size.height.toInt() + 2))
+            val farBottom = brightness(image.getPixel(centerX, padding + size.height.toInt() + 8))
+            assertTrue("${if (isDark) "dark" else "light"} shadow must project downward", nearBottom < top)
+            assertTrue("${if (isDark) "dark" else "light"} shadow must soften after its lower edge", farBottom > nearBottom)
+            image.recycle()
+        }
+    }
+
+    @Test fun transparentCenterLeavesUnderlyingSurfaceUntouched() {
+        val cache = DownwardShadowTextureCache()
+        val size = Size(120f, 72f)
+        val density = 1f
+        val radius = 12f
+        val padding = ceil(5f * density * 3f + 3f * density).toInt() + 1
+        val image = Bitmap.createBitmap(size.width.toInt() + padding * 2, size.height.toInt() + padding * 2,
+            Bitmap.Config.ARGB_8888)
+        val surface = 0xFF123456.toInt()
+        Canvas(image).apply {
+            drawColor(0xFFEFF0F7.toInt())
+            translate(padding.toFloat(), padding.toFloat())
+            drawRoundRect(0f, 0f, size.width, size.height, radius, radius,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = surface })
+            val before = image.getPixel(padding + size.width.toInt() / 2, padding + size.height.toInt() / 2)
+            val texture = requireNotNull(cache.texture(size, density, radius, surface, dark))
+            assertTrue("runtime chunk must use the native NinePatch path", texture.usesNativeNinePatch)
+            texture.frame(size, if (dark) 0xA0000000.toInt() else 0x30000000).draw(this)
+            assertEquals("transparent NinePatch center must not repaint the caller surface", before,
+                image.getPixel(padding + size.width.toInt() / 2, padding + size.height.toInt() / 2))
+        }
+        image.recycle()
+    }
     @Test fun realDockMediaAndShortcutShadowsRemainCenteredAndProjectDownward() {
         compose.setContent {
-            makeFullscreen()
-            ContentTheme(dark) {
                 ContentPanel(previewState().copy(dark = dark), {}, modifier = Modifier.testTag(rootTag))
             }
-        }
         compose.waitForIdle()
         val image = capture()
         val root = compose.onNodeWithTag(rootTag).fetchSemanticsNode().boundsInRoot
@@ -189,40 +255,59 @@ open class DownwardSoftShadowTest {
         assertTrue("large surfaces use only a small texture", cache.cachedBytes < 64 * 1024)
         val fractional = DownwardShadowTextureCache()
         val baked = requireNotNull(fractional.texture(Size(1920f, 1080f), .88125f, 10.575f, fill, dark))
-        assertTrue("the 141dpi full outline must be discarded after baking its compact corners", baked.byteCount < 64 * 1024)
+        assertTrue("the 141dpi mask is bounded independently of target dimensions", baked.byteCount < 64 * 1024)
+        assertTrue("the published path uses one native NinePatch draw", baked.usesNativeNinePatch)
         assertEquals(baked.byteCount, fractional.cachedBytes)
-        assertSame(baked, fractional.texture(Size(1920f, 1080f), .88125f, 10.575f, fill, dark))
-        assertEquals("the fractional outline is only blurred once", 1L, fractional.rasterizationCount)
+        assertSame(baked, fractional.texture(Size(1920f, 1080f), .88125f, 10.575f, 0xFF0086FD.toInt(), !dark))
+        assertEquals("theme and fill only retint the same mask", 1L, fractional.rasterizationCount)
+        val warmFrame = baked.frame(Size(1920f, 1080f), if (dark) 0xA0000000.toInt() else 0x30000000)
+        val warmImage = Bitmap.createBitmap(1920 + 64, 1080 + 64, Bitmap.Config.ARGB_8888)
+        repeat(8) { warmFrame.draw(Canvas(warmImage)) }
+        assertEquals("a cached frame records warm draws without rebuilding", 8L, baked.warmDrawCount)
+        warmImage.recycle()
     }
 
-    @Test fun radiusThemeDensityAndSmallGeometryInvalidateButLargeDimensionsReuseCorners() {
+    @Test fun radiusDensityAndTinyGeometryInvalidateButLargeDimensionsReuseCorners() {
         val cache = DownwardShadowTextureCache()
         val initial = requireNotNull(cache.texture(Size(600f, 120f), 1f, 12f, fill, dark))
         assertSame(initial, cache.texture(Size(1920f, 1080f), 1f, 12f, fill, dark))
-        assertEquals("a larger flat center needs no new blur", 1L, cache.rasterizationCount)
+        assertEquals("a larger flat center needs no new mask", 1L, cache.rasterizationCount)
         assertNotSame(initial, cache.texture(Size(600f, 120f), 1f, 8f, fill, dark))
-        assertNotSame(initial, cache.texture(Size(600f, 120f), 1f, 12f, fill, !dark))
+        assertEquals(2L, cache.rasterizationCount)
+        assertSame("theme only changes the frame tint", initial,
+            cache.texture(Size(600f, 120f), 1f, 12f, fill, !dark))
+        assertSame("ordinary/pressed fill never enters the mask key", initial,
+            cache.texture(Size(600f, 120f), 1f, 12f, 0xFF0086FD.toInt(), dark))
+        assertEquals(2L, cache.rasterizationCount)
         assertNotSame(initial, cache.texture(Size(600f, 120f), 2f, 24f, fill, dark))
-        assertNotSame(initial, cache.texture(Size(600f, 120f), 1f, 12f, 0xFF0086FD.toInt(), dark))
-        assertNotSame(initial, cache.texture(Size(20f, 30f), 1f, 12f, fill, dark))
-        assertEquals(6L, cache.rasterizationCount)
+        assertEquals(3L, cache.rasterizationCount)
+        assertNotSame("a capsule whose radius is clamped by height uses a tiny mask span", initial,
+            cache.texture(Size(20f, 30f), 1f, 12f, fill, dark))
+        assertEquals(4L, cache.rasterizationCount)
         assertNull(cache.texture(Size.Zero, 1f, 12f, fill, dark))
         assertNull(cache.texture(Size(Float.NaN, 30f), 1f, 12f, fill, dark))
-        assertEquals(6L, cache.rasterizationCount)
+        assertEquals(4L, cache.rasterizationCount)
     }
 
     @Test fun boundedCacheEvictionKeepsAlreadyPublishedDrawFramesAlive() {
         val cache = DownwardShadowTextureCache(maximumBytes = 64 * 1024, maximumEntries = 2)
         val first = requireNotNull(cache.texture(Size(600f, 120f), 1f, 12f, fill, dark))
-        val retained = first.frame(Size(600f, 120f))
-        repeat(12) { cache.texture(Size(600f, 120f), 1f, 12f, 0xFF000000.toInt() or (it * 0x010101), dark) }
+        val retained = first.frame(Size(600f, 120f), if (dark) 0xA0000000.toInt() else 0x30000000)
+        repeat(12) { index ->
+            cache.texture(Size(600f, 120f), 1f, (4 + index).toFloat(), fill, dark)
+        }
         assertTrue("cache ownership is bounded by bytes", cache.cachedBytes <= 64 * 1024)
         assertTrue("cache ownership is also bounded by entries", cache.cachedEntryCount <= 2)
-        assertNotSame("an evicted key is generated afresh", first,
+        assertNotSame("an evicted geometry is generated afresh", first,
             cache.texture(Size(600f, 120f), 1f, 12f, fill, dark))
         val image = Bitmap.createBitmap(660, 180, Bitmap.Config.ARGB_8888)
-        Canvas(image).apply { translate(30f, 30f); retained.draw(this) }
-        assertEquals("an active frame survives eviction without a recycled Bitmap", fill, image.getPixel(330, 90))
+        Canvas(image).apply {
+            drawColor(background)
+            translate(30f, 30f)
+            retained.draw(this)
+            drawRoundRect(0f, 0f, 600f, 120f, 12f, 12f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill })
+        }
+        assertEquals("an active frame survives eviction without a recycled bitmap", fill, image.getPixel(330, 90))
         image.recycle()
     }
 

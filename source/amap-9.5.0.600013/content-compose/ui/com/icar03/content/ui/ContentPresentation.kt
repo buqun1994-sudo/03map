@@ -49,7 +49,7 @@ class ContentPresentation {
     var onGestureStateChanged: (() -> Unit)? = null
 
     val geometryReady: Boolean get() = fullSize.width > 0 && fullSize.height > 0 && splitWidthPx > 0
-    val moving: Boolean get() = pendingEnter != 0L || phase >= 2 || progress > .001f && progress < .999f
+    val moving: Boolean get() = pendingEnter != 0L || phase in 3..5 || progress > .001f && progress < .999f
     val collapsed: Boolean get() = phase == 1 && progress >= .999f
 
     fun updateGeometry(dividerX: Float, expandedDivider: Float, mapWidth: Float, height: Int) {
@@ -62,10 +62,10 @@ class ContentPresentation {
 
     fun updatePhase(value: Int) {
         val next = value.coerceIn(0, 6)
-        if (next >= 2 && phase < 2 && sessionGeneration == 0L) sessionGeneration = ++sessionCounter
+        if (next in 3..5 && phase !in 3..5 && sessionGeneration == 0L) sessionGeneration = ++sessionCounter
         phase = next
         if (buttonTransitionActive && next == 1) buttonTransitionActive = false
-        if (next <= 1 && pendingEnter == 0L && (progress <= .001f || progress >= .999f)) sessionGeneration = 0L
+        if (next !in 3..5 && pendingEnter == 0L && (progress <= .001f || progress >= .999f)) sessionGeneration = 0L
         onGestureStateChanged?.invoke()
     }
     fun requestEnter(): Long {

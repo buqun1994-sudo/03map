@@ -58,7 +58,7 @@ open class AppleMusicLoginPanelTest {
     private var embeddedHost: ComposeView? = null
     private data class WindowSetup(val width: Int, val height: Int, val dpi: Int, val screenWidthDp: Int,
         val screenHeightDp: Int, val adjust: Int, val flags: Int, val x: Int, val y: Int,
-        val usesDefaultToken: Boolean)
+        val applicationToken: android.os.IBinder?)
     private var activity: Activity? = null
     private val physicalPixels = DisplayMetrics()
     private data class FirstFrame(val width: Int, val height: Int, val contentWidth: Int, val contentHeight: Int)
@@ -79,13 +79,15 @@ open class AppleMusicLoginPanelTest {
                     screenHeightDp = 2160
                 }) else host
             }
-            val parentComposition = rememberCompositionContext()
-            AndroidView(factory = {
-                ComposeView(mapContext).also { embeddedHost = it }.apply {
-                    setParentCompositionContext(parentComposition)
-                    setContent { settingsContent(density) }
-                }
-            }, modifier = Modifier.fillMaxSize())
+            CompositionLocalProvider(LocalContentWindowActivity provides activity) {
+                val parentComposition = rememberCompositionContext()
+                AndroidView(factory = {
+                    ComposeView(mapContext).also { embeddedHost = it }.apply {
+                        setParentCompositionContext(parentComposition)
+                        setContent { settingsContent(density) }
+                    }
+                }, modifier = Modifier.fillMaxSize())
+            }
         }
         if (awaitIdle) compose.waitForIdle()
     }
@@ -116,7 +118,7 @@ open class AppleMusicLoginPanelTest {
                                 WindowSetup(attrs.width, attrs.height, config.densityDpi,
                                     config.screenWidthDp, config.screenHeightDp,
                                     attrs.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST,
-                                    attrs.flags, attrs.x, attrs.y, attrs.token == null)
+                                    attrs.flags, attrs.x, attrs.y, attrs.token)
                             }
                             DisposableEffect(view) {
                                 windowSetups += setup
@@ -200,7 +202,8 @@ open class AppleMusicLoginPanelTest {
         assertEquals(dpi, setup.dpi)
         assertEquals((physicalPixels.widthPixels / scale).toInt(), setup.screenWidthDp)
         assertEquals((physicalPixels.heightPixels / scale).toInt(), setup.screenHeightDp)
-        assertTrue("before show, token must be left to the Activity WindowManager", setup.usesDefaultToken)
+        assertSame("framework injection must use the existing Activity application token",
+            org.robolectric.util.ReflectionHelpers.getField<android.os.IBinder>(activity, "mToken"), setup.applicationToken)
         val dialog = ShadowDialog.getLatestDialog()
         assertSame("the window owner must be the real map Activity", activity, dialog.ownerActivity)
         assertSame("a resource-only Context must never supply the Dialog WindowManager",

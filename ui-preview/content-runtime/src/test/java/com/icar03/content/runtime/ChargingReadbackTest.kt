@@ -14,9 +14,10 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class ChargingReadbackTest {
-    /** OEM CSV type 40 only accepts getData; type 60 only accepts getDataFloat. */
+    /** OEM type 40 uses getData, type 60 uses getDataFloat; array fields use getDataArray. */
     private class VehicleService : Binder() {
         val reads = mutableListOf<Pair<Int, Int>>()
+        val requests = mutableListOf<Triple<Int, Int, Int>>()
         var voltage = 393
         var current = 183.2f
         var minutes = 11
@@ -25,24 +26,44 @@ class ChargingReadbackTest {
         var bms = 3
         var schedule = 0
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+            assertTrue("snapshot must only use read transactions, never sendData/sendDataArray/sendSeatData",
+                code == 7 || code == 8 || code == 13)
             data.enforceInterface("com.chery.canmanager.interfaces.IVirturalCarProperty")
             val function = data.readInt()
-            assertEquals(if (function == 0x110) 1 else 0, data.readInt())
+            val area = data.readInt()
+            val expectedCode = when (function) {
+                0x110, 0x306, 0x345 -> 13
+                0x31a, 0x25c -> 8
+                else -> 7
+            }
+            assertEquals("read transaction must match the OEM property type", expectedCode, code)
+            val expectedAreas = when (function) {
+                0x110 -> setOf(1)
+                0x418 -> setOf(0x10, 0x40)
+                535 -> setOf(0x10, 0x40, 0x100, 0x400)
+                else -> setOf(0)
+            }
+            assertTrue("read area must match the property", area in expectedAreas)
+            assertEquals("a read request contains no command payload", 0, data.dataAvail())
             reads += code to function
-            assertTrue("snapshot must only use read transactions", code == 7 || code == 13)
+            requests += Triple(code, function, area)
             reply!!.writeNoException()
-            if (code == 13) reply.writeFloat(when (function) {
-                0x345 -> current
-                0x306 -> soc
-                else -> -1000f // Includes integer voltage read with the wrong method.
-            }) else reply.writeInt(when (function) {
-                0x344 -> voltage
-                0x305 -> connection
-                0x29d -> bms
-                0x308 -> schedule
-                0x43d -> minutes
-                else -> -1000
-            })
+            when (code) {
+                13 -> reply.writeFloat(when (function) {
+                    0x345 -> current
+                    0x306 -> soc
+                    else -> -1000f
+                })
+                8 -> reply.writeList(emptyList<Any>()) // New capabilities remain unknown in this charging fixture.
+                else -> reply.writeInt(when (function) {
+                    0x344 -> voltage
+                    0x305 -> connection
+                    0x29d -> bms
+                    0x308 -> schedule
+                    0x43d -> minutes
+                    else -> -1000
+                })
+            }
             return true
         }
     }
@@ -71,6 +92,16 @@ class ChargingReadbackTest {
         assertTrue(service.reads.containsAll(listOf(7 to 0x344, 13 to 0x345, 7 to 0x43d)))
         assertFalse(service.reads.contains(13 to 0x344))
         assertFalse(service.reads.contains(7 to 0x345))
+        val chargingFunctions = setOf(0x306, 0x305, 0x29d, 0x308, 0x344, 0x345, 0x43d)
+        assertEquals(listOf(13 to 0x306, 7 to 0x305, 7 to 0x29d, 7 to 0x308,
+            7 to 0x344, 13 to 0x345, 7 to 0x43d), service.reads.filter { it.second in chargingFunctions })
+        assertEquals(listOf(Triple(7, 0x418, 0x10), Triple(7, 0x418, 0x40)),
+            service.requests.filter { it.second == 0x418 })
+        assertEquals(listOf(0x10, 0x40, 0x100, 0x400).map { Triple(7, 535, it) },
+            service.requests.filter { it.second == 535 })
+        assertEquals(listOf(8 to 0x31a, 8 to 0x25c), service.reads.filter { it.first == 8 })
+        assertFalse(first.featureSnapshot.centerBrightnessKnown)
+        assertFalse(first.featureSnapshot.externalDischargeStatusKnown)
         assertTrue(ui(first).charging)
         assertEquals("剩余11分钟·充电功率 72.0kW", ui(first).chargeStatus)
         service.minutes = 10; service.current = 184.8f

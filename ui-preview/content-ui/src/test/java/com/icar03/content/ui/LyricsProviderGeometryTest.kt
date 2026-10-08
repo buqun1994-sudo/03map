@@ -18,7 +18,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import java.io.File
-import kotlin.math.roundToInt
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -80,7 +79,10 @@ open class LyricsProviderGeometryTest {
             compose.onNodeWithTag("settings-platform-$id-label", useUnmergedTree = true)
                 .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
             assertEquals(1, layouts.single().lineCount)
-            assertFalse("$id name must not overflow", layouts.single().didOverflowWidth)
+            val layout = layouts.single()
+            assertFalse("$id name must not be ellipsized", layout.isLineEllipsized(0))
+            assertEquals("$id complete text remains on its line", layout.layoutInput.text.length, layout.getLineEnd(0))
+            assertTrue("$id name must fit within native pixel rounding", layout.getLineRight(0) <= layout.size.width + 1f)
             assertEquals("platform type retains its own 24sp role", 24f, layouts.single().layoutInput.style.fontSize.value, .01f)
         }
         capture()

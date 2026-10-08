@@ -98,6 +98,7 @@ class ContentBindingDomainsTest {
             }
             override fun write(kind: Int, percent: Int): Boolean {
                 if (Looper.myLooper() == Looper.getMainLooper()) wrongThread.incrementAndGet()
+                assertEquals(1, kind)
                 return true
             }
         }
@@ -117,9 +118,9 @@ class ContentBindingDomainsTest {
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_000L))
             assertEquals(1, reads.get())
             release.countDown(); drain(binding)
-            binding.dispatch(ContentEvent.BrightnessChanged(.9f)); drain(binding)
+            binding.dispatch(ContentEvent.VolumeChanged(.9f)); drain(binding)
             assertEquals(0, wrongThread.get())
-            assertEquals(.25f, binding.state.value.brightness.actual)
+            assertEquals(.25f, binding.state.value.volume.actual)
             assertEquals("系统状态未确认", binding.state.value.message)
         } finally { release.countDown(); binding.close(); store.destroy() }
     }
@@ -170,17 +171,17 @@ class ContentBindingDomainsTest {
         var percent = 25
         val store = store(object : ContentPorts.SystemPort {
             override fun read(kind: Int) = ContentPorts.SystemSnapshot(true, percent)
-            override fun write(kind: Int, target: Int) = true
+            override fun write(kind: Int, target: Int): Boolean { assertEquals(1, kind); return true }
         })
         val binding = ContentBinding(store)
         try {
             binding.start(); drain(binding)
-            binding.dispatch(ContentEvent.BrightnessChanged(.9f)); drain(binding)
+            binding.dispatch(ContentEvent.VolumeChanged(.9f)); drain(binding)
             assertEquals("系统状态未确认", binding.state.value.message)
             binding.dispatch(ContentEvent.SettingsTapped)
             percent = 90
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); drain(binding)
-            assertEquals(.9f, binding.state.value.brightness.actual)
+            assertEquals(.9f, binding.state.value.volume.actual)
             assertNull(binding.state.value.message)
             assertTrue(binding.state.value.settingsOpen)
         } finally { binding.close(); store.destroy() }
@@ -196,18 +197,18 @@ class ContentBindingDomainsTest {
                     if (sent) { entered.countDown(); check(release.await(2, TimeUnit.SECONDS)) }
                     return ContentPorts.SystemSnapshot(true, 25)
                 }
-                override fun write(kind: Int, target: Int): Boolean { sent = true; return true }
+                override fun write(kind: Int, target: Int): Boolean { assertEquals(1, kind); sent = true; return true }
             })
             val binding = ContentBinding(store)
             try {
                 binding.start(); drain(binding)
-                binding.dispatch(ContentEvent.BrightnessChanged(.9f))
+                binding.dispatch(ContentEvent.VolumeChanged(.9f))
                 assertTrue(entered.await(2, TimeUnit.SECONDS))
                 binding.dispatch(action)
                 release.countDown(); drain(binding)
                 assertNull(binding.state.value.message)
                 assertEquals(action == ContentEvent.SettingsTapped, binding.state.value.settingsOpen)
-                assertEquals(.25f, binding.state.value.brightness.actual)
+                assertEquals(.25f, binding.state.value.volume.actual)
             } finally { release.countDown(); binding.close(); store.destroy() }
         }
     }
@@ -227,24 +228,24 @@ class ContentBindingDomainsTest {
                 }
                 return ContentPorts.SystemSnapshot(true, 25)
             }
-            override fun write(kind: Int, percent: Int): Boolean { writes.incrementAndGet(); return true }
+            override fun write(kind: Int, percent: Int): Boolean { assertEquals(1, kind); writes.incrementAndGet(); return true }
         }
         val store = store(system)
         val binding = ContentBinding(store)
         try {
             binding.start()
             assertTrue(entered.await(2, TimeUnit.SECONDS))
-            binding.dispatch(ContentEvent.BrightnessChanged(.8f))
+            binding.dispatch(ContentEvent.VolumeChanged(.8f))
             binding.stop()
             val stopped = binding.state.value
             release.countDown(); drain(binding)
             assertEquals(0, writes.get())
             assertSame(stopped, binding.state.value)
-            assertFalse(binding.state.value.brightness.available)
+            assertFalse(binding.state.value.volume.available)
             assertFalse(binding.active.value)
             binding.start(); drain(binding)
-            assertTrue(binding.state.value.brightness.available)
-            assertEquals(.25f, binding.state.value.brightness.actual)
+            assertTrue(binding.state.value.volume.available)
+            assertEquals(.25f, binding.state.value.volume.actual)
             assertEquals(0, writes.get())
         } finally { release.countDown(); binding.close(); store.destroy() }
     }

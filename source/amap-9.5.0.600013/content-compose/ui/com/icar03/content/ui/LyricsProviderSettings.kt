@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.OutlinedButton
@@ -44,7 +43,6 @@ import java.util.Locale
 import android.view.View
 import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.view.ContextThemeWrapper
 import android.content.res.Configuration
 import android.content.res.Resources
@@ -132,7 +130,7 @@ fun LyricsProviderSettings(
     val selectionEnabled = enabled && state.available
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val providerStyle = LocalTextStyle.current.merge(design.providerOptionStyle)
+    val providerStyle = design.providerOptionStyle
     val groupWidth = remember(textMeasurer, density, providerStyle, design.providerIconSize, design.smallGap) {
         with(density) {
             lyricsProviderOptions.maxOf {
@@ -300,9 +298,9 @@ fun AppleMusicLoginPanel(
 private fun AppleMusicScreenDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val hostView = LocalView.current
     val hostContext = LocalContext.current
-    // Resource-only contexts have no Activity WindowManager. Resolve ownership from the real root.
-    val hostActivity = remember(hostView, hostContext) {
-        requireNotNull(appleLoginActivity(hostView.rootView.context) ?: appleLoginActivity(hostContext)) {
+    val windowActivity = LocalContentWindowActivity.current
+    val hostActivity = remember(hostContext, windowActivity) {
+        requireNotNull(windowActivity ?: findContentWindowActivity(hostContext)) {
             "Apple Music login requires the host Activity"
         }
     }
@@ -397,13 +395,6 @@ private class AppleMusicDialogLayout(context: Context, override val window: Wind
     override fun Content() {
         Box(Modifier.fillMaxSize().semantics { dialog() }) { content.value() }
     }
-}
-
-/** Activity identity is never inferred from a ViewRootImpl window binder. */
-private tailrec fun appleLoginActivity(context: Context): Activity? = when (context) {
-    is Activity -> context
-    is ContextWrapper -> if (context.baseContext !== context) appleLoginActivity(context.baseContext) else null
-    else -> null
 }
 
 /** Physical resources belong to the content; the Dialog itself keeps the Activity's WindowManager. */

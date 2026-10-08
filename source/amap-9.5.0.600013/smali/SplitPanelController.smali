@@ -987,18 +987,31 @@
 
     if-eqz p2, :click_release
 
+    iget-object v0, p0, LSplitPanelController;->panelAnimator:Landroid/animation/ValueAnimator;
+    if-eqz v0, :cancel_release_stable
+    return-void
+
+    :cancel_release_stable
     invoke-direct {p0}, LSplitPanelController;->setStableStateFromCurrent()V
 
     return-void
 
     :click_release
-    invoke-direct {p0}, LSplitPanelController;->setStableStateFromCurrent()V
+    iget-object v0, p0, LSplitPanelController;->panelAnimator:Landroid/animation/ValueAnimator;
+    if-eqz v0, :click_release_stable
+    return-void
 
-    invoke-direct {p0}, LSplitPanelController;->showHint()V
+    :click_release_stable
+    invoke-direct {p0}, LSplitPanelController;->setStableStateFromCurrent()V
 
     return-void
 
     :not_pressed
+    iget-object v0, p0, LSplitPanelController;->panelAnimator:Landroid/animation/ValueAnimator;
+    if-eqz v0, :blocked_release_stable
+    return-void
+
+    :blocked_release_stable
     invoke-direct {p0}, LSplitPanelController;->setStableStateFromCurrent()V
 
     return-void
@@ -1365,6 +1378,9 @@
 
     iput-object v1, p0, LSplitPanelController;->panelAnimator:Landroid/animation/ValueAnimator;
 
+    iget-boolean v0, p0, LSplitPanelController;->gestureActive:Z
+    if-nez v0, :animation_done
+
     iget v0, p0, LSplitPanelController;->screenWidth:I
 
     int-to-float v0, v0
@@ -1519,7 +1535,6 @@
     if-eqz v0, :return_false
     const/4 v0, 0x1
     iput-boolean v0, p0, LSplitPanelController;->gestureActive:Z
-    invoke-direct {p0}, LSplitPanelController;->cancelPanelAnimation()V
 
     iget-object v0, p0, LSplitPanelController;->panelHost:Landroid/view/ViewGroup;
 
@@ -1662,6 +1677,11 @@
     if-lez v8, :block_gesture
 
     :horizontal_started
+    invoke-direct {p0}, LSplitPanelController;->cancelPanelAnimation()V
+
+    iget v6, p0, LSplitPanelController;->currentDividerX:F
+    iput v6, p0, LSplitPanelController;->downDividerX:F
+
     invoke-direct {p0}, LSplitPanelController;->fadeOutHint()V
 
     const/4 v6, 0x3
@@ -1682,8 +1702,6 @@
     const/4 v6, 0x6
 
     iput v6, p0, LSplitPanelController;->panelState:I
-
-    invoke-direct {p0}, LSplitPanelController;->notifyPresentationPhase()V
 
     goto :return_true
 

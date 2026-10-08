@@ -484,7 +484,10 @@ class ContentSettingsFeedbackTest {
     private fun vehicleSnapshot() = ContentPorts.VehicleSnapshot(
         true, false, 25f, 60, 123, ContentState.CHARGE_DEFAULT, 0, 0, 0, Float.NaN, -1,
         0, 0, 0, 0, true, false, true, true, true,
-    ).withRearWindowReadback(ControlId.RearWash.id, 0, 1L, false)
+    ).withRearWindowReadback(ControlId.RearWash.id, 0, 1L, false).withFeatureSnapshot(
+        ContentPorts.FeatureSnapshot(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+            6, true, -1, false, null, false, null, false, -1, -1, false),
+    )
 
     private fun mediaSnapshot(positionMs: Long = 0L) = ContentPorts.MediaSnapshot(
         true, false, MediaSource.Bluetooth.label, false, 1, "设置反馈测试歌曲", "测试作者", true, true,
@@ -499,6 +502,9 @@ class ContentSettingsFeedbackTest {
         override fun isRearWindowControlAvailable(controlId: String) = controlId == ControlId.RearWash.id
         override fun requestLock(locked: Boolean, requestId: Long): Boolean { requests.incrementAndGet(); return false }
         override fun requestSeatLevel(seatId: String, level: Int, requestId: Long): Boolean { requests.incrementAndGet(); return false }
+        override fun requestCenterBrightness(level: Int, requestId: Long, deadlineUptimeMs: Long): Boolean {
+            requests.incrementAndGet(); return false
+        }
         override fun requestRearWindow(controlId: String, expectedLevel: Int, targetLevel: Int, requestId: Long, deadlineUptimeMs: Long): Boolean {
             requests.incrementAndGet(); return false
         }

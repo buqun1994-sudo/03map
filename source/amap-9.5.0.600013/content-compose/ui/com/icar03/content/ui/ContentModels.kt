@@ -57,7 +57,8 @@ enum class SystemQuickControl(val label: String) {
 object ShortcutGrid {
     // New feature descriptors keep their domain owner; grid registration requires a completed UI consumer.
     val buttons = ShortcutId.entries.filter {
-        it.placement == QuickControlPlacement.ButtonRows && (it.control != null || it.feature != null || it == ShortcutId.Settings)
+        it.placement == QuickControlPlacement.ButtonRows &&
+            (it.control != null || it.feature != null || it == ShortcutId.Settings || it == ShortcutId.ScreenClean)
     }
     val lowerToggles = ShortcutId.entries.filter { it.placement == QuickControlPlacement.LowerToggles }
     val verticals = ShortcutId.entries.filter { it.placement == QuickControlPlacement.Vertical }

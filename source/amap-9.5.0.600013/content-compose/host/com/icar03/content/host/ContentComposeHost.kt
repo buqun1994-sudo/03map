@@ -1,5 +1,6 @@
 package com.icar03.content.host
 
+import android.app.Activity
 import android.content.Context
 import android.content.res.Resources
 import android.graphics.Rect
@@ -36,7 +37,10 @@ import kotlinx.coroutines.launch
 
 /** Supplies local owners to a plain map Activity without changing its inheritance. */
 @OptIn(ExperimentalComposeUiApi::class)
-class ContentComposeHost(context: Context, private val host: ViewGroup, private val store: ContentStore) {
+class ContentComposeHost @JvmOverloads constructor(
+    context: Context, private val host: ViewGroup, private val store: ContentStore,
+    private val windowActivity: Activity? = com.icar03.content.ui.findContentWindowActivity(context),
+) {
     private class Owners : LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
         private val registry = LifecycleRegistry(this)
         private val saved = SavedStateRegistryController.create(this)
@@ -84,7 +88,10 @@ class ContentComposeHost(context: Context, private val host: ViewGroup, private 
         val density = metrics.density.takeIf { it > 0f } ?: context.resources.displayMetrics.density
         val fontScale = Resources.getSystem().configuration.fontScale.takeIf { it > 0f } ?: 1f
         view.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(density, fontScale)) {
+            CompositionLocalProvider(
+                LocalDensity provides Density(density, fontScale),
+                com.icar03.content.ui.LocalContentWindowActivity provides windowActivity,
+            ) {
                 BoundBindingPanel(binding, presentation = presentation, onPresentationEvent = ::dispatchPresentation)
             }
         }

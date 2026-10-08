@@ -514,7 +514,11 @@ private fun QuickVerticalCellContent(cell: QuickVerticalCell, state: ContentUiSt
 private fun SystemVertical(id: SystemQuickControl, state: ContentUiState, onEvent: (ContentEvent) -> Unit,
     height: androidx.compose.ui.unit.Dp) {
     val brightness = id == SystemQuickControl.Brightness
-    val level = if (brightness) state.brightness else state.systemLevels.getValue(id)
+    val level = when (id) {
+        SystemQuickControl.Brightness -> state.brightness
+        SystemQuickControl.Volume -> state.volume
+        else -> state.systemLevels.getValue(id)
+    }
     val icon = when {
         brightness && level.displayed < .25f -> R.drawable.content_oem_ico_brightness_lo
         brightness && level.displayed > .75f -> R.drawable.content_oem_ico_brightness_hi
@@ -525,7 +529,11 @@ private fun SystemVertical(id: SystemQuickControl, state: ContentUiState, onEven
         else -> R.drawable.content_oem_ico_volume_2
     }
     ContinuousVerticalControl(id.label, icon, level, "${id.name.lowercase()}-card", height = height) {
-        onEvent(if (brightness) ContentEvent.BrightnessChanged(it) else ContentEvent.SystemVolumeChanged(id, it))
+        onEvent(when (id) {
+            SystemQuickControl.Brightness -> ContentEvent.BrightnessChanged(it)
+            SystemQuickControl.Volume -> ContentEvent.VolumeChanged(it)
+            else -> ContentEvent.SystemVolumeChanged(id, it)
+        })
     }
 }
 

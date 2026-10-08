@@ -296,14 +296,14 @@ class ContentRuntimeTest {
 
     @Test fun systemReadbackDoesNotPretendAcceptedWriteWasConfirmed() {
         val system = System(); val binding = binding(store(s = system)); binding.start(); awaitSystem(binding)
-        binding.dispatch(ContentEvent.BrightnessChanged(.9f)); awaitSystem(binding)
+        binding.dispatch(ContentEvent.VolumeChanged(.9f)); awaitSystem(binding)
         assertEquals(90, system.target)
-        assertEquals(.25f, binding.state.value.brightness.actual)
-        assertNull(binding.state.value.brightness.target)
+        assertEquals(.25f, binding.state.value.volume.actual)
+        assertNull(binding.state.value.volume.target)
         assertEquals("系统状态未确认", binding.state.value.message)
         system.percent = 90
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); awaitSystem(binding)
-        assertEquals(.9f, binding.state.value.brightness.actual)
+        assertEquals(.9f, binding.state.value.volume.actual)
         system.available = false
         binding.dispatch(ContentEvent.VolumeChanged(.5f)); awaitSystem(binding)
         assertEquals(1, system.writes)
@@ -312,22 +312,22 @@ class ContentRuntimeTest {
 
     @Test fun staleSystemReadbackCannotClearNewerFailureFeedback() {
         val system = System(); val binding = binding(store(s = system)); binding.start(); awaitSystem(binding)
-        binding.dispatch(ContentEvent.BrightnessChanged(.9f)); awaitSystem(binding)
+        binding.dispatch(ContentEvent.VolumeChanged(.9f)); awaitSystem(binding)
         system.percent = 90
         system.accept = false
-        binding.dispatch(ContentEvent.BrightnessChanged(.6f)); awaitSystem(binding)
+        binding.dispatch(ContentEvent.VolumeChanged(.6f)); awaitSystem(binding)
         assertEquals(2, system.writes)
         assertEquals("系统状态未确认", binding.state.value.message)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); awaitSystem(binding)
         assertEquals("系统状态未确认", binding.state.value.message)
-        assertEquals(.9f, binding.state.value.brightness.actual)
-        binding.dispatch(ContentEvent.BrightnessChanged(.9f)); awaitSystem(binding)
+        assertEquals(.9f, binding.state.value.volume.actual)
+        binding.dispatch(ContentEvent.VolumeChanged(.9f)); awaitSystem(binding)
         assertEquals(2, system.writes)
     }
 
     @Test fun stopCancelsQueuedCallbacksClockAndSystemReadbackWithoutReplayingCommands() {
         val system = System(); val store = store(s = system); val binding = binding(store); binding.start(); awaitSystem(binding)
-        binding.dispatch(ContentEvent.BrightnessChanged(.8f)); awaitSystem(binding)
+        binding.dispatch(ContentEvent.VolumeChanged(.8f)); awaitSystem(binding)
         val snapshot = binding.state.value
         Thread { store.acceptMediaSnapshot(mediaSnapshot(source = MediaSource.Usb.label)) }.apply { start(); join() }
         binding.stop()
@@ -335,18 +335,19 @@ class ContentRuntimeTest {
         assertFalse(stopped.sourcesOpen)
         assertTrue(stopped.controls.values.none { it.available })
         assertFalse(stopped.brightness.available)
+        assertFalse(stopped.volume.available)
         assertFalse(stopped.media.sourceAvailable)
         val reads = system.reads; val clock = store.snapshot().nowMillis
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
         assertEquals(reads, system.reads)
         assertEquals(clock, store.snapshot().nowMillis)
         assertEquals(stopped, binding.state.value)
-        binding.dispatch(ContentEvent.BrightnessChanged(.6f))
+        binding.dispatch(ContentEvent.VolumeChanged(.6f))
         assertEquals(1, system.writes)
         binding.start()
         assertEquals(MediaSource.Usb, binding.state.value.media.source)
         assertEquals(1, system.writes)
-        binding.close(); binding.start(); binding.dispatch(ContentEvent.BrightnessChanged(.1f))
+        binding.close(); binding.start(); binding.dispatch(ContentEvent.VolumeChanged(.1f))
         assertEquals(1, system.writes)
     }
 
@@ -586,7 +587,15 @@ class ContentRuntimeTest {
     private class System : ContentPorts.SystemPort {
         var accept = true
         var reads = 0; var writes = 0; var target = -1; var percent = 25; var available = true
-        override fun read(kind: Int): ContentPorts.SystemSnapshot { reads++; return ContentPorts.SystemSnapshot(available, percent) }
-        override fun write(kind: Int, percent: Int): Boolean { writes++; target = percent; return accept }
+        override fun read(kind: Int): ContentPorts.SystemSnapshot {
+            reads++
+            return ContentPorts.SystemSnapshot(available && kind == 1, if (kind == 1) percent else 0)
+        }
+        override fun write(kind: Int, percent: Int): Boolean {
+            assertEquals("this fixture sends only media-volume group requests", 1, kind)
+            if (!available) return false
+            writes++; target = percent
+            return accept
+        }
     }
 }

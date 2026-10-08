@@ -47,6 +47,7 @@ internal val AmbientFraction = SemanticsPropertyKey<Float>("AmbientFraction")
 internal val AmbientHasContent = SemanticsPropertyKey<Boolean>("AmbientHasContent")
 internal val AmbientPreparedSize = SemanticsPropertyKey<IntSize>("AmbientPreparedSize")
 internal val AmbientPreparedGeneration = SemanticsPropertyKey<Int>("AmbientPreparedGeneration")
+internal val AmbientPresentationPrepared = SemanticsPropertyKey<Boolean>("AmbientPresentationPrepared")
 internal const val AMBIENT_TRANSITION_MS = 500
 internal const val AMBIENT_MAX_FRAME_EDGE = 192
 // The baked field has no sharp detail and its shortest motion period is >34 seconds.
@@ -245,6 +246,7 @@ fun MediaAmbientBackground(
         this[AmbientHasContent] = renderer.transition.hasContent
         this[AmbientPreparedSize] = renderer.transition.target?.let { IntSize(it.width, it.height) } ?: IntSize.Zero
         this[AmbientPreparedGeneration] = renderer.transition.target?.generationId ?: 0
+        this[AmbientPresentationPrepared] = presentationState.scene != null
     }) {
         val targetPresentation = presentation
         val scene = presentationState.scene

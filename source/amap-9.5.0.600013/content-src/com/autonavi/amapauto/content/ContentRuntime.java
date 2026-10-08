@@ -38,7 +38,7 @@ public final class ContentRuntime {
         this.host = host;
         store = new ContentStore(host.getContext());
         store.setThemeMode(lastAmapThemeMode);
-        renderer = new com.icar03.content.host.ContentComposeHost(host.getContext(), host, store);
+        renderer = new com.icar03.content.host.ContentComposeHost(host.getContext(), host, store, activity);
     }
 
     static Context contentContext(Context original) {

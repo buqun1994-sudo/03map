@@ -1650,9 +1650,13 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun expandedEntrancesKeepMetadataRowsVerticalGeometryAndFullCenteredNames() {
-        mountInteractionState(androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false)))
-        val catalog = ShortcutId.entries.toList()
-        val bounds = catalog.associateWith { compose.onNodeWithTag(shortcutTag(it)).assertIsDisplayed().getUnclippedBoundsInRoot() }
+        val ready = ContentUiState(previewMode = false, screenCleanAvailable = true,
+            features = com.icar03.content.model.VehicleFeature.entries.associateWith {
+                FeatureState(actual = 0, known = true, available = true)
+            })
+        mountInteractionState(androidx.compose.runtime.mutableStateOf(ready))
+        val catalog = ShortcutGrid.buttons + ShortcutGrid.lowerToggles + ShortcutGrid.verticals
+        val bounds = catalog.associateWith { compose.onNodeWithTag(shortcutTag(it)).assertExists().getUnclippedBoundsInRoot() }
         val ordered = ShortcutGrid.buttons.sortedWith(compareBy({ bounds.getValue(it).top.value }, { bounds.getValue(it).left.value }))
         assertTrue("button rows follow metadata order", ordered == ShortcutGrid.buttons)
         ShortcutGrid.buttons.take(4).forEach { assertTrue("first row remains 135dp", bounds.getValue(it).bottom - bounds.getValue(it).top == 135.dp) }
@@ -1670,13 +1674,14 @@ open class ContentPanelLightPrototypeRenderTest {
         }
         assertTrue("Dock preserves its explicit product order", dockBounds.entries.sortedBy { it.value.left.value }.map { it.key } == DockShortcuts.items)
         catalog.forEach { id ->
+            compose.onNodeWithTag(shortcutTag(id)).performScrollTo().assertIsDisplayed()
             val label = compose.onNodeWithTag("shortcut-label-${id.name}", useUnmergedTree = true)
             label.assertTextEquals(id.label)
             val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
             label.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
             assertTrue("full name is not clipped or ellipsized: ${id.label}", layouts.single().lineCount <= 2 && !layouts.single().hasVisualOverflow)
         }
-        compose.onNodeWithTag("control-PassengerHeating").performClick()
+        compose.onNodeWithTag("control-PassengerHeating").performScrollTo().performClick()
         assertTrue("passenger remains an independent shortcut command", events.last() == ContentEvent.ControlTapped(ControlId.PassengerHeating))
         compose.onNodeWithTag("dock-PassengerHeating").assertDoesNotExist()
         compose.onNodeWithTag("dock-SteeringHeat").assertDoesNotExist()
@@ -1684,10 +1689,15 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun compactSixSlotsScrollWithoutShrinkingHitRegionsOrTruncatingNames() {
         val width = androidx.compose.runtime.mutableStateOf(400.dp)
-        compose.setContent { ContentTheme(dark) { ContentPanel(ContentUiState(previewMode = false).copy(dark = dark), {}, Modifier.width(width.value).testTag(hostTag)) } }
+        val ready = ContentUiState(previewMode = false, dark = dark, screenCleanAvailable = true,
+            features = com.icar03.content.model.VehicleFeature.entries.associateWith {
+                FeatureState(actual = 0, known = true, available = true)
+            })
+        val catalog = ShortcutGrid.buttons + ShortcutGrid.lowerToggles + ShortcutGrid.verticals
+        compose.setContent { ContentTheme(dark) { ContentPanel(ready, {}, Modifier.width(width.value).testTag(hostTag)) } }
         for (value in listOf(400.dp, 320.dp)) {
             compose.runOnIdle { width.value = value }
-            ShortcutId.entries.forEach { id ->
+            catalog.forEach { id ->
                 val tile = compose.onNodeWithTag(shortcutTag(id)).performScrollTo().assertIsDisplayed()
                 tile.assertHasClickAction()
                 val region = tile.getUnclippedBoundsInRoot()
