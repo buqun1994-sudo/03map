@@ -26,7 +26,8 @@ class AmbientPresentationSceneTest {
     private fun compact() = frame(Color.RED).also {
         Canvas(it).drawRect(it.width / 2f, 0f, it.width.toFloat(), it.height.toFloat(), Paint().apply { color = Color.BLUE })
     }
-    private fun key(dark: Boolean = true) = AmbientPresentationKey(null, dark, fullSize, compactSize)
+    private fun key(dark: Boolean = true, texture: AmbientArtwork? = null) = AmbientPresentationKey(texture, dark, fullSize, compactSize)
+    private fun artwork(color: Int) = AmbientArtwork(frame(color), frame(color), emptyList())
     private fun assertPixels(expected: Bitmap, actual: Bitmap) {
         for (y in 20 until minOf(expected.height, actual.height) step 29)
             for (x in 20 until minOf(expected.width, actual.width) step 31) {
@@ -207,6 +208,33 @@ class AmbientPresentationSceneTest {
         assertSame(scene, owner.committedScene(gestureKey))
         assertTrue(owner.isPrepared(gestureKey))
         assertFalse(owner.reusePrepared(gestureKey.copy(fullSize = IntSize(840, 480)), 0f))
+    }
+
+    @Test fun artworkReplacementUsesLiveFrameWithoutOldPresentationHandoff() {
+        val oldArtwork = artwork(Color.RED)
+        val newArtwork = artwork(Color.BLUE)
+        val owner = AmbientPresentationState()
+        val painter = AmbientPresentationPainter()
+        val oldKey = key(false, oldArtwork)
+        val oldLive = AmbientTransition(target = frame(Color.RED), startOpacity = 1f, endOpacity = 1f)
+        val oldRequest = owner.begin(oldKey, oldLive)
+        owner.install(oldRequest, oldKey,
+            AmbientPresentationScene(frame(Color.RED), frame(Color.RED, fullSize), fullSize, compactSize))
+
+        val newKey = key(false, newArtwork)
+        val capturedOld = AmbientTransition(target = frame(Color.RED), startOpacity = 1f, endOpacity = 1f)
+        val request = owner.begin(newKey, capturedOld, compactSize)
+        val live = AmbientTransition(target = frame(Color.BLUE), startOpacity = 1f, endOpacity = 1f)
+        assertSame("a changed artwork must use the renderer's live frame", live, owner.pendingFrame(newKey, live))
+        owner.install(request, newKey,
+            AmbientPresentationScene(frame(Color.BLUE), frame(Color.GREEN, fullSize), fullSize, compactSize), 0f)
+        assertEquals(1f, owner.handoffBlend(0f), 0f)
+
+        val output = Bitmap.createBitmap(480, 480, Bitmap.Config.ARGB_8888)
+        painter.drawFrame(Canvas(output), 480f, 480f, owner, newKey, live, 1f,
+            AmbientPainter(), 0f, Color.WHITE)
+        assertEquals(Color.BLUE, output.getPixel(40, 200))
+        assertEquals(Color.GREEN, output.getPixel(470, 200))
     }
 
     @Test fun missingCurrentFrameUsesAnOpaqueThemeFallback() {

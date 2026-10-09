@@ -32,17 +32,22 @@ internal class AmbientPresentationState {
     private var pendingSize = IntSize.Zero
     private var lastProgress = 0f
     private var handoffDistance = 0f
+    private var artworkChanged = false
 
     fun begin(key: AmbientPresentationKey, visible: AmbientTransition, size: IntSize = key.compactSize): Long {
         requestId += 1L
         requestedKey = key
         pendingTransition = visible
         pendingSize = size
+        artworkChanged = preparedKey?.let { it.texture !== key.texture || it.dark != key.dark } == true
         return requestId
     }
 
     fun isCurrent(id: Long): Boolean = id == requestId
     fun isPrepared(key: AmbientPresentationKey): Boolean = preparedKey == key && scene != null
+
+    fun canCaptureFor(texture: AmbientArtwork?, dark: Boolean): Boolean =
+        scene != null && preparedKey?.texture === texture && preparedKey?.dark == dark
 
     /**
      * A gesture session changes its generation token, but the artwork/geometry
@@ -57,6 +62,7 @@ internal class AmbientPresentationState {
         requestedKey = key
         pendingTransition = null
         pendingSize = IntSize.Zero
+        artworkChanged = false
         lastProgress = progress.coerceIn(0f, 1f)
         handoffDistance = .04f
         return true
@@ -66,6 +72,8 @@ internal class AmbientPresentationState {
         if (id != requestId || requestedKey != key) return
         scene = value
         preparedKey = key
+        if (artworkChanged) pendingTransition = null
+        artworkChanged = false
         lastProgress = progress.coerceIn(0f, 1f)
         handoffDistance = 0f
     }
@@ -73,7 +81,7 @@ internal class AmbientPresentationState {
     // A late worker hands off over actual travel in either direction. The background's own
     // compact/wide blend still uses the absolute map progress, never a restarted progress.
     fun handoffBlend(progress: Float): Float {
-        if (scene == null || pendingTransition == null) return 1f
+        if (artworkChanged || scene == null || pendingTransition == null) return 1f
         val current = progress.coerceIn(0f, 1f)
         handoffDistance += abs(current - lastProgress)
         lastProgress = current
@@ -91,7 +99,7 @@ internal class AmbientPresentationState {
     }
 
     fun pendingFrame(key: AmbientPresentationKey, live: AmbientTransition): AmbientTransition =
-        if (requestedKey == key) pendingTransition ?: live else live
+        if (requestedKey == key && !artworkChanged) pendingTransition ?: live else live
 
     fun frameSize(key: AmbientPresentationKey, liveSize: IntSize): IntSize =
         if (requestedKey == key) pendingSize else liveSize
@@ -105,6 +113,7 @@ internal class AmbientPresentationState {
         pendingSize = IntSize.Zero
         lastProgress = 0f
         handoffDistance = 0f
+        artworkChanged = false
     }
 }
 

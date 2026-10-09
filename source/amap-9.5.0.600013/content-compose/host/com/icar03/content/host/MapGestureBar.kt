@@ -170,7 +170,7 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
         private const val HANDLE_WIDTH_PX = 6
         private const val HANDLE_HEIGHT_PX = 256
         private const val INK_PADDING_PX = 8
-        private const val EDGE_INSET_PX = 2
+        private const val EDGE_INSET_PX = 4
 
         private fun normalInk(enabled: Boolean, dark: Boolean): Ink = when {
             enabled && dark -> Ink(228f, 237f, 247f, .88f)
@@ -199,7 +199,7 @@ class MapGestureBar private constructor(private val touchOwner: ViewGroup) : Vie
                     Gravity.RIGHT or Gravity.CENTER_VERTICAL,
                 ).apply {
                     // The paint has 8px padding; only that transparent padding extends
-                    // past the original touch owner. The visible edge stays 2px inside it.
+                    // past the original touch owner. The visible edge stays 4px inside it.
                     rightMargin = EDGE_INSET_PX - INK_PADDING_PX
                 })
             }

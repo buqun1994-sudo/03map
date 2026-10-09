@@ -150,7 +150,8 @@ fun MediaAmbientBackground(
             targetPresentation.entryPrepared(entryToken)
             return@LaunchedEffect
         }
-        val captured = presentationPainter.captureCurrent(painter)
+        val captured = if (presentationState.canCaptureFor(texture, dark))
+            presentationPainter.captureCurrent(painter) else null
         val visibleSize = captured?.second ?: latestViewport.value.takeIf {
             it.width > 0 && it.height > 0
         } ?: compactSize
