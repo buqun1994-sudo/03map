@@ -299,15 +299,18 @@ class ContentRuntimeTest {
         binding.dispatch(ContentEvent.VolumeChanged(.9f)); awaitSystem(binding)
         assertEquals(90, system.target)
         assertEquals(.25f, binding.state.value.volume.actual)
-        assertNull(binding.state.value.volume.target)
-        assertEquals("系统状态未确认", binding.state.value.message)
+        assertEquals(.9f, binding.state.value.volume.target)
+        assertNull(binding.state.value.message)
         system.percent = 90
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); awaitSystem(binding)
         assertEquals(.9f, binding.state.value.volume.actual)
+        assertNull(binding.state.value.volume.target)
+        assertNull(binding.state.value.message)
         system.available = false
         binding.dispatch(ContentEvent.VolumeChanged(.5f)); awaitSystem(binding)
         assertEquals(1, system.writes)
-        assertFalse(binding.state.value.volume.available)
+        assertEquals(.5f, binding.state.value.volume.target)
+        assertNull(binding.state.value.message)
     }
 
     @Test fun staleSystemReadbackCannotClearNewerFailureFeedback() {
@@ -317,12 +320,16 @@ class ContentRuntimeTest {
         system.accept = false
         binding.dispatch(ContentEvent.VolumeChanged(.6f)); awaitSystem(binding)
         assertEquals(2, system.writes)
+        assertEquals(.6f, binding.state.value.volume.target)
+        assertNull(binding.state.value.message)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2_000)); awaitSystem(binding)
         assertEquals("系统状态未确认", binding.state.value.message)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); awaitSystem(binding)
-        assertEquals("系统状态未确认", binding.state.value.message)
+        assertNull(binding.state.value.volume.target)
         assertEquals(.9f, binding.state.value.volume.actual)
         binding.dispatch(ContentEvent.VolumeChanged(.9f)); awaitSystem(binding)
         assertEquals(2, system.writes)
+        assertNull(binding.state.value.message)
+        assertNull(binding.state.value.volume.target)
     }
 
     @Test fun stopCancelsQueuedCallbacksClockAndSystemReadbackWithoutReplayingCommands() {

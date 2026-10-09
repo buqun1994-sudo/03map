@@ -508,8 +508,18 @@ class ContentBinding(
         publishShell()
     }
 
+    private fun applySystemKind(sequence: Long, kind: Int, snapshot: ContentPorts.SystemSnapshot) {
+        if (sequence <= appliedSystemObservation) return
+        appliedSystemObservation = sequence
+        when (kind) {
+            0 -> brightness = snapshot
+            1 -> volume = snapshot
+        }
+        systemLevels = systemLevels + (SystemQuickControl.entries[kind] to snapshot)
+    }
+
     private fun writeSystem(kind: Int, value: Float) {
-        if (!value.isFinite()) return
+        if (!value.isFinite() || kind !in 0..4) return
         val target = (value.coerceIn(0f, 1f) * 100f).roundToInt()
         val requestSequence = ++systemWriteSequence
         val feedbackOwner = feedbackRevision
@@ -518,43 +528,69 @@ class ContentBinding(
         systemTargets[kind] = target / 100f
         publishShell()
         val epoch = generation
-        val observation = ++systemObservationSequence
+        val deadline = android.os.SystemClock.uptimeMillis() + SYSTEM_CONFIRM_TIMEOUT_MS
+        // The deadline lives on the main handler, so a stuck Binder read cannot leave a target pending forever.
+        handler.postDelayed({
+            if (!running || generation != epoch || latestSystemRequest.get(kind) != requestSequence ||
+                systemKindSequence[kind] != requestSequence || systemTargets[kind] == null) return@postDelayed
+            systemTargets[kind] = null
+            if (feedbackRevision == feedbackOwner) replaceFeedback("系统状态未确认")
+            publishShell()
+        }, SYSTEM_CONFIRM_TIMEOUT_MS)
         systemJob = systemWorker.submit {
-            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
+            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence ||
+                android.os.SystemClock.uptimeMillis() >= deadline) return@submit
             val before = read(kind)
-            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
-            val accepted = before.matches(target) ||
-                try { store.systemPort().write(kind, target) } catch (_: RuntimeException) { false }
-            val light = read(0)
-            val sound = read(1)
-            val call = read(2)
-            val navigation = read(3)
-            val voice = read(4)
-            val actual = when (kind) {
-                0 -> light
-                1 -> sound
-                2 -> call
-                3 -> navigation
-                else -> voice
+            // A blocked preflight read may return after the main timeout has already cleared the target.
+            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence ||
+                android.os.SystemClock.uptimeMillis() >= deadline) return@submit
+            // A fresh matching read is already confirmation; otherwise submit exactly once and only poll reads afterwards.
+            if (!before.matches(target)) {
+                try { store.systemPort().write(kind, target) } catch (_: RuntimeException) { }
             }
+            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
             handler.post {
-                if (!running || generation != epoch) return@post
-                if (systemKindSequence[kind] == requestSequence) systemTargets[kind] = null
-                if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner) {
-                    replaceFeedback(if (accepted && actual.matches(target)) null else "系统状态未确认")
+                if (!running || generation != epoch || latestSystemRequest.get(kind) != requestSequence ||
+                    systemKindSequence[kind] != requestSequence || systemTargets[kind] == null) return@post
+                if (before.matches(target) && android.os.SystemClock.uptimeMillis() <= deadline) {
+                    systemTargets[kind] = null
+                    if (feedbackRevision == feedbackOwner) replaceFeedback(null)
+                    applySystemKind(++systemObservationSequence, kind, before)
+                    publishShell()
+                } else {
+                    scheduleSystemConfirmation(kind, target, requestSequence, feedbackOwner, epoch, deadline)
                 }
-                applySystem(observation, light, sound, call, navigation, voice, screenCleaningAvailable)
-                publishShell()
-                handler.postDelayed({
-                    if (running && generation == epoch && systemWriteSequence == requestSequence) {
-                        confirmSystem(kind, target, accepted, requestSequence, feedbackOwner, epoch)
-                    }
-                }, 250L)
             }
         }
     }
 
-    private fun confirmSystem(kind: Int, target: Int, accepted: Boolean, requestSequence: Long, feedbackOwner: Long, epoch: Long) {
+    private fun scheduleSystemConfirmation(
+        kind: Int,
+        target: Int,
+        requestSequence: Long,
+        feedbackOwner: Long,
+        epoch: Long,
+        deadline: Long,
+    ) {
+        if (!running || generation != epoch || latestSystemRequest.get(kind) != requestSequence ||
+            systemKindSequence[kind] != requestSequence || systemTargets[kind] == null) return
+        handler.postDelayed({
+            if (!running || generation != epoch || latestSystemRequest.get(kind) != requestSequence ||
+                systemKindSequence[kind] != requestSequence || systemTargets[kind] == null) return@postDelayed
+            confirmSystem(kind, target, requestSequence, feedbackOwner, epoch, deadline)
+        }, SYSTEM_CONFIRM_INTERVAL_MS)
+    }
+
+    private fun confirmSystem(
+        kind: Int,
+        target: Int,
+        requestSequence: Long,
+        feedbackOwner: Long,
+        epoch: Long,
+        deadline: Long,
+    ) {
+        if (!running || generation != epoch || latestSystemRequest.get(kind) != requestSequence ||
+            systemKindSequence[kind] != requestSequence || systemTargets[kind] == null) return
         val observation = ++systemObservationSequence
         systemJob = systemWorker.submit {
             if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
@@ -563,6 +599,7 @@ class ContentBinding(
             val call = read(2)
             val navigation = read(3)
             val voice = read(4)
+            if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
             val actual = when (kind) {
                 0 -> light
                 1 -> sound
@@ -570,11 +607,22 @@ class ContentBinding(
                 3 -> navigation
                 else -> voice
             }
+            val matched = android.os.SystemClock.uptimeMillis() <= deadline && actual.matches(target)
             handler.post {
-                if (!running || generation != epoch) return@post
-                if (systemWriteSequence == requestSequence && feedbackRevision == feedbackOwner && accepted && actual.matches(target)) replaceFeedback(null)
+                if (!running || generation != epoch || latestSystemRequest.get(kind) != requestSequence ||
+                    systemKindSequence[kind] != requestSequence || systemTargets[kind] == null) return@post
                 applySystem(observation, light, sound, call, navigation, voice, screenCleaningAvailable)
-                publishShell()
+                if (matched) {
+                    systemTargets[kind] = null
+                    if (feedbackRevision == feedbackOwner) replaceFeedback(null)
+                    publishShell()
+                } else if (android.os.SystemClock.uptimeMillis() < deadline) {
+                    scheduleSystemConfirmation(kind, target, requestSequence, feedbackOwner, epoch, deadline)
+                } else {
+                    systemTargets[kind] = null
+                    if (feedbackRevision == feedbackOwner) replaceFeedback("系统状态未确认")
+                    publishShell()
+                }
             }
         }
     }
@@ -592,8 +640,6 @@ class ContentBinding(
     }
 
     private fun publishShell() {
-        // A confirmed non-P fact closes the entire session even on its first read or reopen.
-        if (settingsOpen && latestSnapshot.autoCloseSettingsOnDrive && latestSnapshot.gear.isNonPark()) closeSettings()
         if (settingsCollapsed && settingsSection != SettingsSection.Lyrics) settingsCollapsed = false
         val projected = shell(latestSnapshot)
         val message = feedback
@@ -757,5 +803,7 @@ class ContentBinding(
     private companion object {
         private const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
         private const val FEEDBACK_DURATION_MS = 3_000L
+        private const val SYSTEM_CONFIRM_INTERVAL_MS = 250L
+        private const val SYSTEM_CONFIRM_TIMEOUT_MS = 2_000L
     }
 }

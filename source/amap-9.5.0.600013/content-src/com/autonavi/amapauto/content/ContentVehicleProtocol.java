@@ -169,7 +169,8 @@ public final class ContentVehicleProtocol {
         if (feature == null || target < 0 || target > 1) return null;
         switch (feature) {
             case RearFog:
-                return new Write(REAR_FOG, target == 1 ? SWITCH_ON : SWITCH_OFF, false);
+                // OEM rear-fog setter is a toggle trigger, not an absolute 1/2 setter.
+                return new Write(REAR_FOG, WRITE_REAR_TRIGGER, false);
             case PassengerWindowLock:
                 return new Write(REAR_WINDOW_DISABLE, target == 1 ? 1 : 2, false);
             case WiperMaintenance:
@@ -177,9 +178,11 @@ public final class ContentVehicleProtocol {
             case GloveBox:
                 return target == 1 ? new Write(GLOVE_BOX_REQUEST, 2, false) : null;
             case LeftChildLock:
-                return new Write(REAR_CHILD_LOCK_WRITE, AREA_REAR_LEFT, target == 1 ? 2 : 1, false);
+                // OEM setter: left child lock uses TX3=locked and TX2=unlocked.
+                return new Write(REAR_CHILD_LOCK_WRITE, AREA_REAR_LEFT, target == 1 ? 3 : 2, false);
             case RightChildLock:
-                return new Write(REAR_CHILD_LOCK_WRITE, AREA_REAR_RIGHT, target == 1 ? 2 : 1, false);
+                // OEM setter: right child lock uses TX3=locked and TX2=unlocked.
+                return new Write(REAR_CHILD_LOCK_WRITE, AREA_REAR_RIGHT, target == 1 ? 3 : 2, false);
             case WirelessCharging:
                 return new Write(WIRELESS_CHARGING_SWITCH, target == 1 ? SWITCH_ON : SWITCH_OFF, false);
             case WindowVent:
@@ -194,7 +197,8 @@ public final class ContentVehicleProtocol {
     }
 
     public static int[] centerBrightnessWrite(int level) {
-        return level >= 1 && level <= 10 ? new int[] {255, level} : null;
+        // TX uses [1, level]; the OEM readback uses [255, level].
+        return level >= 1 && level <= 10 ? new int[] {1, level} : null;
     }
 
     public static int normalizeBinarySwitch(int raw) {
@@ -206,6 +210,10 @@ public final class ContentVehicleProtocol {
     }
 
     public static int normalizeChildLock(int raw) {
+        return raw == 1 ? 0 : raw == 2 ? 1 : -1;
+    }
+
+    public static int normalizeWiperMaintenance(int raw) {
         return raw == 1 ? 0 : raw == 2 ? 1 : -1;
     }
 

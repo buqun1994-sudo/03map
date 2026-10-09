@@ -51,7 +51,7 @@ internal fun SettingsSheet(
     onVisibilityChanged: (Boolean) -> Unit = {},
     onOcclusionChanged: (Boolean) -> Unit = {},
 ) {
-    CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark)) {
+    CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark, state.interfaceOpacity)) {
         val design = LocalSettingsDesign.current
         val currentState by rememberUpdatedState(state)
         val currentEvent by rememberUpdatedState(onEvent)
@@ -93,18 +93,17 @@ internal fun SettingsSheet(
             }.value
             SideEffect {
                 onVisibilityChanged(open || wasOpen)
-                onOcclusionChanged(fullyCovering && state.interfaceOpacity >= 1f)
+                onOcclusionChanged(fullyCovering)
             }
             if (!open && !wasOpen) return@BoxWithConstraints
             Box(
                 Modifier.fillMaxSize()
                     .graphicsLayer {
                         translationY = verticalOffset.value
-                        alpha = state.interfaceOpacity
                     }
-                    .settingsSurfaceShadow(design.page, design.dark, design.pageCornerRadius)
+                    .settingsSurfaceShadow(design.page, design.dark, design.pageCornerRadius, design.surfaceOpacity)
                     .clip(design.pageShape)
-                    .background(design.page)
+                    .background(interfaceSurfaceColor(design.page, design.surfaceOpacity))
                     .testTag("settings-sheet"),
             ) {
                 Column(Modifier.fillMaxSize()) {

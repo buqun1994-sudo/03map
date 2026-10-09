@@ -529,17 +529,10 @@ class LyricsSettingsBindingTest {
         } finally { owner.close() }
     }
 
-    @Test fun defaultLoginLoadsControlledWoaThroughTheConnectionOwnerBroker() {
+    @Test fun defaultLoginLoadsOfficialPageWithoutHeadersOrAuthorizationBootstrap() {
         LoginWebViewShadow.reset()
         val rig = AppleMusicFixtureRig(null)
-        val transport = com.icar03.content.runtime.lyrics.AppleMusicFixtureTransport(
-            com.icar03.content.runtime.lyrics.AppleMusicFixture::bootstrapResponse,
-        )
-        val broker = com.icar03.content.runtime.lyrics.AppleMusicAuthBroker(rig.connection, transport, rig.clock)
-        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, {}, rig.connection,
-            authorizationBuilder = { attempt, deadline, cancellation ->
-                broker.prepareWebAuthorization(attempt, deadline, cancellation)
-            })
+        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, {}, rig.connection)
         try {
             beginRealLogin(owner)
             val attempt = field(owner, "activeAttempt") as AppleMusicConnection.LoginAttempt
@@ -547,13 +540,12 @@ class LyricsSettingsBindingTest {
                 AppleMusicConnection.LoginAttempt::class.java, java.lang.Long.TYPE, java.lang.Long.TYPE)
                 .apply { isAccessible = true }.invoke(owner, RuntimeEnvironment.getApplication(), attempt,
                     longField(owner, "lifecycleEpoch"), longField(owner, "loginEpoch"))
-            val start = Uri.parse(LoginWebViewShadow.loadedUrls.single())
-            assertEquals("authorize.music.apple.com", start.host)
-            assertEquals("/woa", start.path)
-            assertTrue(start.getQueryParameter("referrer").orEmpty().endsWith(attempt.id))
-            assertEquals(start.getQueryParameter("referrer"), LoginWebViewShadow.loadedHeaders.single()["Referer"])
-            assertEquals(3, transport.calls.size)
-            assertTrue(transport.calls.all { !it.headers.containsKey("Media-User-Token") })
+            assertEquals(listOf(AppleMusicConnection.LOGIN_URL), LoginWebViewShadow.loadedUrls)
+            assertTrue(LoginWebViewShadow.loadedHeaders.single().isEmpty())
+            assertNull(field(owner, "authorizationJob"))
+            assertNull(field(owner, "authorizationCancellation"))
+            assertNotNull(field(owner, "pageLoadTimeout"))
+            assertNull(rig.store.value)
         } finally { owner.close() }
     }
 
@@ -584,22 +576,22 @@ class LyricsSettingsBindingTest {
         } finally { owner.close() }
     }
 
-    @Test fun compatibilityManifestDriftFailsOnlyTheCurrentAttemptAndDeduplicates() {
+    @Test fun currentOfficialScriptsPassThroughWithoutAStaticCompatibilityManifest() {
         val rig = AppleMusicFixtureRig(null)
         val messages = mutableListOf<String>()
-        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, messages::add, rig.connection,
-            authorizationConfiguration = { com.icar03.content.runtime.lyrics.AppleMusicWebAuthorization.configuration(it, "fixture-developer-token") })
+        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, messages::add, rig.connection)
         try {
             beginRealLogin(owner)
             val view = attachWithoutLoading(owner)
-            val request = requestFor("https://authorize.music.apple.com/assets/unknown-version.js", mainFrame = false)
-            assertNotNull(view.webViewClient.shouldInterceptRequest(view, request))
-            assertNotNull(view.webViewClient.shouldInterceptRequest(view, request))
-            assertTrue(messages.isEmpty())
+            for (script in listOf("https://authorize.music.apple.com/assets/unknown-version.js",
+                "https://appleid.cdn-apple.com/appleauth/static/module-assets/current-widget.js",
+                "https://music.apple.com/assets/current-index.js")) {
+                assertNull(view.webViewClient.shouldInterceptRequest(view, requestFor(script, mainFrame = false)))
+            }
             shadowOf(Looper.getMainLooper()).idle()
-            assertEquals(1, messages.size)
-            assertTrue(messages.single().contains("资源已更新"))
-            assertNull(field(owner, "activeAttempt"))
+            assertTrue(messages.isEmpty())
+            assertNotNull(field(owner, "activeAttempt"))
+            assertTrue(owner.state.appleLoginOpen)
         } finally { owner.close() }
     }
 

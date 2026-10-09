@@ -117,12 +117,15 @@ private fun QuickControlButton(label: String, status: String, selected: Boolean,
     var action by remember { mutableIntStateOf(0) }
     val base = colors.shortcutBase
     val idle = if (retainSelection && selected) colors.selectedSurface else base
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled && rippleEnabled, idle,
-        if (selected && retainSelection) base else colors.selectedSurface)
+          val surfaceIdle = interfaceSurfaceColor(idle)
+     val surfaceSelected = interfaceSurfaceColor(if (selected && retainSelection) base else colors.selectedSurface)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled && rippleEnabled, surfaceIdle,
+        surfaceSelected)
     Box(modifier.fillMaxWidth().sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(tag)
-        .downwardSoftShadow(base, MaterialTheme.colorScheme.background.luminance() < .2f)
+        .downwardSoftShadow(base, MaterialTheme.colorScheme.background.luminance() < .2f,
+             opacity = LocalInterfaceOpacity.current)
         .clip(RoundedCornerShape(12.dp)).then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
-        .then(feedback.area(idle))
+        .then(feedback.area(surfaceIdle))
         .clickable(interactionSource = interactions, indication = null, enabled = enabled, role = Role.Button) {
             if (onClick()) action++
         }.semantics {
@@ -363,12 +366,13 @@ internal fun VerticalControlSurface(label: String, tag: String, type: QuickContr
     dragging: Boolean, modifier: Modifier = Modifier, scale: SteppedControlScale? = null,
     icon: @Composable (Modifier) -> Unit) {
     val colors = LocalContentColors.current
-    val labelGeometry = remember { mutableStateOf<QuickControlLabelGeometry?>(null) }
+    val surfaceBase = interfaceSurfaceColor(colors.sliderBase)
+     val labelGeometry = remember { mutableStateOf<QuickControlLabelGeometry?>(null) }
     val animatedFill = animateFloatAsState(fraction.coerceIn(0f, 1f),
         tween(if (dragging) 70 else 220), label = "vertical-fill")
     val fillValue = if (dragging) fraction.coerceIn(0f, 1f) else animatedFill.value
     Box(modifier.fillMaxWidth().testTag(tag).downwardSoftShadow(colors.sliderBase,
-        MaterialTheme.colorScheme.background.luminance() < .2f).clip(RoundedCornerShape(12.dp))
+        MaterialTheme.colorScheme.background.luminance() < .2f, opacity = LocalInterfaceOpacity.current).clip(RoundedCornerShape(12.dp))
         .drawWithCache {
             val inset = 4.dp.toPx()
             val lineWidth = 1.dp.toPx()
@@ -389,7 +393,7 @@ internal fun VerticalControlSurface(label: String, tag: String, type: QuickContr
                 }
             }.orEmpty()
             onDrawBehind {
-                drawRect(colors.sliderBase)
+                drawRect(surfaceBase)
                 // The animated state is read only in draw, without resizing a child.
                 val filledHeight = size.height * fillValue
                 drawRect(colors.sliderFill, Offset(0f, size.height - filledHeight), Size(size.width, filledHeight))

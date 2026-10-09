@@ -121,7 +121,8 @@ class ContentBindingDomainsTest {
             binding.dispatch(ContentEvent.VolumeChanged(.9f)); drain(binding)
             assertEquals(0, wrongThread.get())
             assertEquals(.25f, binding.state.value.volume.actual)
-            assertEquals("系统状态未确认", binding.state.value.message)
+            assertEquals(.9f, binding.state.value.volume.target)
+             assertNull(binding.state.value.message)
         } finally { release.countDown(); binding.close(); store.destroy() }
     }
 
@@ -169,25 +170,61 @@ class ContentBindingDomainsTest {
 
     @Test fun delayedSuccessfulSystemConfirmationKeepsSettingsOpenWithoutFeedback() {
         var percent = 25
+        var writes = 0
         val store = store(object : ContentPorts.SystemPort {
             override fun read(kind: Int) = ContentPorts.SystemSnapshot(true, percent)
-            override fun write(kind: Int, target: Int): Boolean { assertEquals(1, kind); return true }
+            override fun write(kind: Int, target: Int): Boolean { assertEquals(1, kind); writes++; return true }
         })
         val binding = ContentBinding(store)
         try {
             binding.start(); drain(binding)
             binding.dispatch(ContentEvent.VolumeChanged(.9f)); drain(binding)
-            assertEquals("系统状态未确认", binding.state.value.message)
+            assertEquals(.9f, binding.state.value.volume.target)
+            assertNull(binding.state.value.message)
             binding.dispatch(ContentEvent.SettingsTapped)
             percent = 90
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250)); drain(binding)
             assertEquals(.9f, binding.state.value.volume.actual)
             assertNull(binding.state.value.message)
             assertTrue(binding.state.value.settingsOpen)
+             assertEquals(1, writes)
         } finally { binding.close(); store.destroy() }
     }
 
-    @Test fun aLateWriteCompletionCannotRestoreDismissedFeedbackOrAlterSettingsVisibility() {
+    @Test fun systemConfirmationIsolatedByKindAndTimeoutDoesNotRepeatWrites() {
+        val levels = IntArray(5) { 25 }
+        val writes = mutableListOf<Pair<Int, Int>>()
+        val store = store(object : ContentPorts.SystemPort {
+            override fun read(kind: Int) = ContentPorts.SystemSnapshot(true, levels[kind])
+            override fun write(kind: Int, target: Int): Boolean {
+                writes += kind to target
+                return true
+            }
+        })
+        val binding = ContentBinding(store)
+        try {
+            binding.start(); drain(binding)
+            binding.dispatch(ContentEvent.VolumeChanged(.9f)); drain(binding)
+            binding.dispatch(ContentEvent.SystemVolumeChanged(
+                com.icar03.content.ui.SystemQuickControl.CallVolume, .8f,
+            )); drain(binding)
+            assertEquals(listOf(1 to 90, 2 to 80), writes)
+            assertEquals(.9f, binding.state.value.volume.target)
+            assertEquals(.8f, binding.state.value.systemLevels.getValue(
+                com.icar03.content.ui.SystemQuickControl.CallVolume,
+            ).target)
+            assertNull(binding.state.value.message)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2_000)); drain(binding)
+            assertNull(binding.state.value.volume.target)
+            assertNull(binding.state.value.systemLevels.getValue(
+                com.icar03.content.ui.SystemQuickControl.CallVolume,
+            ).target)
+            assertEquals("系统状态未确认", binding.state.value.message)
+            assertEquals(listOf(1 to 90, 2 to 80), writes)
+        } finally { binding.close(); store.destroy() }
+    }
+
+    @Test fun aLateSystemReadbackCannotRestoreDismissedFeedbackOrAlterSettingsVisibility() {
         for (action in listOf(ContentEvent.SettingsTapped, ContentEvent.DismissSheet)) {
             val entered = CountDownLatch(1)
             val release = CountDownLatch(1)
@@ -202,15 +239,59 @@ class ContentBindingDomainsTest {
             val binding = ContentBinding(store)
             try {
                 binding.start(); drain(binding)
-                binding.dispatch(ContentEvent.VolumeChanged(.9f))
-                assertTrue(entered.await(2, TimeUnit.SECONDS))
+                binding.dispatch(ContentEvent.VolumeChanged(.9f)); drain(binding)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+                assertTrue("the confirmation read actually entered the worker", entered.await(2, TimeUnit.SECONDS))
                 binding.dispatch(action)
                 release.countDown(); drain(binding)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_750)); drain(binding)
+                assertNull(binding.state.value.volume.target)
                 assertNull(binding.state.value.message)
                 assertEquals(action == ContentEvent.SettingsTapped, binding.state.value.settingsOpen)
                 assertEquals(.25f, binding.state.value.volume.actual)
             } finally { release.countDown(); binding.close(); store.destroy() }
         }
+    }
+
+    @Test fun aTimedOutPreflightReadCannotSubmitTheSystemWrite() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val blockNextVolumeRead = AtomicInteger()
+        val writes = AtomicInteger()
+        val wrongThread = AtomicInteger()
+        val store = store(object : ContentPorts.SystemPort {
+            override fun read(kind: Int): ContentPorts.SystemSnapshot {
+                if (Looper.myLooper() == Looper.getMainLooper()) wrongThread.incrementAndGet()
+                if (kind == 1 && blockNextVolumeRead.compareAndSet(1, 0)) {
+                    entered.countDown()
+                    check(release.await(2, TimeUnit.SECONDS))
+                }
+                return ContentPorts.SystemSnapshot(true, 25)
+            }
+            override fun write(kind: Int, target: Int): Boolean {
+                if (Looper.myLooper() == Looper.getMainLooper()) wrongThread.incrementAndGet()
+                writes.incrementAndGet()
+                return true
+            }
+        })
+        val binding = ContentBinding(store)
+        try {
+            binding.start(); drain(binding)
+            blockNextVolumeRead.set(1)
+            binding.dispatch(ContentEvent.VolumeChanged(.9f))
+            assertTrue("the preflight read actually entered the worker", entered.await(2, TimeUnit.SECONDS))
+            assertEquals(.9f, binding.state.value.volume.target)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2_000))
+            assertNull("the main deadline clears a blocked preflight target", binding.state.value.volume.target)
+            assertEquals("系统状态未确认", binding.state.value.message)
+            assertEquals(0, writes.get())
+            release.countDown(); drain(binding)
+            assertEquals("returning at the deadline cannot submit the expired write", 0, writes.get())
+            assertNull(binding.state.value.volume.target)
+            assertEquals(.25f, binding.state.value.volume.actual)
+            assertEquals("系统状态未确认", binding.state.value.message)
+            assertEquals(0, wrongThread.get())
+        } finally { release.countDown(); binding.close(); store.destroy() }
     }
 
     @Test fun stopRejectsAQueuedWriteAndLateReadbackCannotReenableThePanel() {

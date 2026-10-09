@@ -1,6 +1,6 @@
 # Apple 官方授权页的 Chrome 66 兼容资源
 
-此目录锁定当前官方 MusicKit WOA 的 modern／legacy 入口及其字面量静态 JavaScript 依赖，再加 Apple ID 的两个 widget bundle，共 10 个资源。默认登录由既有 AuthBroker 准备公开 developer bearer 后进入官方 WOA；不再直接运行现代 Apple Music 网页播放器。官方 HTML、样式、表单、账号输入、Cookie、TLS 与认证请求仍在线处理。
+此目录保留曾用于 Chrome 66 实验的固定 WOA／IDMS 脚本图，共 10 项资源。该实验没有证明真实车机账号授权成功，固定脚本图无法覆盖官方更新后的动态资源。当前生产登录无额外headers直载 `https://music.apple.com/login`，不调用该资源拦截器；这里的文件和准入测试仅追溯旧方案的确定性构建，不作为兼容完成结论。实际页面及现代内核验证见[研究记录](../../docs/research/Apple登录与Lyrimuse对照-20261009.md)。
 
 [官方 MusicKit v1](https://js-cdn.music.apple.com/musickit/v1/musickit.js) 使用 `authorize.music.apple.com/woa?a=...&referrer=...`；`a` 为第三方信息 JSON 的 Base64，`thirdPartyToken` 为有效 developer bearer。真实授权结果经当前 attempt 的 nonce 返程，交回唯一 Connection 私有保存。此入口差异及 Lyrimuse 当前 macOS 实现的对照见[研究记录](../../docs/research/Apple登录与Lyrimuse对照-20261009.md)。
 
@@ -27,6 +27,6 @@ node scripts/prepare-apple-authorize.mjs --check --compiler-module .tmp/apple-au
 node --test scripts/test-apple-authorize.mjs
 ```
 
-[纯 Node 回归](../../scripts/test-apple-authorize.mjs)覆盖安全随机、native 保留、真实缺失 API 执行、固定源／输出重建及篡改拒绝；[Android 资产准入回归](../../ui-preview/content-runtime/src/test/java/com/icar03/content/runtime/lyrics/AppleMusicAuthorizationCompatAssetsTest.kt)验证全部 10 项资产 SHA、HTTPS／GET／authority／无 query 和 fragment／精确路径，及版本漂移、缺资源和文档不拦截。未知 JS 版本在 WOA `/assets/` 或 IDMS `/appleauth/static/module-assets/` 根返回明确不可用，并由 Binding 结束当前加载；绝不映射为旧脚本。其它文档、POST、API、CSS、图片及非准入 origin 保持官方网络。
+[纯 Node 回归](../../scripts/test-apple-authorize.mjs)覆盖安全随机、native 保留、真实缺失 API 执行、固定源／输出重建及篡改拒绝；[Android 资产准入回归](../../ui-preview/content-runtime/src/test/java/com/icar03/content/runtime/lyrics/AppleMusicAuthorizationCompatAssetsTest.kt)验证全部 10 项资产 SHA、HTTPS／GET／authority／无 query 和 fragment／精确路径，及版本漂移、缺资源和文档不拦截。旧实验拦截器对未知JS返回明确不可用；当前Binding不调用该拦截器。其它文档、POST、API、CSS、图片及非准入 origin 保持官方网络。
 
 上述证明确定性编译和准入合同；字面量依赖闭包不能证明账号输入后所有动态脚本都已覆盖，也不能代替车机 WebView 66 的实际表单、验证码、订阅和地区验收。Apple 变更哈希后需重新读取实际资源并更新完整锁，不能以本次本机回归宣称未来版本可用。

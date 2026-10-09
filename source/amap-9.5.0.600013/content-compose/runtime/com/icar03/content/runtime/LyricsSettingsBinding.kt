@@ -45,9 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.icar03.content.runtime.lyrics.AppleMusicConnection
-import com.icar03.content.runtime.lyrics.AppleMusicAuthBroker
 import com.icar03.content.runtime.lyrics.AppleMusicWebAuthorization
-import com.icar03.content.runtime.lyrics.AppleMusicAuthorizationCompatAssets
 import com.icar03.content.runtime.lyrics.LyricsCancellationSignal
 import com.icar03.content.runtime.lyrics.ContentLyricsPreferences
 import com.icar03.content.ui.AppleMusicConnectRequested
@@ -68,7 +66,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -114,7 +111,6 @@ class LyricsSettingsBinding internal constructor(
     // Readiness requires visible interactions, rather than a finished document containing a logo.
     private var initialPageFinished = false
     private var pageReadinessProbe: Runnable? = null
-    private val compatibilityFailures = mutableSetOf<String>()
     private var documentRevision = 0L
     private var pollErrorShown = false
     private var pageProgress by mutableIntStateOf(0)
@@ -486,6 +482,12 @@ class LyricsSettingsBinding internal constructor(
     ): WebView = WebView(context).also { webView ->
         loginWebView = webView
         configureWebView(webView, attempt, ownerLifecycle, ownerLogin)
+        if (authorizationConfiguration == null && authorizationBuilder == null) {
+            webView.loadUrl(attempt.loginUrl)
+            armPageLoadTimeout(webView, attempt, ownerLifecycle, ownerLogin)
+            webView.requestFocus()
+            return@also
+        }
         val cancellation = LyricsCancellationSignal()
         authorizationCancellation = cancellation
         authorizationJob = scope?.launch {
@@ -514,12 +516,7 @@ class LyricsSettingsBinding internal constructor(
         cancellation: LyricsCancellationSignal,
     ): AppleMusicWebAuthorization.Configuration {
         authorizationBuilder?.let { return it(attempt, deadline, cancellation) }
-        authorizationConfiguration?.let { return it(attempt) }
-        // The production broker shares the same account owner as AppleMusicConnection and performs
-        // blocking official-web bootstrap off the main thread. Tests may inject a fixture builder.
-        return withContext(Dispatchers.IO) {
-            AppleMusicAuthBroker.get(appContext).prepareWebAuthorization(attempt, deadline, cancellation)
-        }
+        return checkNotNull(authorizationConfiguration)(attempt)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -556,25 +553,6 @@ class LyricsSettingsBinding internal constructor(
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-                AppleMusicAuthorizationCompatAssets.response(appContext, request) { failure, uri ->
-                    val key = "${failure.name}|${uri.host.orEmpty()}|${uri.encodedPath.orEmpty()}"
-                    mainHandler.post {
-                        if (isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt) && compatibilityFailures.add(key)) {
-                            when (failure) {
-                                AppleMusicAuthorizationCompatAssets.Failure.VERSION_CHANGED -> {
-                                    logLoginFailure(LoginFailureReason.COMPAT_VERSION_CHANGED, uri.toString())
-                                    showLoginPageError(LOGIN_COMPAT_VERSION_CHANGED_MESSAGE)
-                                }
-                                AppleMusicAuthorizationCompatAssets.Failure.ASSET_MISSING -> {
-                                    logLoginFailure(LoginFailureReason.COMPAT_ASSET_MISSING, uri.toString())
-                                    showLoginPageError(LOGIN_COMPAT_ASSET_MISSING_MESSAGE)
-                                }
-                            }
-                        }
-                    }
-                }
-
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (!isCurrentLoginView(view, ownerLifecycle, ownerLogin, attempt)) return true
                 if (request.isForMainFrame && acceptAuthorizationCallback(request.url.toString(), ownerLifecycle, ownerLogin, attempt)) return true
@@ -681,7 +659,7 @@ class LyricsSettingsBinding internal constructor(
                 }
             }
         }
-        // The initial page deadline starts only after authorization bootstrap returns and loadUrl runs.
+        // The page deadline starts when the official document is navigated.
     }
 
     private fun armPageLoadTimeout(
@@ -753,7 +731,6 @@ class LyricsSettingsBinding internal constructor(
         documentRevision++
         currentMusicPageUrl = AppleMusicConnection.LOGIN_URL
         currentNavigationUrl = AppleMusicConnection.LOGIN_URL
-        compatibilityFailures.clear()
         initialPageFinished = false
         pageProgress = 0
         pageError = null
@@ -880,8 +857,6 @@ class LyricsSettingsBinding internal constructor(
             RENDERER_GONE,
             SCRIPT_SYNTAX,
             SCRIPT_RUNTIME,
-            COMPAT_VERSION_CHANGED,
-            COMPAT_ASSET_MISSING,
             PAGE_TIMEOUT,
         }
 
@@ -897,8 +872,6 @@ class LyricsSettingsBinding internal constructor(
         )
         const val INITIAL_PAGE_TIMEOUT_MS = 30_000L
         private const val LOGIN_RENDERER_FAILURE_MESSAGE = "Apple Music 登录页面无法在当前车机 WebView 上运行，请重试"
-        private const val LOGIN_COMPAT_VERSION_CHANGED_MESSAGE = "Apple Music 官方授权资源已更新，当前车机暂不兼容"
-        private const val LOGIN_COMPAT_ASSET_MISSING_MESSAGE = "Apple Music 官方授权兼容资源不可用，请重试"
         private const val PAGE_READINESS_INTERVAL_MS = 750L
         private const val LOGIN_SCRIPT_FAILURE_MESSAGE = "Apple Music 官方授权脚本与当前车机浏览器不兼容"
         // ES5 outer syntax deliberately runs on the old engine. Inspect presence/geometry only.

@@ -179,7 +179,9 @@ fun ContentPanel(
                     (!state.lyricsProviderSettings.appleLoginOpen && (!settingsObscured || wide))) {
                     ambientBackground?.invoke()
                 }
-                CompositionLocalProvider(LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
+                CompositionLocalProvider(
+                     LocalInterfaceOpacity provides uiOpacity,
+                     LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
                     LocalQuickControlClickAcceptance provides acceptsQuickControlClick,
                     LocalQuickControlDispatch provides dispatchAccepted,
                      LocalPresentationInteractionEnabled provides !pageMotion) {
@@ -191,18 +193,18 @@ fun ContentPanel(
                         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                             if (wide) {
                                 ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
-                                    Modifier.fillMaxSize().graphicsLayer { alpha = uiOpacity * wideOpacity() })
+                                    Modifier.fillMaxSize().graphicsLayer { alpha = wideOpacity() })
                             }
                         }
                         if (!wide) Box(Modifier.fillMaxWidth().height(mediaHeight)
                             .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
-                                alpha = uiOpacity * compactOpacity()
+                                alpha = compactOpacity()
                             }) {
                             PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
                                 compact, state.showMediaSourceSwitcher)
                         }
                         if (showDock) Box(Modifier.fillMaxWidth().graphicsLayer {
-                            alpha = uiOpacity * if (state.immersiveShowDock) 1f else compactOpacity()
+                            alpha = if (state.immersiveShowDock) 1f else compactOpacity()
                         }) {
                             PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning,
                                 backgroundOpacity = compactOpacity)
@@ -213,7 +215,7 @@ fun ContentPanel(
                     Layout(content = {
                         if (state.previewMode) {
                             if (state.page == PanelPage.Shortcuts) {
-                                Column(Modifier.fillMaxSize().graphicsLayer { alpha = uiOpacity }.padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
                             } else Box(Modifier.fillMaxSize()) {
                                 LyricsPage(latestPanelState.value, dispatch, { latestLyricsState.value() }, presentationScale = if (wide) 3.0f else 1f,
                                     externalGestureActive = transitioning, interactionEnabled = contentInteractive && !transitioning,
@@ -242,7 +244,7 @@ fun ContentPanel(
                                 userScrollEnabled = contentInteractive && !transitioning && !wide) { index ->
                                 CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
                                     if (PanelPage.entries[index] == PanelPage.Shortcuts) {
-                                        Column(Modifier.fillMaxSize().graphicsLayer { alpha = uiOpacity }.padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
                                     } else Box(Modifier.fillMaxSize()) {
                                         LyricsPage(latestPanelState.value, dispatch, { latestLyricsState.value() }, presentationScale = if (wide) 3.0f else 1f,
                                             externalGestureActive = transitioning || pager.isScrollInProgress,
@@ -273,11 +275,11 @@ fun ContentPanel(
                         compact = compact, modifier = Modifier.align(if (wide) Alignment.TopStart else Alignment.TopEnd)
                             .padding(top = if (showTop) topBarHeight + 12.dp else 16.dp,
                                 start = if (wide) 12.dp else 0.dp,
-                                 end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = uiOpacity * if (wide) wideOpacity() else compactOpacity() }) { id ->
+                                 end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = if (wide) wideOpacity() else compactOpacity() }) { id ->
                         dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
                     }
                 }
-                 DockLevelOverlayHost(dockOverlay, uiOpacity) { control, level, modifier ->
+                 DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
                     VehicleControlOemIcon(control, state.controls.getValue(control).copy(target = level), state.dark, modifier)
                 }
                 AnimatedVisibility(
@@ -315,7 +317,7 @@ fun ContentPanel(
                         onOcclusionChanged = { settingsObscured = it })
                 }
                 if (state.lyricsProviderSettings.appleLoginOpen) {
-                    CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark)) { appleMusicLogin(dispatch) }
+                    CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(state.dark, state.interfaceOpacity)) { appleMusicLogin(dispatch) }
                 }
                 // Keep the moving feedback surface inside the same fixed content bounds.
                 Box(Modifier.fillMaxSize().padding(top = if (showTop) topBarHeight else 12.dp, bottom = dockHeight).clipToBounds().zIndex(10f)) {
@@ -326,8 +328,8 @@ fun ContentPanel(
                         exit = fadeOut(tween(200)) + slideOutVertically(tween(200, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
                     ) {
                         Surface(
-                            Modifier.testTag("status-feedback").widthIn(max = feedbackWidth).graphicsLayer { alpha = uiOpacity },
-                            shape = RoundedCornerShape(14.dp), color = LocalContentColors.current.sheetBase,
+                            Modifier.testTag("status-feedback").widthIn(max = feedbackWidth),
+                            shape = RoundedCornerShape(14.dp), color = interfaceSurfaceColor(LocalContentColors.current.sheetBase),
                             tonalElevation = 4.dp,
                         ) {
                             Text(state.message ?: retainedMessage,
@@ -748,14 +750,15 @@ private fun PrototypeMediaCard(
     val button = if (compact) 48.dp else 80.dp
     val icon = if (compact) 28.dp else 42.dp
     val colors = LocalContentColors.current
-    Surface(Modifier.fillMaxSize().testTag("media-card").downwardSoftShadow(colors.mediaBase, MaterialTheme.colorScheme.background.luminance() < 0.2f), shape = RoundedCornerShape(12.dp), color = colors.mediaBase, shadowElevation = 0.dp) {
+    Surface(Modifier.fillMaxSize().testTag("media-card").downwardSoftShadow(colors.mediaBase, MaterialTheme.colorScheme.background.luminance() < 0.2f,
+         opacity = LocalInterfaceOpacity.current), shape = RoundedCornerShape(12.dp), color = interfaceSurfaceColor(colors.mediaBase), shadowElevation = 0.dp) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.width(if (compact) 72.dp else 120.dp).fillMaxHeight(), color = colors.mediaArtworkBase) {
+            Surface(Modifier.width(if (compact) 72.dp else 120.dp).fillMaxHeight(), color = interfaceSurfaceColor(colors.mediaArtworkBase)) {
                 Box(contentAlignment = Alignment.Center) { if (artwork != null) artwork() else OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(48.dp), "音乐封面") }
             }
             Column(Modifier.weight(1f).padding(horizontal = if (compact) 4.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(media.title ?: "暂无媒体", style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(media.artist ?: "未连接", style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(media.title ?: "暂无媒体", Modifier.testTag("media-card-title"), style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(media.artist ?: "未连接", Modifier.testTag("media-card-artist"), style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             RoundedPressButton(Modifier.size(button), "media-play", if (media.playing) "暂停" else "播放",
                 media.available && media.playbackAvailable && !media.pending, compact,
@@ -870,8 +873,9 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
     Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
         Box(Modifier.fillMaxSize().testTag("floating-dock")) {
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = backgroundOpacity() }
-                .testTag("dock-background").downwardSoftShadow(colors.dockBase, state.dark)
-                .background(colors.dockBase, RoundedCornerShape(12.dp)))
+                .testTag("dock-background").downwardSoftShadow(colors.dockBase, state.dark,
+                 opacity = LocalInterfaceOpacity.current)
+                .background(interfaceSurfaceColor(colors.dockBase), RoundedCornerShape(12.dp)))
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val minDockWidth = if (compact) 48.dp * items.size
                     else 114.dp + 72.dp * (items.size - 1)
@@ -934,10 +938,12 @@ private fun RoundedPressButton(
     val opacity by animateFloatAsState(if (active && rectangular) 1f else 0f,
         tween(if (active) 200 else 240, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)), label = "press-opacity")
     val scale by pressScale(active)
-    val background = if (opacity == 0f) Color.Transparent else colors.selectedSurface.copy(alpha = opacity)
-    val selectedSurface = selectedColor ?: colors.selectedSurface
-    val rippleSurface = rippleColor ?: selectedSurface
-    val base = if (selected) selectedSurface else baseColor ?: colors.mediaBase
+    val background = if (opacity == 0f) Color.Transparent else interfaceSurfaceColor(colors.selectedSurface.copy(alpha = opacity))
+    val rawSelectedSurface = selectedColor ?: colors.selectedSurface
+     val rawRippleSurface = rippleColor ?: rawSelectedSurface
+          val rippleSurface = interfaceSurfaceColor(rawRippleSurface)
+    val rawBase = if (selected) rawSelectedSurface else baseColor ?: colors.mediaBase
+     val base = interfaceSurfaceColor(rawBase)
     val feedback = rememberBoundaryPressFeedback(interactions, canInteract && rippleEnabled && !rectangular, base, rippleSurface)
     Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(tag)
         .then(feedback.touchCoordinates)
@@ -978,9 +984,9 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
             Modifier.align(if (anchorWidth == null) Alignment.BottomEnd else Alignment.BottomStart).padding(
                 start = if (anchorWidth == null) 0.dp else (anchorWidth - menuWidth - if (compact) 8.dp else 20.dp).coerceAtLeast(8.dp),
                 end = if (compact) 8.dp else 20.dp, bottom = if (compact) 152.dp else 264.dp)
-                .width(menuWidth).graphicsLayer { alpha = state.interfaceOpacity }.testTag("sources-menu")
-                .downwardSoftShadow(colors.sourceBase, state.dark),
-            shape = RoundedCornerShape(12.dp), color = colors.sourceBase,
+                .width(menuWidth).testTag("sources-menu")
+                .downwardSoftShadow(colors.sourceBase, state.dark, opacity = LocalInterfaceOpacity.current),
+            shape = RoundedCornerShape(12.dp), color = interfaceSurfaceColor(colors.sourceBase),
         ) {
             Column(Modifier.padding(8.dp).selectableGroup()) {
                 MediaSource.entries.forEach { source ->
@@ -989,8 +995,8 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
                     val pressed by interactions.collectIsPressedAsState()
                     Row(
                         Modifier.fillMaxWidth().height(rowHeight).testTag("source-${source.name}")
-                            .background(if (selected) colors.selectedSurface else Color.Transparent, RoundedCornerShape(8.dp))
-                            .clickable(interactionSource = interactions, indication = ripple(color = colors.selectedSurface), enabled = (!state.previewMode || state.media.available) && state.media.sourceAvailable && !state.media.pending, role = Role.RadioButton) { onEvent(ContentEvent.SourceSelected(source)) }
+                            .background(if (selected) interfaceSurfaceColor(colors.selectedSurface) else Color.Transparent, RoundedCornerShape(8.dp))
+                            .clickable(interactionSource = interactions, indication = ripple(color = interfaceSurfaceColor(colors.selectedSurface)), enabled = (!state.previewMode || state.media.available) && state.media.sourceAvailable && !state.media.pending, role = Role.RadioButton) { onEvent(ContentEvent.SourceSelected(source)) }
                             .semantics { this.selected = selected }
                             .padding(start = groupInset),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1071,7 +1077,7 @@ private fun LyricsEmptyContent(state: ContentUiState, onEvent: (ContentEvent) ->
                 val pressed by interactions.collectIsPressedAsState()
                 TextButton(
                     onClick = { onEvent(ContentEvent.OpenSources) },
-                    modifier = Modifier.heightIn(min = 48.dp).graphicsLayer { alpha = state.interfaceOpacity }.testTag("lyrics-source-action"),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("lyrics-source-action"),
                     interactionSource = interactions,
                 ) {
                     CompositionLocalProvider(LocalIconPressed provides pressed) {

@@ -24,6 +24,7 @@ private fun settingsTextStyle(size: Int, line: Int, weight: FontWeight = FontWei
 @Immutable
 data class SettingsDesign(
     val dark: Boolean,
+    val surfaceOpacity: Float = 1f,
     val page: Color,
     val card: Color,
     val track: Color,
@@ -95,5 +96,8 @@ private val DarkSettingsDesign = SettingsDesign(
     switchThumb = Color.White, offSwitchThumb = Color(0xFFE8E8E8),
 )
 
-fun settingsDesign(dark: Boolean): SettingsDesign = if (dark) DarkSettingsDesign else LightSettingsDesign
+fun settingsDesign(dark: Boolean, surfaceOpacity: Float = 1f): SettingsDesign =
+    (if (dark) DarkSettingsDesign else LightSettingsDesign).copy(
+        surfaceOpacity = surfaceOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1f) ?: 1f,
+    )
 val LocalSettingsDesign = staticCompositionLocalOf { settingsDesign(dark = false) }

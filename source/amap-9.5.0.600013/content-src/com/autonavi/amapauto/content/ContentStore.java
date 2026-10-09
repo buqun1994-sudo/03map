@@ -113,6 +113,11 @@ public final class ContentStore {
             public void onVehicleCommandFailed(long requestId, String message) {
                 failVehicleCommand(requestId, message);
             }
+
+            @Override
+            public void onVehicleCommandSent(long requestId) {
+                completeOneShotFeatureSend(requestId);
+            }
         });
         mediaPort.start(new ContentPorts.MediaSnapshotListener() {
             @Override
@@ -559,7 +564,7 @@ public final class ContentStore {
             // Detect the edge at the fact reducer, before coalesced UI projections can hide it.
             VehicleGear nextGear = snapshot.dataAvailable && !snapshot.preview && snapshot.gear != null
                     ? snapshot.gear : VehicleGear.Unknown;
-            if (nextGear.isNonPark() && !state.gear.isNonPark() && state.autoCloseSettingsOnDrive) {
+            if (state.gear == VehicleGear.Park && nextGear.isNonPark() && state.autoCloseSettingsOnDrive) {
                 state.settingsAutoCloseSequence++;
             }
             state.gear = nextGear;
@@ -1502,7 +1507,10 @@ public final class ContentStore {
         com.icar03.content.model.VehicleFeature feature =
                 com.icar03.content.model.VehicleFeature.fromId(state.pendingVehicleCommand);
         if (feature != null) {
-            if (feature.getAction() || feature == com.icar03.content.model.VehicleFeature.PassengerSeatAdjust) return false;
+            if (feature == com.icar03.content.model.VehicleFeature.WiperMaintenance) {
+                 return state.featureLevel(state.pendingVehicleCommand) == state.pendingFeatureTarget;
+             }
+             if (feature.getAction() || feature == com.icar03.content.model.VehicleFeature.PassengerSeatAdjust) return false;
             return state.featureLevel(state.pendingVehicleCommand) == state.pendingFeatureTarget;
         }
         VehicleControl control = VehicleControl.fromId(state.pendingVehicleCommand);
@@ -1550,6 +1558,24 @@ public final class ContentStore {
         state.pendingFeatureTarget = -1;
         pendingVehicleRequestId = 0L;
         recordCommandResultLocked(confirmed, failureMessage, COMMAND_DOMAIN_VEHICLE);
+    }
+
+    private void completeOneShotFeatureSend(long requestId) {
+        boolean completed = false;
+        synchronized (this) {
+            if (destroyed || pendingVehicleRequestId != requestId
+                    || state.pendingVehicleCommand.length() == 0) return;
+            com.icar03.content.model.VehicleFeature feature =
+                    com.icar03.content.model.VehicleFeature.fromId(state.pendingVehicleCommand);
+            // Glove-box has no reliable physical-door readback in this property set. Its
+            // contract is successful Binder delivery, while wiper maintenance has RX671 and
+            // remains pending until the normalized actual state confirms entry.
+            if (feature == com.icar03.content.model.VehicleFeature.GloveBox) {
+                finishVehicleCommandLocked(true, "");
+                completed = true;
+            }
+        }
+        if (completed) publish();
     }
 
     private void failVehicleCommand(long requestId, String message) {

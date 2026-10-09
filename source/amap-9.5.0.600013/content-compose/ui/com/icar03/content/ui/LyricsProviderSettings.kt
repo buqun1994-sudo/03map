@@ -175,7 +175,7 @@ private fun ProviderChoice(
     Box(
         modifier.heightIn(min = 56.dp).testTag("settings-platform-${option.id}")
             .clip(shape)
-            .background((if (selected) design.selected else design.card).copy(alpha = if (enabled) 1f else .38f))
+            .background(interfaceSurfaceColor((if (selected) design.selected else design.card).copy(alpha = if (enabled) 1f else .38f), design.surfaceOpacity))
             .clickable(interactionSource = interactions, indication = null, enabled = enabled && !selected,
                 role = Role.RadioButton, onClick = { if (enabled && !selected) onSelect() })
             .semantics {
@@ -227,7 +227,7 @@ private fun AppleMusicStatusSection(state: LyricsProviderUiState, enabled: Boole
             Button(
                 onClick = { onEvent(if (opening) AppleMusicLoginDismissed else AppleMusicConnectRequested) }, enabled = enabled,
                 modifier = Modifier.width(150.dp).heightIn(min = 56.dp).testTag("settings-apple-login"),
-                shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = design.track, contentColor = design.text),
+                shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = interfaceSurfaceColor(design.track, design.surfaceOpacity), contentColor = design.text),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             ) {
                 Text("登录", style = design.optionStyle, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
@@ -251,8 +251,8 @@ fun AppleMusicLoginPanel(
     AppleMusicScreenDialog(onDismiss) {
         Box(
             modifier.fillMaxSize().padding(design.pagePadding)
-                .settingsSurfaceShadow(design.card, design.dark, design.pageCornerRadius)
-                .clip(design.pageShape).background(design.card)
+                .settingsSurfaceShadow(design.card, design.dark, design.pageCornerRadius, design.surfaceOpacity)
+                .clip(design.pageShape).background(interfaceSurfaceColor(design.card, design.surfaceOpacity))
                 .testTag("settings-apple-login-panel"),
         ) {
             Column(Modifier.fillMaxSize()) {
@@ -284,10 +284,10 @@ fun AppleMusicLoginPanel(
                 HorizontalDivider(color = design.divider)
                 if (preparing) Column(Modifier.fillMaxWidth().padding(design.pagePadding), verticalArrangement = Arrangement.spacedBy(design.smallGap)) {
                     Text("正在准备 Apple 登录页面…", style = design.supportingStyle, color = design.secondaryText)
-                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = design.text, trackColor = design.track)
+                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = design.text, trackColor = interfaceSurfaceColor(design.track, design.surfaceOpacity))
                 }
                 Box(Modifier.fillMaxWidth().weight(1f).padding(design.pagePadding)
-                    .clip(design.cardShape).background(design.track), contentAlignment = Alignment.Center) { content() }
+                    .clip(design.cardShape).background(interfaceSurfaceColor(design.track, design.surfaceOpacity)), contentAlignment = Alignment.Center) { content() }
             }
         }
     }

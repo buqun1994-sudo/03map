@@ -13,8 +13,8 @@ class ContentVehicleFeatureProtocolTest {
         val expected = mapOf(
             "rear_fog" to Triple(0x21e, 0, 2),
             "passenger_window_lock" to Triple(0x411, 0, 1),
-            "left_child_lock" to Triple(0x412, 0x10, 2),
-            "right_child_lock" to Triple(0x412, 0x40, 2),
+            "left_child_lock" to Triple(0x412, 0x10, 3),
+            "right_child_lock" to Triple(0x412, 0x40, 3),
             "wireless_charging" to Triple(0x238, 0, 2),
             "window_vent" to Triple(0x217, 0x550, 1),
             "external_discharge" to Triple(0x25a, 0, 2),
@@ -26,9 +26,10 @@ class ContentVehicleFeatureProtocolTest {
             assertEquals(id, packet.third, write.value)
             assertFalse(write.ensureMassageOn)
         }
-        assertEquals(1, requireNotNull(ContentVehicleProtocol.featureWrite("rear_fog", 0)).value)
+        assertEquals(2, requireNotNull(ContentVehicleProtocol.featureWrite("rear_fog", 0)).value)
         assertEquals(2, requireNotNull(ContentVehicleProtocol.featureWrite("passenger_window_lock", 0)).value)
-        assertEquals(1, requireNotNull(ContentVehicleProtocol.featureWrite("left_child_lock", 0)).value)
+        assertEquals(2, requireNotNull(ContentVehicleProtocol.featureWrite("left_child_lock", 0)).value)
+        assertEquals(2, requireNotNull(ContentVehicleProtocol.featureWrite("right_child_lock", 0)).value)
         assertEquals(5, requireNotNull(ContentVehicleProtocol.featureWrite("window_vent", 0)).value)
         assertNull(ContentVehicleProtocol.featureWrite("wiper_maintenance", 0))
         assertNull(ContentVehicleProtocol.featureWrite("glove_box", 0))
@@ -46,6 +47,9 @@ class ContentVehicleFeatureProtocolTest {
         assertEquals(1, ContentVehicleProtocol.normalizeWindowMode(intArrayOf(1, 1, 1, 1)))
         assertEquals(0, ContentVehicleProtocol.normalizeWindowMode(intArrayOf(5, 5, 5, 5)))
         assertEquals(-1, ContentVehicleProtocol.normalizeWindowMode(intArrayOf(1, 5, 1, 5)))
+        assertEquals(0, ContentVehicleProtocol.normalizeWiperMaintenance(1))
+        assertEquals(1, ContentVehicleProtocol.normalizeWiperMaintenance(2))
+        assertEquals(-1, ContentVehicleProtocol.normalizeWiperMaintenance(0))
         assertEquals(6, ContentVehicleProtocol.normalizeCenterBrightness(listOf(255, 6)))
         assertEquals(-1, ContentVehicleProtocol.normalizeCenterBrightness(listOf(1, 6)))
         assertEquals(-1, ContentVehicleProtocol.normalizeCenterBrightness(listOf(255, 11)))
@@ -54,8 +58,8 @@ class ContentVehicleFeatureProtocolTest {
     }
 
     @Test fun centerBrightnessUsesArrayTransactionShapeAndScreenCleanStaysAReadOnlyGate() {
-        assertEquals(listOf(255, 1), ContentVehicleProtocol.centerBrightnessWrite(1).toList())
-        assertEquals(listOf(255, 10), ContentVehicleProtocol.centerBrightnessWrite(10).toList())
+        assertEquals(listOf(1, 1), ContentVehicleProtocol.centerBrightnessWrite(1).toList())
+        assertEquals(listOf(1, 10), ContentVehicleProtocol.centerBrightnessWrite(10).toList())
         assertNull(ContentVehicleProtocol.centerBrightnessWrite(0))
         assertNull(ContentVehicleProtocol.centerBrightnessWrite(11))
     }

@@ -222,17 +222,40 @@ class AutomotiveGearReaderTest {
         assertEquals(VehicleGear.Drive, store.snapshot().gear)
         assertEquals("independent Car departure survives OEM loss", 1L, store.snapshot().settingsAutoCloseSequence)
 
-        manager.selector = 11
-        pollVehicleCommandAdapter(adapter)
-        assertEquals(VehicleGear.Park, store.snapshot().gear)
-        GearReaderCarFixture.instances.single().connection.onServiceDisconnected(GEAR_COMPONENT)
-        shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(VehicleGear.Unknown, store.snapshot().gear)
-        GearReaderCarFixture.managers += GearReaderPropertyFixture(selector = 1)
-        pollVehicleCommandAdapter(adapter)
-        assertEquals(VehicleGear.Drive, store.snapshot().gear)
-        assertEquals("fresh recovered D is a confirmed non-P fact", 2L,
-            store.snapshot().settingsAutoCloseSequence)
+        var activeManager = manager
+        var expectedSequence = 1L
+        for ((raw, nonPark) in listOf(9 to VehicleGear.Reverse, 10 to VehicleGear.Neutral, 1 to VehicleGear.Drive)) {
+            activeManager.selector = 11
+            pollVehicleCommandAdapter(adapter)
+            assertEquals(VehicleGear.Park, store.snapshot().gear)
+            val disconnectedCar = GearReaderCarFixture.instances.last()
+            disconnectedCar.connection.onServiceDisconnected(GEAR_COMPONENT)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(VehicleGear.Unknown, store.snapshot().gear)
+            assertEquals(expectedSequence, store.snapshot().settingsAutoCloseSequence)
+            val oldManagerReads = activeManager.reads.size
+
+            val recoveredManager = GearReaderPropertyFixture(selector = raw)
+            GearReaderCarFixture.managers += recoveredManager
+            pollVehicleCommandAdapter(adapter)
+            assertNotSame(disconnectedCar, GearReaderCarFixture.instances.last())
+            assertEquals(1, disconnectedCar.disconnects)
+            assertEquals(nonPark, store.snapshot().gear)
+            assertTrue("the replacement manager supplies the recovered fact", recoveredManager.reads.isNotEmpty())
+            assertEquals("recovered $nonPark without Park does not invent a departure", expectedSequence,
+                store.snapshot().settingsAutoCloseSequence)
+
+            recoveredManager.selector = 11
+            pollVehicleCommandAdapter(adapter)
+            assertEquals(VehicleGear.Park, store.snapshot().gear)
+            recoveredManager.selector = raw
+            pollVehicleCommandAdapter(adapter)
+            assertEquals(nonPark, store.snapshot().gear)
+            assertEquals("a later Park departure is a new confirmed edge", ++expectedSequence,
+                store.snapshot().settingsAutoCloseSequence)
+            assertEquals("reconnect must stop reading the previous manager", oldManagerReads, activeManager.reads.size)
+            activeManager = recoveredManager
+        }
         assertTrue(service.writes.isEmpty())
     }
 
@@ -260,11 +283,20 @@ class AutomotiveGearReaderTest {
         assertFalse(store.snapshot().vehicleDataAvailable)
         assertEquals(0L, store.snapshot().settingsAutoCloseSequence)
 
-        // The first recovered selector is a fresh non-P fact and may close settings.
+        // A fresh non-P read after invalidation cannot reuse the former Park baseline.
+        for ((raw, nonPark) in listOf(9 to VehicleGear.Reverse, 10 to VehicleGear.Neutral, 1 to VehicleGear.Drive)) {
+            manager.selector = raw
+            pollVehicleCommandAdapter(adapter)
+            assertEquals(nonPark, store.snapshot().gear)
+            assertEquals("Unknown and non-P transitions cannot invent a departure", 0L,
+                store.snapshot().settingsAutoCloseSequence)
+        }
+        manager.selector = 11
+        pollVehicleCommandAdapter(adapter)
         manager.selector = 1
         pollVehicleCommandAdapter(adapter)
-        assertEquals(VehicleGear.Drive, store.snapshot().gear)
-        assertEquals(1L, store.snapshot().settingsAutoCloseSequence)
+        assertEquals("only a subsequent confirmed Park departure closes settings", 1L,
+            store.snapshot().settingsAutoCloseSequence)
     }
 
     private fun set(owner: Any, name: String, value: Any?) = owner.javaClass.getDeclaredField(name)

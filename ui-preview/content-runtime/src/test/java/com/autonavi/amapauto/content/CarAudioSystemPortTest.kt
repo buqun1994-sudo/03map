@@ -9,6 +9,7 @@ import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.runner.RunWith
 import org.junit.Test
@@ -19,6 +20,22 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class CarAudioSystemPortTest {
+    @Test fun writeReportsBinderCommitBeforeAnAsynchronousReadback() {
+        val audio = FakeCarAudio().apply {
+            values[3] = 7
+            deferWrites = true
+        }
+        val context = AudioContext(RuntimeEnvironment.getApplication(), FakeAudioRoot(audio))
+        val port = ContentPorts.AndroidSystemPort(context)
+
+        assertFalse(port.read(4).matches(50))
+        assertTrue(port.write(4, 50))
+        assertFalse("the Binder commit must not masquerade as immediate readback", port.read(4).matches(50))
+        audio.applyPendingWrites()
+        assertTrue(port.read(4).matches(50))
+        port.close()
+    }
+
     @Test fun carAudioLookupReadsAndWritesEachConfirmedGroupIndependently() {
         val audio = FakeCarAudio().apply {
             values[0] = 16
@@ -73,6 +90,18 @@ class CarAudioSystemPortTest {
         val values = IntArray(4)
         val usageQueries = mutableListOf<Int>()
         val rangeQueries = mutableListOf<Int>()
+        var deferWrites = false
+        private val pendingWrites = IntArray(4) { Int.MIN_VALUE }
+
+        fun applyPendingWrites() {
+            for (group in pendingWrites.indices) {
+                if (pendingWrites[group] != Int.MIN_VALUE) {
+                    values[group] = pendingWrites[group]
+                    pendingWrites[group] = Int.MIN_VALUE
+                }
+            }
+        }
+
         init { attachInterface(null, "com.mengbo.media.client.ICarAudio") }
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
             data.enforceInterface("com.mengbo.media.client.ICarAudio")
@@ -101,8 +130,9 @@ class CarAudioSystemPortTest {
                 }
                 1 -> {
                     val group = data.readInt()
-                    values[group] = data.readInt()
+                    val value = data.readInt()
                     data.readInt()
+                    if (deferWrites) pendingWrites[group] = value else values[group] = value
                     requireNotNull(reply).writeNoException()
                 }
                 else -> return super.onTransact(code, data, reply, flags)

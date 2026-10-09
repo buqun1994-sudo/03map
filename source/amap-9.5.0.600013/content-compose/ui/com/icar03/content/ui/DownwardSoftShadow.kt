@@ -38,13 +38,14 @@ internal fun Modifier.downwardSoftShadow(
     dark: Boolean,
     cornerRadius: Dp = 12.dp,
     cache: DownwardShadowTextureCache = sharedDownwardShadowTextures,
+    opacity: Float = 1f,
 ): Modifier = drawWithCache {
     // The surface is deliberately not part of the mask. The caller still paints its fill below,
     // while this layer only draws a tinted alpha mask. A press/theme fill therefore never bakes.
     val texture = cache.texture(size, density, cornerRadius.toPx(), fill.toArgbForShadowCompatibility(), dark)
     val frame = texture?.frame(size, if (dark) DARK_SHADOW else LIGHT_SHADOW)
     onDrawBehind {
-        if (frame != null) drawIntoCanvas { frame.draw(it.nativeCanvas) }
+        if (frame != null) drawIntoCanvas { frame.draw(it.nativeCanvas, opacity) }
     }
 }
 
@@ -291,16 +292,22 @@ internal class DownwardShadowFrame private constructor(
         colorFilter = PorterDuffColorFilter(shadowColor, PorterDuff.Mode.SRC_IN)
     }
 
-    fun draw(canvas: Canvas) {
+    fun draw(canvas: Canvas, opacity: Float = 1f) {
         owner.recordWarmDraw()
-        if (ninePatch != null) {
-            ninePatch.setPaint(paint)
-            ninePatch.draw(canvas, requireNotNull(target))
-            return
+        val previousAlpha = paint.alpha
+        paint.alpha = (previousAlpha * (opacity.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f)).roundToInt()
+        try {
+            if (ninePatch != null) {
+                ninePatch.setPaint(paint)
+                ninePatch.draw(canvas, requireNotNull(target))
+                return
+            }
+            val image = requireNotNull(bitmap)
+            val sources = requireNotNull(source)
+            val destinations = requireNotNull(destination)
+            for (index in sources.indices) canvas.drawBitmap(image, sources[index], destinations[index], paint)
+        } finally {
+            paint.alpha = previousAlpha
         }
-        val image = requireNotNull(bitmap)
-        val sources = requireNotNull(source)
-        val destinations = requireNotNull(destination)
-        for (index in sources.indices) canvas.drawBitmap(image, sources[index], destinations[index], paint)
     }
 }

@@ -129,12 +129,13 @@ internal fun SettingsIconButton(
 ) {
     val design = LocalSettingsDesign.current
     val interactions = remember { MutableInteractionSource() }
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled, design.page, design.pressed)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled,
+         interfaceSurfaceColor(design.page, design.surfaceOpacity), interfaceSurfaceColor(design.pressed, design.surfaceOpacity))
     val shape = RoundedCornerShape(12.dp)
     Box(
         modifier.size(design.minimumTouchHeight).settingsTag(tag)
             .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
-            .clip(shape).then(feedback.area(design.page))
+            .clip(shape).then(feedback.area(interfaceSurfaceColor(design.page, design.surfaceOpacity)))
             .clickable(interactionSource = interactions, indication = null, enabled = enabled,
                 role = Role.Button, onClick = onClick)
             .excludeDisabledActionTap(enabled)
@@ -154,12 +155,12 @@ internal fun SettingsActionButton(
 ) {
     val design = LocalSettingsDesign.current
     val interactions = remember { MutableInteractionSource() }
-    val base = design.track.copy(alpha = if (enabled) 1f else .38f)
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled, base, design.pressed)
+    val base = interfaceSurfaceColor(design.track.copy(alpha = if (enabled) 1f else .38f), design.surfaceOpacity)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, base, interfaceSurfaceColor(design.pressed, design.surfaceOpacity))
     val shape = RoundedCornerShape(8.dp)
     Box(
         modifier.fillMaxWidth().heightIn(min = 56.dp).settingsTag(tag)
-            .downwardSoftShadow(base, design.dark, 8.dp).clip(shape)
+            .downwardSoftShadow(base, design.dark, 8.dp, opacity = design.surfaceOpacity).clip(shape)
             .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
             .then(feedback.area(base))
             .clickable(interactionSource = interactions, indication = null, enabled = enabled,
@@ -307,8 +308,8 @@ fun SettingsSegmented(
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             Box(
                 Modifier.width(rowWidth).height(design.segmentHeight)
-                    .downwardSoftShadow(design.track, design.dark, design.segmentCornerRadius)
-                    .clip(design.segmentShape).background(design.track.copy(alpha = if (enabled) 1f else .38f))
+                    .downwardSoftShadow(design.track, design.dark, design.segmentCornerRadius, opacity = design.surfaceOpacity)
+                    .clip(design.segmentShape).background(interfaceSurfaceColor(design.track.copy(alpha = if (enabled) 1f else .38f), design.surfaceOpacity))
                     .settingsTag(settingsChildTag(tagPrefix, "track")),
             ) {
                 Row(Modifier.fillMaxSize().selectableGroup()) {
@@ -334,7 +335,7 @@ fun SettingsSegmented(
                             Box(
                                 Modifier.padding(selectionInset).fillMaxSize()
                                     .clip(design.segmentSelectedShape)
-                                    .background(if (optionSelected) design.selected.copy(alpha = if (enabled) 1f else .38f) else Color.Transparent)
+                                    .background(if (optionSelected) interfaceSurfaceColor(design.selected.copy(alpha = if (enabled) 1f else .38f), design.surfaceOpacity) else Color.Transparent)
                                     .settingsTag(settingsChildTag(tagPrefix, "$id-surface")),
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -415,7 +416,9 @@ fun SettingsSwitchRow(
 @Composable
 private fun SettingsSwitchVisual(checked: Boolean, enabled: Boolean, tag: String) {
     val design = LocalSettingsDesign.current
-    val thumbInset = (design.switchHeight - design.switchThumbHeight) / 2
+    val trackColor = interfaceSurfaceColor(if (checked) design.onSwitchTrack else design.offSwitchTrack, design.surfaceOpacity)
+     val trackBase = if (checked) design.onSwitchTrack else design.offSwitchTrack
+     val thumbInset = (design.switchHeight - design.switchThumbHeight) / 2
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
     val thumbOffset = animateDpAsState(
@@ -424,9 +427,9 @@ private fun SettingsSwitchVisual(checked: Boolean, enabled: Boolean, tag: String
     Box(
         Modifier.size(design.switchWidth, design.switchHeight).alpha(if (enabled) 1f else .38f)
             .settingsTag(settingsChildTag(tag, "track"))
-            .downwardSoftShadow(if (checked) design.onSwitchTrack else design.offSwitchTrack, design.dark, design.switchHeight / 2)
+            .downwardSoftShadow(trackBase, design.dark, design.switchHeight / 2, opacity = design.surfaceOpacity)
             .clip(design.controlShape)
-            .background(if (checked) design.onSwitchTrack else design.offSwitchTrack),
+            .background(trackColor),
     ) {
         Box(Modifier.align(Alignment.CenterStart).graphicsLayer {
             translationX = with(density) { thumbOffset.value.toPx() } * if (direction == LayoutDirection.Rtl) -1f else 1f
@@ -453,11 +456,11 @@ fun SettingsNavigationItem(
     val textColor = design.text.copy(alpha = if (enabled) 1f else .38f)
     val iconColor = design.secondaryText.copy(alpha = if (enabled) 1f else .38f)
     val interactions = remember { MutableInteractionSource() }
-    val feedback = rememberBoundaryPressFeedback(interactions, enabled, design.card, design.pressed)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, interfaceSurfaceColor(design.card, design.surfaceOpacity), interfaceSurfaceColor(design.pressed, design.surfaceOpacity))
     Box(
         modifier.fillMaxWidth().heightIn(min = design.navigationHeight).settingsTag(tag)
             .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
-            .clip(RoundedCornerShape(8.dp)).then(feedback.area(design.card))
+            .clip(RoundedCornerShape(8.dp)).then(feedback.area(interfaceSurfaceColor(design.card, design.surfaceOpacity)))
             .clickable(interactionSource = interactions, indication = null, enabled = enabled,
                 role = Role.Button, onClick = { if (currentEnabled) currentOnClick() })
             .excludeDisabledActionTap(enabled),
@@ -476,8 +479,9 @@ fun SettingsNavigationItem(
 }
 
 /** Settings use the same cached downward lighting as Dock/media, independent of system lighting. */
-internal fun Modifier.settingsSurfaceShadow(fill: Color, dark: Boolean, cornerRadius: Dp): Modifier =
-    downwardSoftShadow(fill, dark, cornerRadius)
+internal fun Modifier.settingsSurfaceShadow(fill: Color, dark: Boolean, cornerRadius: Dp,
+    opacity: Float = 1f): Modifier =
+    downwardSoftShadow(fill, dark, cornerRadius, opacity = opacity)
 
 /** A group owns one shape and shadow, with content spacing independent from its padding. */
 @Composable
@@ -489,9 +493,9 @@ fun SettingsGroupCard(
     val design = LocalSettingsDesign.current
     Box(
         modifier.fillMaxWidth()
-            .settingsSurfaceShadow(design.card, design.dark, design.cardCornerRadius)
+            .settingsSurfaceShadow(design.card, design.dark, design.cardCornerRadius, design.surfaceOpacity)
             .clip(design.cardShape)
-            .background(design.card),
+            .background(interfaceSurfaceColor(design.card, design.surfaceOpacity)),
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(contentPadding ?: PaddingValues(design.pagePadding)),
@@ -565,7 +569,7 @@ fun SettingsColorPicker(
         Box(
             modifier = Modifier.fillMaxWidth().height(design.colorHeight)
                 .settingsTag(settingsChildTag(tagPrefix, "swatches"))
-                .downwardSoftShadow(design.track, design.dark, 8.dp)
+                .downwardSoftShadow(design.track, design.dark, 8.dp, opacity = design.surfaceOpacity)
                 .clip(design.hueTrackShape),
         ) {
             Row(Modifier.fillMaxSize().selectableGroup()) {
@@ -738,7 +742,8 @@ private fun SettingsSliderControl(
         "Slider range must contain two finite increasing endpoints"
     }
     val design = LocalSettingsDesign.current
-    val interactionSource = remember(valueRange.start, valueRange.endInclusive, steps) { SettingsSliderInteractionSource() }
+    val interfaceOpacity = LocalInterfaceOpacity.current
+     val interactionSource = remember(valueRange.start, valueRange.endInclusive, steps) { SettingsSliderInteractionSource() }
     val draft = remember(interactionSource) { SettingsSliderDraft() }
     val boundedValue = value.takeIf { it.isFinite() }?.coerceIn(valueRange) ?: valueRange.start
     val currentValue by rememberUpdatedState(boundedValue)
@@ -806,10 +811,13 @@ private fun SettingsSliderControl(
     Box(modifier.fillMaxWidth().height(visualHeight), contentAlignment = Alignment.Center) {
         val trackShape = if (rainbow) design.hueTrackShape else design.controlShape
         Box(
-            Modifier.fillMaxWidth().height(visualHeight).alpha(if (enabled) 1f else .38f)
+            Modifier.fillMaxWidth().height(visualHeight).graphicsLayer {
+                     alpha = (if (enabled) 1f else .38f) * interfaceOpacity
+                 }
                 .settingsTag(settingsChildTag(tag, "track"))
                 .downwardSoftShadow(design.track, design.dark,
-                    if (rainbow) design.hueTrackCornerRadius else visualHeight / 2)
+                    if (rainbow) design.hueTrackCornerRadius else visualHeight / 2,
+                     opacity = design.surfaceOpacity)
                 .clip(trackShape)
                 .background(if (rainbow) Color.Transparent else design.track),
         ) {

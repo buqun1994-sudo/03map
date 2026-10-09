@@ -197,7 +197,7 @@ public final class ContentPorts {
             try {
                 transactVoid(audioBinder, AUDIO_DESCRIPTOR, AUDIO_SET_GROUP_VOLUME_TRANSACTION,
                         range.group, volumeRaw(target, range.min, range.max), 0);
-                return read(kind).matches(target);
+                return true;
             } catch (RemoteException | RuntimeException exception) {
                 invalidateAudio(audioBinder);
                 return false;
@@ -255,9 +255,8 @@ public final class ContentPorts {
             int target = Math.max(0, Math.min(100, percent));
             try {
                 if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context)) return false;
-                if (!Settings.System.putInt(context.getContentResolver(),
-                        Settings.System.SCREEN_BRIGHTNESS, Math.round(target * 255f / 100f))) return false;
-                return readScreenBrightness().matches(target);
+                return Settings.System.putInt(context.getContentResolver(),
+                        Settings.System.SCREEN_BRIGHTNESS, Math.round(target * 255f / 100f));
             } catch (SecurityException | IllegalArgumentException exception) {
                 return false;
             }
@@ -441,6 +440,10 @@ public final class ContentPorts {
         void onVehicleSnapshot(VehicleSnapshot snapshot);
 
         void onVehicleCommandFailed(long requestId, String message);
+
+        /** Transport completed; this is not a vehicle-state confirmation. */
+        default void onVehicleCommandSent(long requestId) {
+        }
     }
 
     public interface VehiclePort {

@@ -221,7 +221,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         if (features == null) return false;
         if ("glove_box".equals(featureId)) return target == 1;
         if ("passenger_seat_adjust".equals(featureId)) return false;
-        if ("wiper_maintenance".equals(featureId)) return target == 1;
+        if ("wiper_maintenance".equals(featureId)) return target == 1 && features.wiperMaintenance >= 0;
         if ("window_vent".equals(featureId)) return features.windowPositionsKnown && features.windowVent >= 0;
         return featuresFor(featureId, features) >= 0;
     }
@@ -240,7 +240,12 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     public boolean requestFeature(String featureId, int target, long requestId, long deadlineUptimeMs) {
         if (!isFeatureAvailable(featureId, target) || requestId <= 0L
                 || deadlineUptimeMs <= android.os.SystemClock.uptimeMillis()) return false;
-        return queueCommand(ContentVehicleProtocol.featureWrite(featureId, target), requestId);
+        ContentVehicleProtocol.Write write = ContentVehicleProtocol.featureWrite(featureId, target);
+        if (write == null) return false;
+        if ("rear_fog".equals(featureId) || "wiper_maintenance".equals(featureId)) {
+            return queueFreshFeatureCommand(featureId, target, write, requestId, deadlineUptimeMs);
+        }
+        return queueCommand(write, requestId);
     }
 
     @Override
@@ -273,6 +278,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                         }
                     }
                     sendDataArray(currentBinder, CENTER_BRIGHTNESS, AREA_DRIVER, values);
+                    reportCommandSent(requestId);
                 } catch (RemoteException | RuntimeException error) {
                     reportCommandFailure(requestId, "中控亮度请求失败，请查看车机状态");
                 } finally {
@@ -619,6 +625,60 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         }
     }
 
+    private boolean queueFreshFeatureCommand(final String featureId, final int target,
+            final ContentVehicleProtocol.Write write, final long requestId, final long deadlineUptimeMs) {
+        final IBinder currentBinder;
+        final Handler worker;
+        synchronized (this) {
+            if (!running || binder == null || workerHandler == null) return false;
+            currentBinder = binder;
+            worker = workerHandler;
+        }
+        return worker.post(new Runnable() {
+            @Override public void run() {
+                try {
+                    synchronized (ContentVehicleAdapter.this) {
+                        if (!running || binder != currentBinder || worker != workerHandler) {
+                            reportCommandFailure(requestId, "车控连接中断，命令未发送");
+                            return;
+                        }
+                    }
+                    if (android.os.SystemClock.uptimeMillis() >= deadlineUptimeMs) {
+                        reportCommandFailure(requestId, "车控请求已超时，命令未发送");
+                        return;
+                    }
+                    int raw = getData(currentBinder, write.functionId, write.area);
+                    int actual = "rear_fog".equals(featureId)
+                            ? ContentVehicleProtocol.normalizeBinarySwitch(raw)
+                            : ContentVehicleProtocol.normalizeWiperMaintenance(raw);
+                    if (actual < 0) {
+                        reportCommandFailure(requestId, "车控状态未知，命令未发送");
+                        return;
+                    }
+                    if (actual != target) {
+                        synchronized (ContentVehicleAdapter.this) {
+                            if (!running || binder != currentBinder || worker != workerHandler) {
+                                reportCommandFailure(requestId, "车控连接中断，命令未发送");
+                                return;
+                            }
+                        }
+                        if (android.os.SystemClock.uptimeMillis() >= deadlineUptimeMs) {
+                            reportCommandFailure(requestId, "车控请求已超时，命令未发送");
+                            return;
+                        }
+                        sendData(currentBinder, write.functionId, write.area, write.value);
+                        reportCommandSent(requestId);
+                    }
+                } catch (RemoteException | RuntimeException error) {
+                    Log.w(TAG, "fresh feature command failed", error);
+                    reportCommandFailure(requestId, "车辆控制请求失败，请查看车机状态");
+                } finally {
+                    requestReadback(worker, currentBinder);
+                }
+            }
+        });
+    }
+
     private boolean queueCommand(final ContentVehicleProtocol.Write write, final long requestId) {
         if (write == null) return false;
         final IBinder currentBinder;
@@ -645,6 +705,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                     } else {
                         sendData(currentBinder, write.functionId, write.area, write.value);
                     }
+                    reportCommandSent(requestId);
                 } catch (RemoteException | RuntimeException error) {
                     Log.w(TAG, "vehicle command failed", error);
                     reportCommandFailure(requestId, "车辆控制请求失败，请查看车机状态");
@@ -684,6 +745,20 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     static void sendMassageStrength(IBinder currentBinder, int value) throws RemoteException {
         ensureMassageReady(currentBinder);
         sendData(currentBinder, MASSAGE_STRENGTH, AREA_DRIVER, value);
+    }
+
+    private void reportCommandSent(final long requestId) {
+        mainHandler.post(new Runnable() {
+            @Override public void run() {
+                ContentPorts.VehicleSnapshotListener currentListener;
+                synchronized (ContentVehicleAdapter.this) {
+                    currentListener = running ? listener : null;
+                }
+                if (currentListener != null) {
+                    currentListener.onVehicleCommandSent(requestId);
+                }
+            }
+        });
     }
 
     private void reportCommandFailure(final long requestId, final String message) {
@@ -805,7 +880,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         int rearWash = ContentVehicleProtocol.normalizeRearWindowLevel(readInt(currentBinder, REAR_WASH, AREA_DRIVER));
         int rearFog = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, REAR_FOG, AREA_DRIVER));
         int passengerWindowLock = normalizePassengerWindowLock(readInt(currentBinder, REAR_WINDOW_DISABLE, AREA_DRIVER));
-        int maintenance = -1;
+        int maintenance = ContentVehicleProtocol.normalizeWiperMaintenance(
+                readInt(currentBinder, FRONT_WIPER_MAINTENANCE, AREA_DRIVER));
         int leftChild = ContentVehicleProtocol.normalizeChildLock(readInt(currentBinder, REAR_CHILD_LOCK_STATE, AREA_REAR_LEFT));
         int rightChild = ContentVehicleProtocol.normalizeChildLock(readInt(currentBinder, REAR_CHILD_LOCK_STATE, AREA_REAR_RIGHT));
         int wireless = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, WIRELESS_CHARGING_SWITCH, AREA_DRIVER));

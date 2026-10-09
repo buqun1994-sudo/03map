@@ -35,6 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger
 @Config(sdk = [28])
 @LooperMode(LooperMode.Mode.PAUSED)
 class ContentSettingsFeedbackTest {
+    private val nonParkGears = listOf(VehicleGear.Reverse, VehicleGear.Neutral, VehicleGear.Drive)
+
     @Test fun settingsReplacesSourcesSelectsItsSectionAndDismissesWithoutOpeningAnotherSheet() = withFixture { fixture ->
         val binding = fixture.binding
         binding.dispatch(ContentEvent.OpenSources)
@@ -436,50 +438,79 @@ class ContentSettingsFeedbackTest {
 
     @Test fun departureClosesExpandedAndCollapsedSettingsEvenWhenVehicleUpdatesCoalesce() = withFixture { fixture ->
         fixture.store.setAutoCloseSettingsOnDrive(true)
-        for (collapsed in listOf(false, true)) {
-            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
-            fixture.drain()
-            fixture.binding.dispatch(ContentEvent.SettingsTapped)
-            fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Lyrics))
-            if (collapsed) fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
-            assertEquals(collapsed, fixture.binding.state.value.settingsCollapsed)
-            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Drive))
-            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
-            fixture.drain()
-            assertFalse("the P departure survives a merged latest P snapshot", fixture.binding.state.value.settingsOpen)
-            assertFalse(fixture.binding.state.value.settingsCollapsed)
-            assertFalse(fixture.binding.canDispatch(ContentEvent.SettingsRestored))
-            assertEquals(0, fixture.vehicle.requests.get())
-            assertEquals(0, fixture.media.playbackRequests.get())
-            assertEquals(0, fixture.media.nextRequests.get())
+        for (nonPark in nonParkGears) {
+            for (collapsed in listOf(false, true)) {
+                fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+                fixture.drain()
+                fixture.binding.dispatch(ContentEvent.SettingsTapped)
+                fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Lyrics))
+                if (collapsed) fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
+                assertEquals(collapsed, fixture.binding.state.value.settingsCollapsed)
+                fixture.publishOffMain(vehicleSnapshot().withGear(nonPark), vehicleSnapshot().withGear(VehicleGear.Park))
+                assertTrue("the worker projection is still queued", fixture.binding.state.value.settingsOpen)
+                assertEquals(VehicleGear.Park, fixture.store.snapshot().gear)
+                fixture.drain()
+                assertFalse("P to $nonPark survives a merged latest P snapshot", fixture.binding.state.value.settingsOpen)
+                assertFalse(fixture.binding.state.value.settingsCollapsed)
+                assertFalse(fixture.binding.canDispatch(ContentEvent.SettingsRestored))
+                assertEquals(0, fixture.vehicle.requests.get())
+                assertEquals(0, fixture.media.playbackRequests.get())
+                assertEquals(0, fixture.media.nextRequests.get())
+            }
         }
     }
 
-    @Test fun disablingAutomaticCloseAndUnknownGearDoNotDismissSettings() = withFixture { fixture ->
-        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
-        fixture.drain()
-        fixture.binding.dispatch(ContentEvent.SettingsTapped)
-        fixture.binding.dispatch(ContentEvent.AutoCloseSettingsOnDriveChanged(false))
-        fixture.drain()
-        assertFalse(fixture.binding.state.value.autoCloseSettingsOnDrive)
-        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Neutral))
-        fixture.drain()
-        assertTrue(fixture.binding.state.value.settingsOpen)
-        fixture.store.acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable())
-        fixture.drain()
-        assertTrue("unknown does not close the session", fixture.binding.state.value.settingsOpen)
-        fixture.binding.dispatch(ContentEvent.AutoCloseSettingsOnDriveChanged(true))
-        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
-        fixture.store.acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable())
-        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Drive))
-        fixture.drain()
-        assertFalse("fresh confirmed non-P closes after a connection gap", fixture.binding.state.value.settingsOpen)
-        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
-        fixture.drain()
-        fixture.binding.dispatch(ContentEvent.OpenLyricsSettings)
-        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Reverse))
-        fixture.drain()
-        assertFalse(fixture.binding.state.value.settingsOpen)
+    @Test fun disabledDepartureIsNotReplayedByEnablingInAnyNonParkGear() = withFixture { fixture ->
+        for (nonPark in nonParkGears) {
+            fixture.store.setAutoCloseSettingsOnDrive(false)
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+            fixture.drain()
+            fixture.binding.dispatch(ContentEvent.SettingsTapped)
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(nonPark))
+            fixture.drain()
+            val sequence = fixture.store.snapshot().settingsAutoCloseSequence
+            assertTrue("disabled P to $nonPark leaves settings open", fixture.binding.state.value.settingsOpen)
+            fixture.binding.dispatch(ContentEvent.AutoCloseSettingsOnDriveChanged(true))
+            fixture.drain()
+            assertTrue(fixture.binding.state.value.autoCloseSettingsOnDrive)
+            assertTrue("enabling at $nonPark does not close the session", fixture.binding.state.value.settingsOpen)
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(nonPark))
+            fixture.drain()
+            assertEquals(sequence, fixture.store.snapshot().settingsAutoCloseSequence)
+            assertTrue(fixture.binding.state.value.settingsOpen)
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(nonPark))
+            fixture.drain()
+            assertEquals(sequence + 1L, fixture.store.snapshot().settingsAutoCloseSequence)
+            assertFalse("the next confirmed P to $nonPark closes settings", fixture.binding.state.value.settingsOpen)
+        }
+    }
+
+    @Test fun unknownAndDisconnectedRecoveryDoNotInventADepartureInAnyNonParkGear() = withFixture { fixture ->
+        fixture.store.setAutoCloseSettingsOnDrive(true)
+        for (nonPark in nonParkGears) {
+            for (gap in listOf(vehicleSnapshot().withGear(VehicleGear.Unknown), ContentPorts.VehicleSnapshot.unavailable())) {
+                fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+                fixture.drain()
+                fixture.binding.dispatch(ContentEvent.SettingsTapped)
+                fixture.binding.dispatch(ContentEvent.OpenLyricsSettings)
+                fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
+                val sequence = fixture.store.snapshot().settingsAutoCloseSequence
+                fixture.store.acceptVehicleSnapshot(gap)
+                fixture.drain()
+                assertTrue("Unknown leaves the collapsed session open", fixture.binding.state.value.settingsOpen)
+                fixture.publishOffMain(vehicleSnapshot().withGear(nonPark))
+                fixture.drain()
+                assertEquals(sequence, fixture.store.snapshot().settingsAutoCloseSequence)
+                assertTrue("Unknown to $nonPark cannot replay Park", fixture.binding.state.value.settingsOpen)
+                assertTrue(fixture.binding.state.value.settingsCollapsed)
+                fixture.binding.dispatch(ContentEvent.SettingsRestored)
+                fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+                fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(nonPark))
+                fixture.drain()
+                assertFalse("a new confirmed P to $nonPark closes settings", fixture.binding.state.value.settingsOpen)
+            }
+        }
     }
 
     @Test fun collapseIsLyricsOnlyAndRestorationPreservesTheSectionAndModalCommandGate() = withFixture { fixture ->
@@ -521,36 +552,54 @@ class ContentSettingsFeedbackTest {
         }
     }
 
-    @Test fun firstConfirmedNonParkAndReopeningUseTheSameLevelCondition() {
-        for (gear in listOf(VehicleGear.Reverse, VehicleGear.Neutral, VehicleGear.Drive)) withFixture { fixture ->
-            fixture.store.setAutoCloseSettingsOnDrive(true)
-            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(gear))
-            fixture.drain()
+    @Test fun unknownOrAlreadyNonParkDoesNotDismissSettingsAndParkDepartureDoes() = withFixture { fixture ->
+        fixture.store.setAutoCloseSettingsOnDrive(true)
+        for (nonPark in nonParkGears) {
+            fixture.store.acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable())
             fixture.binding.dispatch(ContentEvent.SettingsTapped)
-            assertFalse("first $gear already closes ordinary entry", fixture.binding.state.value.settingsOpen)
-            fixture.binding.dispatch(ContentEvent.OpenLyricsSettings)
-            assertFalse("deep link shares $gear rule", fixture.binding.state.value.settingsOpen)
-            fixture.store.setAutoCloseSettingsOnDrive(false)
+            assertTrue("Unknown remains openable", fixture.binding.state.value.settingsOpen)
+            val sequence = fixture.store.snapshot().settingsAutoCloseSequence
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(nonPark))
             fixture.drain()
+            assertEquals(sequence, fixture.store.snapshot().settingsAutoCloseSequence)
+            assertTrue("first confirmed $nonPark leaves settings open", fixture.binding.state.value.settingsOpen)
+            fixture.binding.dispatch(ContentEvent.SettingsDismissed)
+            for (open in listOf(ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings)) {
+                fixture.binding.dispatch(open)
+                assertTrue("$open remains openable in $nonPark", fixture.binding.state.value.settingsOpen)
+                fixture.binding.dispatch(ContentEvent.SettingsDismissed)
+            }
             fixture.binding.dispatch(ContentEvent.OpenLyricsSettings)
-            assertTrue(fixture.binding.state.value.settingsOpen)
-            fixture.binding.dispatch(ContentEvent.AutoCloseSettingsOnDriveChanged(true))
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
             fixture.drain()
-            assertFalse("enabling while $gear is confirmed applies immediately", fixture.binding.state.value.settingsOpen)
+            assertTrue("P itself does not dismiss settings", fixture.binding.state.value.settingsOpen)
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(nonPark))
+            fixture.drain()
+            assertFalse("confirmed P to $nonPark closes the session", fixture.binding.state.value.settingsOpen)
+            for (open in listOf(ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings)) {
+                fixture.binding.dispatch(open)
+                fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(nonPark))
+                fixture.drain()
+                assertTrue("the consumed departure cannot close a reopened $open", fixture.binding.state.value.settingsOpen)
+                fixture.binding.dispatch(ContentEvent.SettingsDismissed)
+            }
         }
     }
 
     @Test fun pendingDepartureRejectsAStalePreferenceCallbackBeforeItsQueuedProjection() = withFixture { fixture ->
         fixture.store.setAutoCloseSettingsOnDrive(true)
-        fixture.store.setShowSeconds(false)
-        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
-        fixture.drain()
-        fixture.binding.dispatch(ContentEvent.SettingsTapped)
-        fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Drive))
-        fixture.binding.dispatch(ContentEvent.ShowSecondsChanged(true))
-        fixture.drain()
-        assertFalse(fixture.binding.state.value.settingsOpen)
-        assertFalse(fixture.store.snapshot().showSeconds)
+        for (nonPark in nonParkGears) {
+            fixture.store.setShowSeconds(false)
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+            fixture.drain()
+            fixture.binding.dispatch(ContentEvent.SettingsTapped)
+            fixture.publishOffMain(vehicleSnapshot().withGear(nonPark))
+            assertTrue("the departure projection is still queued", fixture.binding.state.value.settingsOpen)
+            fixture.binding.dispatch(ContentEvent.ShowSecondsChanged(true))
+            fixture.drain()
+            assertFalse(fixture.binding.state.value.settingsOpen)
+            assertFalse("a stale callback after P to $nonPark cannot write preferences", fixture.store.snapshot().showSeconds)
+        }
     }
 
     private fun withFixture(test: (Fixture) -> Unit) {
@@ -579,6 +628,15 @@ class ContentSettingsFeedbackTest {
             binding.dispatch(ContentEvent.PlayPause)
             drain()
             assertEquals(PLAYBACK_FAILURE, binding.state.value.message)
+        }
+
+        fun publishOffMain(vararg snapshots: ContentPorts.VehicleSnapshot) {
+            val publication = java.util.concurrent.FutureTask<Unit> {
+                snapshots.forEach(store::acceptVehicleSnapshot)
+                Unit
+            }
+            Thread(publication, "settings-vehicle-facts").start()
+            publication.get(2, TimeUnit.SECONDS)
         }
 
         fun drain() {

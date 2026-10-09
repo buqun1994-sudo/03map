@@ -206,14 +206,15 @@ private fun PageActionButton(
     }
     DisposableEffect(interactions) { onDispose { currentRelease() } }
     val colors = LocalContentColors.current
-    val scale = pressScale(pressed)
+    val interfaceOpacity = LocalInterfaceOpacity.current
+     val scale = pressScale(pressed)
     val pressedOpacity = animateFloatAsState(if (pressed) 1f else 0f, tween(if (pressed) 200 else 240), label = "page-action-press")
     val shape = RoundedCornerShape(if (compact) 14.dp else 16.dp)
     Box(Modifier.size(if (compact) 56.dp else 64.dp)
         .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
         .clip(shape)
         .drawBehind {
-            drawRect(colors.selectedSurface.copy(alpha = pressedOpacity.value))
+            drawRect(interfaceSurfaceColor(colors.selectedSurface.copy(alpha = pressedOpacity.value), interfaceOpacity))
         }
         .clickable(enabled = enabled, interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick)
         .excludeDisabledActionTap(enabled)

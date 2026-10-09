@@ -425,7 +425,7 @@ class ContentVehicleAdapterCommandTest {
             assertFalse(write.ensureMassageOn)
         }
         assertTrue(service.calls.filter { it.functionId == 608 }.all { it.transaction == 7 && it.area == 0 })
-        assertFalse(service.calls.any { it.functionId in listOf(561, 671) })
+        assertFalse(service.writes.any { it.functionId in listOf(561, 671) })
         assertTrue(service.writes.isEmpty())
     }
 
@@ -449,7 +449,7 @@ class ContentVehicleAdapterCommandTest {
             actual = target
         }
         assertTrue(failures.isEmpty())
-        assertFalse(service.calls.any { it.functionId in listOf(561, 671) })
+        assertFalse(service.writes.any { it.functionId in listOf(561, 671) })
     }
 
     @Test fun frontWiperReadAndWritePermissionFailuresNeverBorrowSeatOrLockState() {
@@ -605,6 +605,9 @@ internal class VehicleCommandBinder : Binder() {
                     0x241 -> if (value == 2) mapOf(0x241 to 2, 0x245 to 1, 0x243 to 1)
                         else mapOf(0x241 to 1, 0x245 to 0, 0x243 to 0)
                     0x243 -> mapOf(0x243 to value)
+                    0x21e -> mapOf(0x21e to if ((values[0x21e] ?: 1) == 1) 2 else 1)
+                    0x29f -> mapOf(0x29f to 2)
+                    1046 -> emptyMap()
                     608 -> mapOf(608 to when (value) {
                         1 -> 0; 2 -> 1; 3 -> 2; 4 -> 3; 5 -> 4; 6 -> 5
                         else -> error("unexpected front wiper request $value")

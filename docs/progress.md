@@ -1,4 +1,11 @@
-## 五项反馈修复（2026-10-09，源码、定向／原生回归、签名与包级核验通过；车机连接待恢复）
+## 设置透明度分层、Apple官方直载与正式候选（2026-10-09，源码全量回归与签名构建通过；车机离线未安装）
+
+本轮将界面透明度改为浮层背景消费：快捷／媒体／Dock／来源／提示及设置页／卡片的背景、选中面、轨道和阴影随20%至100%变化，文字、图标、滑块、状态信息、歌词正文和网页登录内容保持不透明；动画alpha、禁用alpha与设置位置动画独立。设置自动关闭仍只消费本车`GEAR_SELECTION=0x11400400`确认的真实`P→R/N/D`边沿，非P可重开。Apple生产Binding继续直载官方`https://music.apple.com/login`，正式地图仍使用车机Android WebView66；独立GeckoView140 probe只证明现代内核可显示官方页面和测试Cookie profile持久化，没有进入正式APK。
+
+content-ui完整验证48项通过；全工程`all + lint`通过，247个Gradle任务失败／错误／跳过均0。正式构建从source指纹`5e5880e06bb5c3ac170a47c9ccd74a01c91671bf1328eee84506b2d2510123a`生成[签名APK](<../apk-work/9.5.0.600013/source-build.zb8kHg/signed.apk>)，SHA-256=`784bb32c9ffbbff3e3b3bbdad3a25e5de6759b45fbdec0f707c0e29654e291cb`，166578692字节；同证书、v1／v2／v3、2个连续DEX、64个Deflate原生库和独立包级核验均通过，APK静态内容无Gecko／omni.ja／XUL路径。
+
+车机当前离线，本轮未发现、安装、启动或登录。未来恢复连接后按[APK工作流](<operations/APK工作流.md>)重新发现S56_HQX，使用`adb install -r`，不卸载、不清数据；现场仍需真实Apple账号／2FA、`media-user-token`／`itua`、重启授权恢复及歌词／封面API闭环证据。独立probe压缩APK约93.36MiB，未来arm64正式合并预计增加约85–100MiB压缩体积并带来独立Gecko进程RAM／CPU压力，本轮不合并。
+
 
 正式实现已按当前真值主链收敛：本车GearSelection仅映射1／9／10／11为D／R／N／P，首次明确非P、重开和开启偏好关闭完整设置会话；有界交互UI单独消费透明度，背景／完整顶栏／实际歌词保留；上下移只由歌词设置栏目决定，不依赖底层快捷或歌词页。Apple已对照Lyrimuse当前main、官方网页和本车WebView66，复用唯一Broker／Connection改为官方WOA入口，完整锁定10项公开脚本，bootstrap与实际页面deadline分开，并明确脚本不兼容／资源换版及安全诊断。新增车控仅完成[座椅主链对照审计](<research/快捷车控与座椅主链对照-20261009.md>)，没有修改实体能力行为。
 

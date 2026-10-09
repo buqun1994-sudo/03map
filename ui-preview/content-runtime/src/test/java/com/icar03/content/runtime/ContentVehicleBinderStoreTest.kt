@@ -461,7 +461,7 @@ class ContentVehicleBinderStoreTest {
             assertFalse(store.snapshot().seatControlsKnown)
             assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
         }
-        assertFalse(service.calls.any { it.functionId in listOf(561, 671) })
+        assertFalse(service.writes.any { it.functionId in listOf(561, 671) })
         assertFalse("front-wiper intents never write rear controls", service.writes.any { it.functionId in listOf(609, 610) })
         service.failReadFunction = 608
         pollVehicleCommandAdapter(adapter)
@@ -523,9 +523,46 @@ class ContentVehicleBinderStoreTest {
             assertNull(failed.target)
             assertEquals(ContentState.COMMAND_FAILED, store.snapshot().commandStatus)
             assertEquals(listOf(VehiclePacket(5, 608, 0, 6)), service.writes)
-            assertFalse(service.calls.any { it.functionId in listOf(561, 671) })
+            assertFalse(service.writes.any { it.functionId in listOf(561, 671) })
             assertFalse("failed front requests never trigger rear actions", service.writes.any { it.functionId in listOf(609, 610) })
         }
+    }
+
+    @Test fun featureActionsUseFreshStateAndOneShotTransportContracts() {
+        val service = VehicleCommandBinder().apply {
+            values[0x21e] = 1
+            values[0x29f] = 2
+        }
+        val (store, adapter, _) = connectedStore(service)
+
+        store.requestFeature("rear_fog", 1)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf(VehiclePacket(5, 0x21e, 0, 2)), service.writes)
+        assertEquals(1, store.snapshot().rearFogLevel)
+        assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+
+        // 671 already reports active: the enter-only contract must not send TX2 again.
+        store.requestFeature("wiper_maintenance", 1)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf(VehiclePacket(5, 0x21e, 0, 2)), service.writes)
+        assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+
+        service.values[0x29f] = 1
+        pollVehicleCommandAdapter(adapter)
+        store.requestFeature("wiper_maintenance", 1)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf(
+            VehiclePacket(5, 0x21e, 0, 2),
+            VehiclePacket(5, 0x29f, 0, 2),
+        ), service.writes)
+        assertEquals(1, store.snapshot().wiperMaintenanceLevel)
+        assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+
+        store.requestFeature("glove_box", 1)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
+        assertEquals("", store.snapshot().pendingVehicleCommand)
+        assertEquals(VehiclePacket(5, 1046, 0, 2), service.writes.last())
     }
 
     private fun connectedStore(service: VehicleCommandBinder = VehicleCommandBinder()): Fixture {

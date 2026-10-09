@@ -72,6 +72,18 @@ private val DarkContentColors = ContentThemeColors(
 /** Semantic content colors are kept separate from Material's generic surface roles. */
 internal val LocalContentColors = staticCompositionLocalOf { LightContentColors }
 
+/** User interface opacity belongs to floating surface fills; child text and icons stay opaque. */
+internal val LocalInterfaceOpacity = staticCompositionLocalOf { 1f }
+
+internal fun interfaceSurfaceColor(color: Color, opacity: Float): Color {
+    val factor = opacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1f) ?: 1f
+    return color.copy(alpha = (color.alpha * factor).coerceIn(0f, 1f))
+}
+
+@Composable
+internal fun interfaceSurfaceColor(color: Color): Color =
+    interfaceSurfaceColor(color, LocalInterfaceOpacity.current)
+
 private val LightColors = lightColorScheme(
     primary = Color(0xFF27303B),
     onPrimary = Color.White,
