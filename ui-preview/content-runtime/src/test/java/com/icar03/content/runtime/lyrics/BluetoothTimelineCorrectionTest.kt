@@ -64,7 +64,7 @@ class BluetoothTimelineCorrectionTest {
         assertEquals(211_147L, second.sampleAt(rig.now + 2_000L))
     }
 
-    @Test fun significantForwardAndBackwardSeeksRequireASecondConsistentSample() {
+    @Test fun significantForwardAndBackwardSeeksRequireTwoConsistentSamples() {
         for (target in listOf(80_000L, 12_000L)) {
             val rig = correctingRig()
             val previous = rig.timeline.anchor()
@@ -75,12 +75,17 @@ class BluetoothTimelineCorrectionTest {
 
             rig.now += 100L
             rig.avrcp(target + 100L, 4L)
+            assertSame(previous, rig.timeline.anchor())
+            assertEquals(previous.sampleAt(rig.now), rig.timeline.positionMs())
+
+            rig.now += 100L
+            rig.avrcp(target + 200L, 5L)
             val sought = rig.timeline.anchor()
             assertNotSame(previous, sought)
-            assertEquals(target + 100L, rig.timeline.positionMs())
+            assertEquals(target + 200L, rig.timeline.positionMs())
             assertCorrection(sought, 0.0, 0L)
             rig.now += 1_000L
-            assertEquals(target + 1_100L, rig.timeline.positionMs())
+            assertEquals(target + 1_200L, rig.timeline.positionMs())
         }
     }
 
@@ -151,7 +156,11 @@ class BluetoothTimelineCorrectionTest {
                 assertEquals(before, rig.timeline.positionMs())
                 rig.now += 100L
                 rig.avrcp(target + 100L, 3L)
-                assertEquals(target + 100L, rig.timeline.positionMs())
+                assertSame(previousAnchor, rig.timeline.anchor())
+                assertEquals(previousAnchor.sampleAt(rig.now), rig.timeline.positionMs())
+                rig.now += 100L
+                rig.avrcp(target + 200L, 4L)
+                assertEquals(target + 200L, rig.timeline.positionMs())
                 assertCorrection(rig.timeline.anchor(), 0.0, 0L)
             }
         }
@@ -426,7 +435,11 @@ class BluetoothTimelineCorrectionTest {
         assertEquals(40_400L, rig.timeline.positionMs())
         rig.now += 100L
         rig.avrcp(40_100L, sequence + 1L)
-        assertEquals(40_100L, rig.timeline.positionMs())
+        assertSame(first, rig.timeline.anchor())
+        assertEquals(40_500L, rig.timeline.positionMs())
+        rig.now += 100L
+        rig.avrcp(40_200L, sequence + 2L)
+        assertEquals(40_200L, rig.timeline.positionMs())
         assertCorrection(rig.timeline.anchor(), 0.0, 0L)
     }
 
@@ -477,28 +490,36 @@ class BluetoothTimelineCorrectionTest {
         rig.now++
         rig.avrcp(12_000L, 3L)
         val held = rig.timeline.positionMs()
-        assertEquals(rig.timeline.anchor().sampleAt(rig.now), held)
+        val heldAnchor = rig.timeline.anchor()
+        assertEquals(heldAnchor.sampleAt(rig.now), held)
         assertCorrection(rig.timeline.anchor(), 50.0, 1_000L)
 
         rig.now++
         rig.avrcp(12_001L, 4L)
-        assertEquals(12_001L, rig.timeline.positionMs())
+        assertSame(heldAnchor, rig.timeline.anchor())
+        assertEquals(rig.timeline.anchor().sampleAt(rig.now), rig.timeline.positionMs())
+        rig.now++
+        rig.avrcp(12_002L, 5L)
+        assertEquals(12_002L, rig.timeline.positionMs())
         assertCorrection(rig.timeline.anchor(), 0.0, 0L)
         val sought = rig.timeline.anchor()
 
         rig.now++
         rig.media(0L, publisherTime = rig.now - 1L)
         assertSame(sought, rig.timeline.anchor())
-        assertEquals(12_002L, rig.timeline.positionMs())
+        assertEquals(12_003L, rig.timeline.positionMs())
         rig.media(20_000L, publisherTime = rig.now)
         assertSame(sought, rig.timeline.anchor())
-        assertEquals(12_002L, rig.timeline.positionMs())
+        assertEquals(12_003L, rig.timeline.positionMs())
 
-        rig.avrcp(20_000L, 5L)
-        assertEquals(12_002L, rig.timeline.positionMs())
+        rig.avrcp(20_000L, 6L)
+        assertEquals(12_003L, rig.timeline.positionMs())
         rig.now++
-        rig.avrcp(20_001L, 6L)
-        assertEquals(20_001L, rig.timeline.positionMs())
+        rig.avrcp(20_001L, 7L)
+        assertEquals(12_004L, rig.timeline.positionMs())
+        rig.now++
+        rig.avrcp(20_002L, 8L)
+        assertEquals(20_002L, rig.timeline.positionMs())
         assertCorrection(rig.timeline.anchor(), 0.0, 0L)
     }
 

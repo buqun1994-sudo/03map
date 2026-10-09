@@ -101,7 +101,11 @@ internal class MediaSessionTimelineTracker(
     // first capture of a same-value burst so duplicates cannot extend the window.
     private var lastAvrcpPositionMs: Long? = null
     private var lastAvrcpPositionCapturedAt: Long? = null
-    private data class PendingAvrcpSeek(val positionMs: Long, val capturedAt: Long)
+    private data class PendingAvrcpSeek(
+        val positionMs: Long, val capturedAt: Long,
+        val lastPositionMs: Long, val lastCapturedAt: Long,
+        val consistentSamples: Int,
+    )
     private var pendingAvrcpSeek: PendingAvrcpSeek? = null
     private var phaseCorrectionMs = 0.0
     private var phaseCorrectionDurationMs = 0L
@@ -340,15 +344,25 @@ internal class MediaSessionTimelineTracker(
     ): Boolean {
         val pending = pendingAvrcpSeek
         if (pending != null) {
-            pendingAvrcpSeek = null
-            val elapsed = max(0L, sample.capturedAt - pending.capturedAt)
-            val expected = (pending.positionMs + (elapsed * speed).coerceAtLeast(0.0)).toLong()
-            val distinct = sample.positionMs != pending.positionMs
+            val elapsed = max(0L, sample.capturedAt - pending.lastCapturedAt)
+            val expected = (pending.lastPositionMs + (elapsed * speed).coerceAtLeast(0.0)).toLong()
+            val distinct = sample.positionMs != pending.lastPositionMs
             if (distinct && kotlin.math.abs(sample.positionMs - expected) <= AVRCP_SEEK_CONFIRM_TOLERANCE_MS) {
-                acceptPosition(sample.positionMs, sample.capturedAt, now, durationMs, speed,
-                    MediaSessionTransport.BLUETOOTH_AVRCP, playing, allowDeferredSeek = false)
-                return true
+                val samples = pending.consistentSamples + 1
+                if (samples >= AVRCP_SEEK_CONFIRMATION_SAMPLES) {
+                    pendingAvrcpSeek = null
+                    acceptPosition(sample.positionMs, sample.capturedAt, now, durationMs, speed,
+                        MediaSessionTransport.BLUETOOTH_AVRCP, playing, allowDeferredSeek = false)
+                    return true
+                }
+                pendingAvrcpSeek = pending.copy(
+                    lastPositionMs = sample.positionMs,
+                    lastCapturedAt = sample.capturedAt,
+                    consistentSamples = samples,
+                )
+                return false
             }
+            pendingAvrcpSeek = null
         }
         val accepted = acceptPosition(sample.positionMs, sample.capturedAt, now, durationMs, speed,
             MediaSessionTransport.BLUETOOTH_AVRCP, playing, allowDeferredSeek = true)
@@ -378,7 +392,11 @@ internal class MediaSessionTimelineTracker(
                 return true
             }
             if (allowDeferredSeek) {
-                pendingAvrcpSeek = PendingAvrcpSeek(position, capturedAt)
+                pendingAvrcpSeek = PendingAvrcpSeek(
+                    positionMs = position, capturedAt = capturedAt,
+                    lastPositionMs = position, lastCapturedAt = capturedAt,
+                    consistentSamples = 0,
+                )
                 return false
             }
         }
@@ -452,6 +470,7 @@ internal class MediaSessionTimelineTracker(
         const val AVRCP_DUPLICATE_WINDOW_MS = 350L
         const val BLUETOOTH_PHASE_LIMIT_MS = 250.0
         const val AVRCP_SEEK_CONFIRM_TOLERANCE_MS = 250L
+        const val AVRCP_SEEK_CONFIRMATION_SAMPLES = 2
         const val MIN_PHASE_DURATION_MS = 1_000L
         const val MAX_PHASE_RATE_FRACTION = 0.08
     }
