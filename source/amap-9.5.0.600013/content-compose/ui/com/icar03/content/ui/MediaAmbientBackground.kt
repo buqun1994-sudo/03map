@@ -156,8 +156,10 @@ fun MediaAmbientBackground(
             it.width > 0 && it.height > 0
         } ?: compactSize
         val visible = captured?.first ?: renderer.captureCurrent(painter, visibleSize, background)!!
+        val capturedSize = captured?.second
         val capturedTransition = AmbientTransition(target = visible, startOpacity = 1f, endOpacity = 1f)
-        val request = presentationState.begin(key, capturedTransition, visibleSize)
+        val request = presentationState.begin(key, capturedTransition, visibleSize,
+            preserveVisible = captured != null)
         var compact: Bitmap? = null
         var wide: Bitmap? = null
         var installed = false
@@ -171,11 +173,11 @@ fun MediaAmbientBackground(
             withContext(preparationDispatcher) {
                 ensureActive()
                 val baker = AmbientSceneBaker()
-                compact = if (visibleSize == compactSize) visible else
+                compact = if (capturedSize == compactSize) captured!!.first else
                     texture?.let { baker.prepare(it, dark, compactSize) } ?: themeFrame(compactSize)
                 ensureActive()
-                wide = if (visibleSize == fullSize && targetPresentation.progress >= PRESENTATION_COMPACT_FADE_END)
-                    visible else texture?.let { baker.prepare(it, dark, fullSize) } ?: themeFrame(fullSize)
+                wide = if (capturedSize == fullSize && targetPresentation.progress >= PRESENTATION_COMPACT_FADE_END)
+                    captured!!.first else texture?.let { baker.prepare(it, dark, fullSize) } ?: themeFrame(fullSize)
             }
             ensureActive()
             if (!presentationState.isCurrent(request)) return@LaunchedEffect

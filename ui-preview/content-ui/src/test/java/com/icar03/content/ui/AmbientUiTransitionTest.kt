@@ -132,6 +132,38 @@ class AmbientUiTransitionTest {
         assertTrue("a real drag phase still prepares the presentation scene", value(AmbientPresentationPrepared))
     }
 
+    @Test fun artworkReplacementBakesTheNewCompactEndpointInsteadOfRendererFallback() {
+        val presentation = ContentPresentation().apply { updateGeometry(240f, 240f, 480f, 480) }
+        val target = mutableStateOf(scene(Color.RED))
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f),
+                LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
+                ContentTheme(true) {
+                    MediaAmbientBackground(target.value, true, Modifier.requiredSize(240.dp, 480.dp),
+                        presentation = presentation)
+                }
+            }
+        }
+        advanceTransitionStart()
+        compose.mainClock.advanceTimeBy(640)
+        compose.waitForIdle()
+        compose.runOnIdle {
+            presentation.requestEnter()
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.runOnIdle {
+            target.value = scene(Color.BLUE)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        repeat(4) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        assertTrue(value(AmbientPresentationPrepared))
+        val pixels = captureAmbient()
+        val compactPixel = pixels.getPixel(40, 200)
+        assertTrue("new compact endpoint must come from the new artwork", Color.blue(compactPixel) > Color.red(compactPixel))
+    }
+
     @Test fun aSecondEntryAcknowledgesItsOwnRequestWhenThePreparedSceneIsReused() {
         val presentation = ContentPresentation().apply { updateGeometry(240f, 240f, 480f, 480) }
         val texture = scene(Color.BLUE)

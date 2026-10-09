@@ -34,12 +34,18 @@ internal class AmbientPresentationState {
     private var handoffDistance = 0f
     private var artworkChanged = false
 
-    fun begin(key: AmbientPresentationKey, visible: AmbientTransition, size: IntSize = key.compactSize): Long {
+    fun begin(
+        key: AmbientPresentationKey,
+        visible: AmbientTransition,
+        size: IntSize = key.compactSize,
+        preserveVisible: Boolean = true,
+    ): Long {
         requestId += 1L
         requestedKey = key
         pendingTransition = visible
         pendingSize = size
-        artworkChanged = preparedKey?.let { it.texture !== key.texture || it.dark != key.dark } == true
+        artworkChanged = !preserveVisible ||
+            preparedKey?.let { it.texture !== key.texture || it.dark != key.dark } == true
         return requestId
     }
 
