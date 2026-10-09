@@ -678,7 +678,7 @@ public final class ContentStore {
             state.mediaAlbum = snapshot.album;
             state.mediaDurationMs = snapshot.durationMs;
             if (snapshot.dataAvailable && !snapshot.preview) lyricsTimeline.update(snapshot);
-            else lyricsTimeline.reset();
+            else lyricsTimeline.suspendForMediaGap();
             state.mediaRecordingGeneration = lyricsTimeline.recordingGeneration();
             if (state.mediaNextPending && (!snapshot.dataAvailable || snapshot.preview
                     || !snapshot.hasSongMetadata()

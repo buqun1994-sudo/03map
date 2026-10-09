@@ -106,7 +106,17 @@ internal class MediaSessionTimelineTracker(
         val lastPositionMs: Long, val lastCapturedAt: Long,
         val consistentSamples: Int,
     )
+    private data class SupersededTrackPosition(
+        val positionMs: Long,
+        val capturedAt: Long,
+        val speed: Double,
+    )
     private var pendingPositionSeek: PendingPositionSeek? = null
+    private var transitionBoundaryPosition: SupersededTrackPosition? = null
+    private var supersededAvrcpPosition: SupersededTrackPosition? = null
+    private var supersededPublisherPosition: SupersededTrackPosition? = null
+    private var carriedPositionAfterGap: SupersededTrackPosition? = null
+    private var startingFromZero = false
     private var phaseCorrectionMs = 0.0
     private var phaseCorrectionDurationMs = 0L
     private var ignoreReportedUntilAvrcp = false
@@ -151,7 +161,15 @@ internal class MediaSessionTimelineTracker(
 
         if (trackKey != this.trackKey) {
             val firstObservedTrack = !hasObservedTrack
-            val startAtZero = resetNewRecordingAtStart && !firstObservedTrack
+            val startAtZero = resetNewRecordingAtStart &&
+                (!firstObservedTrack || carriedPositionAfterGap != null)
+            val previousTrackPosition = if (hasObservedTrack && timelineReady) {
+                SupersededTrackPosition(clamp(positionAt(now), durationMs), now, lastSpeed)
+            } else {
+                carriedPositionAfterGap
+            }
+            val boundaryPosition = previousTrackPosition.takeIf { startAtZero }
+            carriedPositionAfterGap = null
             val initialPositionSample = avrcpPosition?.takeIf {
                 !startAtZero || it.positionMs == 0L
             }
@@ -185,6 +203,10 @@ internal class MediaSessionTimelineTracker(
             lastPositionSampleMs = initialPositionSample?.positionMs
             lastPositionSampleCapturedAt = initialPositionSample?.capturedAt
             pendingPositionSeek = null
+            transitionBoundaryPosition = boundaryPosition
+            supersededAvrcpPosition = null
+            supersededPublisherPosition = null
+            startingFromZero = startAtZero
             ignoreReportedUntilAvrcp = false
         } else {
             val currentPosition = positionAt(now)
@@ -218,23 +240,119 @@ internal class MediaSessionTimelineTracker(
             val orderedAvrcp = avrcpPosition?.takeUnless {
                 lastAvrcpCapturedAt != null && it.capturedAt < lastAvrcpCapturedAt!!
             }
-            val freshPublisherSeek = if (orderedAvrcp == null && bluetoothAvrcpOwnsPosition &&
+            var suppressSupersededPosition = false
+            var boundaryPositionNeedsAdmission = false
+            var transitionNearOrigin = false
+            if (startingFromZero && pendingPositionSeek == null && orderedAvrcp != null) {
+                val residue = supersededAvrcpPosition
+                val boundary = transitionBoundaryPosition
+                when {
+                    residue != null && followsSupersededTrack(
+                        orderedAvrcp.positionMs, orderedAvrcp.capturedAt, residue, durationMs
+                    ) -> {
+                        supersededAvrcpPosition = residue.copy(
+                            positionMs = orderedAvrcp.positionMs,
+                            capturedAt = orderedAvrcp.capturedAt,
+                        )
+                        suppressSupersededPosition = true
+                    }
+                    residue != null -> {
+                        supersededAvrcpPosition = null
+                        boundaryPositionNeedsAdmission = true
+                    }
+                    boundary != null && followsSupersededTrack(
+                        orderedAvrcp.positionMs, orderedAvrcp.capturedAt, boundary, durationMs
+                    ) -> {
+                        supersededAvrcpPosition = boundary.copy(
+                            positionMs = orderedAvrcp.positionMs,
+                            capturedAt = orderedAvrcp.capturedAt,
+                        )
+                        suppressSupersededPosition = true
+                    }
+                    boundary != null && isNearTransitionOrigin(
+                        orderedAvrcp.positionMs, orderedAvrcp.capturedAt, boundary, speed
+                    ) -> transitionNearOrigin = true
+                    boundary != null -> {
+                        supersededAvrcpPosition = SupersededTrackPosition(
+                            orderedAvrcp.positionMs, orderedAvrcp.capturedAt, speed
+                        )
+                        suppressSupersededPosition = true
+                    }
+                }
+            } else if (startingFromZero && pendingPositionSeek == null &&
+                reportedChanged && usablePublisherChange
+            ) {
+                val residue = supersededPublisherPosition
+                val boundary = transitionBoundaryPosition
+                when {
+                    residue != null && followsSupersededTrack(
+                        reported, validPublisherTime!!, residue, durationMs
+                    ) -> {
+                        supersededPublisherPosition = residue.copy(
+                            positionMs = reported,
+                            capturedAt = validPublisherTime!!,
+                        )
+                        suppressSupersededPosition = true
+                    }
+                    residue != null -> {
+                        supersededPublisherPosition = null
+                        boundaryPositionNeedsAdmission = true
+                    }
+                    boundary != null && followsSupersededTrack(
+                        reported, validPublisherTime!!, boundary, durationMs
+                    ) -> {
+                        supersededPublisherPosition = boundary.copy(
+                            positionMs = reported,
+                            capturedAt = validPublisherTime!!,
+                        )
+                        suppressSupersededPosition = true
+                    }
+                    boundary != null && isNearTransitionOrigin(
+                        reported, validPublisherTime!!, boundary, speed
+                    ) -> transitionNearOrigin = true
+                    boundary != null -> {
+                        supersededPublisherPosition = SupersededTrackPosition(
+                            reported, validPublisherTime!!, speed
+                        )
+                        suppressSupersededPosition = true
+                    }
+                }
+            } else if (startingFromZero && pendingPositionSeek == null && reportedChanged) {
+                suppressSupersededPosition = startingFromZero
+            }
+            val freshPublisherSeek = if (orderedAvrcp == null &&
                 reportedChanged && usablePublisherChange &&
-                isPositionDiscontinuity(reported, validPublisherTime!!, now, durationMs, speed, playing)
+                (bluetoothAvrcpOwnsPosition || startingFromZero || pendingPositionSeek != null) &&
+                (startingFromZero || isPositionDiscontinuity(
+                    reported, validPublisherTime!!, now, durationMs, speed, playing
+                ))
             ) {
                 PositionSample(trackKey, reported, validPublisherTime!!)
             } else {
                 null
             }
             val admittedSample = orderedAvrcp ?: freshPublisherSeek
-            if (admittedSample != null) {
+            if (suppressSupersededPosition) {
+                timelineReady = true
+            } else if (admittedSample != null) {
                 val fromAvrcp = orderedAvrcp != null
                 val sameValue = fromAvrcp && admittedSample.positionMs == lastPositionSampleMs
                 val duplicate = sameValue && (playbackModeChanged || speedChanged ||
                     lastPositionSampleCapturedAt?.let {
                         admittedSample.capturedAt - it in 0L..AVRCP_DUPLICATE_WINDOW_MS
                     } == true)
-                if (!duplicate && admitPositionSample(admittedSample, now, durationMs, speed, playing)) {
+                val accepted = !duplicate && admitPositionSample(
+                    admittedSample, now, durationMs, speed, playing,
+                    forceConfirmation = (startingFromZero && !transitionNearOrigin) ||
+                        boundaryPositionNeedsAdmission,
+                )
+                if (accepted) {
+                    if (startingFromZero) {
+                        startingFromZero = false
+                        transitionBoundaryPosition = null
+                        supersededAvrcpPosition = null
+                        supersededPublisherPosition = null
+                    }
                     if (fromAvrcp) {
                         lastPositionSampleMs = admittedSample.positionMs
                         lastPositionSampleCapturedAt = admittedSample.capturedAt
@@ -261,7 +379,9 @@ internal class MediaSessionTimelineTracker(
                     rebase(clamp(reported, durationMs), if (usablePublisherChange) validPublisherTime!! else now)
                     timelineReady = true
                 }
-            } else if (reportedChanged && !bluetoothAvrcpOwnsPosition) {
+            } else if (reportedChanged && !bluetoothAvrcpOwnsPosition &&
+                !startingFromZero && pendingPositionSeek == null &&
+                !boundaryPositionNeedsAdmission && !suppressSupersededPosition) {
                 acceptPosition(reported, if (usablePublisherChange) validPublisherTime!! else now,
                     now, durationMs, speed, transport, playing)
             } else if (playbackModeChanged || speedChanged) {
@@ -335,7 +455,22 @@ internal class MediaSessionTimelineTracker(
         timelineReady = timelineReady
     )
 
+    fun suspend() {
+        val now = nowElapsedRealtime()
+        carriedPositionAfterGap = if (timelineReady) {
+            SupersededTrackPosition(clamp(positionAt(now), 0L), now, lastSpeed)
+        } else {
+            null
+        }
+        clearState()
+    }
+
     fun reset() {
+        carriedPositionAfterGap = null
+        clearState()
+    }
+
+    private fun clearState() {
         trackKey = ""
         hasObservedTrack = false
         basePositionMs = 0L
@@ -354,6 +489,10 @@ internal class MediaSessionTimelineTracker(
         lastPositionSampleMs = null
         lastPositionSampleCapturedAt = null
         pendingPositionSeek = null
+        transitionBoundaryPosition = null
+        supersededAvrcpPosition = null
+        supersededPublisherPosition = null
+        startingFromZero = false
         phaseCorrectionMs = 0.0
         phaseCorrectionDurationMs = 0L
         ignoreReportedUntilAvrcp = false
@@ -362,7 +501,12 @@ internal class MediaSessionTimelineTracker(
     }
 
     private fun admitPositionSample(
-        sample: PositionSample, now: Long, durationMs: Long, speed: Double, playing: Boolean
+        sample: PositionSample,
+        now: Long,
+        durationMs: Long,
+        speed: Double,
+        playing: Boolean,
+        forceConfirmation: Boolean = false,
     ): Boolean {
         val pending = pendingPositionSeek
         if (pending != null) {
@@ -386,9 +530,49 @@ internal class MediaSessionTimelineTracker(
             }
             pendingPositionSeek = null
         }
+        if (forceConfirmation && sample.positionMs != 0L) {
+            val position = clamp(sample.positionMs, durationMs)
+            pendingPositionSeek = PendingPositionSeek(
+                positionMs = position,
+                capturedAt = sample.capturedAt,
+                lastPositionMs = position,
+                lastCapturedAt = sample.capturedAt,
+                consistentSamples = 0,
+            )
+            return false
+        }
         val accepted = acceptPosition(sample.positionMs, sample.capturedAt, now, durationMs, speed,
             MediaSessionTransport.BLUETOOTH_AVRCP, playing, allowDeferredSeek = true)
         return accepted
+    }
+
+    private fun followsSupersededTrack(
+        positionMs: Long,
+        capturedAt: Long,
+        superseded: SupersededTrackPosition,
+        durationMs: Long,
+    ): Boolean {
+        if (positionMs == 0L) return false
+        if (capturedAt < superseded.capturedAt) return true
+        val elapsed = capturedAt - superseded.capturedAt
+        val expected = clamp(
+            (superseded.positionMs + elapsed * superseded.speed).coerceAtLeast(0.0).toLong(),
+            durationMs,
+        )
+        return kotlin.math.abs(positionMs - expected) <= AVRCP_SEEK_CONFIRM_TOLERANCE_MS
+    }
+
+    private fun isNearTransitionOrigin(
+        positionMs: Long,
+        capturedAt: Long,
+        boundary: SupersededTrackPosition,
+        speed: Double,
+    ): Boolean {
+        if (positionMs == 0L) return true
+        val elapsed = capturedAt - boundary.capturedAt
+        if (elapsed < 0L) return false
+        val positionAtBoundary = positionMs - (elapsed * speed).toLong()
+        return positionAtBoundary in 0L..INITIAL_POSITION_TRUST_LIMIT_MS
     }
 
     private fun isPositionDiscontinuity(

@@ -73,6 +73,68 @@ class ContentLyricsTimelineTest {
         assertEquals(0L, timeline.positionMs())
     }
 
+    @Test fun newRecordingQuarantinesTheOldPublisherLineageBeforeAllowingManualSeek() {
+        var now = 1_000L
+        val timeline = ContentLyricsTimeline { now }
+        timeline.update(media(source = "蓝牙音乐", title = "First", position = 40_000L, publisherTime = now))
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = -1L, publisherTime = 0L))
+        assertTrue(timeline.ready())
+        assertEquals(0L, timeline.positionMs())
+
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 40_100L, publisherTime = now))
+        assertEquals(100L, timeline.positionMs())
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 40_200L, publisherTime = now))
+        assertEquals(200L, timeline.positionMs())
+
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 120_000L, publisherTime = now))
+        assertEquals(300L, timeline.positionMs())
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 120_100L, publisherTime = now))
+        assertEquals(400L, timeline.positionMs())
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 120_200L, publisherTime = now))
+        assertEquals(120_200L, timeline.positionMs())
+    }
+
+    @Test fun sameSourceRecordingAfterMediaGapKeepsTheBoundaryAndStartsAtZero() {
+        var now = 1_000L
+        val timeline = ContentLyricsTimeline { now }
+        timeline.update(media(source = "蓝牙音乐", title = "First", position = 40_000L, publisherTime = now))
+        timeline.suspendForMediaGap()
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = -1L))
+        assertTrue(timeline.ready())
+        assertEquals(0L, timeline.positionMs())
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 40_100L, publisherTime = now))
+        assertEquals(100L, timeline.positionMs())
+    }
+
+    @Test fun differentOldAvrcpAndPublisherPositionsCannotConfirmAcrossOrigins() {
+        var now = 1_000L
+        val timeline = ContentLyricsTimeline { now }
+        timeline.update(media(source = "蓝牙音乐", title = "First", position = 40_000L, publisherTime = now))
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = -1L))
+
+        now += 100L
+        timeline.update(avrcp(position = 40_100L, sequence = 1L, capturedAt = now, title = "Second"))
+        assertEquals(100L, timeline.positionMs())
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 75_000L, publisherTime = now))
+        assertEquals(200L, timeline.positionMs())
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 75_100L, publisherTime = now))
+        assertEquals(300L, timeline.positionMs())
+        now += 100L
+        timeline.update(media(source = "蓝牙音乐", title = "Second", position = 75_200L, publisherTime = now))
+        assertEquals(400L, timeline.positionMs())
+    }
+
     @Test fun realAvrcpEventEstablishesTheClockAndDuplicateEnvelopesNeverReplayIt() {
         var now = 1_000L
         val timeline = ContentLyricsTimeline { now }

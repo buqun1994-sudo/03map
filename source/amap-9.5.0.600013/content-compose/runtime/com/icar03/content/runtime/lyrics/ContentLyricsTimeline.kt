@@ -21,7 +21,7 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
     @Synchronized fun update(snapshot: ContentPorts.MediaSnapshot) {
         val metadata = snapshot.recordingMetadataOrNull()
         if (metadata == null) {
-            reset()
+            suspendForMediaGap()
             return
         }
         val state = recording.update(snapshot.source, metadata) ?: return
@@ -80,6 +80,15 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
     @Synchronized fun ready(): Boolean = timeline.anchor().timelineReady
 
     @Synchronized fun durationMs(): Long = durationMs
+
+    @Synchronized fun suspendForMediaGap() {
+        recording.clear()
+        currentRecordingGeneration = 0L
+        timeline.suspend()
+        publisherGeneration = null
+        avrcpPlaybackState = null
+        durationMs = 0L
+    }
 
     @Synchronized fun reset() {
         recording.clear()
