@@ -87,7 +87,7 @@ class AmbientUiTransitionTest {
         compose.waitForIdle()
     }
 
-    @Test fun stalePressAndBlockedPhasesKeepTheAmbientBitmapWithoutPreparingAPresentationScene() {
+    @Test fun stableViewportPreparesPresentationEndpointsWithoutChangingVisibleCompactPixels() {
         val presentation = ContentPresentation().apply { updateGeometry(240f, 240f, 480f, 480) }
         val texture = scene(Color.BLUE)
         compose.mainClock.autoAdvance = false
@@ -103,7 +103,7 @@ class AmbientUiTransitionTest {
         compose.mainClock.advanceTimeBy(640)
         compose.waitForIdle()
         val stable = captureAmbient()
-        assertFalse("stable content has no presentation scene", value(AmbientPresentationPrepared))
+        assertTrue("stable content preps both presentation endpoints", value(AmbientPresentationPrepared))
 
         compose.runOnIdle {
             presentation.updatePhase(2)
@@ -111,7 +111,7 @@ class AmbientUiTransitionTest {
         }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
-        assertFalse("legacy press phase cannot prepare a presentation scene", value(AmbientPresentationPrepared))
+        assertTrue("legacy press phase keeps the prepared presentation scene", value(AmbientPresentationPrepared))
         assertSameAmbientPixels(stable, captureAmbient(), "press phase must keep the current bitmap")
 
         compose.runOnIdle {
@@ -120,7 +120,7 @@ class AmbientUiTransitionTest {
         }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
-        assertFalse("legacy blocked phase cannot prepare a presentation scene", value(AmbientPresentationPrepared))
+        assertTrue("legacy blocked phase keeps the prepared presentation scene", value(AmbientPresentationPrepared))
         assertSameAmbientPixels(stable, captureAmbient(), "blocked phase must keep the current bitmap")
 
         compose.runOnIdle {
@@ -216,6 +216,8 @@ class AmbientUiTransitionTest {
         update(0f, 4)
         assertSameAmbientPixels(original, captureAmbient(), "compact endpoint restores original crop")
         update(0f, 0)
+                assertFalse("reverse completion leaves the presentation canvas path", presentation.moving)
+        assertEquals(0f, presentation.progress, 0f)
         assertSameAmbientPixels(original, captureAmbient(), "compact stable handoff")
     }
 

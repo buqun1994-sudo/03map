@@ -90,8 +90,10 @@ class ContentLyricsTimelineTest {
             publisherTime = now))
         assertEquals(38_000L, timeline.positionMs())
         timeline.update(avrcp(position = 12_000L, sequence = 2L, capturedAt = now))
-        assertEquals(12_000L, timeline.positionMs())
-        timeline.update(avrcp(position = 0L, sequence = 3L, capturedAt = now))
+        assertEquals(38_000L, timeline.positionMs())
+        timeline.update(avrcp(position = 12_001L, sequence = 3L, capturedAt = now))
+        assertEquals(12_001L, timeline.positionMs())
+        timeline.update(avrcp(position = 0L, sequence = 4L, capturedAt = now))
         assertEquals(0L, timeline.positionMs())
     }
 

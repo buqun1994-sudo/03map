@@ -44,6 +44,24 @@ internal class AmbientPresentationState {
     fun isCurrent(id: Long): Boolean = id == requestId
     fun isPrepared(key: AmbientPresentationKey): Boolean = preparedKey == key && scene != null
 
+    /**
+     * A gesture session changes its generation token, but the artwork/geometry
+     * endpoint pair remains the same truth. Adopt that already prepared pair
+     * synchronously so the first drag frame never waits for a new wide bake.
+     */
+    fun reusePrepared(key: AmbientPresentationKey, progress: Float): Boolean {
+        val prepared = preparedKey ?: return false
+        if (scene == null || prepared.texture !== key.texture || prepared.dark != key.dark ||
+            prepared.fullSize != key.fullSize || prepared.compactSize != key.compactSize) return false
+        preparedKey = key
+        requestedKey = key
+        pendingTransition = null
+        pendingSize = IntSize.Zero
+        lastProgress = progress.coerceIn(0f, 1f)
+        handoffDistance = .04f
+        return true
+    }
+
     fun install(id: Long, key: AmbientPresentationKey, value: AmbientPresentationScene, progress: Float = 0f) {
         if (id != requestId || requestedKey != key) return
         scene = value
@@ -120,6 +138,7 @@ internal class AmbientPresentationPainter {
     private var paintedPending: AmbientTransition? = null
     private var paintedPendingFraction = 1f
     private var paintedPendingSize = IntSize.Zero
+    private var paintedPendingOnTop = false
     private var paintedSize = IntSize.Zero
     private var paintedBlend = 0f
     private var paintedAlpha = 1f
@@ -128,6 +147,7 @@ internal class AmbientPresentationPainter {
     fun clear() {
         paintedScene = null
         paintedPending = null
+        paintedPendingOnTop = false
         paintedSize = IntSize.Zero
     }
 
@@ -139,10 +159,17 @@ internal class AmbientPresentationPainter {
         val canvas = AndroidCanvas(image)
         canvas.scale(output.width.toFloat() / paintedSize.width, output.height.toFloat() / paintedSize.height)
         canvas.drawColor(paintedBackground)
-        paintedPending?.let { drawPending(canvas, paintedSize.width.toFloat(), paintedSize.height.toFloat(),
-            it, paintedPendingFraction, paintedPendingSize, painter) }
-        paintedScene?.let { drawScene(canvas, paintedSize.width.toFloat(), paintedSize.height.toFloat(),
-            it, paintedBlend, paintedAlpha, paintedBackground) }
+        if (paintedPendingOnTop) {
+            paintedScene?.let { drawScene(canvas, paintedSize.width.toFloat(), paintedSize.height.toFloat(),
+                it, paintedBlend, paintedAlpha, paintedBackground) }
+            paintedPending?.let { drawPending(canvas, paintedSize.width.toFloat(), paintedSize.height.toFloat(),
+                it, paintedPendingFraction, paintedPendingSize, painter) }
+        } else {
+            paintedPending?.let { drawPending(canvas, paintedSize.width.toFloat(), paintedSize.height.toFloat(),
+                it, paintedPendingFraction, paintedPendingSize, painter) }
+            paintedScene?.let { drawScene(canvas, paintedSize.width.toFloat(), paintedSize.height.toFloat(),
+                it, paintedBlend, paintedAlpha, paintedBackground) }
+        }
         return image to paintedSize
     }
 
@@ -158,6 +185,7 @@ internal class AmbientPresentationPainter {
         paintedBlend = presentationAmbientBlend(progress)
         paintedAlpha = 1f
         paintedPending = null
+        paintedPendingOnTop = false
         val committed = paintedScene
         if (committed != null) {
             val handoff = owner.handoffBlend(progress)
@@ -165,8 +193,16 @@ internal class AmbientPresentationPainter {
             val pending = owner.pendingFrame(key, live)
             if (pending.previous == null && pending.target === committed.compact &&
                 owner.frameSize(key, liveSize) == committed.compactSize) {
-                paintedBlend *= handoff
-                return drawScene(canvas, width, height, committed, paintedBlend, 1f, background)
+                paintedPending = pending
+                paintedPendingFraction = if (pending === live) liveFraction else 1f
+                paintedPendingSize = owner.frameSize(key, liveSize)
+                paintedPendingOnTop = true
+                paintedAlpha = handoff
+                canvas.drawColor(background)
+                val sceneDrawn = drawScene(canvas, width, height, committed, paintedBlend, handoff, background)
+                val pendingDrawn = drawPending(canvas, width, height, pending,
+                    paintedPendingFraction, paintedPendingSize, compactPainter)
+                return sceneDrawn + pendingDrawn
             }
             paintedAlpha = handoff
         }
@@ -206,21 +242,24 @@ internal class AmbientPresentationPainter {
         canvas: AndroidCanvas, width: Float, height: Float,
         scene: AmbientPresentationScene, blend: Float, sceneAlpha: Float, background: Int,
     ): Int {
-        val incoming = blend.coerceIn(0f, 1f) * sceneAlpha.coerceIn(0f, 1f)
-        val outgoing = if (incoming >= 1f) 0f else
-            sceneAlpha.coerceIn(0f, 1f) * (1f - blend.coerceIn(0f, 1f)) / (1f - incoming)
+        val alpha = sceneAlpha.coerceIn(0f, 1f)
+        val compactAlpha = alpha * (1f - blend.coerceIn(0f, 1f))
         val compactWidth = min(width, scene.compactSize.width.toFloat().coerceAtLeast(1f))
         var drawn = 0
-        if (outgoing > 0f) {
+        // The wide crop is the opaque presentation base from the first transition
+        // frame. The compact crop is painted over its original viewport and fades
+        // away during the first 45%; this keeps newly exposed pixels out of the
+        // theme-black fallback while preserving the compact composition.
+        val wide = scene.wide?.takeUnless { it.isRecycled }
+        if (wide != null) drawn += drawCanonical(canvas, width, height, scene.fullSize, wide, alpha)
+        else drawBackground(canvas, 0f, width, height, background, alpha)
+
+        if (compactAlpha > 0f) {
             val compact = scene.compact?.takeUnless { it.isRecycled }
             if (compact != null) drawn += drawCanonical(canvas, compactWidth, height,
-                scene.compactSize, compact, outgoing)
-            else drawBackground(canvas, 0f, compactWidth, height, background, outgoing)
-            if (width > compactWidth) drawBackground(canvas, compactWidth, width, height, background, outgoing)
+                scene.compactSize, compact, compactAlpha)
+            else drawBackground(canvas, 0f, compactWidth, height, background, compactAlpha)
         }
-        val wide = scene.wide?.takeUnless { it.isRecycled }
-        if (wide != null) drawn += drawCanonical(canvas, width, height, scene.fullSize, wide, incoming)
-        else drawBackground(canvas, 0f, width, height, background, incoming)
         return drawn
     }
 

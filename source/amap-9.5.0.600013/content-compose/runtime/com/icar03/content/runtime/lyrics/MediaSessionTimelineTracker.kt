@@ -101,6 +101,8 @@ internal class MediaSessionTimelineTracker(
     // first capture of a same-value burst so duplicates cannot extend the window.
     private var lastAvrcpPositionMs: Long? = null
     private var lastAvrcpPositionCapturedAt: Long? = null
+    private data class PendingAvrcpSeek(val positionMs: Long, val capturedAt: Long)
+    private var pendingAvrcpSeek: PendingAvrcpSeek? = null
     private var phaseCorrectionMs = 0.0
     private var phaseCorrectionDurationMs = 0L
     private var ignoreReportedUntilAvrcp = false
@@ -166,6 +168,7 @@ internal class MediaSessionTimelineTracker(
             lastAvrcpCapturedAt = avrcpPosition?.capturedAt
             lastAvrcpPositionMs = avrcpPosition?.positionMs
             lastAvrcpPositionCapturedAt = avrcpPosition?.capturedAt
+            pendingAvrcpSeek = null
             ignoreReportedUntilAvrcp = false
         } else {
             val currentPosition = positionAt(now)
@@ -175,8 +178,9 @@ internal class MediaSessionTimelineTracker(
             if (!deferPositionFrame && hasReportedPosition && reported != supersededReportedPositionMs) {
                 supersededReportedPositionMs = null
             }
-            // Only verifiable out-of-order positions are rejected: zero/no publisher time
-            // remains compatible, and a fresh backward seek (including zero) is accepted.
+            // Small phase noise is corrected smoothly. A large continuous-playback
+            // deviation is held for a second consistent sample; an explicit zero,
+            // state boundary, track/source change, or confirmed seek remains immediate.
             val stalePublisherPosition = validPublisherTime != null &&
                 validPublisherTime < newestPublisherPositionTime
             val ignoreReportedPosition = stalePublisherPosition || deferPositionFrame || ignoreReportedUntilAvrcp ||
@@ -193,6 +197,7 @@ internal class MediaSessionTimelineTracker(
                 validPublisherTime != null
             val playbackModeChanged = playing != wasPlaying
             val speedChanged = playing && speed != lastSpeed
+            if (playbackModeChanged || speedChanged) pendingAvrcpSeek = null
 
             val orderedAvrcp = avrcpPosition?.takeUnless {
                 lastAvrcpCapturedAt != null && it.capturedAt < lastAvrcpCapturedAt!!
@@ -203,12 +208,11 @@ internal class MediaSessionTimelineTracker(
                     lastAvrcpPositionCapturedAt?.let {
                         orderedAvrcp.capturedAt - it in 0L..AVRCP_DUPLICATE_WINDOW_MS
                     } == true)
-                if (!duplicate) {
-                    acceptPosition(orderedAvrcp.positionMs, orderedAvrcp.capturedAt, now,
-                        durationMs, speed, transport, playing)
+                if (!duplicate && admitAvrcpPosition(orderedAvrcp, now, durationMs, speed, playing)) {
                     lastAvrcpPositionMs = orderedAvrcp.positionMs
                     lastAvrcpPositionCapturedAt = orderedAvrcp.capturedAt
                 } else if (playbackModeChanged || speedChanged) {
+                    pendingAvrcpSeek = null
                     rebase(currentPosition, now)
                 }
                 timelineReady = true
@@ -285,6 +289,7 @@ internal class MediaSessionTimelineTracker(
         rebase(clamp(positionMs, durationMs), now)
         lastAvrcpPositionMs = null
         lastAvrcpPositionCapturedAt = null
+        pendingAvrcpSeek = null
         supersededReportedPositionMs = lastReportedPositionMs.takeIf { it >= 0L }
         deferNextReportedPosition = false
         timelineReady = true
@@ -322,6 +327,7 @@ internal class MediaSessionTimelineTracker(
         lastAvrcpCapturedAt = null
         lastAvrcpPositionMs = null
         lastAvrcpPositionCapturedAt = null
+        pendingAvrcpSeek = null
         phaseCorrectionMs = 0.0
         phaseCorrectionDurationMs = 0L
         ignoreReportedUntilAvrcp = false
@@ -329,9 +335,30 @@ internal class MediaSessionTimelineTracker(
         anchorTrackKey = ""
     }
 
+    private fun admitAvrcpPosition(
+        sample: AvrcpPosition, now: Long, durationMs: Long, speed: Double, playing: Boolean
+    ): Boolean {
+        val pending = pendingAvrcpSeek
+        if (pending != null) {
+            pendingAvrcpSeek = null
+            val elapsed = max(0L, sample.capturedAt - pending.capturedAt)
+            val expected = (pending.positionMs + (elapsed * speed).coerceAtLeast(0.0)).toLong()
+            val distinct = sample.positionMs != pending.positionMs
+            if (distinct && kotlin.math.abs(sample.positionMs - expected) <= AVRCP_SEEK_CONFIRM_TOLERANCE_MS) {
+                acceptPosition(sample.positionMs, sample.capturedAt, now, durationMs, speed,
+                    MediaSessionTransport.BLUETOOTH_AVRCP, playing, allowDeferredSeek = false)
+                return true
+            }
+        }
+        val accepted = acceptPosition(sample.positionMs, sample.capturedAt, now, durationMs, speed,
+            MediaSessionTransport.BLUETOOTH_AVRCP, playing, allowDeferredSeek = true)
+        return accepted
+    }
+
     /** Only admitted position facts may change the clock trajectory. */
     private fun acceptPosition(positionMs: Long, capturedAt: Long, now: Long,
-        durationMs: Long, speed: Double, transport: MediaSessionTransport, playing: Boolean) {
+        durationMs: Long, speed: Double, transport: MediaSessionTransport, playing: Boolean,
+        allowDeferredSeek: Boolean = false): Boolean {
         val position = clamp(positionMs, durationMs)
         val continuous = timelineReady && wasPlaying && playing && speed > 0.0 && speed == lastSpeed &&
             transport == MediaSessionTransport.BLUETOOTH_AVRCP && positionMs != 0L
@@ -348,13 +375,18 @@ internal class MediaSessionTimelineTracker(
                 phaseCorrectionDurationMs = if (error == 0.0) 0L else max(
                     MIN_PHASE_DURATION_MS,
                     kotlin.math.ceil(kotlin.math.abs(error) / (speed * MAX_PHASE_RATE_FRACTION)).toLong())
-                return
+                return true
+            }
+            if (allowDeferredSeek) {
+                pendingAvrcpSeek = PendingAvrcpSeek(position, capturedAt)
+                return false
             }
         }
-        // Initialization, a real zero, significant seek, pause/resume and rate
-        // changes retain immediate positioning. Tiny seeks use finite correction:
-        // a position-only transport cannot distinguish them from sample noise.
+        // Initialization, a verified zero, a confirmed seek, pause/resume and rate
+        // changes retain immediate positioning. Position-only large seeks require a
+        // second independent AVRCP sample before this branch is reached.
         rebase(position, capturedAt)
+        return true
     }
 
     private fun rebase(positionMs: Long, capturedAt: Long) {
@@ -419,6 +451,7 @@ internal class MediaSessionTimelineTracker(
         const val AVRCP_EVENT_MAX_AGE_MS = 1_500L
         const val AVRCP_DUPLICATE_WINDOW_MS = 350L
         const val BLUETOOTH_PHASE_LIMIT_MS = 250.0
+        const val AVRCP_SEEK_CONFIRM_TOLERANCE_MS = 250L
         const val MIN_PHASE_DURATION_MS = 1_000L
         const val MAX_PHASE_RATE_FRACTION = 0.08
     }

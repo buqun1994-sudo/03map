@@ -47,7 +47,7 @@ class AmbientPresentationSceneTest {
             val start = at(0f)
             assertEquals(Color.RED, start.getPixel(40, 200))
             assertEquals("compact is never stretched", Color.BLUE, start.getPixel(200, 200))
-            if (width > 240) assertEquals("no fabricated edge gradient", Color.WHITE, start.getPixel(width - 1, 200))
+            if (width > 240) assertEquals("wide crop is opaque behind the compact layer", Color.GREEN, start.getPixel(width - 1, 200))
             val midpoint = at(.225f)
             assertTrue(Color.red(midpoint.getPixel(40, 200)) in 125..130)
             assertTrue(Color.green(midpoint.getPixel(40, 200)) in 125..130)
@@ -136,7 +136,7 @@ class AmbientPresentationSceneTest {
         at(.4f)
         assertEquals("cumulative travel finishes handoff even after reversal", 1f, owner.handoffBlend(.399f), .001f)
         assertEquals(Color.GREEN, at(.45f).getPixel(470, 200))
-        assertEquals(Color.WHITE, at(0f).getPixel(470, 200))
+        assertEquals(Color.GREEN, at(0f).getPixel(470, 200))
     }
 
     @Test fun resizeCaptureRetainsTheActualPresentationMixtureAndPublishedPixels() {
@@ -192,6 +192,21 @@ class AmbientPresentationSceneTest {
         assertNull(owner.scene)
         assertFalse(latest.compact!!.isRecycled)
         assertFalse(latest.wide!!.isRecycled)
+    }
+
+    @Test fun newGestureSessionReusesPreparedEndpointPairSynchronously() {
+        val owner = AmbientPresentationState()
+        val preparedKey = key(false).copy(sessionGeneration = 0L)
+        val live = AmbientTransition(target = compact(), startOpacity = 1f, endOpacity = 1f)
+        val request = owner.begin(preparedKey, live)
+        val scene = AmbientPresentationScene(compact(), frame(Color.GREEN, fullSize), fullSize, compactSize)
+        owner.install(request, preparedKey, scene, 0f)
+
+        val gestureKey = preparedKey.copy(sessionGeneration = 1L)
+        assertTrue(owner.reusePrepared(gestureKey, 0f))
+        assertSame(scene, owner.committedScene(gestureKey))
+        assertTrue(owner.isPrepared(gestureKey))
+        assertFalse(owner.reusePrepared(gestureKey.copy(fullSize = IntSize(840, 480)), 0f))
     }
 
     @Test fun missingCurrentFrameUsesAnOpaqueThemeFallback() {

@@ -140,17 +140,13 @@ fun MediaAmbientBackground(
             }
             return@LaunchedEffect
         }
-        if (!targetPresentation.moving && targetPresentation.pendingEnter == 0L &&
-            !targetPresentation.buttonTransitionActive) {
-            presentationState.clear()
-            return@LaunchedEffect
-        }
         val fullSize = targetPresentation.fullSize
         val compactSize = IntSize(targetPresentation.splitWidthPx, fullSize.height)
         if (compactSize.width <= 0 || compactSize.height <= 0) return@LaunchedEffect
         val key = AmbientPresentationKey(texture, dark, fullSize, compactSize, targetPresentation.sessionGeneration)
         val entryToken = targetPresentation.pendingEnter
-        if (presentationState.isPrepared(key)) {
+        if (presentationState.isPrepared(key) ||
+            presentationState.reusePrepared(key, targetPresentation.progress)) {
             targetPresentation.entryPrepared(entryToken)
             return@LaunchedEffect
         }
@@ -213,9 +209,9 @@ fun MediaAmbientBackground(
         this[AmbientPresentationPrepared] = presentationKey?.let(presentationState::isPrepared) == true
     }) {
         val targetPresentation = presentation
+        val travelInProgress = targetPresentation?.progress?.let { it > .001f && it < .999f } == true
         val inPresentation = active && targetPresentation != null && presentationKey != null &&
-            (targetPresentation.moving || targetPresentation.pendingEnter != 0L ||
-                targetPresentation.buttonTransitionActive)
+            (targetPresentation.pendingEnter != 0L || targetPresentation.buttonTransitionActive || travelInProgress)
         if (inPresentation) {
             drawIntoCanvas { canvas ->
                 presentationPainter.drawFrame(canvas.nativeCanvas, size.width, size.height,
