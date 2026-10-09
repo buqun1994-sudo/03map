@@ -6,10 +6,15 @@ import kotlin.math.roundToInt
 
 /** Ranks renderable content only after recording identity has been proved by the selector. */
 internal object LyricsContentRanker {
-    private const val WORD_POINTS = 400
-    private const val TRANSLATION_POINTS = 50
+    // A real word-timing tier outweighs translation and all other bonuses combined.
+    private const val WORD_POINTS = 4_000
+    private const val PARTIAL_WORD_POINTS = 400
+    private const val TRANSLATION_POINTS = 1_600
     private const val ROMANIZATION_POINTS = 30
     private const val DURATION_POINTS = 100
+    private const val MINIMUM_WORD_COVERAGE = 0.80
+    private const val MINIMUM_TRANSLATION_COVERAGE = 0.50
+    private const val MINIMUM_ROMANIZATION_COVERAGE = 0.50
     private const val MINIMUM_CONSENSUS_CHARACTERS = 30
     private const val CONSENSUS_SIMILARITY = 0.55
     private const val MINIMUM_END_COVERAGE = 0.75
@@ -28,9 +33,9 @@ internal object LyricsContentRanker {
         val speakerCoverage: Double = 0.0
     ) {
         val score: Int get() = if (kind == LyricsKind.SYNCHRONIZED) {
-            (WORD_POINTS * wordCoverage).roundToInt() +
-                (if (translationCoverage >= 0.5) TRANSLATION_POINTS * translationCoverage else 0.0).roundToInt() +
-                (if (romanizationCoverage >= 0.5) ROMANIZATION_POINTS * romanizationCoverage else 0.0).roundToInt() +
+            (if (wordCoverage >= MINIMUM_WORD_COVERAGE) WORD_POINTS * wordCoverage else PARTIAL_WORD_POINTS * wordCoverage).roundToInt() +
+                (if (translationCoverage >= MINIMUM_TRANSLATION_COVERAGE) TRANSLATION_POINTS * translationCoverage else 0.0).roundToInt() +
+                (if (romanizationCoverage >= MINIMUM_ROMANIZATION_COVERAGE) ROMANIZATION_POINTS * romanizationCoverage else 0.0).roundToInt() +
                 (DURATION_POINTS * durationCoverage).roundToInt() +
                 when {
                     consensusFamilies >= 2 -> 250
@@ -110,13 +115,50 @@ internal object LyricsContentRanker {
     }
 
     private fun capabilityGrade(quality: ContentQuality): Int =
-        (if (quality.wordCoverage >= .80) 4 else 0) +
-            (if (quality.translationCoverage >= .50) 2 else 0) +
-            (if (quality.romanizationCoverage >= .50) 1 else 0) +
+        (if (quality.wordCoverage >= MINIMUM_WORD_COVERAGE) 8 else 0) +
+            (if (quality.translationCoverage >= MINIMUM_TRANSLATION_COVERAGE) 4 else 0) +
+            (if (quality.romanizationCoverage >= MINIMUM_ROMANIZATION_COVERAGE) 2 else 0) +
             (if (quality.speakerCoverage > 0.0) 1 else 0)
 
     fun inspect(query: LyricsLookup, result: LyricsResult): ContentQuality =
         inspectBody(query, result).quality
+
+    /** Cross-provider fallback repairs missing real word timing or a needed Chinese translation;
+     * missing romanization or speaker metadata alone never starts it. */
+    fun needsCrossPlatformUpgrade(query: LyricsLookup, result: LyricsResult): Boolean {
+        val body = inspectBody(query, result)
+        return body.quality.kind != LyricsKind.SYNCHRONIZED ||
+            body.quality.wordCoverage < MINIMUM_WORD_COVERAGE ||
+            (body.needsChineseTranslation && body.quality.translationCoverage < MINIMUM_TRANSLATION_COVERAGE)
+    }
+
+    /** Shared with same-candidate enrichment admission; identity/proof is checked by its caller. */
+    fun retainsCapabilities(query: LyricsLookup, previous: LyricsResult, next: LyricsResult): Boolean =
+        retainsCapabilities(previous, next, inspect(query, previous), inspect(query, next))
+
+    private fun capabilities(quality: ContentQuality) = listOf(
+        quality.translationCoverage >= MINIMUM_TRANSLATION_COVERAGE,
+        quality.wordCoverage >= MINIMUM_WORD_COVERAGE,
+        quality.romanizationCoverage >= MINIMUM_ROMANIZATION_COVERAGE
+    )
+
+    private fun retainsCapabilities(
+        previous: LyricsResult,
+        next: LyricsResult,
+        old: ContentQuality,
+        fresh: ContentQuality
+    ): Boolean {
+        if (fresh.kind.ordinal < old.kind.ordinal) return false
+        val oldFeatures = capabilities(old)
+        val newFeatures = capabilities(fresh)
+        if (oldFeatures.indices.any { oldFeatures[it] && !newFeatures[it] }) return false
+        // Partial aligned tracks still belong to the admitted body, even below a ranking tier.
+        if (old.translationCoverage > 0.0 && fresh.translationCoverage == 0.0 ||
+            old.wordCoverage > 0.0 && fresh.wordCoverage == 0.0 ||
+            old.romanizationCoverage > 0.0 && fresh.romanizationCoverage == 0.0) return false
+        if (old.kind == LyricsKind.SYNCHRONIZED && fresh.durationCoverage + .10 < old.durationCoverage) return false
+        return retainsSpeakerSides(previous.timedLines(), next.timedLines())
+    }
 
     /** Initial selection may use fine scores; an already visible body changes only for
      * a real capability gain or a proved missing tail, never consensus/axis score noise. */
@@ -129,20 +171,13 @@ internal object LyricsContentRanker {
         val ranked = rank(query, listOf(previous, next))
         val old = ranked.firstOrNull { it.selection == previous }?.quality ?: return false
         val fresh = ranked.firstOrNull { it.selection == next }?.quality ?: return false
+        if (!retainsCapabilities(previous.candidate, next.candidate, old, fresh)) return false
         if (fresh.kind == LyricsKind.SYNCHRONIZED && old.kind == LyricsKind.PLAIN) return true
         if (fresh.kind != old.kind || fresh.kind != LyricsKind.SYNCHRONIZED) return false
-        fun capabilities(quality: ContentQuality) = listOf(
-            quality.wordCoverage >= .80,
-            quality.translationCoverage >= .50,
-            quality.romanizationCoverage >= .50
-        )
         val oldFeatures = capabilities(old)
         val newFeatures = capabilities(fresh)
-        if (oldFeatures.indices.any { oldFeatures[it] && !newFeatures[it] }) return false
-        if (fresh.durationCoverage + .10 < old.durationCoverage) return false
         val oldRows = previous.candidate.timedLines()
         val newRows = next.candidate.timedLines()
-        if (!retainsSpeakerSides(oldRows, newRows)) return false
         if (oldFeatures.indices.any { !oldFeatures[it] && newFeatures[it] }) return true
         if (isSpeakerUpgrade(oldRows, newRows)) return true
         val oldText = normalizeContent(oldRows.joinToString("") { it.text })
@@ -222,7 +257,7 @@ internal object LyricsContentRanker {
             wordCharacters += words.characters
             if (hasDistinctText(line.text, line.translation) &&
                 scriptRatio(line.translation, Character.UnicodeScript.HAN) >= 0.5 &&
-                (scriptRatio(line.text, Character.UnicodeScript.HAN) < 0.5 || hasKana(line.text))
+                !hasKana(line.translation) && needsChineseTranslation(line.text)
             ) translatedCharacters += lineCharacters[index]
             if (hasKana(line.text) && hasDistinctText(line.text, line.romanization) && hasLatinLetters(line.romanization)) {
                 romanizedCharacters += lineCharacters[index]
@@ -244,7 +279,8 @@ internal object LyricsContentRanker {
             grams = if (normalizedBody.codePointCount(0, normalizedBody.length) >= MINIMUM_CONSENSUS_CHARACTERS) {
                 grams(normalizedBody)
             } else emptySet(),
-            normalizedText = normalizedBody
+            normalizedText = normalizedBody,
+            needsChineseTranslation = needsChineseTranslation(lines.joinToString("\n") { it.text })
         )
     }
 
@@ -284,6 +320,10 @@ internal object LyricsContentRanker {
             }
         }
     }
+
+    private fun needsChineseTranslation(text: String): Boolean =
+        hasKana(text) || (text.codePoints().anyMatch(Character::isLetter) &&
+            scriptRatio(text, Character.UnicodeScript.HAN) < 0.5)
 
     private fun hasLatinLetters(text: String): Boolean = text.codePoints().anyMatch { character ->
         Character.isLetter(character) && Character.UnicodeScript.of(character) == Character.UnicodeScript.LATIN
@@ -325,7 +365,8 @@ internal object LyricsContentRanker {
     private data class Body(
         val quality: ContentQuality,
         val grams: Set<String> = emptySet(),
-        val normalizedText: String = ""
+        val normalizedText: String = "",
+        val needsChineseTranslation: Boolean = false
     )
     private data class WordCoverage(val characters: Int = 0, val lastEndMs: Long = 0L)
 }

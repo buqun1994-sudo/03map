@@ -78,7 +78,7 @@ class DirectLyricsCoverResolutionTest {
     }
 
     @Test
-    fun twoCatalogsUsePreferredRankingAndDistinctImageUrls() {
+    fun selectedProviderCoverUrlsDoNotStartAnotherProvider() {
         val qq = FakeCatalog(SOURCE_QQ, listOf(candidate(SOURCE_QQ, "01"))) { _, _, _ -> FIRST_COVER }
         val netEase = FakeCatalog(SOURCE_NETEASE,
             listOf(candidate(SOURCE_NETEASE, "02"), candidate(SOURCE_NETEASE, "01"))) { result, _, _ ->
@@ -87,7 +87,34 @@ class DirectLyricsCoverResolutionTest {
         repository(listOf(qq, netEase), preferredSources = listOf(SOURCE_NETEASE)).use { repository ->
             assertEquals(listOf(FIRST_COVER, SECOND_COVER), repository.resolveCovers(QUERY, LyricsCancellationSignal()))
             assertEquals(listOf("01", "02"), netEase.details.map { it.candidate.sourceId })
-            assertEquals(listOf("01"), qq.details.map { it.candidate.sourceId })
+            assertEquals(0, qq.searchCalls)
+            assertTrue(qq.details.isEmpty())
+        }
+    }
+
+    @Test fun selectedProviderWaitsForEmptyDetailsBeforeStartingAnotherProvider() {
+        var preferredDetailsFinished = false
+        val preferred = FakeCatalog(SOURCE_APPLE_MUSIC, listOf(candidate(SOURCE_APPLE_MUSIC, "preferred"))) { _, _, _ ->
+            preferredDetailsFinished = true
+            ""
+        }
+        val other = FakeCatalog(SOURCE_QQ, listOf(candidate(SOURCE_QQ, "fallback")), onSearch = { _, _ ->
+            assertTrue("Fallback must wait for the selected provider's details", preferredDetailsFinished)
+        }) { _, _, _ -> FIRST_COVER }
+        repository(listOf(preferred, other), preferredSources = listOf(SOURCE_APPLE_MUSIC)).use { repository ->
+            assertEquals(listOf(FIRST_COVER), repository.resolveCovers(QUERY, LyricsCancellationSignal()))
+            assertEquals(1, preferred.searchCalls)
+            assertEquals(1, other.searchCalls)
+        }
+    }
+
+    @Test fun selectedCatalogDeadlineLeavesUnstartedFallbackSourcesAvailable() {
+        val clock = FakeClock()
+        val preferred = FakeCatalog(SOURCE_APPLE_MUSIC, emptyList(), onSearch = { deadline, _ -> clock.advanceTo(deadline) }) { _, _, _ -> "" }
+        val other = FakeCatalog(SOURCE_QQ, listOf(candidate(SOURCE_QQ, "fallback"))) { _, _, _ -> FIRST_COVER }
+        repository(listOf(preferred, other), listOf(SOURCE_APPLE_MUSIC), clock).use { repository ->
+            assertEquals(listOf(FIRST_COVER), repository.resolveCovers(QUERY, LyricsCancellationSignal()))
+            assertEquals(1, other.searchCalls)
         }
     }
 

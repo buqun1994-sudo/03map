@@ -537,7 +537,7 @@ class ContentLyricsEngine internal constructor(
                         continue
                     }
                     fallbackArtwork = loaded
-                    Log.i(TAG, "Cover first image published elapsedMs=" +
+                    Log.i(TAG, "Cover first image published coverId=${coverCandidateTraceId(url)} epoch=$epoch elapsedMs=" +
                         TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos))
                     publish()
                     // Stop catalog/detail work and other image lanes before touching disk. The
@@ -665,6 +665,8 @@ class ContentLyricsEngine internal constructor(
         } else result.plainText().lineSequence().map(String::trim).filter(String::isNotBlank)
             .take(4_096).map { ContentPorts.LyricsLine(0L, it, "") }.toList())
         status = if (lines.isEmpty()) UNAVAILABLE else READY
+        Log.i(TAG, "Lyrics adopted source=${result.source} sourceId=${result.sourceId} " +
+            "epoch=$requestEpoch timed=$timed rows=${lines.size}")
         publish()
         return true
     }

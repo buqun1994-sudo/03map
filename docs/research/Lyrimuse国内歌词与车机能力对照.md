@@ -4,7 +4,7 @@
 
 完整上游为 [Yudaotor/lyrimuse](https://github.com/Yudaotor/lyrimuse/tree/e71fc2da2df14f1e7b9f8e6d49d65080b52dd5d2)，标签 `v1.9.0`，提交 `e71fc2da2df14f1e7b9f8e6d49d65080b52dd5d2`，包含 Swift 应用、LyrimuseCore 和 Go collector。本文依据实际表达式、API、模型和测试判断行为，不依据宣传或仅有的安装包。上游 [LICENSE](https://github.com/Yudaotor/lyrimuse/blob/e71fc2da2df14f1e7b9f8e6d49d65080b52dd5d2/LICENSE) 是 GPL-3.0；Android 部分独立实现协议、格式和行为，不批量搬入 Swift/Go 文件或上游二进制。历史 03lyrics 迁移来源仍保存在 [PROVENANCE.json](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/lyrics/PROVENANCE.json)，本次新增行为参考单独登记，不能覆盖历史归属或形成宿主 APK 的公开再发布许可。
 
-用户明确要求完整复刻适合国内用户与车机的能力，范围超过封面获取、字号和滚动三个现象。按后续明确调整，不接入 Musixmatch、LyricFind、Deezer、AMLL 联网来源；QQ、网易云、酷狗、酷我、咪咕、汽水为本轮国内目录，保留既有 LRCLIB 兜底。本轮进一步接入Apple Music鉴权主链及持久化平台倾向，仍不增加设置页；未登录Apple当前不可用，也不能从车机“蓝牙音乐”反推手机平台。
+用户明确要求完整复刻适合国内用户与车机的能力，范围超过封面获取、字号和滚动三个现象。按后续明确调整，不接入 Musixmatch、LyricFind、Deezer、AMLL 联网来源；QQ、网易云、酷狗、酷我、咪咕、汽水为本轮国内目录，保留既有 LRCLIB 兜底。本轮进一步接入Apple Music鉴权主链及持久化“歌词平台”设置；默认自动并行，指定平台先单源、质量不足再补强，仍不增加其它设置项；未登录Apple当前不可用，也不能从车机“蓝牙音乐”反推手机平台。
 
 ## 能力与适配决定
 
@@ -12,10 +12,10 @@
 
 | 能力 | 上游源码证据 | 当前 Android 实现与边界 |
 |---|---|---|
-| 多源检索与渐进呈现 | collector 的 `provisionallyrics.go`、`lyricsourceinflight.go`、`lyricsourcefailure.go` 及 `enrich.go` | 八Provider注册（Apple未登录跳过），共享目录IO、每消费者最多三路目录，基础正文两路、可选增强一路；20秒质量回合，1800ms单次目录截止。首同步正文和后续material upgrade立即发布；协议及owner见[统一解析](../architecture/歌词封面统一解析.md)，不等完整批次才显示词轨。 |
+| 多源检索与渐进呈现 | collector 的 `provisionallyrics.go`、`lyricsourceinflight.go`、`lyricsourcefailure.go` 及 `enrich.go` | 八Provider注册（Apple未登录跳过），共享目录IO；自动模式立即提交全部可用来源，指定平台先运行其目录／基础正文／增强，缺真实逐字或外文翻译不足时再并行补强。基础正文可先显示，质量顺序为真实逐字＞带翻译逐句＞普通逐句＞纯文本；20秒质量回合、1800ms单次目录截止保持。协议及owner见[统一解析](../architecture/歌词封面统一解析.md)。 |
 | 版本身份与时长证明 | collector `match.go`、`lyricrecordingtriangle_test.go`、`continuousmix_test.go`；上游三角容差为相对1%，普通`durationFits`另有相对25%/末尾5秒规则，源自报曲长冲突为12% | Android继续使用项目既有录音证据与proof重放，固定2000ms为本地准入；自动正文需要真实已知时长，封面也校验已知曲长、标题、歌手及已有专辑。不能将请求时长复制成源候选时长来通过门禁。 |
-| 最终质量选择 | collector 的 `match.go`、`lyricsrescore_test.go`、`lyricstimeline.go` | 真字轨按字符覆盖率最多 400 分，实际中文翻译最多 50、日文假名主轨音译最多 30，真实末尾和来源家族正文共识参与评分；识别截断正文，同批相对比较。同步正文优先于纯文本；任意偏好不能挽救无效 proof。 |
-| 当前播放器同源偏好 | collector `match.go` 的 `setNativeLyricSourcesForPlayer` / `playerForBundleID` / `playerNativeLyricSource`，`nativesource_test.go`、`shared/players.json` / `players_generated.go`；来源排序另见 `lyricssourceorder_test.go` | `ContentLyricsPreferences`已经持久化并注入生产资源，同时影响歌词/封面调度，首选平台350ms有界优先及同能力排序；未登录Apple立即回退，未知蓝牙不推断平台。设置UI仍由后续任务接线；不更改媒体来源仲裁。 |
+| 最终质量选择 | collector 的 `match.go`、`lyricsrescore_test.go`、`lyricstimeline.go` | 真实逐字按有效覆盖进入最高能力档，带有效翻译的逐句进入下一档，普通逐句再次之；同档仍使用覆盖、末尾和来源家族作为细分排序，任意偏好不能挽救无效 proof。 |
+| 当前播放器同源偏好 | collector `match.go` 的 `setNativeLyricSourcesForPlayer` / `playerForBundleID` / `playerNativeLyricSource`，`nativesource_test.go`、`shared/players.json` / `players_generated.go`；来源排序另见 `lyricssourceorder_test.go` | `ContentLyricsPreferences`已经持久化并注入生产资源，同时影响歌词／封面调度：自动模式并行，指定平台先单源，质量不足再并行补强；无固定平台等待窗口。未登录Apple立即跳过，未知蓝牙不推断手机平台；设置UI和原厂媒体来源仲裁保持独立。 |
 | 国内逐字协议 | collector 的 QQ/QRC、Kugou/KRC、Kuwo/LRCX、Migu/MRC、Soda 请求及解码路径 | QQ 匿名 GetSession→GetPlayLyricInfo 使用同一目录真实数字 songID；网易 y/kv/lv/tv/rv；酷狗 XOR/zlib KRC、酷我 LRCX、咪咕 signed64 XXTEA/UTF-16LE MRC、汽水 KRC 文本。正文、翻译、源音译独立可选；可选轨道失败不清除有效主轨。 |
 | QQ QRC 加密格式 | collector 的 QRC DES 衍生解码实现与相关测试 | Kotlin 独立实现协议。标准 JCE DESede 不等价；以临时上游 Go oracle 的合成向量、合成 XML 密文验证，无 Go 运行依赖，无账号 cookie 或授权挑战后的主机轮换。 |
 | 严格双轴校验 | collector `lyricstimeline.go` 的 strict rehang 与矛盾轴检查 | 已知曲长、至少两行、原始单戳正文、完整字轨、一一文本一致、文档顺序与词区间正常、末句时长吻合不退化才采用字轨行首。翻译/音译先在旧轴附着后随正文重挂；不平移真实字轨、不均分词时长、不改原始缓存。证据不足继续逐行。 |

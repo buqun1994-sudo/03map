@@ -757,7 +757,7 @@ internal class LyricsCache(
             super.onOpen(database)
             // No full-cache scan on foreground resume. Freed pages are reused immediately;
             // at most one MiB is physically reclaimed per open when incremental vacuum is enabled.
-            database.execSQL("PRAGMA incremental_vacuum(256)")
+            database.rawQuery("PRAGMA incremental_vacuum(256)", null).use { it.moveToFirst() }
             ContentCacheBudget.migrateLegacyCovers(database, legacyDirectory, maximumBytes)
             // Even failed legacy deletion reserves disk bytes; it cannot create a second budget.
             if (maximumBytes >= 1024L * 1024L)
@@ -1010,7 +1010,7 @@ internal class LyricsCache(
 internal object LyricsCachePolicy {
     const val MAX_BYTES = ContentCacheBudget.MAX_BYTES
     const val TRIM_TARGET_BYTES = MAX_BYTES * 9L / 10L
-    const val QUALITY_VERSION = 3 // Explicit vocal arrangement now participates in material upgrades.
+    const val QUALITY_VERSION = 4 // Single-provider acquisition; real word timing before translation and line lyrics.
     const val REFRESH_AFTER_MS = 6L * 60L * 60L * 1000L
     const val MAX_REFRESH_ATTEMPTS = 3
     private const val MAX_USE_COUNT = 30

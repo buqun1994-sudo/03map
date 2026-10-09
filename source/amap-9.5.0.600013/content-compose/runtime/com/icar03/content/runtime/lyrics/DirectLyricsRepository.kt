@@ -103,12 +103,11 @@ internal class DirectLyricsRepository internal constructor(
         activeCancellations += cancellation
         val started = clock.nanoTime()
         val deadline = started + TimeUnit.MILLISECONDS.toNanos(COVER_DEADLINE_MS)
-        val catalogDeadline = started + TimeUnit.MILLISECONDS.toNanos(COVER_CATALOG_DEADLINE_MS)
-        val hedgeDeadline = started + TimeUnit.MILLISECONDS.toNanos(350L)
-        val preferences = preferredSources().distinct()
+        var catalogDeadline = started + TimeUnit.MILLISECONDS.toNanos(COVER_CATALOG_DEADLINE_MS)
+        val preferences = preferredSources().take(1)
         val ordered = LyricsProviderRegistry.ordered(catalogSources, preferences)
-        val preferred = preferences.filter { id -> ordered.any { it.sourceName == id } }
-        val primary = preferred.ifEmpty { ordered.take(2).map { it.sourceName } }.toSet()
+        val selectedSource = preferences.firstOrNull()?.takeIf { id -> ordered.any { it.sourceName == id } }
+        var parallelSources = selectedSource == null
         val states = ordered.map { CoverCatalogState(it, requests) }
         val events = LinkedBlockingQueue<CoverEvent>()
         val futures = mutableListOf<java.util.concurrent.Future<*>>()
@@ -128,7 +127,8 @@ internal class DirectLyricsRepository internal constructor(
             cancellation.throwIfCancelled()
             urls[identity(candidate)] = url
             if (emitted.add(url)) {
-                logger.info("Cover candidate source=${candidate.source} elapsedMs=${TimeUnit.NANOSECONDS.toMillis(clock.nanoTime() - started)}")
+                logger.info("Cover candidate source=${candidate.source} sourceId=${candidate.sourceId} " +
+                    "coverId=${coverCandidateTraceId(url)} elapsedMs=${TimeUnit.NANOSECONDS.toMillis(clock.nanoTime() - started)}")
                 onCandidate(url)
             }
         }
@@ -137,17 +137,14 @@ internal class DirectLyricsRepository internal constructor(
                 cancellation.throwIfCancelled()
                 val now = clock.nanoTime()
                 if (now >= catalogDeadline) {
-                    states.forEach { it.exhaust(); it.inFlight = false }
+                    states.filter { parallelSources || it.source.sourceName == selectedSource }
+                        .forEach { it.exhaust(); it.inFlight = false }
                     catalogFutures.forEach { it.cancel(true) }
                 } else {
-                    var lanes = states.count { it.inFlight }
-                    val hedged = now >= hedgeDeadline || (preferred.isNotEmpty() &&
-                        states.filter { it.source.sourceName in primary }.all { it.firstClosed })
                     states.forEach { state ->
-                        if (lanes < 3 && !state.inFlight && !state.isExhausted() &&
-                            (hedged || state.source.sourceName in primary)) {
+                        if (!state.inFlight && !state.isExhausted() &&
+                            (parallelSources || state.source.sourceName == selectedSource)) {
                             val request = state.next() ?: return@forEach
-                            lanes++
                             val task = sharedCatalog.submit(state.source, request, catalogDeadline, cancellation,
                                 { found -> events.offer(CoverEvent.CatalogReady(state.source.sourceName, found, false)) },
                                 { error ->
@@ -160,7 +157,8 @@ internal class DirectLyricsRepository internal constructor(
                         }
                     }
                 }
-                val catalogsClosed = states.all { it.isExhausted() }
+                val catalogsClosed = states.filter { parallelSources || it.source.sourceName == selectedSource }
+                    .all { it.isExhausted() }
                 val selected = if (independentlyAnchored || catalogsClosed)
                     LyricsCandidateSelector.selectCoverCandidates(query, candidates, preferences).take(MAX_COVER_CANDIDATES)
                     else emptyList()
@@ -187,9 +185,15 @@ internal class DirectLyricsRepository internal constructor(
                         }
                     }
                 }
-                if (catalogsClosed && activeDetails.isEmpty() && selected.all { identity(it) in startedDetails }) break
-                val nextWake = minOf(deadline, if (now < catalogDeadline) catalogDeadline else deadline,
-                    if (now < hedgeDeadline) hedgeDeadline else deadline)
+                if (catalogsClosed && activeDetails.isEmpty() && selected.all { identity(it) in startedDetails }) {
+                    if (parallelSources || urls.isNotEmpty()) break
+                    parallelSources = true
+                    catalogDeadline = minOf(deadline,
+                        clock.nanoTime() + TimeUnit.MILLISECONDS.toNanos(COVER_CATALOG_DEADLINE_MS))
+                    logger.info("Cover policy selected=$selectedSource stage=parallel reason=no-verified-url")
+                    continue
+                }
+                val nextWake = minOf(deadline, if (now < catalogDeadline) catalogDeadline else deadline)
                 val event = events.poll((nextWake - clock.nanoTime()).coerceAtLeast(1L), TimeUnit.NANOSECONDS) ?: continue
                 when (event) {
                     is CoverEvent.CatalogReady -> {

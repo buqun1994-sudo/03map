@@ -139,8 +139,8 @@ fun LyricsProviderSettings(
         } + design.providerIconSize + design.smallGap
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
-        Text("选择更倾向使用的歌词来源", style = design.optionStyle, color = design.text,
-            modifier = Modifier.testTag("settings-label-歌曲平台倾向").semantics { stateDescription = "歌曲平台倾向·${selectedOption.label}" })
+        Text("歌词平台", style = design.optionStyle, color = design.text,
+            modifier = Modifier.testTag("settings-label-歌曲平台倾向").semantics { stateDescription = "歌词平台·${selectedOption.label}" })
         BoxWithConstraints(Modifier.fillMaxWidth().selectableGroup()) {
             val minimumChoiceWidth = groupWidth + design.smallGap * 2
             val columns = if (maxWidth >= minimumChoiceWidth * 2 + design.itemGap) 2 else 1

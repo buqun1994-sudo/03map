@@ -36,16 +36,18 @@ internal class LyricsResolutionSession(
         val activeBodySources = mutableSetOf<String>()
         val startedCandidateIds = mutableSetOf<String>()
         val available = catalogSources.filter { it.isAvailable }
-        val sourcePreferences = preferredSources().distinct().filter { preferred ->
+        val requestedSource = preferredSources().firstOrNull()
+        val selectedSource = requestedSource?.takeIf { preferred ->
             preferred == exactAndFallbackSource.sourceName || available.any { it.sourceName == preferred }
         }
+        val sourcePreferences = listOfNotNull(selectedSource)
+        var parallelSources = selectedSource == null
         val pendingEnrichment = linkedMapOf<String, LyricsCandidateSelection>()
         val activeEnrichment = mutableSetOf<String>()
         val enriched = mutableSetOf<String>()
         var published: LyricsContentRanker.RankedCandidate? = null
-        // A future explicit platform preference gets a bounded first-body opportunity,
-        // rather than arriving after an arbitrary fallback has already been locked on screen.
-        val preferenceDeadlineNanos = minOf(totalDeadlineNanos, config.deadlineAfter(startedAtNanos, 350L))
+        // A selected provider owns catalog, base and enrichment until its own work settles.
+        // Cross-platform work starts only when that result still lacks required quality.
         val catalogStates = LyricsProviderRegistry.ordered(available, sourcePreferences).associate { source ->
             source.sourceName to CatalogSourceState(
                 source = source,
@@ -77,25 +79,21 @@ internal class LyricsResolutionSession(
             }
         }
 
+        logger.info("Lyrics policy selected=${requestedSource ?: "auto"} stage=" +
+            if (parallelSources) "parallel" else "single")
         try {
             cancellation.throwIfCancelled()
             while (true) {
                 cancellation.throwIfCancelled()
-                val hedged = clock.nanoTime() >= preferenceDeadlineNanos ||
-                    (sourcePreferences.isNotEmpty() &&
-                        (exactAndFallbackSource.sourceName !in sourcePreferences || (exactStarted && !exactInFlight)) &&
-                        catalogStates.values.filter { it.source.sourceName in sourcePreferences }.all { it.firstRequestClosed })
-                val primary = sourcePreferences.ifEmpty { available.take(2).map { it.sourceName } }.toSet()
-                var searchLanes = catalogStates.values.count { it.searchInFlight }
                 catalogStates.values.forEach { state ->
-                    if (searchLanes < 3 && !state.searchInFlight && !state.pausedForBody && !state.isExhausted() &&
-                        (hedged || state.source.sourceName in primary)) {
+                    if (!state.searchInFlight && !state.pausedForBody && !state.isExhausted() &&
+                        (parallelSources || state.source.sourceName == selectedSource)) {
                         startNextCatalogSearch(state, minOf(totalDeadlineNanos,
                             config.deadlineAfter(clock.nanoTime(), config.catalogDeadlineMs)), cancellation, events, futures)
-                        searchLanes++
                     }
                 }
-                if (!exactStarted && (hedged || sourcePreferences.isEmpty() || exactAndFallbackSource.sourceName in primary)) {
+                val exactEnabled = parallelSources || selectedSource == exactAndFallbackSource.sourceName
+                if (!exactStarted && exactEnabled) {
                     exactStarted = true
                     exactInFlight = true
                     val deadline = minOf(totalDeadlineNanos, config.deadlineAfter(clock.nanoTime(), config.catalogDeadlineMs))
@@ -103,7 +101,7 @@ internal class LyricsResolutionSession(
                         listOfNotNull(exactAndFallbackSource.exact(query, deadline, cancellation))
                     }
                 }
-                if (!fuzzyStarted && hedged) {
+                if (!fuzzyStarted && exactEnabled && (parallelSources || !exactInFlight)) {
                     fuzzyStarted = true
                     if (candidates.values.none { it.source == exactAndFallbackSource.sourceName && it.hasBodyPayload() }) {
                         fuzzyInFlight = true
@@ -123,27 +121,20 @@ internal class LyricsResolutionSession(
                     )
                 }
 
-                val preferredPending = sourcePreferences.isNotEmpty() && (
-                    catalogStates.values.any { it.source.sourceName in sourcePreferences && !it.isExhausted() } ||
-                        activeBodySources.any { it in sourcePreferences } ||
-                        (exactAndFallbackSource.sourceName in sourcePreferences && (exactInFlight || fuzzyInFlight)) ||
-                        selections.any { it.candidate.source in sourcePreferences &&
-                            !it.candidate.hasBodyPayload() && candidateIdentity(it.candidate) !in startedCandidateIds })
-                val preferenceReady = !preferredPending || clock.nanoTime() >= preferenceDeadlineNanos ||
-                    ranked.any { it.candidate.source in sourcePreferences && it.quality.kind == LyricsKind.SYNCHRONIZED }
-                if (preferenceReady) {
-                    ranked.firstOrNull { it.quality.kind == LyricsKind.SYNCHRONIZED }?.let { first ->
-                        cancellation.throwIfCancelled()
-                        val old = published
-                        if (old != null && !LyricsContentRanker.isMaterialUpgrade(query, old.selection, first.selection)) return@let
-                        published = first
-                        try {
-                            onProvisional(found(query, candidates.values.toList(), first, startedAtNanos, trace, true))
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: Exception) {
-                            logger.warning("Lyrics provisional callback failed", error)
-                        }
+                val first = ranked.firstOrNull {
+                    it.quality.kind == LyricsKind.SYNCHRONIZED || !parallelSources
+                }
+                first?.let {
+                    cancellation.throwIfCancelled()
+                    val old = published
+                    if (old != null && !LyricsContentRanker.isMaterialUpgrade(query, old.selection, it.selection)) return@let
+                    published = it
+                    try {
+                        onProvisional(found(query, candidates.values.toList(), it, startedAtNanos, trace, true))
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        logger.warning("Lyrics provisional callback failed", error)
                     }
                 }
                 cancellation.throwIfCancelled()
@@ -155,7 +146,7 @@ internal class LyricsResolutionSession(
                 val anchors = selections.map(LyricsCandidateSelection::candidate)
                     .filter { it.source.isNotBlank() && it.sourceId.isNotBlank() }
                 val enrich = supplemental
-                if (!enrichmentStarted && enrich != null && primaryCatalogsClosed && anchors.isNotEmpty()) {
+                if (parallelSources && !enrichmentStarted && enrich != null && primaryCatalogsClosed && anchors.isNotEmpty()) {
                     enrichmentStarted = true
                     enrichmentInFlight = true
                     submitSearch(
@@ -201,7 +192,23 @@ internal class LyricsResolutionSession(
                         }
                     }
                 }
-                if (exactStarted && fuzzyStarted && !exactInFlight && !fuzzyInFlight && !enrichmentInFlight &&
+                val ownCatalogClosed = if (selectedSource == exactAndFallbackSource.sourceName) {
+                    exactStarted && fuzzyStarted && !exactInFlight && !fuzzyInFlight
+                } else catalogStates[selectedSource]?.isExhausted() == true
+                if (!parallelSources && ownCatalogClosed && activeBodySources.isEmpty() &&
+                    pendingEnrichment.isEmpty() && activeEnrichment.isEmpty()) {
+                    val own = published ?: ranked.firstOrNull()
+                    if (own != null && !LyricsContentRanker.needsCrossPlatformUpgrade(query, own.candidate)) {
+                        logger.info("Lyrics policy selected=$selectedSource stage=complete reason=quality-satisfied")
+                        return finish(query, candidates.values.toList(), listOf(own), retryableFailure,
+                            terminalFailure, startedAtNanos, trace)
+                    }
+                    parallelSources = true
+                    logger.info("Lyrics policy selected=$selectedSource stage=parallel reason=" +
+                        if (own == null) "no-usable-body" else "quality-insufficient")
+                    continue
+                }
+                if (parallelSources && exactStarted && fuzzyStarted && !exactInFlight && !fuzzyInFlight && !enrichmentInFlight &&
                     catalogStates.values.all(CatalogSourceState::isExhausted) && activeBodySources.isEmpty() &&
                     pendingEnrichment.isEmpty() && activeEnrichment.isEmpty()
                 ) {
@@ -213,11 +220,7 @@ internal class LyricsResolutionSession(
 
                 val remainingNanos = totalDeadlineNanos - clock.nanoTime()
                 if (remainingNanos <= 0L) continue
-                val preferenceWait = preferenceDeadlineNanos - clock.nanoTime()
-                val pollNanos = if (preferenceWait > 0L && (!fuzzyStarted || !preferenceReady)) {
-                    minOf(remainingNanos, preferenceWait)
-                } else remainingNanos
-                val event = events.poll(pollNanos, TimeUnit.NANOSECONDS) ?: continue
+                val event = events.poll(remainingNanos, TimeUnit.NANOSECONDS) ?: continue
                 cancellation.throwIfCancelled()
                 if (clock.nanoTime() >= totalDeadlineNanos) continue
                 when (event) {
@@ -233,12 +236,18 @@ internal class LyricsResolutionSession(
                                 rememberCandidate(query, candidates, candidate)
                             }
                         }
+                        val admitted = LyricsCandidateSelector.selectCandidatesWithProof(query, candidates.values)
+                            .filter { it.candidate.source == event.operation.sourceName }
+                        admitted.filter { it.candidate.hasBodyPayload() && !it.candidate.isInstrumentalContent() }
+                            .forEach { selection ->
+                                val id = candidateIdentity(selection.candidate)
+                                if (id !in enriched && id !in activeEnrichment) pendingEnrichment[id] = selection
+                            }
                         if (event.operation is SearchOperation.Catalog) {
-                            val admitted = LyricsCandidateSelector.selectCandidates(query, candidates.values)
-                                .filter { it.source == event.operation.sourceName }
                             catalogStates[event.operation.sourceName]?.let { state ->
-                                if (admitted.any { it.contentKind() != LyricsKind.NONE || it.isInstrumentalContent() }) state.exhaust()
-                                else state.pausedForBody = admitted.any { item ->
+                                if (admitted.any { it.candidate.contentKind() != LyricsKind.NONE || it.candidate.isInstrumentalContent() }) state.exhaust()
+                                else state.pausedForBody = admitted.any { selection ->
+                                    val item = selection.candidate
                                     val id = candidateIdentity(item)
                                     id !in startedCandidateIds || id in pendingEnrichment || id in activeEnrichment ||
                                         item.source in activeBodySources
@@ -453,24 +462,14 @@ internal class LyricsResolutionSession(
         val oldSelection = LyricsCandidateSelector.selectCandidatesWithProof(query, candidates.values)
             .firstOrNull { candidateIdentity(it.candidate) == identity }
         val newSelection = oldSelection?.copy(candidate = candidate)
-        val compared = if (oldSelection != null && newSelection != null) {
-            LyricsContentRanker.rank(query, listOf(oldSelection, newSelection))
-        } else emptyList()
-        val oldQuality = compared.firstOrNull { it.selection === oldSelection }?.quality
-            ?: LyricsContentRanker.inspect(query, previous)
-        val newQuality = compared.firstOrNull { it.selection === newSelection }?.quality
-            ?: LyricsContentRanker.inspect(query, candidate)
-        val oldKind = contentOrder(oldQuality.kind)
-        val newKind = contentOrder(newQuality.kind)
-        if (newKind > oldKind || (newKind == oldKind && newQuality.score > oldQuality.score)) {
+        val oldQuality = LyricsContentRanker.inspect(query, previous)
+        val newQuality = LyricsContentRanker.inspect(query, candidate)
+        if (oldQuality.kind == LyricsKind.NONE) {
+            if (newQuality.kind != LyricsKind.NONE) candidates[identity] = candidate
+        } else if (oldSelection != null && newSelection != null &&
+            LyricsContentRanker.isMaterialUpgrade(query, oldSelection, newSelection)) {
             candidates[identity] = candidate
         }
-    }
-
-    private fun contentOrder(kind: LyricsKind): Int = when (kind) {
-        LyricsKind.NONE -> 0
-        LyricsKind.PLAIN -> 1
-        LyricsKind.SYNCHRONIZED -> 2
     }
 
     private fun found(

@@ -581,6 +581,159 @@ class LyricsResolutionSessionTest {
         }
     }
 
+    @Test fun selectedProviderWaitsForItsOwnEnrichmentAndStopsWhenQualityIsSatisfied() {
+        val enhancementStarted = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val linesShown = CountDownLatch(1)
+        val exact = FakeExact()
+        val other = FakeCatalog(SOURCE_QQ)
+        val preferred = staged(SOURCE_APPLE_MUSIC, candidate(SOURCE_APPLE_MUSIC).copy(lyrics = LINES)) { base, signal ->
+            enhancementStarted.countDown()
+            awaitGate(release, signal)
+            base.copy(wordLyrics = WORDS, translatedLyrics = TRANSLATION)
+        }
+        Harness(exact, listOf(preferred, other), preferred = listOf(SOURCE_APPLE_MUSIC)).use { harness ->
+            val pending = harness.start { linesShown.countDown() }
+            try {
+                assertTrue(linesShown.await(2, TimeUnit.SECONDS))
+                assertTrue(enhancementStarted.await(2, TimeUnit.SECONDS))
+                assertFalse("No fixed 350ms hedge may finish the single-provider stage", pending.isDone)
+                assertEquals(0, other.searchCalls.get())
+                assertEquals(0, exact.exactCalls.get())
+                release.countDown()
+                val result = found(pending).resolved.result
+                assertEquals(SOURCE_APPLE_MUSIC, result.source)
+                assertEquals(TRANSLATION, result.translatedLyrics)
+                assertEquals(0, other.searchCalls.get())
+                assertEquals(0, exact.exactCalls.get())
+                assertEquals(0, exact.fallbackCalls.get())
+            } finally { release.countDown() }
+        }
+    }
+
+    @Test fun missingTranslationStartsParallelUpgradeAfterOwnEnrichmentWhileKeepingLinesVisible() {
+        val finishedOwnEnhancement = AtomicInteger()
+        val sourcesShown = ConcurrentLinkedQueue<String>()
+        val preferred = staged(SOURCE_APPLE_MUSIC, candidate(SOURCE_APPLE_MUSIC).copy(lyrics = LINES)) { base, _ ->
+            finishedOwnEnhancement.incrementAndGet()
+            base.copy(wordLyrics = WORDS)
+        }
+        val other = FakeCatalog(SOURCE_QQ, searcher = { _, _ ->
+            assertEquals("Fallback must follow the preferred enhancement", 1, finishedOwnEnhancement.get())
+            listOf(candidate(SOURCE_QQ))
+        }, loader = { item, _ -> item.copy(lyrics = LINES, wordLyrics = WORDS, translatedLyrics = TRANSLATION) })
+        Harness(catalogs = listOf(preferred, other), preferred = listOf(SOURCE_APPLE_MUSIC)).use { harness ->
+            val result = found(harness.start { sourcesShown += it.resolved.result.source }).resolved.result
+            assertEquals(SOURCE_APPLE_MUSIC, sourcesShown.first())
+            assertTrue(other.searchCalls.get() > 0)
+            assertEquals(SOURCE_QQ, result.source)
+            assertEquals(WORDS, result.wordLyrics)
+            assertEquals(TRANSLATION, result.translatedLyrics)
+        }
+    }
+
+    @Test fun translatedLineLyricsStillStartParallelWordUpgradeAfterOwnEnrichment() {
+        val enhancementFinished = AtomicInteger()
+        val shown = ConcurrentLinkedQueue<String>()
+        val preferred = staged(SOURCE_APPLE_MUSIC,
+            candidate(SOURCE_APPLE_MUSIC).copy(lyrics = LINES, translatedLyrics = TRANSLATION)) { _, _ ->
+            enhancementFinished.incrementAndGet()
+            null
+        }
+        val other = FakeCatalog(SOURCE_QQ, searcher = { _, _ ->
+            assertEquals(1, enhancementFinished.get())
+            listOf(candidate(SOURCE_QQ))
+        }, loader = { item, _ -> item.copy(lyrics = LINES, wordLyrics = WORDS, translatedLyrics = TRANSLATION) })
+        Harness(catalogs = listOf(preferred, other), preferred = listOf(SOURCE_APPLE_MUSIC)).use { harness ->
+            val result = found(harness.start { shown += it.resolved.result.source }).resolved.result
+            assertEquals(SOURCE_APPLE_MUSIC, shown.first())
+            assertTrue(other.searchCalls.get() > 0)
+            assertEquals(SOURCE_QQ, result.source)
+            assertEquals(WORDS, result.wordLyrics)
+            assertEquals(TRANSLATION, result.translatedLyrics)
+        }
+    }
+
+    @Test fun selectedPlainBodyIsShownBeforeEnrichmentAndThenUpgradedByAnotherProvider() {
+        val release = CountDownLatch(1)
+        val plainShown = CountDownLatch(1)
+        val other = FakeCatalog(SOURCE_QQ, searcher = { _, _ -> listOf(candidate(SOURCE_QQ)) },
+            loader = { item, _ -> item.copy(lyrics = LINES, translatedLyrics = TRANSLATION) })
+        val preferred = staged(SOURCE_APPLE_MUSIC,
+            candidate(SOURCE_APPLE_MUSIC).copy(plainLyrics = "Original one\nOriginal two\nOriginal end")) { _, signal ->
+            awaitGate(release, signal)
+            null
+        }
+        Harness(catalogs = listOf(preferred, other), preferred = listOf(SOURCE_APPLE_MUSIC)).use { harness ->
+            val pending = harness.start { if (it.resolved.result.contentKind() == LyricsKind.PLAIN) plainShown.countDown() }
+            try {
+                assertTrue(plainShown.await(2, TimeUnit.SECONDS))
+                assertEquals(0, other.searchCalls.get())
+                release.countDown()
+                assertEquals(SOURCE_QQ, found(pending).resolved.result.source)
+            } finally { release.countDown() }
+        }
+    }
+
+    @Test fun wrongRecordingNeverBecomesAQualityShortcutForTheSelectedProvider() {
+        val invalid = candidate(SOURCE_APPLE_MUSIC).copy(candidateTrack = "Song (Remix)")
+        val preferred = FakeCatalog(SOURCE_APPLE_MUSIC, searcher = { _, _ -> listOf(invalid) },
+            loader = { _, _ -> error("Conflicting recording must not load a body") })
+        val fallback = candidate(SOURCE_LRCLIB).copy(lyrics = LINES, translatedLyrics = TRANSLATION)
+        Harness(FakeExact(exactResult = { fallback }), listOf(preferred),
+            preferred = listOf(SOURCE_APPLE_MUSIC)).use { harness ->
+            assertEquals(SOURCE_LRCLIB, found(harness.start()).resolved.result.source)
+            assertEquals(0, preferred.loadCalls.get())
+        }
+    }
+
+    @Test fun cancellingTheSingleProviderStageCannotStartCrossPlatformWork() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val preferred = staged(SOURCE_APPLE_MUSIC, candidate(SOURCE_APPLE_MUSIC).copy(lyrics = LINES)) { _, signal ->
+            started.countDown()
+            awaitGate(release, signal)
+            null
+        }
+        val exact = FakeExact()
+        val other = FakeCatalog(SOURCE_QQ)
+        Harness(exact, listOf(preferred, other), preferred = listOf(SOURCE_APPLE_MUSIC)).use { harness ->
+            val pending = harness.start()
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            harness.cancellation.cancel()
+            assertEquals(LyricsResolutionOutcome.Cancelled, pending.get(2, TimeUnit.SECONDS))
+            assertEquals(0, other.searchCalls.get())
+            assertEquals(0, exact.exactCalls.get())
+        }
+    }
+
+    @Test fun automaticModeStartsEveryEnabledProviderWithoutWaitingForASmallerInitialGroup() {
+        val allStarted = CountDownLatch(5)
+        val release = CountDownLatch(1)
+        val sources = listOf(SOURCE_QQ, SOURCE_NETEASE, SOURCE_KUGOU, SOURCE_KUWO, SOURCE_APPLE_MUSIC).map { name ->
+            FakeCatalog(name, searcher = { _, signal -> allStarted.countDown(); awaitGate(release, signal); emptyList() })
+        }
+        Harness(catalogs = sources).use { harness ->
+            val pending = harness.start()
+            try {
+                assertTrue("All enabled providers must be scheduled in automatic mode", allStarted.await(2, TimeUnit.SECONDS))
+                release.countDown()
+                assertEquals(LyricsResolutionOutcome.NoMatch, pending.get(2, TimeUnit.SECONDS))
+            } finally { release.countDown() }
+        }
+    }
+
+    private fun staged(source: String, base: LyricsResult,
+        enrichment: (LyricsResult, LyricsCancellationSignal) -> LyricsResult?): LyricsCatalogSource = object : LyricsCatalogSource {
+        override val sourceName = source
+        override fun search(request: LyricsCatalogSearchRequest, deadlineNanos: Long, cancellation: LyricsCancellationSignal) =
+            listOf(base.copy(lyrics = "", plainLyrics = "", translatedLyrics = "", wordLyrics = ""))
+        override fun loadLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? =
+            error("Staged provider must use its base contract")
+        override fun loadBaseLyrics(candidate: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal) = base
+        override fun loadEnrichment(base: LyricsResult, deadlineNanos: Long, cancellation: LyricsCancellationSignal) = enrichment(base, cancellation)
+    }
+
     private fun found(pending: Future<LyricsResolutionOutcome>): LyricsResolutionOutcome.Found =
         pending.get(3L, TimeUnit.SECONDS).let { outcome ->
             assertTrue("Expected Found but got $outcome", outcome is LyricsResolutionOutcome.Found)
@@ -637,11 +790,15 @@ class LyricsResolutionSessionTest {
         private val deadlines: ConcurrentLinkedQueue<Long> = ConcurrentLinkedQueue()
     ) : LyricsExactAndFallbackSource {
         override val sourceName = SOURCE_LRCLIB
+        val exactCalls = AtomicInteger()
+        val fallbackCalls = AtomicInteger()
         override fun exact(query: LyricsLookup, deadlineNanos: Long, cancellation: LyricsCancellationSignal): LyricsResult? {
+            exactCalls.incrementAndGet()
             deadlines += deadlineNanos
             return exactResult(cancellation)
         }
         override fun fallback(query: LyricsLookup, deadlineNanos: Long, cancellation: LyricsCancellationSignal): List<LyricsResult> {
+            fallbackCalls.incrementAndGet()
             deadlines += deadlineNanos
             return fallbackResults(cancellation)
         }
@@ -669,6 +826,7 @@ class LyricsResolutionSessionTest {
     private companion object {
         val QUERY = LyricsLookup("Song (Live)", "Artist", "Album", 200_000L)
         const val LINES = "[00:01]Original one\n[01:20]Original two\n[03:10]Original end"
+        const val TRANSLATION = "[00:01]第一句译文\n[01:20]第二句译文\n[03:10]最后一句译文"
         const val WORDS = "[1000,1000](1000,400,0)Original (1500,400,0)one\n" +
             "[80000,1000](80000,400,0)Original (80500,400,0)two\n" +
             "[190000,1000](190000,400,0)Original (190500,400,0)end"
