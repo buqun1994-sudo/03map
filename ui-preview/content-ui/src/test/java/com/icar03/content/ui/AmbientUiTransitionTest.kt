@@ -170,6 +170,90 @@ class AmbientUiTransitionTest {
         }
     }
 
+    @Test
+    @Config(qualifiers = "w720dp-h480dp-mdpi")
+    fun fullBackgroundIsEstablishedAt45PercentAndWideExitKeepsItsOwnCrop() {
+        val presentation = ContentPresentation().apply { updateGeometry(240f, 240f, 480f, 480) }
+        val width = mutableStateOf(240)
+        val texture = scene(Color.BLUE)
+        for (y in 0 until 128) for (x in 0 until 128)
+            texture.base.setPixel(x, y, Color.rgb(30 + x, 40 + y, 200 - x))
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f),
+                LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
+                ContentTheme(false) {
+                    MediaAmbientBackground(texture, false, Modifier.requiredSize(width.value.dp, 480.dp),
+                        animating = false, presentation = presentation)
+                }
+            }
+        }
+        advanceTransitionStart()
+        compose.mainClock.advanceTimeBy(640); compose.waitForIdle()
+        val original = captureAmbient()
+        fun update(progress: Float, phase: Int) {
+            compose.runOnIdle {
+                val divider = 240f + 480f * progress
+                width.value = divider.toInt()
+                presentation.updateGeometry(divider, 240f, 480f, 480)
+                presentation.updatePhase(phase)
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+            }
+            repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        }
+        compose.runOnIdle { presentation.requestEnter() }
+        repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        assertTrue(value(AmbientPresentationPrepared))
+        assertEquals(0L, presentation.pendingEnter)
+        update(.45f, 5)
+        val ready = captureAmbient()
+        for (progress in listOf(.55f, .8f, 1f)) {
+            update(progress, 5)
+            val actual = captureAmbient()
+            for (y in 30 until 400 step 31) for (x in 30 until ready.width - 20 step 29)
+                assertEquals("wide canonical pixels stay fixed after 45%", ready.getPixel(x, y), actual.getPixel(x, y))
+        }
+        val movingWide = captureAmbient()
+        update(1f, 1)
+        val stableWide = captureAmbient()
+        assertSameAmbientPixels(movingWide, stableWide, "wide stable handoff")
+        update(1f, 4)
+        assertTrue(value(AmbientPresentationPrepared))
+        assertSameAmbientPixels(stableWide, captureAmbient(), "exit cannot flash or compress the wide background")
+        update(.225f, 4)
+        val half = captureAmbient()
+        update(.3f, 3)
+        update(.225f, 4)
+        assertSameAmbientPixels(half, captureAmbient(), "same progress after reversal")
+        update(0f, 4)
+        assertSameAmbientPixels(original, captureAmbient(), "compact endpoint restores original crop")
+        update(0f, 0)
+        assertSameAmbientPixels(original, captureAmbient(), "compact stable handoff")
+    }
+
+    @Test fun noArtworkStillPreparesThemeEndpointsAndAcknowledgesEntry() {
+        val presentation = ContentPresentation().apply { updateGeometry(240f, 240f, 480f, 480) }
+        var entered = 0
+        presentation.onEntryReady = { entered++ }
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f),
+                LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
+                ContentTheme(false) {
+                    MediaAmbientBackground(null, false, Modifier.requiredSize(240.dp, 480.dp),
+                        animating = false, presentation = presentation)
+                }
+            }
+        }
+        repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.runOnIdle { presentation.requestEnter() }
+        repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        assertEquals(1, entered)
+        assertEquals(0L, presentation.pendingEnter)
+        assertTrue(value(AmbientPresentationPrepared))
+        assertFalse(value(AmbientHasContent))
+    }
+
     @Test fun continuousResizePreservesTheArrivalDriverAndFrozenPhaseThenMotionSamplesLatestAspect() {
         val target = mutableStateOf(scene(Color.RED))
         val playing = mutableStateOf(false)

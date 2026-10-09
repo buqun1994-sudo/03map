@@ -176,7 +176,7 @@ open class LyricsImmersivePanelTest {
         val dockInk = dockInkMask()
         // Each divider update must reach composition/measurement before the next one.
         // Applying both endpoints in one idle block would skip the former pager-to-root move.
-        listOf(.34f, .49f, .5f, .51f, .66f, 1f, .66f, .51f, .5f, .49f, .34f, 0f).forEach { progress ->
+        listOf(.44f, .45f, .49f, .5f, .51f, .55f, .56f, 1f, .56f, .55f, .51f, .5f, .49f, .45f, .44f, 0f).forEach { progress ->
             compose.runOnIdle {
                 val divider = 640f + 1280f * progress
                 viewportWidth = divider.dp

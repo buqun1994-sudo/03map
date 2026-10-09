@@ -71,6 +71,20 @@ class ContentPresentationTest {
         state.entryPrepared(stopped)
         assertEquals(1, requests)
     }
+    @Test fun contentUses45PercentFadesWithOnlyATenPercentInvisibleLayoutWindow() {
+        assertEquals(.5f, presentationCompactAlpha(.225f), .0001f)
+        assertTrue(presentationCompactAlpha(.44f) > 0f)
+        for (p in listOf(.45f, .49f, .5f, .51f, .55f)) {
+            assertEquals("compact is hidden at $p", 0f, presentationCompactAlpha(p), 0f)
+            assertEquals("wide is hidden at $p", 0f, presentationWideAlpha(p), 0f)
+        }
+        assertTrue(presentationWideAlpha(.56f) > 0f)
+        assertEquals(.5f, presentationWideAlpha(.775f), .0001f)
+        assertEquals(0f, presentationAmbientBlend(0f), 0f)
+        assertEquals(.5f, presentationAmbientBlend(.225f), .0001f)
+        for (p in listOf(.45f, .5f, .55f, .8f, 1f)) assertEquals(1f, presentationAmbientBlend(p), 0f)
+    }
+
     @Test fun crossfadeHasAnInvisibleGeometrySwitchAndReversesAlongSameProgress() {
         assertEquals(1f, lyricsTransitionAlpha(0f), 0f)
         assertEquals(0f, lyricsTransitionAlpha(.5f), 0f)

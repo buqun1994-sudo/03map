@@ -96,13 +96,18 @@ internal fun presentationSmoothStep(value: Float): Float {
     return x * x * (3f - 2f * x)
 }
 
+internal const val PRESENTATION_COMPACT_FADE_END = .45f
+internal const val PRESENTATION_WIDE_FADE_START = .55f
+
 internal fun presentationCompactAlpha(progress: Float): Float =
-    1f - presentationSmoothStep(progress.coerceIn(0f, 1f) / .35f)
+    1f - presentationSmoothStep(progress.coerceIn(0f, 1f) / PRESENTATION_COMPACT_FADE_END)
         .coerceIn(0f, 1f)
 
 internal fun presentationWideAlpha(progress: Float): Float =
-    presentationSmoothStep(((progress.coerceIn(0f, 1f) - .65f) / .35f))
-        .coerceIn(0f, 1f)
+    presentationSmoothStep((progress.coerceIn(0f, 1f) - PRESENTATION_WIDE_FADE_START) /
+        (1f - PRESENTATION_WIDE_FADE_START)).coerceIn(0f, 1f)
+
+internal fun presentationAmbientBlend(progress: Float): Float = 1f - presentationCompactAlpha(progress)
 
 internal fun lyricsTransitionAlpha(progress: Float): Float = when {
     progress.coerceIn(0f, 1f) < .5f -> presentationCompactAlpha(progress)

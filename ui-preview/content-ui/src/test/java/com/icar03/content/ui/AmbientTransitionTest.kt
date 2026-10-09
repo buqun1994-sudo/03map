@@ -215,7 +215,7 @@ class AmbientTransitionTest {
         assertEquals(Color.GREEN, render(toGreen, 1f).getPixel(64, 100))
     }
 
-    @Test fun presentationEntryCapturesTheCurrentArrivalMixtureBeforeBuildingTheCompactBridge() {
+    @Test fun presentationEntryCapturesTheCurrentArrivalMixtureAsItsCompactEndpoint() {
         val red = frame(Color.RED)
         val blue = frame(Color.BLUE)
         val renderer = AmbientRenderState()
