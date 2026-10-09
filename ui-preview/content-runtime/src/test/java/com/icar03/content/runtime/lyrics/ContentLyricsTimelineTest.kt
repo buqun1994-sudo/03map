@@ -67,9 +67,9 @@ class ContentLyricsTimelineTest {
         now = 2_000L
         timeline.update(media(title = "Second", position = 40_000L))
         assertFalse(timeline.ready())
-        timeline.update(media(title = "Second", position = 40_500L))
+        timeline.update(media(title = "Second", position = 0L))
         assertTrue(timeline.ready())
-        assertEquals(40_500L, timeline.positionMs())
+        assertEquals(0L, timeline.positionMs())
     }
 
     @Test fun realAvrcpEventEstablishesTheClockAndDuplicateEnvelopesNeverReplayIt() {
@@ -150,6 +150,25 @@ class ContentLyricsTimelineTest {
         assertTrue(timeline.ready())
         now += 1_000L
         assertEquals(1_000L, timeline.positionMs())
+    }
+
+    @Test fun nonzeroAvrcpPositionOnNewRecordingCannotStartLyricsMidSong() {
+        var now = 1_000L
+        val timeline = ContentLyricsTimeline { now }
+        timeline.update(avrcp(position = 30_000L, sequence = 1L, capturedAt = now, title = "First"))
+        now += 1_000L
+
+        timeline.update(
+            avrcp(position = 30_000L, sequence = 2L, capturedAt = now, title = "Second")
+        )
+        assertFalse(timeline.ready())
+        assertEquals(-1L, timeline.positionMs())
+
+        timeline.update(
+            avrcp(position = 0L, sequence = 3L, capturedAt = now, title = "Second")
+        )
+        assertTrue(timeline.ready())
+        assertEquals(0L, timeline.positionMs())
     }
 
     @Test fun standardRepeatedPositionWithFreshTimestampsDoesNotStarveTheClockOrPause() {

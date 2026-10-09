@@ -16,6 +16,7 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
     private var publisherGeneration: Int? = null
     private var lastAvrcpEventSequence = 0L
     private var avrcpPlaybackState: Int? = null
+    private var currentSource = ""
 
     @Synchronized fun update(snapshot: ContentPorts.MediaSnapshot) {
         val metadata = snapshot.recordingMetadataOrNull()
@@ -25,16 +26,20 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
         }
         val state = recording.update(snapshot.source, metadata) ?: return
         currentRecordingGeneration = state.recordingGeneration
+        val normalizedSource = ContentRegistry.normalizeMediaSource(snapshot.source).orEmpty()
+        val resetNewRecordingAtStart = state.recordingChanged &&
+            normalizedSource.isNotBlank() && normalizedSource == currentSource
+        currentSource = normalizedSource
         if (publisherGeneration != snapshot.generation) {
             timeline.clearPublisherOrdering()
             publisherGeneration = snapshot.generation
         }
-        if (state.recordingChanged || ContentRegistry.normalizeMediaSource(snapshot.source) != "蓝牙音乐"
+        if (state.recordingChanged || normalizedSource != "蓝牙音乐"
             || snapshot.avrcpEventSequence == 0L || snapshot.avrcpPlaybackState < 0) {
             avrcpPlaybackState = null
         }
         durationMs = state.metadata.durationMs
-        val bluetooth = ContentRegistry.normalizeMediaSource(snapshot.source) == "蓝牙音乐"
+        val bluetooth = normalizedSource == "蓝牙音乐"
         if (bluetooth && snapshot.avrcpEventSequence > lastAvrcpEventSequence) {
             lastAvrcpEventSequence = snapshot.avrcpEventSequence
             val age = elapsedRealtime() - snapshot.avrcpElapsedRealtimeMs
@@ -58,7 +63,8 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
             playbackSpeed = snapshot.playbackSpeed,
             publisherPositionTime = snapshot.positionElapsedRealtimeMs,
             durationMs = durationMs,
-            transport = if (bluetooth) MediaSessionTransport.BLUETOOTH_AVRCP else MediaSessionTransport.STANDARD
+            transport = if (bluetooth) MediaSessionTransport.BLUETOOTH_AVRCP else MediaSessionTransport.STANDARD,
+            resetNewRecordingAtStart = resetNewRecordingAtStart,
         )
     }
 
@@ -81,6 +87,7 @@ class ContentLyricsTimeline internal constructor(private val elapsedRealtime: ()
         timeline.reset()
         publisherGeneration = null
         avrcpPlaybackState = null
+        currentSource = ""
         durationMs = 0L
     }
 }

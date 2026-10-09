@@ -254,10 +254,12 @@ class BluetoothTimelineCorrectionTest {
         rig.now += 10L
         rig.avrcp(40_030L, 3L, title = "Next Song")
         assertTrue(rig.timeline.recordingGeneration() > generation)
-        assertEquals(40_030L, rig.timeline.positionMs())
-        assertCorrection(rig.timeline.anchor(), 0.0, 0L)
+        assertFalse(rig.timeline.ready())
+        assertEquals(-1L, rig.timeline.positionMs())
         rig.now += 1_000L
-        assertEquals(41_030L, rig.timeline.positionMs())
+        rig.avrcp(0L, 4L, title = "Next Song")
+        assertTrue(rig.timeline.ready())
+        assertEquals(0L, rig.timeline.positionMs())
     }
 
     @Test fun sourceChangesCreateANewRecordingGenerationAndResetCorrectionEvidence() {

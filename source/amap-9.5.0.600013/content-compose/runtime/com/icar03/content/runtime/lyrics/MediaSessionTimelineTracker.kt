@@ -97,6 +97,7 @@ internal class MediaSessionTimelineTracker(
     private var pendingAvrcpPosition: AvrcpPosition? = null
     private var supersededReportedPositionMs: Long? = null
     private var lastAvrcpCapturedAt: Long? = null
+    private var requireExplicitZeroStart = false
     // A distinct event is not necessarily a distinct position sample. Keep the
     // first capture of a same-value burst so duplicates cannot extend the window.
     private var lastAvrcpPositionMs: Long? = null
@@ -133,7 +134,8 @@ internal class MediaSessionTimelineTracker(
         playbackSpeed: Float,
         publisherPositionTime: Long,
         durationMs: Long,
-        transport: MediaSessionTransport = MediaSessionTransport.STANDARD
+        transport: MediaSessionTransport = MediaSessionTransport.STANDARD,
+        resetNewRecordingAtStart: Boolean = false,
     ): MediaSessionTimeline {
         val now = nowElapsedRealtime()
         val hasReportedPosition = reportedPositionMs >= 0L
@@ -150,12 +152,22 @@ internal class MediaSessionTimelineTracker(
 
         if (trackKey != this.trackKey) {
             val firstObservedTrack = !hasObservedTrack
+            val startAtZero = resetNewRecordingAtStart && !firstObservedTrack
+            val initialAvrcpPosition = avrcpPosition?.takeIf {
+                !startAtZero || it.positionMs == 0L
+            }
             val trustedInitialPosition = hasReportedPosition &&
-                (firstObservedTrack || reported <= INITIAL_POSITION_TRUST_LIMIT_MS) &&
-                (transport != MediaSessionTransport.BLUETOOTH_AVRCP || reported > 0L)
+                if (startAtZero) {
+                    transport != MediaSessionTransport.BLUETOOTH_AVRCP && reported == 0L
+                } else {
+                    (firstObservedTrack || (transport != MediaSessionTransport.BLUETOOTH_AVRCP &&
+                        reported <= INITIAL_POSITION_TRUST_LIMIT_MS)) &&
+                        (transport != MediaSessionTransport.BLUETOOTH_AVRCP || reported > 0L)
+                }
             this.trackKey = trackKey
-            basePositionMs = clamp(avrcpPosition?.positionMs ?: if (trustedInitialPosition) reported else 0L, durationMs)
-            capturedAtElapsedRealtime = avrcpPosition?.capturedAt
+            requireExplicitZeroStart = startAtZero && initialAvrcpPosition == null && !trustedInitialPosition
+            basePositionMs = clamp(initialAvrcpPosition?.positionMs ?: if (trustedInitialPosition) reported else 0L, durationMs)
+            capturedAtElapsedRealtime = initialAvrcpPosition?.capturedAt
                 ?: if (trustedInitialPosition) validPublisherTime ?: now else now
             lastReportedPositionMs = if (hasReportedPosition) reported else Long.MIN_VALUE
             firstUntrustedPositionMs = if (hasReportedPosition) reported else Long.MIN_VALUE
@@ -165,13 +177,13 @@ internal class MediaSessionTimelineTracker(
             wasPlaying = playing
             phaseCorrectionMs = 0.0
             phaseCorrectionDurationMs = 0L
-            timelineReady = trustedInitialPosition || avrcpPosition != null
+            timelineReady = trustedInitialPosition || initialAvrcpPosition != null
             hasObservedTrack = true
             deferNextReportedPosition = false
-            supersededReportedPositionMs = if (avrcpPosition != null && hasReportedPosition) reported else null
-            lastAvrcpCapturedAt = avrcpPosition?.capturedAt
-            lastAvrcpPositionMs = avrcpPosition?.positionMs
-            lastAvrcpPositionCapturedAt = avrcpPosition?.capturedAt
+            supersededReportedPositionMs = if (initialAvrcpPosition != null && hasReportedPosition) reported else null
+            lastAvrcpCapturedAt = initialAvrcpPosition?.capturedAt
+            lastAvrcpPositionMs = initialAvrcpPosition?.positionMs
+            lastAvrcpPositionCapturedAt = initialAvrcpPosition?.capturedAt
             pendingAvrcpSeek = null
             ignoreReportedUntilAvrcp = false
         } else {
@@ -206,7 +218,8 @@ internal class MediaSessionTimelineTracker(
             val orderedAvrcp = avrcpPosition?.takeUnless {
                 lastAvrcpCapturedAt != null && it.capturedAt < lastAvrcpCapturedAt!!
             }
-            if (orderedAvrcp != null) {
+            if (orderedAvrcp != null &&
+                !(requireExplicitZeroStart && orderedAvrcp.positionMs != 0L)) {
                 val sameValue = orderedAvrcp.positionMs == lastAvrcpPositionMs
                 val duplicate = sameValue && (playbackModeChanged || speedChanged ||
                     lastAvrcpPositionCapturedAt?.let {
@@ -219,12 +232,16 @@ internal class MediaSessionTimelineTracker(
                     pendingAvrcpSeek = null
                     rebase(currentPosition, now)
                 }
+                if (orderedAvrcp.positionMs == 0L) requireExplicitZeroStart = false
                 timelineReady = true
                 supersededReportedPositionMs = if (hasReportedPosition) reported else null
                 lastAvrcpCapturedAt = orderedAvrcp.capturedAt
                 ignoreReportedUntilAvrcp = false
             } else if (!timelineReady) {
-                val freshPosition = !ignoreReportedPosition && hasReportedPosition && when (transport) {
+                val explicitReportedZero = requireExplicitZeroStart &&
+                    transport != MediaSessionTransport.BLUETOOTH_AVRCP && hasReportedPosition && reported == 0L
+                val freshPosition = (explicitReportedZero || !requireExplicitZeroStart) &&
+                    !ignoreReportedPosition && hasReportedPosition && when (transport) {
                     MediaSessionTransport.BLUETOOTH_AVRCP ->
                         reported > 0L && reported != firstUntrustedPositionMs
                     MediaSessionTransport.STANDARD ->
@@ -233,6 +250,7 @@ internal class MediaSessionTimelineTracker(
                 }
                 if (freshPosition) {
                     rebase(clamp(reported, durationMs), if (usablePublisherChange) validPublisherTime!! else now)
+                    requireExplicitZeroStart = false
                     timelineReady = true
                 }
             } else if (reportedChanged && !bluetoothAvrcpOwnsPosition) {
@@ -294,6 +312,7 @@ internal class MediaSessionTimelineTracker(
         lastAvrcpPositionMs = null
         lastAvrcpPositionCapturedAt = null
         pendingAvrcpSeek = null
+        requireExplicitZeroStart = false
         supersededReportedPositionMs = lastReportedPositionMs.takeIf { it >= 0L }
         deferNextReportedPosition = false
         timelineReady = true
@@ -332,6 +351,7 @@ internal class MediaSessionTimelineTracker(
         lastAvrcpPositionMs = null
         lastAvrcpPositionCapturedAt = null
         pendingAvrcpSeek = null
+        requireExplicitZeroStart = false
         phaseCorrectionMs = 0.0
         phaseCorrectionDurationMs = 0L
         ignoreReportedUntilAvrcp = false
