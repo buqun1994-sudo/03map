@@ -264,15 +264,22 @@ fun ContentPanel(
                     }
                 }
                 if (state.page == PanelPage.Lyrics) {
-                    val overlayActions = if (wide) listOf(PageActionDescriptor("exit", "退出全屏", R.drawable.content_ic_fullscreen_exit))
-                        else listOf(PageActionDescriptor("enter", "全屏歌词", R.drawable.content_ic_fullscreen, enabled = presentation?.geometryReady == true))
-                    PageActionsOverlay(overlayActions, pageKey = "lyrics:$wide", blankTapRevision = blankTapRevision,
-                        enabled = contentInteractive && !transitioning, modalActive = settingsActive || state.sourcesOpen,
-                        compact = compact, modifier = Modifier.align(if (wide) Alignment.TopStart else Alignment.TopEnd)
-                            .padding(top = if (showTop) topBarHeight + 12.dp else 16.dp,
-                                start = if (wide) 12.dp else 0.dp,
-                                 end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = if (wide) wideOpacity() else compactOpacity() }) { id ->
-                        dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
+                    // The action lease belongs to the lyrics page. Keep its host at
+                    // the compact page width even after the lyrics surface expands;
+                    // the full-screen transition must not move the only page button.
+                    key(state.page) {
+                        val overlayActions = if (wide) listOf(PageActionDescriptor("exit", "退出全屏", R.drawable.content_ic_fullscreen_exit))
+                            else listOf(PageActionDescriptor("enter", "全屏歌词", R.drawable.content_ic_fullscreen, enabled = presentation?.geometryReady == true))
+                        Box(Modifier.width(leftWidth).fillMaxHeight().align(Alignment.TopStart).zIndex(5f)) {
+                            PageActionsOverlay(overlayActions, pageKey = "lyrics:$wide", blankTapRevision = blankTapRevision,
+                                enabled = contentInteractive && !transitioning && presentation?.pagerMotion != true,
+                                modalActive = settingsActive || state.sourcesOpen,
+                                compact = compact, modifier = Modifier.align(Alignment.TopEnd)
+                                    .padding(top = topBarHeight + 12.dp, end = 12.dp)
+                                    .graphicsLayer { alpha = if (wide) wideOpacity() else compactOpacity() }) { id ->
+                                dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
+                            }
+                        }
                     }
                 }
                  DockLevelOverlayHost(dockOverlay) { control, level, modifier ->

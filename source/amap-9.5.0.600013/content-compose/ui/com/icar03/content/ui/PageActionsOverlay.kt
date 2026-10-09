@@ -129,7 +129,7 @@ fun PageActionsOverlay(
     val lease = remember(clock) { PageActionsLease(clock) }
     var started by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
     var lastPageKey by remember(lease) { mutableStateOf(pageKey) }
-    var consumedTapRevision by remember(lease) { mutableLongStateOf(0L) }
+    var consumedTapRevision by remember(lease, pageKey) { mutableLongStateOf(blankTapRevision) }
     val currentAction by rememberUpdatedState(onAction)
     val eligible = enabled && !modalActive && started && actions.isNotEmpty()
 

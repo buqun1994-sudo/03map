@@ -224,17 +224,38 @@ open class LyricsImmersivePanelTest {
         compose.onAllNodesWithTag("wallpaper-lyrics", useUnmergedTree = true).assertCountEquals(1)
     }
 
-    @Test fun visibleTopBarKeepsExitBelowClockAndAlignedToItsLeftMargin() {
+    @Test fun fullscreenActionStaysAtTheSplitPageAnchor() {
         mount()
         val topBar = compose.onNodeWithTag("top-bar").fetchSemanticsNode().boundsInRoot
-        val clock = compose.onNodeWithTag("top-time").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("immersive-panel").performTouchInput { click(androidx.compose.ui.geometry.Offset(1850f, 100f)) }
         compose.waitForIdle()
         val exit = compose.onNodeWithTag("page-action-exit").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertEquals(clock.left, exit.left, 1f)
+        assertEquals(640f - 12f - exit.width, exit.left, 1f)
         assertEquals(topBar.bottom + 12f, exit.top, 1f)
-        assertTrue("exit target cannot cover the top bar", exit.top >= topBar.bottom)
+        assertTrue("the action stays inside the original split page", exit.right <= 640f)
         capture("lyrics-immersive-actions-$platform-${if (dark) "dark" else "light"}")
+    }
+
+    @Test fun pageActionsAreDisposedWithLyricsAndDoNotReplayAfterReturning() {
+        presentation.updateGeometry(640f, 640f, 1280f, 1080)
+        presentation.updatePhase(0)
+        mount()
+        compose.onNodeWithTag("immersive-panel").performTouchInput { click(androidx.compose.ui.geometry.Offset(600f, 100f)) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("page-action-enter").assertIsDisplayed()
+
+        compose.onNodeWithTag("runtime-pages").performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        assertEquals(ContentEvent.PageSelected(PanelPage.Shortcuts), events.last())
+        compose.onNodeWithTag("page-actions-overlay").assertDoesNotExist()
+
+        compose.runOnIdle { state = state.copy(page = PanelPage.Lyrics) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("page-actions-overlay").assertDoesNotExist()
+
+        compose.onNodeWithTag("immersive-panel").performTouchInput { click(androidx.compose.ui.geometry.Offset(600f, 100f)) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("page-action-enter").assertIsDisplayed()
     }
 
     @Test fun hiddenChromeIsUnmeasuredAndEmptyTapAlwaysExposesExit() {

@@ -412,54 +412,53 @@ class BluetoothTimelineCorrectionTest {
         assertEquals(500L, anchor.sampleAt(rig.now + 5_400L) - anchor.sampleAt(rig.now + 4_400L))
     }
 
-    @Test fun freshMediaSessionAndAvrcpSamplesUseTheSameNowAndKeepEverySmallChangeContinuous() {
+    @Test fun mediaSessionPositionsAreIgnoredAfterAvrcpEstablishesTheBluetoothTimeline() {
         val rig = Rig()
         rig.avrcp(40_000L, 1L)
+        val owner = rig.timeline.anchor()
         rig.now += 100L
-        var before = rig.timeline.positionMs()
+        val before = rig.timeline.positionMs()
         rig.media(40_030L, publisherTime = rig.now - 50L)
+        assertSame(owner, rig.timeline.anchor())
         assertEquals(before, rig.timeline.positionMs())
-        assertCorrection(rig.timeline.anchor(), -20.0, 1_000L)
 
         rig.now += 6L
-        before = rig.timeline.positionMs()
+        rig.media(12_000L, publisherTime = rig.now)
+        assertSame(owner, rig.timeline.anchor())
+        assertEquals(before + 6L, rig.timeline.positionMs())
+
+        rig.now += 6L
         rig.avrcp(40_081L, 2L, capturedAt = rig.now - 4L)
-        assertEquals(before, rig.timeline.positionMs())
+        assertNotSame(owner, rig.timeline.anchor())
+        assertEquals(before + 12L, rig.timeline.positionMs())
         assertTrue(rig.timeline.anchor().trajectory.correctionMs < 0.0)
-
-        rig.now += 6L
-        before = rig.timeline.positionMs()
-        rig.media(40_089L, publisherTime = rig.now - 4L)
-        val anchor = rig.timeline.anchor()
-        assertEquals(before, rig.timeline.positionMs())
-        val end = rig.now + anchor.trajectory.correctionDurationMs
-        assertEquals(40_093L + anchor.trajectory.correctionDurationMs, anchor.sampleAt(end))
-        assertEquals(1_000L, anchor.sampleAt(end + 1_000L) - anchor.sampleAt(end))
     }
 
-    @Test fun freshLargeMediaSessionAndAvrcpSeeksBothTakeEffectImmediately() {
+    @Test fun freshMediaSessionSeekCannotOverrideAvrcpUntilAvrcpConfirmsIt() {
         val rig = correctingRig()
         rig.now += 50L
+        val before = rig.timeline.positionMs()
         rig.media(80_000L, publisherTime = rig.now)
-        assertEquals(80_000L, rig.timeline.positionMs())
-        assertCorrection(rig.timeline.anchor(), 0.0, 0L)
+        assertEquals(before, rig.timeline.positionMs())
+        assertCorrection(rig.timeline.anchor(), 50.0, 1_000L)
+
         rig.now++
         rig.avrcp(12_000L, 3L)
         assertEquals(12_000L, rig.timeline.positionMs())
         assertCorrection(rig.timeline.anchor(), 0.0, 0L)
         val sought = rig.timeline.anchor()
+
         rig.now++
         rig.media(0L, publisherTime = rig.now - 1L)
         assertSame(sought, rig.timeline.anchor())
         assertEquals(12_001L, rig.timeline.positionMs())
-        rig.media(0L, publisherTime = rig.now)
-        assertSame(sought, rig.timeline.anchor()) // A fresh timestamp alone cannot revive the superseded cached zero.
-        rig.now++
         rig.media(20_000L, publisherTime = rig.now)
+        assertSame(sought, rig.timeline.anchor())
+        assertEquals(12_001L, rig.timeline.positionMs())
+
+        rig.avrcp(20_000L, 4L)
         assertEquals(20_000L, rig.timeline.positionMs())
-        rig.now++
-        rig.media(0L, publisherTime = rig.now)
-        assertEquals(0L, rig.timeline.positionMs())
+        assertCorrection(rig.timeline.anchor(), 0.0, 0L)
     }
 
     @Test fun nonBluetoothTinySeeksRemainImmediateAndExact() {
@@ -562,7 +561,7 @@ class BluetoothTimelineCorrectionTest {
         assertEquals(90_200L, update(1_000L, now).positionMs)
         assertCorrection(tracker.anchor(), 0.0, 0L)
         now += 100L
-        assertEquals(50_000L, update(50_000L, now).positionMs)
+        assertEquals(90_300L, update(50_000L, now).positionMs)
     }
 
     @Test fun resetClearsCorrectionAndCaptureOrderingButDoesNotReplayConsumedSequences() {

@@ -183,6 +183,8 @@ internal class MediaSessionTimelineTracker(
                 reported == supersededReportedPositionMs ||
                 (transport == MediaSessionTransport.BLUETOOTH_AVRCP && lastAvrcpCapturedAt != null &&
                     (validPublisherTime == null || validPublisherTime <= lastAvrcpCapturedAt!!))
+            val bluetoothAvrcpOwnsPosition = transport == MediaSessionTransport.BLUETOOTH_AVRCP &&
+                lastAvrcpPositionMs != null
             val reportedChanged = !ignoreReportedPosition &&
                 hasReportedPosition && reported != lastReportedPositionMs
             val publisherChanged = publisherPositionTime != lastObservedPublisherPositionTime
@@ -225,7 +227,11 @@ internal class MediaSessionTimelineTracker(
                     rebase(clamp(reported, durationMs), if (usablePublisherChange) validPublisherTime!! else now)
                     timelineReady = true
                 }
-            } else if (reportedChanged) {
+            } else if (reportedChanged && !bluetoothAvrcpOwnsPosition) {
+                // Once AVRCP has supplied a real position it is the only Bluetooth
+                // position owner. MediaSession callbacks can be delayed snapshots
+                // from another delivery path; keep them for state/metadata only and
+                // wait for AVRCP before admitting a new position.
                 acceptPosition(reported, if (usablePublisherChange) validPublisherTime!! else now,
                     now, durationMs, speed, transport, playing)
             } else if (playbackModeChanged || speedChanged) {
