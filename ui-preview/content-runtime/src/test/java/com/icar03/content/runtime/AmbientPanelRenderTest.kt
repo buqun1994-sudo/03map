@@ -83,7 +83,7 @@ open class AmbientPanelLightRenderTest {
                         if (event == ContentEvent.DismissSheet) state.value = state.value.copy(sourcesOpen = false)
                     }, modifier = Modifier.testTag("ambient-panel"),
                         artwork = { Image(cover.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) },
-                        ambientBackground = { MediaAmbientBackground(scene, dark, animating = false) })
+                        ambientBackground = { MediaAmbientBackground(scene, dark) })
                 }
             }
         }

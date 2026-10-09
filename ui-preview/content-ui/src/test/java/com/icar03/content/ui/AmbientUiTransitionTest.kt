@@ -87,15 +87,6 @@ class AmbientUiTransitionTest {
         compose.waitForIdle()
     }
 
-    private fun advanceMotionPublication() {
-        // Apply the resume/focus input, then allow at most two bounded scene samples.
-        // AmbientPhase describes the displayed scene, not the former 60Hz clock state.
-        compose.mainClock.advanceTimeByFrame()
-        compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(2L * AMBIENT_SCENE_INTERVAL_NS / 1_000_000L)
-        compose.waitForIdle()
-    }
-
     @Test fun stalePressAndBlockedPhasesKeepTheAmbientBitmapWithoutPreparingAPresentationScene() {
         val presentation = ContentPresentation().apply { updateGeometry(240f, 240f, 480f, 480) }
         val texture = scene(Color.BLUE)
@@ -104,8 +95,7 @@ class AmbientUiTransitionTest {
             CompositionLocalProvider(LocalDensity provides Density(1f),
                 LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
                 ContentTheme(true) {
-                    MediaAmbientBackground(texture, true, Modifier.requiredSize(240.dp, 480.dp),
-                        animating = false, presentation = presentation)
+                    MediaAmbientBackground(texture, true, Modifier.requiredSize(240.dp, 480.dp), presentation = presentation)
                 }
             }
         }
@@ -152,8 +142,7 @@ class AmbientUiTransitionTest {
             CompositionLocalProvider(LocalDensity provides Density(1f),
                 LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
                 ContentTheme(true) {
-                    MediaAmbientBackground(texture, true, Modifier.requiredSize(240.dp, 480.dp),
-                        animating = false, presentation = presentation)
+                    MediaAmbientBackground(texture, true, Modifier.requiredSize(240.dp, 480.dp), presentation = presentation)
                 }
             }
         }
@@ -183,8 +172,7 @@ class AmbientUiTransitionTest {
             CompositionLocalProvider(LocalDensity provides Density(1f),
                 LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
                 ContentTheme(false) {
-                    MediaAmbientBackground(texture, false, Modifier.requiredSize(width.value.dp, 480.dp),
-                        animating = false, presentation = presentation)
+                    MediaAmbientBackground(texture, false, Modifier.requiredSize(width.value.dp, 480.dp), presentation = presentation)
                 }
             }
         }
@@ -240,8 +228,7 @@ class AmbientUiTransitionTest {
             CompositionLocalProvider(LocalDensity provides Density(1f),
                 LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
                 ContentTheme(false) {
-                    MediaAmbientBackground(null, false, Modifier.requiredSize(240.dp, 480.dp),
-                        animating = false, presentation = presentation)
+                    MediaAmbientBackground(null, false, Modifier.requiredSize(240.dp, 480.dp), presentation = presentation)
                 }
             }
         }
@@ -254,23 +241,20 @@ class AmbientUiTransitionTest {
         assertFalse(value(AmbientHasContent))
     }
 
-    @Test fun continuousResizePreservesTheArrivalDriverAndFrozenPhaseThenMotionSamplesLatestAspect() {
+    @Test fun continuousResizePreservesArrivalAndOnlyPreparesChangedGeometry() {
         val target = mutableStateOf(scene(Color.RED))
-        val playing = mutableStateOf(false)
         val width = mutableStateOf(240)
         compose.mainClock.autoAdvance = false
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f),
                 LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
-                    MediaAmbientBackground(target.value, true, Modifier.requiredSize(width.value.dp, 480.dp),
-                        animating = playing.value)
+                    MediaAmbientBackground(target.value, true, Modifier.requiredSize(width.value.dp, 480.dp))
                 }
             }
         }
         advanceTransitionStart(); compose.mainClock.advanceTimeBy(640)
         assertEquals(1f, value(AmbientOpacity), .001f)
-        val frozenPhase = value(AmbientPhase)
         compose.runOnIdle { target.value = scene(Color.BLUE) }
         advanceTransitionStart(); compose.mainClock.advanceTimeBy(160)
         var fraction = value(AmbientFraction)
@@ -281,33 +265,22 @@ class AmbientUiTransitionTest {
             val next = value(AmbientFraction)
             assertTrue("resizing cannot restart or reverse the 500ms arrival", next >= fraction && next > 0f)
             assertEquals(1f, value(AmbientOpacity), .001f)
-            assertEquals(frozenPhase, value(AmbientPhase), .001f)
             assertEquals(ambientFrameSize(IntSize(nextWidth, 480)), value(AmbientPreparedSize))
             fraction = next
         }
-        // Superseded widths must never leave the paused renderer at an older aspect.
         compose.runOnIdle { width.value = 252; width.value = 276; width.value = 304 }
         repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
         assertEquals(ambientFrameSize(IntSize(304, 480)), value(AmbientPreparedSize))
-        assertEquals(frozenPhase, value(AmbientPhase), .001f)
-        compose.mainClock.advanceTimeBy(400)
+        compose.mainClock.advanceTimeBy(640)
         assertEquals(1f, value(AmbientFraction), .001f)
-        compose.runOnIdle { playing.value = true }
-        dispatchFocus(true)
-        advanceMotionPublication()
-        val moving = value(AmbientPhase)
-        assertTrue(moving > frozenPhase)
-        for (nextWidth in listOf(256, 272, 288, 304, 320)) {
-            compose.runOnIdle { width.value = nextWidth }
-            repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
-            assertEquals("geometry never starts another colour fade", 1f, value(AmbientFraction), .001f)
-        }
-        assertTrue("continuous resize cannot starve or restart the motion sampler", value(AmbientPhase) > moving)
-        advanceMotionPublication()
-        assertEquals(ambientFrameSize(IntSize(320, 480)), value(AmbientPreparedSize))
+        val generation = value(AmbientPreparedGeneration)
+        val pixels = captureAmbient()
+        compose.mainClock.advanceTimeBy(5_000)
+        assertEquals("steady geometry publishes no new scene", generation, value(AmbientPreparedGeneration))
+        assertSameAmbientPixels(pixels, captureAmbient(), "static resized endpoint")
     }
 
-    @Test fun coveringSettingsFreezeBackgroundWorkAndCollapseResumesTheExistingScene() {
+    @Test fun coveringAndRevealingSettingsKeepTheSameStaticBackground() {
         val state = mutableStateOf(ContentUiState(previewMode = false, page = PanelPage.Lyrics, settingsSection = SettingsSection.Lyrics))
         val texture = scene(Color.BLUE)
         compose.mainClock.autoAdvance = false
@@ -318,43 +291,59 @@ class AmbientUiTransitionTest {
                     ContentPanel(state.value, { event ->
                         if (event == ContentEvent.SettingsCollapseTapped) state.value = state.value.copy(settingsCollapsed = !state.value.settingsCollapsed)
                     }, Modifier.requiredSize(640.dp, 1080.dp),
-                        ambientBackground = { MediaAmbientBackground(texture, false, animating = true) })
+                        ambientBackground = { MediaAmbientBackground(texture, false) })
                 }
             }
         }
-        advanceTransitionStart()
-        dispatchFocus(true)
-        compose.mainClock.advanceTimeBy(640)
+        advanceTransitionStart(); compose.mainClock.advanceTimeBy(640)
         compose.waitForIdle()
-        advanceMotionPublication()
-        assertTrue(value(AmbientPhase) > 0f)
+        val generation = value(AmbientPreparedGeneration)
         compose.runOnIdle { state.value = state.value.copy(settingsOpen = true) }
-        compose.mainClock.advanceTimeBy(640)
-        compose.waitForIdle()
-        val frozenPhase = value(AmbientPhase)
-        val frozenFrame = value(AmbientPreparedGeneration)
-        compose.mainClock.advanceTimeBy(1500)
-        compose.waitForIdle()
-        assertEquals("opaque settings do not sample the covered background", frozenPhase, value(AmbientPhase), .001f)
-        assertEquals(frozenFrame, value(AmbientPreparedGeneration))
+        repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.mainClock.advanceTimeBy(2_000); compose.waitForIdle()
+        assertEquals("covering the background does not restart its static endpoint", generation, value(AmbientPreparedGeneration))
         assertEquals(1f, value(AmbientOpacity), .001f)
         compose.onNodeWithTag("settings-collapse").performClick()
-        compose.mainClock.advanceTimeBy(480)
-        compose.waitForIdle()
-        advanceMotionPublication()
-        assertTrue("revealing the page resumes the same motion phase", value(AmbientPhase) > frozenPhase)
-        assertNotEquals(frozenFrame, value(AmbientPreparedGeneration))
+        compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
+        assertEquals("revealing the background does not start a sampler", generation, value(AmbientPreparedGeneration))
         assertEquals("the retained scene never fades out on collapse", 1f, value(AmbientOpacity), .001f)
     }
 
-    @Test fun appearanceReplacementDepartureAndPauseUseThePersistentDriver() {
+    @Test fun steadyStaticFieldHasNoWorkerTasksOrFramePublications() {
+        val dispatcher = object : CoroutineDispatcher() {
+            var tasks = 0
+            override fun dispatch(context: CoroutineContext, block: Runnable) { tasks++; block.run() }
+        }
+        val base = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888).apply {
+            for (y in 0 until height) for (x in 0 until width) setPixel(x, y, Color.rgb(30 + x, 45 + y, 90 + x / 2))
+        }
+        val texture = AmbientArtwork(base, Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888),
+            listOf(AmbientGlowPose(11f, .45f, .55f, 1.1f)))
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalAmbientPreparationDispatcher provides dispatcher) {
+                MediaAmbientBackground(texture, true, Modifier.requiredSize(240.dp, 480.dp))
+            }
+        }
+        advanceTransitionStart(); compose.mainClock.advanceTimeBy(640); compose.waitForIdle()
+        val tasks = dispatcher.tasks
+        val generation = value(AmbientPreparedGeneration)
+        val pixels = captureAmbient()
+        assertTrue("the initial static endpoint is prepared once", tasks > 0)
+        compose.mainClock.advanceTimeBy(10_000); compose.waitForIdle()
+        assertEquals("no periodic worker preparation in steady state", tasks, dispatcher.tasks)
+        assertEquals("no periodic scene publication in steady state", generation, value(AmbientPreparedGeneration))
+        assertSameAmbientPixels(pixels, captureAmbient(), "static seeded field after ten seconds")
+    }
+
+    @Test fun appearanceReplacementDepartureAndLifecycleKeepTheirExistingTransitions() {
         val target = mutableStateOf<AmbientArtwork?>(null)
-        val playing = mutableStateOf(false); val active = mutableStateOf(true)
+        val active = mutableStateOf(true)
         compose.mainClock.autoAdvance = false
         compose.setContent {
             CompositionLocalProvider(LocalAmbientPreparationDispatcher provides Dispatchers.Unconfined) {
                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
-                    MediaAmbientBackground(target.value, true, active = active.value, animating = playing.value)
+                    MediaAmbientBackground(target.value, true, active = active.value)
                 }
             }
         }
@@ -378,48 +367,26 @@ class AmbientUiTransitionTest {
         assertEquals("appearance and departure share the same curve/time", arrival, 1f - value(AmbientOpacity), .04f)
         compose.mainClock.advanceTimeBy(400)
         assertEquals(0f, value(AmbientOpacity), .001f)
-        compose.runOnIdle { target.value = scene(Color.GREEN); playing.value = true }
+        compose.runOnIdle { target.value = scene(Color.GREEN) }
         advanceTransitionStart(); compose.mainClock.advanceTimeBy(640)
-        val moving = value(AmbientPhase)
-        assertTrue(moving > 0f)
-        compose.runOnIdle { playing.value = false }
-        compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
-        val paused = value(AmbientPhase)
-        val pausedFrame = value(AmbientPreparedGeneration)
-        compose.mainClock.advanceTimeBy(1000)
-        assertEquals(paused, value(AmbientPhase), .001f)
-        assertEquals("pause publishes no new scene", pausedFrame, value(AmbientPreparedGeneration))
-        compose.runOnIdle { playing.value = true }
-        advanceMotionPublication()
-        assertTrue(value(AmbientPhase) > paused)
-        assertTrue("resume never catches up the paused second", value(AmbientPhase) - paused < .5f)
-        assertNotEquals("motion publishes a fresh immutable texture", pausedFrame, value(AmbientPreparedGeneration))
-        dispatchFocus(false)
-        compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
-        val unfocused = value(AmbientPhase)
-        val unfocusedFrame = value(AmbientPreparedGeneration)
-        compose.mainClock.advanceTimeBy(1000)
-        assertEquals("window focus loss freezes motion without clearing colours", unfocused, value(AmbientPhase), .001f)
-        assertEquals(unfocusedFrame, value(AmbientPreparedGeneration))
-        assertEquals(1f, value(AmbientOpacity), .001f)
-        dispatchFocus(true)
-        advanceMotionPublication()
-        assertTrue(value(AmbientPhase) > unfocused)
-        assertTrue("focus return never catches up time spent unfocused", value(AmbientPhase) - unfocused < .5f)
-        assertNotEquals(unfocusedFrame, value(AmbientPreparedGeneration))
+        val generation = value(AmbientPreparedGeneration)
+        val pixels = captureAmbient()
+        dispatchFocus(false); compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
+        assertEquals("focus loss preserves the static scene", generation, value(AmbientPreparedGeneration))
+        dispatchFocus(true); compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
+        assertEquals("focus return does not start a sampler", generation, value(AmbientPreparedGeneration))
+        assertSameAmbientPixels(pixels, captureAmbient(), "static field across focus changes")
         compose.runOnIdle { active.value = false }
-        compose.waitForIdle(); compose.mainClock.advanceTimeBy(1000)
+        repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
         assertEquals(0f, value(AmbientOpacity), .001f)
         assertEquals("host stop releases its prepared texture", 0, value(AmbientPreparedGeneration))
-        val stopped = value(AmbientPhase)
-        compose.mainClock.advanceTimeBy(2000)
-        assertEquals("lifecycle stop freezes the existing phase", stopped, value(AmbientPhase), .001f)
+        compose.mainClock.advanceTimeBy(2_000)
         assertEquals(0, value(AmbientPreparedGeneration))
         compose.runOnIdle { active.value = true }
-        advanceTransitionStart()
-        advanceMotionPublication()
-        assertTrue("resume continues instead of restarting at zero", value(AmbientPhase) > stopped)
-        assertTrue("host return never replays the background time", value(AmbientPhase) - stopped < .5f)
+        advanceTransitionStart(); compose.mainClock.advanceTimeBy(640)
+        assertEquals(1f, value(AmbientOpacity), .001f)
         assertNotEquals(0, value(AmbientPreparedGeneration))
+        assertSameAmbientPixels(pixels, captureAmbient(), "host restart restores the same static field")
     }
 }

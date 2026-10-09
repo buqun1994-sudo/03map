@@ -81,8 +81,9 @@ class AmbientArtworkTest {
         val left = a.base.getPixel(20, 64); val right = a.base.getPixel(108, 64)
         assertTrue("cover's warm and cool sides must remain distinct", Color.red(left) > Color.red(right))
         assertTrue("macro field must have gradual variation", (0 until 128).map { a.base.getPixel(it, 64) }.toSet().size > 40)
-        assertEquals(listOf(55f, 75f, 95f), a.poses.map { it.periodSeconds })
-        assertTrue(a.poses.all { it.scale in 1f..1.25f && it.pivotX in .4f.. .6f && it.pivotY in .4f.. .6f })
+        assertEquals(3, a.poses.size)
+        assertTrue(a.poses.all { it.angle in -15f..15f && it.scale in 1f..1.25f &&
+            it.pivotX in .4f.. .6f && it.pivotY in .4f.. .6f })
     }
 }
 

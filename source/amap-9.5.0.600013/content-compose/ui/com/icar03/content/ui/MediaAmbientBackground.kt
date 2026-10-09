@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
@@ -26,11 +25,9 @@ import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.sin
-import kotlin.math.PI
 import kotlin.math.roundToInt
 
 /** Immutable published textures. Android/GC owns their lifetime while frames reference them. */
@@ -39,9 +36,8 @@ class AmbientArtwork(
     val darkVeil: Float = .15f, val lightVeil: Float = .60f,
 )
 data class AmbientGlowPose(
-    val angle: Float, val periodSeconds: Float, val pivotX: Float, val pivotY: Float, val scale: Float,
+    val angle: Float, val pivotX: Float, val pivotY: Float, val scale: Float,
 )
-internal val AmbientPhase = SemanticsPropertyKey<Float>("AmbientPhase")
 internal val AmbientOpacity = SemanticsPropertyKey<Float>("AmbientOpacity")
 internal val AmbientFraction = SemanticsPropertyKey<Float>("AmbientFraction")
 internal val AmbientHasContent = SemanticsPropertyKey<Boolean>("AmbientHasContent")
@@ -50,27 +46,23 @@ internal val AmbientPreparedGeneration = SemanticsPropertyKey<Int>("AmbientPrepa
 internal val AmbientPresentationPrepared = SemanticsPropertyKey<Boolean>("AmbientPresentationPrepared")
 internal const val AMBIENT_TRANSITION_MS = 500
 internal const val AMBIENT_MAX_FRAME_EDGE = 192
-// The baked field has no sharp detail and its shortest motion period is >34 seconds.
-// Sample that field, not playback or transition progress; transitions still use frame time.
-internal const val AMBIENT_SCENE_INTERVAL_NS = 100_000_000L
 private val AmbientEasing = CubicBezierEasing(.42f, 0f, .58f, 1f)
 // Host tests can prepare synchronously while keeping the production worker boundary explicit.
-internal val LocalAmbientMotionAllowed = staticCompositionLocalOf { true }
 internal val LocalAmbientPreparationDispatcher = staticCompositionLocalOf<CoroutineDispatcher> { Dispatchers.Default }
 
 /**
- * One persistent renderer. Motion is precomposed on a worker at bounded resolution;
+ * One persistent renderer. A static field is prepared on a worker when its inputs change;
  * the screen draws one texture in steady state, or two during the 500ms transition.
  * Frame progress is read only by draw/semantics, never by composition or layout.
  */
 @Composable
 fun MediaAmbientBackground(
     texture: AmbientArtwork?, dark: Boolean, modifier: Modifier = Modifier,
-    active: Boolean = true, animating: Boolean = true,
+    active: Boolean = true,
     presentation: ContentPresentation? = null,
 ) {
     val renderer = remember { AmbientRenderState() }
-    // Readiness changes only on arrival/withdrawal, not when motion publishes another frame.
+    // Readiness changes only when an artwork target is prepared or withdrawn.
     val preparedTarget by remember(renderer) { derivedStateOf(structuralEqualityPolicy()) { renderer.hasPreparedTarget } }
     val painter = remember { AmbientPainter() }
     val presentationState = remember { AmbientPresentationState() }
@@ -78,18 +70,9 @@ fun MediaAmbientBackground(
     val preparationDispatcher = LocalAmbientPreparationDispatcher.current
     val background = MaterialTheme.colorScheme.background.toArgb()
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    val view = LocalView.current
-    var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
     val latestViewport = rememberUpdatedState(viewport)
     val viewportReady = viewport.width > 0 && viewport.height > 0
-    val motionEnabled = animating && focused && LocalAmbientMotionAllowed.current
-    val frozenGeometry = if (viewportReady && !motionEnabled) ambientFrameSize(viewport) else IntSize.Zero
-    DisposableEffect(view) {
-        val tree = view.viewTreeObserver
-        val listener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { focused = it }
-        tree.addOnWindowFocusChangeListener(listener)
-        onDispose { if (tree.isAlive) tree.removeOnWindowFocusChangeListener(listener) }
-    }
+    val preparedGeometry = if (viewportReady) ambientFrameSize(viewport) else IntSize.Zero
     LaunchedEffect(texture, dark, active, viewportReady, preparationDispatcher) {
         if (!active) {
             renderer.clear()
@@ -103,17 +86,16 @@ fun MediaAmbientBackground(
         var prepared: Bitmap? = null
         var published = false
         try {
-            val phase = renderer.phase
             if (texture != null) {
                 withContext(preparationDispatcher) {
                     ensureActive()
-                    prepared = AmbientSceneBaker().prepare(texture, dark, phase, requestViewport)
+                    prepared = AmbientSceneBaker().prepare(texture, dark, requestViewport)
                 }
                 // A failed replacement never withdraws the last valid background.
                 if (prepared == null) return@LaunchedEffect
             }
             ensureActive()
-            if (!renderer.retarget(request, prepared, phase, painter, latestViewport.value)) return@LaunchedEffect
+            if (!renderer.retarget(request, prepared, painter, latestViewport.value)) return@LaunchedEffect
             published = prepared != null
             if (!renderer.transition.hasContent) { renderer.finish(request); return@LaunchedEffect }
             animate(0f, 1f, animationSpec = tween(AMBIENT_TRANSITION_MS, easing = AmbientEasing)) { value, _ ->
@@ -125,60 +107,23 @@ fun MediaAmbientBackground(
             if (!published) prepared?.takeUnless { it.isRecycled }?.recycle()
         }
     }
-    LaunchedEffect(texture, dark, active, motionEnabled, viewportReady, preparedTarget, preparationDispatcher) {
-        if (!active || !motionEnabled || !viewportReady || !preparedTarget || !renderer.hasPreparedTarget || texture == null) return@LaunchedEffect
-        val baker = AmbientSceneBaker()
-        var previous = 0L
-        var lastSample = 0L
-        while (isActive) {
-            val now = withFrameNanos { now ->
-                // Plain presentation clock: advancing it does not invalidate composition/draw.
-                if (previous != 0L) renderer.phase += ((now - previous) / 1_000_000_000.0).toFloat().coerceIn(0f, .05f)
-                previous = now
-                now
-            }
-            if (!renderer.hasPreparedTarget) return@LaunchedEffect
-            if (lastSample == 0L) { lastSample = now; continue }
-            if (now - lastSample < AMBIENT_SCENE_INTERVAL_NS) continue
-            lastSample = now
-            val request = renderer.request
-            val phase = renderer.phase
-            val sampleViewport = latestViewport.value
-            var prepared: Bitmap? = null
-            var published = false
-            try {
-                withContext(preparationDispatcher) {
-                    ensureActive()
-                    prepared = baker.prepare(texture, dark, phase, sampleViewport)
-                }
-                ensureActive()
-                if (prepared == null) return@LaunchedEffect
-                prepared?.let {
-                    published = renderer.updateTarget(request, it, phase, ambientFrameSize(latestViewport.value))
-                }
-            } finally {
-                if (!published) prepared?.takeUnless { it.isRecycled }?.recycle()
-            }
-        }
-    }
-    LaunchedEffect(texture, dark, active, motionEnabled, frozenGeometry, preparedTarget, preparationDispatcher) {
-        if (!active || motionEnabled || !preparedTarget || !renderer.hasPreparedTarget || texture == null || frozenGeometry == IntSize.Zero) return@LaunchedEffect
-        if (renderer.transition.target?.let { IntSize(it.width, it.height) } == frozenGeometry) return@LaunchedEffect
+    LaunchedEffect(texture, dark, active, preparedGeometry, preparedTarget, preparationDispatcher) {
+        if (!active || !preparedTarget || !renderer.hasPreparedTarget || texture == null || preparedGeometry == IntSize.Zero) return@LaunchedEffect
+        if (renderer.transition.target?.let { IntSize(it.width, it.height) } == preparedGeometry) return@LaunchedEffect
         val request = renderer.request
-        // A paused/focus-frozen resize changes geometry, never the displayed motion phase.
-        val phase = renderer.publishedPhase
+        // Geometry changes prepare one static endpoint without restarting the artwork fade.
         val resizeViewport = latestViewport.value
-        if (ambientFrameSize(resizeViewport) != frozenGeometry) return@LaunchedEffect
+        if (ambientFrameSize(resizeViewport) != preparedGeometry) return@LaunchedEffect
         var prepared: Bitmap? = null
         var published = false
         try {
             withContext(preparationDispatcher) {
                 ensureActive()
-                prepared = AmbientSceneBaker().prepare(texture, dark, phase, resizeViewport)
+                prepared = AmbientSceneBaker().prepare(texture, dark, resizeViewport)
             }
             ensureActive()
             prepared?.let {
-                published = renderer.updateTarget(request, it, phase, ambientFrameSize(latestViewport.value))
+                published = renderer.updateTarget(request, it, ambientFrameSize(latestViewport.value))
             }
         } finally {
             if (!published) prepared?.takeUnless { it.isRecycled }?.recycle()
@@ -216,7 +161,6 @@ fun MediaAmbientBackground(
         val visible = captured?.first ?: renderer.captureCurrent(painter, visibleSize, background)!!
         val capturedTransition = AmbientTransition(target = visible, startOpacity = 1f, endOpacity = 1f)
         val request = presentationState.begin(key, capturedTransition, visibleSize)
-        val phase = renderer.publishedPhase
         var compact: Bitmap? = null
         var wide: Bitmap? = null
         var installed = false
@@ -231,15 +175,15 @@ fun MediaAmbientBackground(
                 ensureActive()
                 val baker = AmbientSceneBaker()
                 compact = if (visibleSize == compactSize) visible else
-                    texture?.let { baker.prepare(it, dark, phase, compactSize) } ?: themeFrame(compactSize)
+                    texture?.let { baker.prepare(it, dark, compactSize) } ?: themeFrame(compactSize)
                 ensureActive()
                 wide = if (visibleSize == fullSize && targetPresentation.progress >= PRESENTATION_COMPACT_FADE_END)
-                    visible else texture?.let { baker.prepare(it, dark, phase, fullSize) } ?: themeFrame(fullSize)
+                    visible else texture?.let { baker.prepare(it, dark, fullSize) } ?: themeFrame(fullSize)
             }
             ensureActive()
             if (!presentationState.isCurrent(request)) return@LaunchedEffect
             presentationState.install(request, key,
-                AmbientPresentationScene(compact, wide, fullSize, compactSize, phase), targetPresentation.progress)
+                AmbientPresentationScene(compact, wide, fullSize, compactSize), targetPresentation.progress)
             installed = true
             targetPresentation.entryPrepared(entryToken)
         } finally {
@@ -261,7 +205,6 @@ fun MediaAmbientBackground(
         }
     }
     Canvas(modifier.fillMaxSize().onSizeChanged { viewport = it }.testTag("media-ambient").semantics {
-        this[AmbientPhase] = renderer.publishedPhase
         this[AmbientOpacity] = renderer.transition.opacity(renderer.fraction)
         this[AmbientFraction] = renderer.fraction
         this[AmbientHasContent] = renderer.transition.hasContent
@@ -292,8 +235,6 @@ fun MediaAmbientBackground(
 internal class AmbientRenderState {
     var transition by mutableStateOf(AmbientTransition())
     var fraction by mutableFloatStateOf(1f)
-    var publishedPhase by mutableFloatStateOf(0f)
-    var phase = 0f
     var request = 0L
         private set
     private var targetRequest = -1L
@@ -311,23 +252,21 @@ internal class AmbientRenderState {
         return ++request
     }
 
-    fun retarget(token: Long, frame: Bitmap?, phase: Float, painter: AmbientPainter, viewport: IntSize): Boolean {
+    fun retarget(token: Long, frame: Bitmap?, painter: AmbientPainter, viewport: IntSize): Boolean {
         if (request != token) return false
         val previous = transition.capture(painter, viewport, fraction)
         val opacity = transition.opacity(fraction)
         transition = AmbientTransition(previous, frame, opacity, if (frame == null) 0f else 1f)
         fraction = 0f
-        publishedPhase = phase
         targetRequest = token
         hasPreparedTarget = frame != null
         return true
     }
 
-    fun updateTarget(token: Long, frame: Bitmap, phase: Float, requiredSize: IntSize? = null): Boolean {
+    fun updateTarget(token: Long, frame: Bitmap, requiredSize: IntSize? = null): Boolean {
         if (request != token || targetRequest != token || transition.target == null) return false
         if (requiredSize != null && requiredSize != IntSize(frame.width, frame.height)) return false
         transition = transition.withTarget(frame)
-        publishedPhase = phase
         return true
     }
 
@@ -358,7 +297,7 @@ internal class AmbientRenderState {
         hasPreparedTarget = false
         transition = AmbientTransition()
         fraction = 1f
-        // Keep the clock phase, but release every prepared/displayed reference on host stop.
+        // Release every prepared/displayed reference on host stop.
     }
 }
 
@@ -391,18 +330,16 @@ internal fun ambientFrameSize(viewport: IntSize): IntSize {
     return IntSize(max(1, (width * ratio).roundToInt()), max(1, (height * ratio).roundToInt()))
 }
 
-internal data class AmbientMotion(val x: Float, val y: Float, val angle: Float, val scale: Float)
+internal data class AmbientTransform(val x: Float, val y: Float, val angle: Float, val scale: Float)
 
-/** Stable baked pose is the seed; all motion comes from the single pausable UI phase. */
-internal fun ambientMotion(pose: AmbientGlowPose, phase: Float, base: Boolean = false): AmbientMotion {
+/** Retain the original initial composition; this pose has no time input or motion driver. */
+private fun ambientTransform(pose: AmbientGlowPose, base: Boolean = false): AmbientTransform {
     val seed = pose.angle * .071f + pose.pivotX * 7.3f + pose.pivotY * 11.1f
-    val period = pose.periodSeconds.coerceAtLeast(1f) * if (base) 1.15f else .62f
-    val t = phase / period * (2f * PI.toFloat())
-    val x = (sin(t + seed) + .30f * sin(t * .73f + seed * 1.7f)) / 1.30f
-    val y = (sin(t * .81f + seed * 1.3f) + .25f * sin(t * 1.31f + seed)) / 1.25f
-    val swing = sin(t * .93f + seed * .7f)
-    return if (base) AmbientMotion(x * .016f, y * .012f, swing * 1.8f, 1.12f)
-        else AmbientMotion(x * .05f, y * .04f, swing * 10f, 1f + .035f * sin(t * .67f + seed))
+    val x = (sin(seed) + .30f * sin(seed * 1.7f)) / 1.30f
+    val y = (sin(seed * 1.3f) + .25f * sin(seed)) / 1.25f
+    val swing = sin(seed * .7f)
+    return if (base) AmbientTransform(x * .016f, y * .012f, swing * 1.8f, 1.12f)
+        else AmbientTransform(x * .05f, y * .04f, swing * 10f, 1f + .035f * sin(seed))
 }
 
 /** Worker-owned scratch paint; the fresh, small bitmap itself isolates the LIGHTEN scene. */
@@ -415,7 +352,7 @@ internal class AmbientSceneBaker {
     private val veilPaint = Paint()
     private val cover = RectF()
 
-    fun prepare(artwork: AmbientArtwork, dark: Boolean, phase: Float, viewport: IntSize): Bitmap? {
+    fun prepare(artwork: AmbientArtwork, dark: Boolean, viewport: IntSize): Bitmap? {
         if (artwork.base.isRecycled || artwork.glow.isRecycled) return null
         val size = ambientFrameSize(viewport)
         val frame = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
@@ -427,21 +364,21 @@ internal class AmbientSceneBaker {
             cover.set((width - side) / 2, (height - side) / 2, (width + side) / 2, (height + side) / 2)
             val baseTransform = canvas.save()
             artwork.poses.firstOrNull()?.let { pose ->
-                val motion = ambientMotion(pose, phase, base = true)
-                canvas.translate(side * motion.x, side * motion.y)
-                canvas.rotate(motion.angle, width / 2f, height / 2f)
-                canvas.scale(motion.scale, motion.scale, width / 2f, height / 2f)
+                val transform = ambientTransform(pose, base = true)
+                canvas.translate(side * transform.x, side * transform.y)
+                canvas.rotate(transform.angle, width / 2f, height / 2f)
+                canvas.scale(transform.scale, transform.scale, width / 2f, height / 2f)
             }
             canvas.drawBitmap(artwork.base, null, cover, paint)
             canvas.restoreToCount(baseTransform)
             for (pose in artwork.poses) {
-                val motion = ambientMotion(pose, phase)
-                val transform = canvas.save()
-                canvas.translate(side * motion.x, side * motion.y)
-                canvas.rotate(pose.angle + motion.angle, width * pose.pivotX, height * pose.pivotY)
-                canvas.scale(pose.scale * motion.scale, pose.scale * motion.scale, width / 2f, height / 2f)
+                val transform = ambientTransform(pose)
+                val saved = canvas.save()
+                canvas.translate(side * transform.x, side * transform.y)
+                canvas.rotate(pose.angle + transform.angle, width * pose.pivotX, height * pose.pivotY)
+                canvas.scale(pose.scale * transform.scale, pose.scale * transform.scale, width / 2f, height / 2f)
                 canvas.drawBitmap(artwork.glow, null, cover, glowPaint)
-                canvas.restoreToCount(transform)
+                canvas.restoreToCount(saved)
             }
             veilPaint.color = if (dark) android.graphics.Color.BLACK else android.graphics.Color.WHITE
             veilPaint.alpha = ((if (dark) artwork.darkVeil else artwork.lightVeil) * 255).roundToInt()

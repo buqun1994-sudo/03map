@@ -121,8 +121,8 @@ private fun bakeAmbient(source: Bitmap): AmbientArtwork? {
         }
     }
     val random = Random(pixels.contentHashCode().toLong())
-    val poses = listOf(55f, 75f, 95f).map { period -> AmbientGlowPose(
-        angle = random.nextFloat() * 30f - 15f, periodSeconds = period,
+    val poses = List(3) { AmbientGlowPose(
+        angle = random.nextFloat() * 30f - 15f,
         pivotX = .4f + random.nextFloat() * .2f, pivotY = .4f + random.nextFloat() * .2f,
         scale = 1f + random.nextFloat() * .25f,
     ) }

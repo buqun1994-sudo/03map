@@ -40,7 +40,6 @@ open class ContentUiOpacityNativeTest {
     @get:Rule val compose = createComposeRule()
     private val state = mutableStateOf(ContentUiState(previewMode = false, page = PanelPage.Lyrics))
     private val scene = Color(0xFF174B7A)
-    private var ambientMotionAllowed = true
 
     private fun mount() {
         compose.setContent {
@@ -63,8 +62,6 @@ open class ContentUiOpacityNativeTest {
                     Box(Modifier.fillMaxSize().background(Color.Magenta)) {
                         ContentPanel(state.value.copy(dark = dark), {}, Modifier.testTag("opacity-root"),
                             ambientBackground = {
-                                val motionAllowed = LocalAmbientMotionAllowed.current
-                                SideEffect { ambientMotionAllowed = motionAllowed }
                                 Box(Modifier.fillMaxSize().background(scene))
                             })
                     }
@@ -179,13 +176,9 @@ open class ContentUiOpacityNativeTest {
             }
             contentTags.forEach { tag -> assertInkStable("$section $tag", bounds(tag), sheet, faded) }
             assertRegionIdentical("clock above settings", bounds("top-time"), sheet, faded)
-            compose.runOnIdle {
-                assertFalse("fully covering $section settings occludes motion even at 20%", ambientMotionAllowed)
-            }
         }
         compose.runOnIdle { state.value = state.value.copy(settingsSection = SettingsSection.Lyrics, settingsCollapsed = true) }
         compose.mainClock.advanceTimeBy(600)
-        compose.runOnIdle { assertTrue("collapsed settings reveal the moving background", ambientMotionAllowed) }
     }
 
     private fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot

@@ -13,13 +13,12 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/** Original compact crop and final full-screen crop, baked at the same motion phase. */
+/** Original compact crop and final full-screen crop of the same static artwork field. */
 internal class AmbientPresentationScene(
     val compact: Bitmap?,
     val wide: Bitmap?,
     val fullSize: IntSize,
     val compactSize: IntSize,
-    val phase: Float,
 )
 
 /** A request retains the actual visible frame until its matching endpoint pair is ready. */

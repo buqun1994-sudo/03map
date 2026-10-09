@@ -25,7 +25,7 @@ class AmbientTransitionTest {
         Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888).apply { eraseColor(color) },
         Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888), emptyList(), darkVeil = 0f, lightVeil = 0f,
     )
-    private fun frame(color: Int) = baker.prepare(artwork(color), false, 21f, size)!!
+    private fun frame(color: Int) = baker.prepare(artwork(color), false, size)!!
     private fun render(scene: AmbientTransition, fraction: Float, background: Int = Color.BLACK): Bitmap =
         renderAt(scene, fraction, size, background)
     private fun renderAt(scene: AmbientTransition, fraction: Float, output: IntSize,
@@ -45,7 +45,7 @@ class AmbientTransitionTest {
         }
     }
 
-    @Test fun seededMultiPeriodMotionChangesNativeMacroColoursWithoutExposingEdges() {
+    @Test fun seededStaticFieldRetainsNativeMacroColoursWithoutExposingEdges() {
         val base = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
         val glow = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
         for (y in 0 until 128) for (x in 0 until 128) {
@@ -53,39 +53,31 @@ class AmbientTransitionTest {
             val radius = kotlin.math.hypot((x - 35).toFloat(), (y - 45).toFloat())
             glow.setPixel(x, y, Color.argb(((1f - radius / 85f).coerceIn(0f, 1f) * 255).toInt(), 210, 155, 105))
         }
-        val poses = listOf(55f, 75f, 95f).mapIndexed { i, period ->
-            AmbientGlowPose(i * 7f - 8f, period, .43f + i * .04f, .55f - i * .03f, 1.05f + i * .05f)
+        val poses = List(3) { i ->
+            AmbientGlowPose(i * 7f - 8f, .43f + i * .04f, .55f - i * .03f, 1.05f + i * .05f)
         }
         val artwork = AmbientArtwork(base, glow, poses, .15f, .6f)
-        fun at(phase: Float): Bitmap {
-            val prepared = baker.prepare(artwork, true, phase, size)!!
+        fun preparedFrame(): Bitmap {
+            val prepared = baker.prepare(artwork, true, size)!!
             assertTrue(prepared.width <= AMBIENT_MAX_FRAME_EDGE && prepared.height <= AMBIENT_MAX_FRAME_EDGE)
             return render(AmbientTransition(target = prepared, startOpacity = 1f, endOpacity = 1f), 1f)
         }
-        val first = at(0f); val later = at(8f)
-        var changed = 0
+        val first = preparedFrame(); val second = preparedFrame()
         for (y in 0 until size.height) for (x in 0 until size.width) {
-            assertEquals("overscan keeps every pixel opaque", 255, Color.alpha(later.getPixel(x, y)))
-            if (first.getPixel(x, y) != later.getPixel(x, y)) changed++
+            assertEquals("overscan keeps every pixel opaque", 255, Color.alpha(second.getPixel(x, y)))
+            assertEquals("the same static field retains every pixel", first.getPixel(x, y), second.getPixel(x, y))
         }
-        assertTrue("moving phase must produce visible native colour changes", changed > size.width * size.height / 4)
-        assertSamePixels(later, at(8f))
-        poses.forEach { pose ->
-            val zero = ambientMotion(pose, 0f)
-            assertEquals("same baked seed and phase are deterministic", zero, ambientMotion(pose, 0f))
-            assertNotEquals(zero, ambientMotion(pose, 8f))
-            assertTrue(kotlin.math.abs(zero.x) <= .05f && kotlin.math.abs(zero.y) <= .04f)
-        }
+        assertNotEquals("retain the source's spatial colour variation", first.getPixel(10, 10), first.getPixel(110, 200))
     }
 
     @Test fun preparedFramesAreFreshBoundedAndNeverMutateSourceOrPublishedPixels() {
         for (viewport in listOf(IntSize(640, 1080), IntSize(1920, 1080), IntSize(320, 810), IntSize(1, 1))) {
             val source = artwork(Color.RED)
             val sourceGeneration = source.base.generationId
-            val first = baker.prepare(source, false, 0f, viewport)!!
+            val first = baker.prepare(source, false, viewport)!!
             val generation = first.generationId
             val firstPixels = IntArray(first.width * first.height).also { first.getPixels(it, 0, first.width, 0, 0, first.width, first.height) }
-            val second = baker.prepare(source, true, 8f, viewport)!!
+            val second = baker.prepare(source, true, viewport)!!
             assertNotSame(first, second)
             assertTrue(first.width in 1..AMBIENT_MAX_FRAME_EDGE && first.height in 1..AMBIENT_MAX_FRAME_EDGE)
             assertEquals(ambientFrameSize(viewport), IntSize(first.width, first.height))
@@ -121,14 +113,14 @@ class AmbientTransitionTest {
         assertFalse(ready.value)
         val first = renderer.beginRequest(painter, size)
         assertFalse(ready.value)
-        assertTrue(renderer.retarget(first, frame(Color.RED), 0f, painter, size))
+        assertTrue(renderer.retarget(first, frame(Color.RED), painter, size))
         assertTrue("a cold derived gate must observe its first prepared target", ready.value)
         renderer.finish(first)
-        assertTrue(renderer.updateTarget(first, frame(Color.BLUE), 1f))
+        assertTrue(renderer.updateTarget(first, frame(Color.BLUE)))
         assertTrue(ready.value)
         val second = renderer.beginRequest(painter, size)
         assertFalse("frozen visible colours are not an admitted new target", ready.value)
-        assertTrue(renderer.retarget(second, frame(Color.GREEN), 1f, painter, size))
+        assertTrue(renderer.retarget(second, frame(Color.GREEN), painter, size))
         assertTrue(ready.value)
         renderer.clear()
         assertFalse(ready.value)
@@ -139,47 +131,44 @@ class AmbientTransitionTest {
         val red = frame(Color.RED)
         val blue = frame(Color.BLUE)
         val firstRequest = renderer.beginRequest(painter, size)
-        assertTrue(renderer.retarget(firstRequest, red, 12f, painter, size))
+        assertTrue(renderer.retarget(firstRequest, red, painter, size))
         renderer.finish(firstRequest)
-        renderer.phase = 12f
         val generation = red.generationId
         val secondRequest = renderer.beginRequest(painter, size)
-        assertFalse(renderer.updateTarget(firstRequest, blue, 13f))
-        assertFalse(renderer.retarget(firstRequest, blue, 13f, painter, size))
+        assertFalse(renderer.updateTarget(firstRequest, blue))
+        assertFalse(renderer.retarget(firstRequest, blue, painter, size))
         assertSame(red, renderer.transition.target)
-        assertTrue(renderer.retarget(secondRequest, blue, 14f, painter, size))
+        assertTrue(renderer.retarget(secondRequest, blue, painter, size))
         renderer.fraction = .43f
         val visible = render(renderer.transition, renderer.fraction)
         val thirdRequest = renderer.beginRequest(painter, size)
         assertSamePixels(visible, render(renderer.transition, 1f))
-        assertFalse(renderer.updateTarget(secondRequest, red, 15f))
+        assertFalse(renderer.updateTarget(secondRequest, red))
         renderer.clear()
-        assertFalse(renderer.retarget(thirdRequest, red, 15f, painter, size))
+        assertFalse(renderer.retarget(thirdRequest, red, painter, size))
         assertFalse(renderer.transition.hasContent)
-        assertEquals(12f, renderer.phase, 0f)
         assertFalse(red.isRecycled); assertFalse(blue.isRecycled)
         assertEquals(generation, red.generationId)
     }
 
-    @Test fun sameRequestRejectsAnOldGeometryResultWithoutRestartingOpacityOrAdvancingFrozenPhase() {
+    @Test fun sameRequestRejectsAnOldGeometryResultWithoutRestartingOpacity() {
         val renderer = AmbientRenderState()
         val initial = frame(Color.RED)
         val request = renderer.beginRequest(painter, size)
-        assertTrue(renderer.retarget(request, initial, 21f, painter, size))
+        assertTrue(renderer.retarget(request, initial, painter, size))
         renderer.finish(request)
         val latestViewport = IntSize(640, 320)
         val latestSize = ambientFrameSize(latestViewport)
-        val staleGeometry = baker.prepare(artwork(Color.BLUE), false, 21f, size)!!
-        assertFalse(renderer.updateTarget(request, staleGeometry, 21f, latestSize))
+        val staleGeometry = baker.prepare(artwork(Color.BLUE), false, size)!!
+        assertFalse(renderer.updateTarget(request, staleGeometry, latestSize))
         assertSame(initial, renderer.transition.target)
-        val latest = baker.prepare(artwork(Color.BLUE), false, 21f, latestViewport)!!
-        assertTrue(renderer.updateTarget(request, latest, 21f, latestSize))
+        val latest = baker.prepare(artwork(Color.BLUE), false, latestViewport)!!
+        assertTrue(renderer.updateTarget(request, latest, latestSize))
         assertSame(latest, renderer.transition.target)
         assertEquals(1f, renderer.fraction, 0f)
         assertEquals(1f, renderer.transition.opacity(renderer.fraction), 0f)
-        assertEquals(21f, renderer.publishedPhase, 0f)
         renderer.clear()
-        assertFalse(renderer.updateTarget(request, latest, 21f, latestSize))
+        assertFalse(renderer.updateTarget(request, latest, latestSize))
         assertFalse(initial.isRecycled); assertFalse(latest.isRecycled)
     }
 
@@ -220,10 +209,10 @@ class AmbientTransitionTest {
         val blue = frame(Color.BLUE)
         val renderer = AmbientRenderState()
         val first = renderer.beginRequest(painter, size)
-        assertTrue(renderer.retarget(first, red, 0f, painter, size))
+        assertTrue(renderer.retarget(first, red, painter, size))
         renderer.finish(first)
         val second = renderer.beginRequest(painter, size)
-        assertTrue(renderer.retarget(second, blue, 0f, painter, size))
+        assertTrue(renderer.retarget(second, blue, painter, size))
         renderer.fraction = .43f
         val frameSize = ambientFrameSize(size)
         val visible = renderAt(renderer.transition, renderer.fraction, frameSize)
@@ -237,7 +226,7 @@ class AmbientTransitionTest {
     @Test fun presentationEntryRetainsPartialOpacityOverTheActualThemeBackground() {
         val renderer = AmbientRenderState()
         val request = renderer.beginRequest(painter, size)
-        assertTrue(renderer.retarget(request, frame(Color.BLUE), 0f, painter, size))
+        assertTrue(renderer.retarget(request, frame(Color.BLUE), painter, size))
         renderer.fraction = .43f
         val background = Color.rgb(239, 240, 247)
         val frameSize = ambientFrameSize(size)

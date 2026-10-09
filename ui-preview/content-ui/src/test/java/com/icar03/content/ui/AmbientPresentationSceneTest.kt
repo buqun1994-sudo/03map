@@ -37,7 +37,7 @@ class AmbientPresentationSceneTest {
     }
 
     @Test fun originalCompactCropCrossfadesDirectlyToWideDuringTheFirst45Percent() {
-        val scene = AmbientPresentationScene(compact(), frame(Color.GREEN, fullSize), fullSize, compactSize, 7f)
+        val scene = AmbientPresentationScene(compact(), frame(Color.GREEN, fullSize), fullSize, compactSize)
         val painter = AmbientPresentationPainter()
         for (width in listOf(240, 480, 720)) {
             fun at(progress: Float) = Bitmap.createBitmap(width, 480, Bitmap.Config.ARGB_8888).also {
@@ -66,7 +66,7 @@ class AmbientPresentationSceneTest {
     @Test fun finalWidePixelsKeepTheirCanonicalCoordinatesThroughViewportClippingAndReverse() {
         val wide = frame(Color.YELLOW, fullSize)
         Canvas(wide).drawRect(wide.width / 3f, 0f, wide.width.toFloat(), wide.height.toFloat(), Paint().apply { color = Color.GREEN })
-        val scene = AmbientPresentationScene(compact(), wide, fullSize, compactSize, 0f)
+        val scene = AmbientPresentationScene(compact(), wide, fullSize, compactSize)
         val painter = AmbientPresentationPainter()
         for (width in listOf(720, 480, 300, 480, 720)) {
             val image = Bitmap.createBitmap(width, 480, Bitmap.Config.ARGB_8888)
@@ -91,7 +91,7 @@ class AmbientPresentationSceneTest {
         check()
         val request = owner.begin(currentKey, live)
         check()
-        val stale = AmbientPresentationScene(frame(Color.RED), frame(Color.GREEN, fullSize), fullSize, compactSize, 0f)
+        val stale = AmbientPresentationScene(frame(Color.RED), frame(Color.GREEN, fullSize), fullSize, compactSize)
         owner.install(request - 1, currentKey, stale)
         check()
         owner.install(request, currentKey, stale)
@@ -114,7 +114,7 @@ class AmbientPresentationSceneTest {
         val pending = at(.8f)
         assertEquals(Color.YELLOW, pending.getPixel(200, 200))
         assertEquals(Color.GREEN, pending.getPixel(280, 200))
-        owner.install(request, currentKey, AmbientPresentationScene(compact(), wide, fullSize, compactSize, 0f), 1f)
+        owner.install(request, currentKey, AmbientPresentationScene(compact(), wide, fullSize, compactSize), 1f)
         assertPixels(pending, at(1f))
         for (p in listOf(.9f, .55f, .45f, .6f)) assertPixels(pending, at(p))
         assertEquals(Color.BLUE, at(0f).getPixel(200, 200))
@@ -130,7 +130,7 @@ class AmbientPresentationSceneTest {
             painter.drawFrame(Canvas(it), 480f, 480f, owner, currentKey, live, 1f, AmbientPainter(), progress, Color.WHITE)
         }
         val before = at(.4f)
-        owner.install(request, currentKey, AmbientPresentationScene(live.target, frame(Color.GREEN, fullSize), fullSize, compactSize, 0f), .4f)
+        owner.install(request, currentKey, AmbientPresentationScene(live.target, frame(Color.GREEN, fullSize), fullSize, compactSize), .4f)
         assertPixels(before, at(.4f))
         at(.42f)
         at(.4f)
@@ -146,7 +146,7 @@ class AmbientPresentationSceneTest {
         val currentKey = key(false)
         val live = AmbientTransition(target = compact(), startOpacity = 1f, endOpacity = 1f)
         val request = owner.begin(currentKey, live)
-        owner.install(request, currentKey, AmbientPresentationScene(live.target, frame(Color.GREEN, fullSize), fullSize, compactSize, 0f))
+        owner.install(request, currentKey, AmbientPresentationScene(live.target, frame(Color.GREEN, fullSize), fullSize, compactSize))
         val before = Bitmap.createBitmap(480, 480, Bitmap.Config.ARGB_8888)
         painter.drawFrame(Canvas(before), 480f, 480f, owner, currentKey, live, 1f, compactPainter, 0f, Color.WHITE)
         painter.drawFrame(Canvas(before), 480f, 480f, owner, currentKey, live, 1f, compactPainter, .225f, Color.WHITE)
@@ -161,7 +161,7 @@ class AmbientPresentationSceneTest {
         val after = Bitmap.createBitmap(480, 480, Bitmap.Config.ARGB_8888)
         painter.drawFrame(Canvas(after), 480f, 480f, owner, nextKey, live, 1f, compactPainter, .225f, Color.WHITE)
         assertPixels(before, after)
-        val scene = AmbientPresentationScene(frame(Color.BLUE), frame(Color.GREEN, nextKey.fullSize), nextKey.fullSize, nextKey.compactSize, 0f)
+        val scene = AmbientPresentationScene(frame(Color.BLUE), frame(Color.GREEN, nextKey.fullSize), nextKey.fullSize, nextKey.compactSize)
         owner.install(next, nextKey, scene, .225f)
         owner.clear(); painter.clear()
         owner.install(next, nextKey, scene)
@@ -180,11 +180,11 @@ class AmbientPresentationSceneTest {
         val replacement = frame(Color.BLUE)
         val currentFrame = AmbientTransition(target = replacement, startOpacity = 1f, endOpacity = 1f)
         val current = owner.begin(currentKey, currentFrame)
-        val obsolete = AmbientPresentationScene(frame(Color.RED), null, fullSize, compactSize, 0f)
+        val obsolete = AmbientPresentationScene(frame(Color.RED), null, fullSize, compactSize)
         owner.install(old, oldKey, obsolete)
         assertNull(owner.scene)
         assertSame(currentFrame, owner.pendingFrame(currentKey, currentFrame))
-        val latest = AmbientPresentationScene(replacement, frame(Color.GREEN, fullSize), fullSize, compactSize, 1f)
+        val latest = AmbientPresentationScene(replacement, frame(Color.GREEN, fullSize), fullSize, compactSize)
         owner.install(current, currentKey, latest)
         assertTrue(owner.isPrepared(currentKey))
         owner.clear()
