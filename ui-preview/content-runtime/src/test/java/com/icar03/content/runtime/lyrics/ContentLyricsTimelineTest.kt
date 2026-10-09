@@ -66,7 +66,8 @@ class ContentLyricsTimelineTest {
         timeline.update(media(title = "First", position = 40_000L))
         now = 2_000L
         timeline.update(media(title = "Second", position = 40_000L))
-        assertFalse(timeline.ready())
+        assertTrue(timeline.ready())
+        assertEquals(0L, timeline.positionMs())
         timeline.update(media(title = "Second", position = 0L))
         assertTrue(timeline.ready())
         assertEquals(0L, timeline.positionMs())
@@ -145,7 +146,8 @@ class ContentLyricsTimelineTest {
         timeline.update(avrcp(position = 30_000L, sequence = 1L, capturedAt = now, title = "First"))
         now += 1_000L
         timeline.update(avrcp(position = 30_000L, sequence = 1L, capturedAt = now, title = "Second"))
-        assertFalse(timeline.ready())
+        assertTrue(timeline.ready())
+        assertEquals(0L, timeline.positionMs())
         timeline.update(avrcp(position = 0L, sequence = 2L, capturedAt = now, title = "Second"))
         assertTrue(timeline.ready())
         now += 1_000L
@@ -161,8 +163,10 @@ class ContentLyricsTimelineTest {
         timeline.update(
             avrcp(position = 30_000L, sequence = 2L, capturedAt = now, title = "Second")
         )
-        assertFalse(timeline.ready())
-        assertEquals(-1L, timeline.positionMs())
+        assertTrue(timeline.ready())
+        assertEquals(0L, timeline.positionMs())
+        now += 1_000L
+        assertEquals(1_000L, timeline.positionMs())
 
         timeline.update(
             avrcp(position = 0L, sequence = 3L, capturedAt = now, title = "Second")

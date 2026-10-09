@@ -148,10 +148,12 @@ class LyricsPlaybackAnchorContractTest {
         assertNotSame(verified, timeline.anchor())
         assertEquals(0L, timeline.positionMs())
         timeline.update(avrcp(0, 4, now, title = "Second"))
-        assertFalse(timeline.ready())
-        assertSame(ContentPorts.LyricsPlaybackAnchor.unknown(), timeline.anchor())
-        timeline.update(avrcp(0, 5, now, title = "Second"))
         assertTrue(timeline.ready())
+        assertNotSame(verified, timeline.anchor())
+        assertEquals(0L, timeline.positionMs())
+        timeline.update(avrcp(0, 4, now, title = "Second"))
+        assertTrue(timeline.ready())
+        assertEquals(0L, timeline.positionMs())
     }
 
     @Test fun replacementFrameDeferralAndResetNeverMakeQueriesIntoNewPublisherEvidence() {

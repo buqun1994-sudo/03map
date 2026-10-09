@@ -254,11 +254,11 @@ class BluetoothTimelineCorrectionTest {
         rig.now += 10L
         rig.avrcp(40_030L, 3L, title = "Next Song")
         assertTrue(rig.timeline.recordingGeneration() > generation)
-        assertFalse(rig.timeline.ready())
-        assertEquals(-1L, rig.timeline.positionMs())
-        rig.now += 1_000L
-        rig.avrcp(0L, 4L, title = "Next Song")
         assertTrue(rig.timeline.ready())
+        assertEquals(0L, rig.timeline.positionMs())
+        rig.now += 1_000L
+        assertEquals(1_000L, rig.timeline.positionMs())
+        rig.avrcp(0L, 4L, title = "Next Song")
         assertEquals(0L, rig.timeline.positionMs())
     }
 
