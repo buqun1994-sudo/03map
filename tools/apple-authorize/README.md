@@ -1,19 +1,25 @@
 # Apple 官方授权页的 Chrome 66 兼容资源
 
-此目录维护两个公开 Apple ID widget 脚本的原始来源。应用仍加载真实官方授权页、表单、账号输入、TLS 请求与返回；本地替换仅限两个固定 CDN 哈希路径，没有系统 provider 变更或通用脚本重写。
+此目录锁定当前官方 MusicKit WOA 的 modern／legacy 入口及其字面量静态 JavaScript 依赖，再加 Apple ID 的两个 widget bundle，共 10 个资源。默认登录由既有 AuthBroker 准备公开 developer bearer 后进入官方 WOA；不再直接运行现代 Apple Music 网页播放器。官方 HTML、样式、表单、账号输入、Cookie、TLS 与认证请求仍在线处理。
 
-[官方 MusicKit v1](https://js-cdn.music.apple.com/musickit/v1/musickit.js) 的授权流程为 `authorize.music.apple.com/woa?a=...&referrer=...`，其中 `a` 是第三方信息 JSON 的 Base64，`thirdPartyToken` 为有效 developer bearer。WOA 继续转至 `activate.apple.com/mkauth`，然后真实的 IDMS 登录 widget。用户授权成功由官方返回 `musicUserToken`；密码与验证码仍由官方处理。
+[官方 MusicKit v1](https://js-cdn.music.apple.com/musickit/v1/musickit.js) 使用 `authorize.music.apple.com/woa?a=...&referrer=...`；`a` 为第三方信息 JSON 的 Base64，`thirdPartyToken` 为有效 developer bearer。真实授权结果经当前 attempt 的 nonce 返程，交回唯一 Connection 私有保存。此入口差异及 Lyrimuse 当前 macOS 实现的对照见[研究记录](../../docs/research/Apple登录与Lyrimuse对照-20261009.md)。
 
-当前 IDMS HTML 中两个 `<script src>` 均没有 integrity/SRI。两个 bundle 内的 ReactRedux 共享库分别含 `c[s] ??= new Map` 和 `ai[ii] ??= new Map`；Chrome 66 不能解析此运算符。应用按精确资源 URL 返回 esbuild 降级后的同一公开代码。WOA 的现代脚本、vendor、idtoken-verifier 在本次读取中没有这类障碍；`catch {}` 在 Chrome 66 已受支持，见 [V8 官方版本表](https://v8.dev/features/optional-catch-binding)，不能将它误判为需要降级的依据。
+原有兼容层仅覆盖两个 IDMS widget，不能覆盖 `/login` 跳转后的网页播放器主包或 WOA 的其它模块。本轮下载并锁定以下公开资源；每项输入／输出 SHA-256、精确 URL 和模块依赖以[锁文件](./lock.json)和[正式 provenance](../../source/amap-9.5.0.600013/assets/content-apple-authorize/provenance.json)为准：
 
-| 公开源码 | 原始 SHA-256 | 编译结果 SHA-256 |
-|---|---|---|
-| [home](./upstream/home-76bd5c25830b7078b52d.js) | `4780584db5095b3d338291478e94cda4cbd591b9719443369a81aa6643f799bd` | `839c4c5eaf3f43a9e799a048fe4617ee044029c3ff244ed0da49b15e5b404a98` |
-| [identityWidget](./upstream/identityWidget-e48dc0b32509f79e9025.js) | `7c2a73b176fcf68533c6cb713a9f61ab89555288ac3b9372406f8fdb6eb743cc` | `6e535986e45925207daeccf499488f0ae19f7314c2b5ab2e2fc9fa37ff286345` |
+| 来源／角色 | 锁定文件 |
+|---|---|
+| IDMS home | [home-76bd5c25830b7078b52d.js](./upstream/home-76bd5c25830b7078b52d.js) |
+| IDMS widget | [identityWidget-e48dc0b32509f79e9025.js](./upstream/identityWidget-e48dc0b32509f79e9025.js) |
+| WOA modern polyfills | [polyfills-modern.2a0ac662.js](./upstream/polyfills-modern.2a0ac662.js) |
+| WOA modern entry | [index.08057262.js](./upstream/index.08057262.js) |
+| WOA modern vendor | [vendor.c5b156fd.js](./upstream/vendor.c5b156fd.js) |
+| WOA modern verifier | [idtoken-verifier.esm.61302cb6.js](./upstream/idtoken-verifier.esm.61302cb6.js) |
+| WOA legacy polyfills | [polyfills-legacy.a17ec079.js](./upstream/polyfills-legacy.a17ec079.js) |
+| WOA legacy entry | [index-legacy.b2eb8295.js](./upstream/index-legacy.b2eb8295.js) |
+| WOA legacy vendor | [vendor-legacy.9c0241d1.js](./upstream/vendor-legacy.9c0241d1.js) |
+| WOA legacy verifier | [idtoken-verifier.esm-legacy.a1cbf4ce.js](./upstream/idtoken-verifier.esm-legacy.a1cbf4ce.js) |
 
-[lock.json](./lock.json) 固定编译器 esbuild 0.25.12、Chrome 66 target、输出参数及所有输入／输出哈希。[UUID 兼容源码](./random-uuid-compat.js) 只在缺少原生 `crypto.randomUUID` 且存在 `crypto.getRandomValues` 时添加 RFC 4122 v4 接口，使用 16 字节安全随机数及正确 version／variant 位；重复加载保持原函数，没有 `Math.random` 回退。Banner 的 SHA-256 为 `49e47ae01352a1154d0ba1ffaa68dbba3f543b6f2c24cce0648f6bef53aa8672`。
-
-[准备脚本](../../scripts/prepare-apple-authorize.mjs) 不联网，不读取 Cookie 或用户凭据。其默认编译器路径使用当前忽略目录的已安装包；可传 `--compiler-module` 指定任意本机模块路径，但版本必须严格为 0.25.12。生成位置为 [正式兼容资源](../../source/amap-9.5.0.600013/assets/content-apple-authorize/provenance.json)，原始 upstream 不打入 APK。
+[准备脚本](../../scripts/prepare-apple-authorize.mjs)使用锁定 esbuild 0.25.12、target Chrome 66，离线重建资源并检查字面量相对 JS 依赖闭包。未持有 Cookie 或用户凭据的公开源文件才进入此目录，原始 upstream 不打入 APK。既有两个 widget 的 `??=`、WOA legacy 的 `?.` 等语法由编译器降级；`catch {}` 已被 Chrome 66 支持，不能误判成障碍。[UUID 兼容源码](./random-uuid-compat.js)只在缺少原生 API 时使用 `crypto.getRandomValues` 提供 RFC 4122 v4，没有弱随机回退。[运行时兼容源码](./runtime-compat.js)补齐 IDMS widget 已使用的 `Object.fromEntries`，保留原生 API、符号键、迭代器关闭和普通自有 `__proto__` 键语义。WOA 官方 modern polyfill 已包含 `Promise.allSettled`，实际缺失环境执行由 Node 回归验证。
 
 ```bash
 node scripts/prepare-apple-authorize.mjs --compiler-module .tmp/apple-auth-compiler/node_modules/esbuild
@@ -21,6 +27,6 @@ node scripts/prepare-apple-authorize.mjs --check --compiler-module .tmp/apple-au
 node --test scripts/test-apple-authorize.mjs
 ```
 
-[纯 Node 验证](../../scripts/test-apple-authorize.mjs) 已运行 5 项通过：UUID 格式与安全字节／原生保留与幂等／无安全随机源不弱回退／固定源和编译结果可重建／改源拒绝。运行时还由 [资源准入回归](../../ui-preview/content-runtime/src/test/java/com/icar03/content/runtime/lyrics/AppleMusicAuthorizationCompatAssetsTest.kt) 验证真实 Android asset SHA 和严格 HTTPS、GET、authority、端口、查询、fragment、精确路径准入。
+[纯 Node 回归](../../scripts/test-apple-authorize.mjs)覆盖安全随机、native 保留、真实缺失 API 执行、固定源／输出重建及篡改拒绝；[Android 资产准入回归](../../ui-preview/content-runtime/src/test/java/com/icar03/content/runtime/lyrics/AppleMusicAuthorizationCompatAssetsTest.kt)验证全部 10 项资产 SHA、HTTPS／GET／authority／无 query 和 fragment／精确路径，及版本漂移、缺资源和文档不拦截。未知 JS 版本在 WOA `/assets/` 或 IDMS `/appleauth/static/module-assets/` 根返回明确不可用，并由 Binding 结束当前加载；绝不映射为旧脚本。其它文档、POST、API、CSS、图片及非准入 origin 保持官方网络。
 
-这是确定性解析问题的修复，不代表已完成真实账号、验证码、订阅地区与所有授权后动态 chunk 的验收。Apple 更新资源哈希时需重新只读取证并核对；未知资源保持官方网络路径，不能将新内容静默映射到旧代码。应用实际网页登录及凭据成功边界由宿主绑定与唯一 Connection owner 维护。
+上述证明确定性编译和准入合同；字面量依赖闭包不能证明账号输入后所有动态脚本都已覆盖，也不能代替车机 WebView 66 的实际表单、验证码、订阅和地区验收。Apple 变更哈希后需重新读取实际资源并更新完整锁，不能以本次本机回归宣称未来版本可用。

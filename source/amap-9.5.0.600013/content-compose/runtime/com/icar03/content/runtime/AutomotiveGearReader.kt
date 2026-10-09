@@ -12,7 +12,7 @@ import com.icar03.content.model.VehicleGear
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 
-internal data class AutomotiveGearIds(val current: Int = 289408001, val selector: Int = 289408000, val park: Int = 4)
+internal data class AutomotiveGearIds(val selector: Int = 289408000)
 internal fun interface AutomotiveGearProperties { fun readInt(propertyId: Int): Int? }
 internal interface AutomotiveGearSession {
     fun connect()
@@ -82,18 +82,15 @@ class AutomotiveGearReader internal constructor(
         }
         val manager = properties ?: return VehicleGear.Unknown
         val ids = platform.ids
-        val currentRaw = attempt("CURRENT_GEAR") { manager.readInt(ids.current) }
-        val current = DrivingGearMapper.fromCurrentGear(currentRaw, ids.park)
-        var selectorRaw: Int? = null
-        val gear = if (current != VehicleGear.Unknown) current else {
-            selectorRaw = attempt("GEAR_SELECTION") { manager.readInt(ids.selector) }
-            DrivingGearMapper.fromGearSelection(selectorRaw, ids.park)
-        }
+        // S56's live selector is the verified owner. CURRENT_GEAR has no verified live
+        // event on this vehicle and uses an incompatible enum; never prefer its stale value.
+        val selectorRaw = attempt("GEAR_SELECTION") { manager.readInt(ids.selector) }
+        val gear = DrivingGearMapper.fromGearSelection(selectorRaw)
         if (!active(epoch) || session !== currentSession) return VehicleGear.Unknown
-        val signature = "$currentRaw/$selectorRaw/$gear"
+        val signature = "$selectorRaw/$gear"
         if (signature != lastReading) {
             lastReading = signature
-            Log.i(TAG, "gear current=$currentRaw selector=$selectorRaw mapped=$gear")
+            Log.i(TAG, "gear selector=$selectorRaw mapped=$gear")
         }
         return gear
     }
@@ -171,9 +168,7 @@ internal class ReflectiveAutomotiveGearPlatform(
     },
 ) : AutomotiveGearPlatform {
     override val ids: AutomotiveGearIds by lazy {
-        AutomotiveGearIds(staticInt("android.car.VehiclePropertyIds", "CURRENT_GEAR", 289408001),
-            staticInt("android.car.VehiclePropertyIds", "GEAR_SELECTION", 289408000),
-            staticInt("android.car.VehicleGear", "GEAR_PARK", 4))
+        AutomotiveGearIds(staticInt("android.car.VehiclePropertyIds", "GEAR_SELECTION", 289408000))
     }
     private data class CarApi(val create: Method, val connect: Method, val disconnect: Method, val manager: Method)
     private val carApi: CarApi? by lazy {

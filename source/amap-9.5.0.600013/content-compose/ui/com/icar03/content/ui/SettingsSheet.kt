@@ -65,7 +65,7 @@ internal fun SettingsSheet(
             val verticalOffset = remember { Animatable(1f) }
             var wasOpen by remember { mutableStateOf(false) }
             val open = state.settingsOpen
-            val collapsed = open && state.settingsCollapsed && state.page == PanelPage.Lyrics
+            val collapsed = state.canCollapseSettings && state.settingsCollapsed
             val controlsEnabled = open && !collapsed && !state.lyricsProviderSettings.appleLoginOpen
             val settingsEvent: (ContentEvent) -> Unit = {
                 if (currentState.settingsOpen && (!currentState.lyricsProviderSettings.appleLoginOpen ||
@@ -93,13 +93,14 @@ internal fun SettingsSheet(
             }.value
             SideEffect {
                 onVisibilityChanged(open || wasOpen)
-                onOcclusionChanged(fullyCovering && state.uiOpacity >= 1f)
+                onOcclusionChanged(fullyCovering && state.interfaceOpacity >= 1f)
             }
             if (!open && !wasOpen) return@BoxWithConstraints
             Box(
                 Modifier.fillMaxSize()
                     .graphicsLayer {
                         translationY = verticalOffset.value
+                        alpha = state.interfaceOpacity
                     }
                     .settingsSurfaceShadow(design.page, design.dark, design.pageCornerRadius)
                     .clip(design.pageShape)
@@ -125,7 +126,7 @@ internal fun SettingsSheet(
                         SettingsLineText(title,
                             Modifier.align(Alignment.Center).padding(horizontal = 72.dp).testTag("settings-title"),
                             design.pageTitleStyle, design.text, textAlign = TextAlign.Center)
-                        if (state.page == PanelPage.Lyrics) SettingsIconButton(
+                        if (state.canCollapseSettings) SettingsIconButton(
                             onClick = { settingsEvent(ContentEvent.SettingsCollapseTapped) },
                             contentDescription = if (collapsed) "恢复设置页" else "下移收起设置页",
                             enabled = open && !state.lyricsProviderSettings.appleLoginOpen,

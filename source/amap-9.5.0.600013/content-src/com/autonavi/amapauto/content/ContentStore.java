@@ -559,8 +559,7 @@ public final class ContentStore {
             // Detect the edge at the fact reducer, before coalesced UI projections can hide it.
             VehicleGear nextGear = snapshot.dataAvailable && !snapshot.preview && snapshot.gear != null
                     ? snapshot.gear : VehicleGear.Unknown;
-            if (state.gear == VehicleGear.Park && nextGear != VehicleGear.Unknown
-                    && nextGear != VehicleGear.Park && state.autoCloseSettingsOnDrive) {
+            if (nextGear.isNonPark() && !state.gear.isNonPark() && state.autoCloseSettingsOnDrive) {
                 state.settingsAutoCloseSequence++;
             }
             state.gear = nextGear;

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "compilerVersion": "0.25.12",
   "compilerOptions": {
     "target": "chrome66",
@@ -14,13 +14,62 @@
       "name": "home-76bd5c25830b7078b52d.js",
       "url": "https://appleid.cdn-apple.com/appleauth/static/module-assets/home-76bd5c25830b7078b52d.js",
       "upstreamSha256": "4780584db5095b3d338291478e94cda4cbd591b9719443369a81aa6643f799bd",
-      "outputSha256": "839c4c5eaf3f43a9e799a048fe4617ee044029c3ff244ed0da49b15e5b404a98"
+      "outputSha256": "f4581facdd1c855d606a126e35a4bed5898840d532d51a6e456f1bec0a0b1326"
     },
     {
       "name": "identityWidget-e48dc0b32509f79e9025.js",
       "url": "https://appleid.cdn-apple.com/appleauth/static/module-assets/identityWidget-e48dc0b32509f79e9025.js",
       "upstreamSha256": "7c2a73b176fcf68533c6cb713a9f61ab89555288ac3b9372406f8fdb6eb743cc",
-      "outputSha256": "6e535986e45925207daeccf499488f0ae19f7314c2b5ab2e2fc9fa37ff286345"
+      "outputSha256": "af77edbaf6d3e08fa07c1e474a41b6a25f45b50912ac3da4608b8768b3d0f508"
+    },
+    {
+      "name": "polyfills-modern.2a0ac662.js",
+      "url": "https://authorize.music.apple.com/assets/polyfills-modern.2a0ac662.js",
+      "upstreamSha256": "2cb092ae6cc996012541d750739518108467f226c07083d9de75531e7bcdf1ee",
+      "outputSha256": "808dd3d2b378ef3aa6c8e9259c2a0a77be2a710d2be59c81de608cb79916b226"
+    },
+    {
+      "name": "index.08057262.js",
+      "url": "https://authorize.music.apple.com/assets/index.08057262.js",
+      "upstreamSha256": "f67575360d6896baf5544fce5027cd93e9cbf7ebb3b2bc96ea17fcc046885305",
+      "outputSha256": "a92dc9b8ad6effb364dff253728e6d8c212f17398a1a5f15221ad15d49a8ebee"
+    },
+    {
+      "name": "vendor.c5b156fd.js",
+      "url": "https://authorize.music.apple.com/assets/vendor.c5b156fd.js",
+      "upstreamSha256": "f535e99510d20af058a46b6c30734bbe19835732aabb2ddbc842785714421076",
+      "outputSha256": "5ebc0d63105cb3f400168753ac79d8ba47049d671de9b114e3b127e856ddca03"
+    },
+    {
+      "name": "idtoken-verifier.esm.61302cb6.js",
+      "url": "https://authorize.music.apple.com/assets/idtoken-verifier.esm.61302cb6.js",
+      "upstreamSha256": "620d797e939f9631d360b9bb417a20d108309712e61e1175970f930c308b525a",
+      "outputSha256": "185bb1d1dc68b6b15fa65ed36796b185c7e6f678d7e0109fa0f7de45b45275ac"
+    },
+    {
+      "name": "polyfills-legacy.a17ec079.js",
+      "url": "https://authorize.music.apple.com/assets/polyfills-legacy.a17ec079.js",
+      "upstreamSha256": "b369a7aa06abf18386d2851c5cd187c72882e64d35752a62d061ae94b08096da",
+      "outputSha256": "0afe20a7b0dffaa1a2512bd26f856bbc2566dce932893aec6bb80cc262497151"
+    },
+    {
+      "name": "index-legacy.b2eb8295.js",
+      "url": "https://authorize.music.apple.com/assets/index-legacy.b2eb8295.js",
+      "upstreamSha256": "f09630cae6ddaf1d303bad871dcb0a83530b2d409de74ca9299061d0ee5d5058",
+      "outputSha256": "ea483f3812d2935a7ea62ff8fccb4822e7fd1972ada9781caf994639df4ddf60"
+    },
+    {
+      "name": "vendor-legacy.9c0241d1.js",
+      "url": "https://authorize.music.apple.com/assets/vendor-legacy.9c0241d1.js",
+      "upstreamSha256": "8979a74ec563fe57c2b36304fab5f23b9ff4378a2a31653db81c1882269ef7ae",
+      "outputSha256": "8c50777cd350e09d25f0886e6238e2f0c93b155bd476b817569efa22fc476f4f"
+    },
+    {
+      "name": "idtoken-verifier.esm-legacy.a1cbf4ce.js",
+      "url": "https://authorize.music.apple.com/assets/idtoken-verifier.esm-legacy.a1cbf4ce.js",
+      "upstreamSha256": "5bb4ea73503b949c1514582cfcf61c703732be02845edd33ad5bbcd03e3813a5",
+      "outputSha256": "395a074deaca60f267aeec07eecc565a6b9c48f968f468e358da3a2416ece03c"
     }
-  ]
+  ],
+  "runtimeCompatibilitySha256": "d5964e159bbbb40d67437d6412431de4a428952769fe87de2b40f3eb190983a8"
 }

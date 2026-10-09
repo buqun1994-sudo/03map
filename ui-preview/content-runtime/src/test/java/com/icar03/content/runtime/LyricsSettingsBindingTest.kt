@@ -14,8 +14,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.icar03.content.runtime.lyrics.AppleMusicFixtureRig
+import kotlinx.coroutines.CompletableDeferred
 import java.io.ByteArrayInputStream
 import java.time.Duration
+import java.util.concurrent.TimeUnit
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -527,10 +529,17 @@ class LyricsSettingsBindingTest {
         } finally { owner.close() }
     }
 
-    @Test fun defaultLoginLoadsTheOfficialUrlWithoutAuthorizationBroker() {
+    @Test fun defaultLoginLoadsControlledWoaThroughTheConnectionOwnerBroker() {
         LoginWebViewShadow.reset()
         val rig = AppleMusicFixtureRig(null)
-        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, {}, rig.connection)
+        val transport = com.icar03.content.runtime.lyrics.AppleMusicFixtureTransport(
+            com.icar03.content.runtime.lyrics.AppleMusicFixture::bootstrapResponse,
+        )
+        val broker = com.icar03.content.runtime.lyrics.AppleMusicAuthBroker(rig.connection, transport, rig.clock)
+        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, {}, rig.connection,
+            authorizationBuilder = { attempt, deadline, cancellation ->
+                broker.prepareWebAuthorization(attempt, deadline, cancellation)
+            })
         try {
             beginRealLogin(owner)
             val attempt = field(owner, "activeAttempt") as AppleMusicConnection.LoginAttempt
@@ -538,10 +547,59 @@ class LyricsSettingsBindingTest {
                 AppleMusicConnection.LoginAttempt::class.java, java.lang.Long.TYPE, java.lang.Long.TYPE)
                 .apply { isAccessible = true }.invoke(owner, RuntimeEnvironment.getApplication(), attempt,
                     longField(owner, "lifecycleEpoch"), longField(owner, "loginEpoch"))
-            assertEquals(listOf(AppleMusicConnection.LOGIN_URL), LoginWebViewShadow.loadedUrls)
-            assertEquals(listOf(emptyMap<String, String>()), LoginWebViewShadow.loadedHeaders)
-            assertNull(field(owner, "authorizationJob"))
-            assertNull(field(owner, "authorizationCancellation"))
+            val start = Uri.parse(LoginWebViewShadow.loadedUrls.single())
+            assertEquals("authorize.music.apple.com", start.host)
+            assertEquals("/woa", start.path)
+            assertTrue(start.getQueryParameter("referrer").orEmpty().endsWith(attempt.id))
+            assertEquals(start.getQueryParameter("referrer"), LoginWebViewShadow.loadedHeaders.single()["Referer"])
+            assertEquals(3, transport.calls.size)
+            assertTrue(transport.calls.all { !it.headers.containsKey("Media-User-Token") })
+        } finally { owner.close() }
+    }
+
+    @Test fun authorizationBootstrapOwnsItsDeadlineBeforePageTimeoutBegins() {
+        LoginWebViewShadow.reset()
+        val rig = AppleMusicFixtureRig(null)
+        val gate = CompletableDeferred<com.icar03.content.runtime.lyrics.AppleMusicWebAuthorization.Configuration>()
+        var bootstrapDeadline = 0L
+        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, {}, rig.connection,
+            authorizationBuilder = { attempt, deadline, _ ->
+                bootstrapDeadline = deadline
+                gate.await()
+            })
+        try {
+            beginRealLogin(owner)
+            val attempt = field(owner, "activeAttempt") as AppleMusicConnection.LoginAttempt
+            LyricsSettingsBinding::class.java.getDeclaredMethod("createLoginWebView", Context::class.java,
+                AppleMusicConnection.LoginAttempt::class.java, java.lang.Long.TYPE, java.lang.Long.TYPE)
+                .apply { isAccessible = true }.invoke(owner, RuntimeEnvironment.getApplication(), attempt,
+                    longField(owner, "lifecycleEpoch"), longField(owner, "loginEpoch"))
+            assertTrue(bootstrapDeadline - System.nanoTime() > TimeUnit.SECONDS.toNanos(50))
+            assertTrue(LoginWebViewShadow.loadedUrls.isEmpty())
+            assertNull(field(owner, "pageLoadTimeout"))
+            gate.complete(com.icar03.content.runtime.lyrics.AppleMusicWebAuthorization.configuration(attempt, "fixture-developer"))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("authorize.music.apple.com", Uri.parse(LoginWebViewShadow.loadedUrls.single()).host)
+            assertNotNull(field(owner, "pageLoadTimeout"))
+        } finally { owner.close() }
+    }
+
+    @Test fun compatibilityManifestDriftFailsOnlyTheCurrentAttemptAndDeduplicates() {
+        val rig = AppleMusicFixtureRig(null)
+        val messages = mutableListOf<String>()
+        val owner = LyricsSettingsBinding(RuntimeEnvironment.getApplication(), {}, messages::add, rig.connection,
+            authorizationConfiguration = { com.icar03.content.runtime.lyrics.AppleMusicWebAuthorization.configuration(it, "fixture-developer-token") })
+        try {
+            beginRealLogin(owner)
+            val view = attachWithoutLoading(owner)
+            val request = requestFor("https://authorize.music.apple.com/assets/unknown-version.js", mainFrame = false)
+            assertNotNull(view.webViewClient.shouldInterceptRequest(view, request))
+            assertNotNull(view.webViewClient.shouldInterceptRequest(view, request))
+            assertTrue(messages.isEmpty())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, messages.size)
+            assertTrue(messages.single().contains("资源已更新"))
+            assertNull(field(owner, "activeAttempt"))
         } finally { owner.close() }
     }
 
@@ -678,6 +736,7 @@ class LyricsSettingsBindingTest {
             val view = attachWithoutLoading(owner)
             view.readiness = "\"loading\""
             checkNotNull(view.webChromeClient).onProgressChanged(view, 100)
+            view.webViewClient.onPageStarted(view, AppleMusicConnection.LOGIN_URL, null)
             view.webViewClient.onPageFinished(view, AppleMusicConnection.LOGIN_URL)
             assertFalse(field(owner, "initialPageFinished") as Boolean)
             assertNotNull(field(owner, "pageLoadTimeout"))
@@ -708,11 +767,14 @@ class LyricsSettingsBindingTest {
             beginRealLogin(owner)
             val view = attachWithoutLoading(owner)
             val handled = checkNotNull(view.webChromeClient).onConsoleMessage(android.webkit.ConsoleMessage(
-                "Uncaught SyntaxError: Unexpected token", "https://appleid.cdn-apple.com/appleauth/static/module-assets/future.js",
+                "Uncaught SyntaxError: Unexpected token secret-token", "https://appleid.cdn-apple.com/appleauth/static/module-assets/future.js?query=do-not-log",
                 1, android.webkit.ConsoleMessage.MessageLevel.ERROR,
             ))
             assertTrue(handled)
-            assertTrue((pageError(owner) as String).contains("暂时无法运行"))
+            assertTrue((pageError(owner) as String).contains("不兼容"))
+            val log = org.robolectric.shadows.ShadowLog.getLogsForTag("LyricsSettingsBinding").last().msg
+            assertFalse(log.contains("secret-token"))
+            assertFalse(log.contains("do-not-log"))
             assertTrue(owner.state.appleLoginOpen)
             assertFalse(rig.connection.refresh().isConnecting)
             assertNull(rig.store.value)

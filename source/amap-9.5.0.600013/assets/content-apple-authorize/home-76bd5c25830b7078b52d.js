@@ -10,6 +10,27 @@
     return hex.slice(0, 4).join("") + "-" + hex.slice(4, 6).join("") + "-" + hex.slice(6, 8).join("") + "-" + hex.slice(8, 10).join("") + "-" + hex.slice(10, 16).join("");
   };
 })();
+// Public widget code calls Object.fromEntries; Chrome 66 has iterators but not this API.
+// Preserve a native implementation and DefineProperty so __proto__ remains an ordinary own key.
+(function () {
+  if (typeof Object.fromEntries === "function") return;
+  Object.defineProperty(Object, "fromEntries", {
+    configurable: true,
+    writable: true,
+    value: function (entries) {
+      var result = {};
+      for (var entry of entries) {
+        if (entry === null || (typeof entry !== "object" && typeof entry !== "function")) {
+          throw new TypeError("Object.fromEntries requires entry objects");
+        }
+        Object.defineProperty(result, entry[0], {
+          value: entry[1], writable: true, enumerable: true, configurable: true
+        });
+      }
+      return result;
+    }
+  });
+})();
 
 /*! For license information please see home-76bd5c25830b7078b52d.js.LICENSE.txt */
 window.webpackChunk_idms_private_appleauth_web_sa && delete window.webpackChunk_idms_private_appleauth_web_sa, (function() {

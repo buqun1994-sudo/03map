@@ -23,7 +23,7 @@
 | 色相条／色阶 | 同为60高、总宽相等；色阶八个无缝等分且完整可见，无内部横向滚动 |
 | 色相选择框 | 60×60、4圆角、白色4描边、内部显示当前饱和色 |
 
-开关视觉统一为60×30，滑块30×25、边缘内缩2.5dp，开启态两种主题均为绿色 `#33C458` 配白色滑块；关闭态保留各主题灰色。整行右侧对齐不变，单行文字框30高，使单行卡片总高为78。整行使用标准 `toggleable` 和系统最小触摸扩展，独立开关保留48热区。八段色阶在窄幅按总宽等分，保留60高；不把旧的固定48宽色块强行塞入或滚动。
+开关视觉统一为60×30，滑块30×25、边缘内缩2.5dp，开启态两种主题均为绿色 `#33C458` 配白色滑块；关闭态保留各主题灰色。整行右侧对齐不变，单行文字框30高，使单行卡片总高为78；长偏好名称按同一24sp字号自然换行，行和卡片随正文增高，不裁切名称。整行使用标准 `toggleable` 和系统最小触摸扩展，独立开关保留48热区。八段色阶在窄幅按总宽等分，保留60高；不把旧的固定48宽色块强行塞入或滚动。
 
 ## 字体、颜色与阴影
 
@@ -48,7 +48,7 @@ Figma 使用 `Microsoft YaHei UI`；Android 设置复用项目已有系统 sans-
 
 [SettingsControls](../../source/amap-9.5.0.600013/content-compose/ui/com/icar03/content/ui/SettingsControls.kt)统一 `SettingsSection`、`SettingsFieldBlock`、`SettingsDivider`、`SettingsNavigationItem`、`SettingsSwitchRow`、`SettingsSliderRow`、`SettingsSegmented`、`SettingsColorPicker`。原子层只接值与回调；成熟Material3／Foundation控件拥有输入、焦点与无障碍，页面不自造手势。
 
-1. 设置面板固定在原左侧1/3区域，首页按“布局／音乐／其它”组织已有六个入口；首页返回关闭，子页返回首页。
+1. 设置面板固定在原左侧1/3区域，首页按“布局／音乐／其它”组织已有六个入口；首页返回关闭，子页返回首页。上下移收起按钮仅在“歌词设置”子页显示，只依据设置当前栏目，与底层页面无关；收起期间露出的内容点击恢复原栏目，原操作不穿透，全部设置栏目仍继续正常歌词跟随。
 2. 所有子页固定标题栏、下方独立滚动。歌词设置移除三句预览。
 3. 状态栏按时间、温度、电池、沉浸式全屏组织。续航、插枪、预约、剩余时长与功率各自可保存且沿真实消费者生效；充电完成文案归插枪显示控制。
 4. “状态栏保持分屏”开启时，全屏歌词顶栏保留左侧初始宽度；关闭时使用全屏宽度，与顶栏是否显示分开保存。
@@ -59,8 +59,8 @@ Figma 使用 `Microsoft YaHei UI`；Android 设置复用项目已有系统 sans-
 
 ## Apple 登录窗口
 
-用户明确网页可单独打开且覆盖应用全屏。登录入口从歌词库卡片打开应用内独立大窗口，不受设置页1/3宽度限制；顶部返回、关闭和系统返回均结束网页登录并回到原设置页。背景点击不关闭，窗口期间其它偏好与内容按钮沿现有门禁拒绝。ComponentDialog必须使用真实宿主Activity及其WindowManager，保持默认应用token注入；Activity由ContentRuntime既有owner经ContentComposeHost与LocalContentWindowActivity传入，不从DecorContext或视图挂载时机推断；不能把View的windowToken或applicationWindowToken赋给TYPE_APPLICATION窗口。物理配置Context只构造AbstractComposeView根及WebView内容。show及网页创建前设置MATCH_PARENT、CENTER零偏移、系统栏和ADJUST_RESIZE，并在内容建立前提供物理密度和屏幕配置；不依赖后置SideEffect修正首帧，也不使用Compose Dialog按宿主dp配置重测。网页保持不透明，不继承内容根的uiOpacity。首个predraw与复开覆盖污染宿主资源夹具，并独立检查真实Activity／WindowManager归属和框架注入的Activity应用token（区别于ViewRoot窗口binder）；Robolectric不校验真实WMS AppWindowToken，冷开、复开、账号输入及键盘仍以同包车机手测为准。
+用户明确网页可单独打开且覆盖应用全屏。登录入口从歌词库卡片打开应用内独立大窗口，不受设置页1/3宽度限制；顶部返回、关闭和系统返回均结束网页登录并回到原设置页。背景点击不关闭，窗口期间其它偏好与内容按钮沿现有门禁拒绝。ComponentDialog必须使用真实宿主Activity及其WindowManager，保持默认应用token注入；Activity由ContentRuntime既有owner经ContentComposeHost与LocalContentWindowActivity传入，不从DecorContext或视图挂载时机推断；不能把View的windowToken或applicationWindowToken赋给TYPE_APPLICATION窗口。物理配置Context只构造AbstractComposeView根及WebView内容。show及网页创建前设置MATCH_PARENT、CENTER零偏移、系统栏和ADJUST_RESIZE，并在内容建立前提供物理密度和屏幕配置；不依赖后置SideEffect修正首帧，也不使用Compose Dialog按宿主dp配置重测。网页保持不透明，不继承交互UI的uiOpacity。首个predraw与复开覆盖污染宿主资源夹具，并独立检查真实Activity／WindowManager归属和框架注入的Activity应用token（区别于ViewRoot窗口binder）；Robolectric不校验真实WMS AppWindowToken，冷开、复开、账号输入及键盘仍以同包车机手测为准。
 
-流程继续复用[LyricsSettingsBinding](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/LyricsSettingsBinding.kt)唯一WebView、attempt及生命周期，并沿[AppleMusicConnection](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/lyrics/AppleMusicConnection.kt)唯一私有加密保存。用户主动连接后，既有broker限时准备公开developer bearer，打开官方独立MusicKit WOA授权站，经官方activate／IDMS页面输入账号、密码和验证码，再将官方nonce返程的真实musicUserToken交回Connection；developer bearer不能确认账号连接。兼容当前WebView66时只对两条锁定官方CDN脚本路径返回可重建的Chrome66语法版本与缺失randomUUID的标准安全实现，表单及认证请求仍归Apple，详见[来源与重建说明](../../tools/apple-authorize/README.md)。不以商店现代语法探针拒绝独立授权。页面就绪仅检查可见交互及同源iframe中的交互，不读取输入内容；Logo或空iframe不结束有限加载期限。关闭、宿主停止和组合卸载同时取消Cookie检查、授权准备并销毁网页；旧attempt／nonce／页面回调拒收。真实账号、验证码、订阅及地区仍需官方流程在线完成。
+流程继续复用[LyricsSettingsBinding](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/LyricsSettingsBinding.kt)唯一WebView、attempt及生命周期，并沿[AppleMusicConnection](../../source/amap-9.5.0.600013/content-compose/runtime/com/icar03/content/runtime/lyrics/AppleMusicConnection.kt)唯一私有加密保存。用户主动连接后，既有broker限时准备公开developer bearer，打开官方独立MusicKit WOA授权站，经官方activate／IDMS页面输入账号、密码和验证码，再将官方nonce返程的真实musicUserToken交回Connection；developer bearer不能确认账号连接。兼容当前WebView66时对锁定的WOA modern／legacy入口、字面量模块依赖及两个IDMS widget共10项公开脚本返回可重建Chrome66语法版本，并补齐安全randomUUID与Object.fromEntries；官方polyfill负责Promise.allSettled。未知授权脚本版本明确报告资源不兼容，表单及认证请求仍归Apple，详见[来源与重建说明](../../tools/apple-authorize/README.md)。不以商店现代语法探针拒绝独立授权。页面就绪仅检查可见交互及同源iframe中的交互，不读取输入内容；Logo或空iframe不结束有限加载期限。关闭、宿主停止和组合卸载同时取消Cookie检查、授权准备并销毁网页；旧attempt／nonce／页面回调拒收。真实账号、验证码、订阅及地区仍需官方流程在线完成。
 
 偏好范围、默认值与schema迁移由 [设置项清单](设置项清单.md) 及现有Store拥有。前轮Figma布局证据见 [Figma重构验证记录](../testing/设置页Figma重构验证记录-20261007.md)，本轮单选、性能与网页边界见 [修复验证记录](../testing/设置性能与媒体读取修复验证记录-20261007.md)。

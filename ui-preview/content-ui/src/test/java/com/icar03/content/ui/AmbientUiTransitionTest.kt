@@ -224,7 +224,7 @@ class AmbientUiTransitionTest {
     }
 
     @Test fun coveringSettingsFreezeBackgroundWorkAndCollapseResumesTheExistingScene() {
-        val state = mutableStateOf(ContentUiState(previewMode = false, page = PanelPage.Lyrics))
+        val state = mutableStateOf(ContentUiState(previewMode = false, page = PanelPage.Lyrics, settingsSection = SettingsSection.Lyrics))
         val texture = scene(Color.BLUE)
         compose.mainClock.autoAdvance = false
         compose.setContent {

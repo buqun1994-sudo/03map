@@ -56,7 +56,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.ImmersiveShowDockChanged -> update { it.copy(immersiveShowDock = event.value) }
             ContentEvent.SettingsDismissed -> update { it.copy(settingsOpen = false, settingsCollapsed = false, message = null) }
             ContentEvent.SettingsCollapseTapped -> update {
-                if (it.settingsOpen && it.page == PanelPage.Lyrics) it.copy(settingsCollapsed = !it.settingsCollapsed) else it
+                if (it.canCollapseSettings) it.copy(settingsCollapsed = !it.settingsCollapsed) else it
             }
             ContentEvent.SettingsRestored -> update { it.copy(settingsCollapsed = false) }
             is ContentEvent.SettingsSectionSelected -> update { if (it.settingsOpen) it.copy(settingsSection = event.section) else it }

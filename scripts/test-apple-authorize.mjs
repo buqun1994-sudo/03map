@@ -11,6 +11,7 @@ import { buildAssetOutputs, prepareAppleAuthorizeAssets } from './prepare-apple-
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tool = resolve(ROOT, 'tools/apple-authorize');
 const banner = readFileSync(resolve(tool, 'random-uuid-compat.js'), 'utf8');
+const runtime = readFileSync(resolve(tool, 'runtime-compat.js'), 'utf8');
 const digest = value => createHash('sha256').update(value).digest('hex');
 
 function install(context) { new Script(banner).runInContext(context); }
@@ -55,6 +56,65 @@ test('packaged sources and results reproduce the fixed official upstream and com
   }
 });
 
+test('Object.fromEntries accepts maps and symbol keys without prototype pollution, and preserves natives', () => {
+  const context = createContext({});
+  new Script('Object.fromEntries = undefined').runInContext(context);
+  new Script(runtime).runInContext(context);
+  const result = new Script(`(() => {
+    const symbol = Symbol('entry');
+    const value = Object.fromEntries(new Map([['__proto__', { polluted: true }], ['key', 2], [symbol, 3]]));
+    return value.key === 2 && value[symbol] === 3 && value.__proto__.polluted === true &&
+      Object.getPrototypeOf(value) === Object.prototype && !Object.prototype.polluted;
+  })()`).runInContext(context);
+  assert.equal(result, true);
+  const installed = new Script('Object.fromEntries').runInContext(context);
+  new Script(runtime).runInContext(context);
+  assert.equal(new Script('Object.fromEntries').runInContext(context), installed);
+  const nativeContext = createContext({});
+  const native = new Script('Object.fromEntries').runInContext(nativeContext);
+  new Script(runtime).runInContext(nativeContext);
+  assert.equal(new Script('Object.fromEntries').runInContext(nativeContext), native);
+});
+
+test('Object.fromEntries closes an iterator on an invalid entry and rejects noniterables', () => {
+  const context = createContext({});
+  new Script('Object.fromEntries = undefined').runInContext(context);
+  new Script(runtime).runInContext(context);
+  assert.equal(new Script(`(() => {
+    let closed = false;
+    const entries = { [Symbol.iterator]() { return {
+      next() { return { value: 7, done: false }; }, return() { closed = true; return { done: true }; }
+    }; } };
+    try { Object.fromEntries(entries); } catch (error) { return error instanceof TypeError && closed; }
+    return false;
+  })()`).runInContext(context), true);
+  assert.throws(() => new Script('Object.fromEntries(null)').runInContext(context), /TypeError/);
+});
+
+test('official WOA polyfill executes allSettled on an engine missing that API', async () => {
+  const context = createContext({});
+  new Script('Promise.allSettled = undefined').runInContext(context);
+  const source = readFileSync(resolve(tool, 'upstream/polyfills-modern.2a0ac662.js'), 'utf8');
+  new Script(source).runInContext(context);
+  const results = await new Script('Promise.allSettled([Promise.resolve(7), Promise.reject("denied")])').runInContext(context);
+  assert.equal(results[0].status, 'fulfilled');
+  assert.equal(results[0].value, 7);
+  assert.equal(results[1].status, 'rejected');
+  assert.equal(results[1].reason, 'denied');
+});
+
+test('locked WOA modern and legacy module dependencies are complete and widget runtime shim is present', () => {
+  const lock = JSON.parse(readFileSync(resolve(tool, 'lock.json'), 'utf8'));
+  const outputs = buildAssetOutputs();
+  assert.equal(lock.assets.length, 10);
+  for (const asset of lock.assets) assert.ok(outputs.get(asset.name).toString('utf8').includes(runtime.trimEnd()));
+  const facts = JSON.parse(outputs.get('provenance.json')).sources;
+  assert.deepEqual(facts.find(row => row.url.endsWith('/index.08057262.js')).dependencies,
+    ['vendor.c5b156fd.js', 'idtoken-verifier.esm.61302cb6.js']);
+  assert.deepEqual(facts.find(row => row.url.endsWith('/index-legacy.b2eb8295.js')).dependencies,
+    ['vendor-legacy.9c0241d1.js', 'idtoken-verifier.esm-legacy.a1cbf4ce.js']);
+});
+
 test('changed public source is rejected before generating a replacement resource', () => {
   const tempBase = resolve(ROOT, '.tmp/apple-auth-compat');
   mkdirSync(tempBase, { recursive: true });
@@ -63,6 +123,7 @@ test('changed public source is rejected before generating a replacement resource
   mkdirSync(resolve(target, 'upstream'), { recursive: true });
   copyFileSync(resolve(tool, 'lock.json'), resolve(target, 'lock.json'));
   copyFileSync(resolve(tool, 'random-uuid-compat.js'), resolve(target, 'random-uuid-compat.js'));
+  copyFileSync(resolve(tool, 'runtime-compat.js'), resolve(target, 'runtime-compat.js'));
   const lock = JSON.parse(readFileSync(resolve(tool, 'lock.json'), 'utf8'));
   for (const resource of lock.assets) copyFileSync(resolve(tool, 'upstream', resource.name), resolve(target, 'upstream', resource.name));
   writeFileSync(resolve(target, 'upstream', lock.assets[0].name), 'changed upstream');

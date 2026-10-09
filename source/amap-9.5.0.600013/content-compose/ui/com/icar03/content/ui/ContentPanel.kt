@@ -140,9 +140,8 @@ fun ContentPanel(
         true
     }
     val dispatch: (ContentEvent) -> Unit = { dispatchAccepted(it) }
-    Surface(modifier.fillMaxSize().graphicsLayer {
-        alpha = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f
-    }, color = MaterialTheme.colorScheme.background) {
+    val uiOpacity = state.interfaceOpacity
+    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             BoxWithConstraints(Modifier.fillMaxSize().observeUnconsumedPageTap(
                 state.page == PanelPage.Lyrics && contentInteractive && !pageMotion) {
                 clickSound(view)
@@ -192,18 +191,18 @@ fun ContentPanel(
                         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                             if (wide) {
                                 ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
-                                    Modifier.fillMaxSize().graphicsLayer { alpha = wideOpacity() })
+                                    Modifier.fillMaxSize().graphicsLayer { alpha = uiOpacity * wideOpacity() })
                             }
                         }
                         if (!wide) Box(Modifier.fillMaxWidth().height(mediaHeight)
                             .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
-                                alpha = compactOpacity()
+                                alpha = uiOpacity * compactOpacity()
                             }) {
                             PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
                                 compact, state.showMediaSourceSwitcher)
                         }
                         if (showDock) Box(Modifier.fillMaxWidth().graphicsLayer {
-                            alpha = if (state.immersiveShowDock) 1f else compactOpacity()
+                            alpha = uiOpacity * if (state.immersiveShowDock) 1f else compactOpacity()
                         }) {
                             PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning,
                                 backgroundOpacity = compactOpacity)
@@ -214,7 +213,7 @@ fun ContentPanel(
                     Layout(content = {
                         if (state.previewMode) {
                             if (state.page == PanelPage.Shortcuts) {
-                                Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                Column(Modifier.fillMaxSize().graphicsLayer { alpha = uiOpacity }.padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
                             } else Box(Modifier.fillMaxSize()) {
                                 LyricsPage(latestPanelState.value, dispatch, { latestLyricsState.value() }, presentationScale = if (wide) 3.0f else 1f,
                                     externalGestureActive = transitioning, interactionEnabled = contentInteractive && !transitioning,
@@ -243,7 +242,7 @@ fun ContentPanel(
                                 userScrollEnabled = contentInteractive && !transitioning && !wide) { index ->
                                 CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
                                     if (PanelPage.entries[index] == PanelPage.Shortcuts) {
-                                        Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                        Column(Modifier.fillMaxSize().graphicsLayer { alpha = uiOpacity }.padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
                                     } else Box(Modifier.fillMaxSize()) {
                                         LyricsPage(latestPanelState.value, dispatch, { latestLyricsState.value() }, presentationScale = if (wide) 3.0f else 1f,
                                             externalGestureActive = transitioning || pager.isScrollInProgress,
@@ -274,11 +273,11 @@ fun ContentPanel(
                         compact = compact, modifier = Modifier.align(if (wide) Alignment.TopStart else Alignment.TopEnd)
                             .padding(top = if (showTop) topBarHeight + 12.dp else 16.dp,
                                 start = if (wide) 12.dp else 0.dp,
-                                 end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = if (wide) wideOpacity() else compactOpacity() }) { id ->
+                                 end = if (wide) 0.dp else 12.dp).zIndex(5f).graphicsLayer { alpha = uiOpacity * if (wide) wideOpacity() else compactOpacity() }) { id ->
                         dispatch(if (id == "enter") ContentEvent.EnterLyricsImmersive else ContentEvent.ExitLyricsImmersive)
                     }
                 }
-                 DockLevelOverlayHost(dockOverlay) { control, level, modifier ->
+                 DockLevelOverlayHost(dockOverlay, uiOpacity) { control, level, modifier ->
                     VehicleControlOemIcon(control, state.controls.getValue(control).copy(target = level), state.dark, modifier)
                 }
                 AnimatedVisibility(
@@ -289,7 +288,7 @@ fun ContentPanel(
                 if (state.scenariosOpen) PreviewScenarioSheet(state, dispatch)
                 // A collapsed sheet owns the next tap on exposed content, including semantic activation.
                 // Keep this above underlying controls and below the sheet; no media/vehicle intent can leak through.
-                if (state.settingsOpen && state.settingsCollapsed && state.page == PanelPage.Lyrics &&
+                if (state.canCollapseSettings && state.settingsCollapsed &&
                     !state.lyricsProviderSettings.appleLoginOpen) {
                     Box(Modifier.fillMaxSize().zIndex(6f).testTag("settings-restore-content")
                         .observeUnconsumedPageTap(!pageMotion) { dispatch(ContentEvent.SettingsRestored) }
@@ -327,7 +326,7 @@ fun ContentPanel(
                         exit = fadeOut(tween(200)) + slideOutVertically(tween(200, easing = CubicBezierEasing(.32f, .72f, 0f, 1f))) { it / 2 },
                     ) {
                         Surface(
-                            Modifier.testTag("status-feedback").widthIn(max = feedbackWidth),
+                            Modifier.testTag("status-feedback").widthIn(max = feedbackWidth).graphicsLayer { alpha = uiOpacity },
                             shape = RoundedCornerShape(14.dp), color = LocalContentColors.current.sheetBase,
                             tonalElevation = 4.dp,
                         ) {
@@ -685,6 +684,8 @@ private fun ContentUiState.acceptsQuickControlEvent(event: ContentEvent): Boolea
         is ContentEvent.FeatureTapped -> event.id.feature?.let { feature ->
             features[feature]?.let { it.available && !it.pending && (it.known || feature.action) }
         } == true
+        ContentEvent.SettingsCollapseTapped -> canCollapseSettings && !lyricsProviderSettings.appleLoginOpen
+        ContentEvent.SettingsRestored -> canCollapseSettings && settingsCollapsed
         ContentEvent.ScreenCleanTapped -> screenCleanAvailable
         else -> true
     }
@@ -977,7 +978,7 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
             Modifier.align(if (anchorWidth == null) Alignment.BottomEnd else Alignment.BottomStart).padding(
                 start = if (anchorWidth == null) 0.dp else (anchorWidth - menuWidth - if (compact) 8.dp else 20.dp).coerceAtLeast(8.dp),
                 end = if (compact) 8.dp else 20.dp, bottom = if (compact) 152.dp else 264.dp)
-                .width(menuWidth).testTag("sources-menu")
+                .width(menuWidth).graphicsLayer { alpha = state.interfaceOpacity }.testTag("sources-menu")
                 .downwardSoftShadow(colors.sourceBase, state.dark),
             shape = RoundedCornerShape(12.dp), color = colors.sourceBase,
         ) {
@@ -1070,7 +1071,7 @@ private fun LyricsEmptyContent(state: ContentUiState, onEvent: (ContentEvent) ->
                 val pressed by interactions.collectIsPressedAsState()
                 TextButton(
                     onClick = { onEvent(ContentEvent.OpenSources) },
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("lyrics-source-action"),
+                    modifier = Modifier.heightIn(min = 48.dp).graphicsLayer { alpha = state.interfaceOpacity }.testTag("lyrics-source-action"),
                     interactionSource = interactions,
                 ) {
                     CompositionLocalProvider(LocalIconPressed provides pressed) {

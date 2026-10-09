@@ -440,7 +440,7 @@ class ContentSettingsFeedbackTest {
             fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
             fixture.drain()
             fixture.binding.dispatch(ContentEvent.SettingsTapped)
-            fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Interaction))
+            fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Lyrics))
             if (collapsed) fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
             assertEquals(collapsed, fixture.binding.state.value.settingsCollapsed)
             fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Drive))
@@ -465,13 +465,18 @@ class ContentSettingsFeedbackTest {
         fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Neutral))
         fixture.drain()
         assertTrue(fixture.binding.state.value.settingsOpen)
+        fixture.store.acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable())
+        fixture.drain()
+        assertTrue("unknown does not close the session", fixture.binding.state.value.settingsOpen)
         fixture.binding.dispatch(ContentEvent.AutoCloseSettingsOnDriveChanged(true))
         fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
         fixture.store.acceptVehicleSnapshot(ContentPorts.VehicleSnapshot.unavailable())
         fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Drive))
         fixture.drain()
-        assertTrue("unavailable breaks the transition baseline", fixture.binding.state.value.settingsOpen)
+        assertFalse("fresh confirmed non-P closes after a connection gap", fixture.binding.state.value.settingsOpen)
         fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Park))
+        fixture.drain()
+        fixture.binding.dispatch(ContentEvent.OpenLyricsSettings)
         fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(VehicleGear.Reverse))
         fixture.drain()
         assertFalse(fixture.binding.state.value.settingsOpen)
@@ -482,11 +487,7 @@ class ContentSettingsFeedbackTest {
         fixture.drain()
         fixture.binding.dispatch(ContentEvent.SettingsTapped)
         fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(SettingsSection.Lyrics))
-        assertFalse(fixture.binding.canDispatch(ContentEvent.SettingsCollapseTapped))
-        fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
-        assertFalse(fixture.binding.state.value.settingsCollapsed)
-        fixture.store.setPageIndex(1)
-        fixture.drain()
+        assertTrue("lyrics settings over shortcuts may collapse", fixture.binding.canDispatch(ContentEvent.SettingsCollapseTapped))
         fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
         assertTrue(fixture.binding.state.value.settingsCollapsed)
         fixture.binding.dispatch(ContentEvent.ShowSecondsChanged(true))
@@ -501,6 +502,42 @@ class ContentSettingsFeedbackTest {
         assertEquals(0, fixture.media.nextRequests.get())
         assertEquals(0, fixture.vehicle.requests.get())
         assertFalse(fixture.binding.canDispatch(ContentEvent.SettingsRestored))
+    }
+
+    @Test fun collapseDispatchDependsOnlyOnTheSettingsSectionAcrossBothUnderlyingPages() = withFixture { fixture ->
+        fixture.binding.dispatch(ContentEvent.SettingsTapped)
+        for (page in 0..1) {
+            fixture.store.setPageIndex(page)
+            fixture.drain()
+            for (section in SettingsSection.entries) {
+                fixture.binding.dispatch(ContentEvent.SettingsSectionSelected(section))
+                val allowed = section == SettingsSection.Lyrics
+                assertEquals("page=$page section=$section", allowed,
+                    fixture.binding.canDispatch(ContentEvent.SettingsCollapseTapped))
+                fixture.binding.dispatch(ContentEvent.SettingsCollapseTapped)
+                assertEquals(allowed, fixture.binding.state.value.settingsCollapsed)
+                fixture.binding.dispatch(ContentEvent.SettingsRestored)
+            }
+        }
+    }
+
+    @Test fun firstConfirmedNonParkAndReopeningUseTheSameLevelCondition() {
+        for (gear in listOf(VehicleGear.Reverse, VehicleGear.Neutral, VehicleGear.Drive)) withFixture { fixture ->
+            fixture.store.setAutoCloseSettingsOnDrive(true)
+            fixture.store.acceptVehicleSnapshot(vehicleSnapshot().withGear(gear))
+            fixture.drain()
+            fixture.binding.dispatch(ContentEvent.SettingsTapped)
+            assertFalse("first $gear already closes ordinary entry", fixture.binding.state.value.settingsOpen)
+            fixture.binding.dispatch(ContentEvent.OpenLyricsSettings)
+            assertFalse("deep link shares $gear rule", fixture.binding.state.value.settingsOpen)
+            fixture.store.setAutoCloseSettingsOnDrive(false)
+            fixture.drain()
+            fixture.binding.dispatch(ContentEvent.OpenLyricsSettings)
+            assertTrue(fixture.binding.state.value.settingsOpen)
+            fixture.binding.dispatch(ContentEvent.AutoCloseSettingsOnDriveChanged(true))
+            fixture.drain()
+            assertFalse("enabling while $gear is confirmed applies immediately", fixture.binding.state.value.settingsOpen)
+        }
     }
 
     @Test fun pendingDepartureRejectsAStalePreferenceCallbackBeforeItsQueuedProjection() = withFixture { fixture ->

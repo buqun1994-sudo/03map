@@ -273,7 +273,7 @@ class ContentBinding(
                 ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings, ContentEvent.SettingsBack,
                 ContentEvent.SettingsDismissed, ContentEvent.DismissSheet)) return false
         if (settingsOpen && !event.isSettingsInteraction()) return false
-        if (event == ContentEvent.SettingsCollapseTapped && (!settingsOpen || state.value.page != PanelPage.Lyrics)) return false
+        if (event == ContentEvent.SettingsCollapseTapped && (!settingsOpen || settingsSection != SettingsSection.Lyrics)) return false
         if (event == ContentEvent.SettingsRestored && (!settingsOpen || !settingsCollapsed)) return false
         if (settingsCollapsed && event !in setOf(ContentEvent.SettingsCollapseTapped, ContentEvent.SettingsRestored,
                 ContentEvent.SettingsTapped, ContentEvent.SettingsBack, ContentEvent.SettingsDismissed,
@@ -592,6 +592,9 @@ class ContentBinding(
     }
 
     private fun publishShell() {
+        // A confirmed non-P fact closes the entire session even on its first read or reopen.
+        if (settingsOpen && latestSnapshot.autoCloseSettingsOnDrive && latestSnapshot.gear.isNonPark()) closeSettings()
+        if (settingsCollapsed && settingsSection != SettingsSection.Lyrics) settingsCollapsed = false
         val projected = shell(latestSnapshot)
         val message = feedback
         val messageRevision = if (message == null) 0L else feedbackRevision
@@ -625,9 +628,6 @@ class ContentBinding(
         val previous = latestSnapshot
         latestSnapshot = snapshot
         if (snapshot.settingsAutoCloseSequence != previous.settingsAutoCloseSequence && settingsOpen) closeSettings()
-        if (settingsCollapsed && ContentRegistry.visiblePageIds().getOrNull(snapshot.pageIndex) != ContentRegistry.Pages.LYRICS) {
-            settingsCollapsed = false
-        }
         lyricsSystemAccentColor = IcarThemeAccent.resolve(
             themeKey, snapshot.themeMode == ContentState.THEME_DARK)
         if (!snapshot.showActionFeedback && previous.showActionFeedback) replaceFeedback(null)

@@ -1,0 +1,896 @@
+(function () {
+  if (typeof crypto === "undefined" || typeof crypto.randomUUID === "function" || typeof crypto.getRandomValues !== "function") return;
+  crypto.randomUUID = function () {
+    var bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    var hex = [];
+    for (var index = 0; index < bytes.length; index++) hex.push((bytes[index] + 256).toString(16).slice(1));
+    return hex.slice(0, 4).join("") + "-" + hex.slice(4, 6).join("") + "-" + hex.slice(6, 8).join("") + "-" + hex.slice(8, 10).join("") + "-" + hex.slice(10, 16).join("");
+  };
+})();
+// Public widget code calls Object.fromEntries; Chrome 66 has iterators but not this API.
+// Preserve a native implementation and DefineProperty so __proto__ remains an ordinary own key.
+(function () {
+  if (typeof Object.fromEntries === "function") return;
+  Object.defineProperty(Object, "fromEntries", {
+    configurable: true,
+    writable: true,
+    value: function (entries) {
+      var result = {};
+      for (var entry of entries) {
+        if (entry === null || (typeof entry !== "object" && typeof entry !== "function")) {
+          throw new TypeError("Object.fromEntries requires entry objects");
+        }
+        Object.defineProperty(result, entry[0], {
+          value: entry[1], writable: true, enumerable: true, configurable: true
+        });
+      }
+      return result;
+    }
+  });
+})();
+
+var At = Object.defineProperty;
+var Ve = Object.getOwnPropertySymbols;
+var vt = Object.prototype.hasOwnProperty, yt = Object.prototype.propertyIsEnumerable;
+var He = (e, a, r) => a in e ? At(e, a, { enumerable: true, configurable: true, writable: true, value: r }) : e[a] = r, J = (e, a) => {
+  for (var r in a || (a = {})) vt.call(a, r) && He(e, r, a[r]);
+  if (Ve) for (var r of Ve(a)) yt.call(a, r) && He(e, r, a[r]);
+  return e;
+};
+import { s as Lt, c as we, d as k, r as _, a as u, w as _t, o as d, b as T, e as re, n as ee, f as St, i as nt, g as ze, h as kt, j as A, k as P, l as V, u as oe, t as N, m as Tt, p as w, q as D, v as ge, x as wt, y as b, C as Je, z as je, A as Et, B as It, D as ie, E as Pt, F as Bt, G as Mt, R as Nt, H as Ut } from "./vendor.c5b156fd.js";
+function cn() {
+  import("data:text/javascript,");
+}
+const zt = function() {
+  const a = document.createElement("link").relList;
+  if (a && a.supports && a.supports("modulepreload")) return;
+  for (const s of document.querySelectorAll('link[rel="modulepreload"]')) n(s);
+  new MutationObserver((s) => {
+    for (const o of s) if (o.type === "childList") for (const i of o.addedNodes) i.tagName === "LINK" && i.rel === "modulepreload" && n(i);
+  }).observe(document, { childList: true, subtree: true });
+  function r(s) {
+    const o = {};
+    return s.integrity && (o.integrity = s.integrity), s.referrerpolicy && (o.referrerPolicy = s.referrerpolicy), s.crossorigin === "use-credentials" ? o.credentials = "include" : s.crossorigin === "anonymous" ? o.credentials = "omit" : o.credentials = "same-origin", o;
+  }
+  function n(s) {
+    if (s.ep) return;
+    s.ep = true;
+    const o = r(s);
+    fetch(s.href, o);
+  }
+};
+zt();
+const Rt = "modulepreload", qe = {}, Wt = "/", Dt = function(a, r) {
+  return !r || r.length === 0 ? a() : Promise.all(r.map((n) => {
+    if (n = `${Wt}${n}`, n in qe) return;
+    qe[n] = true;
+    const s = n.endsWith(".css"), o = s ? '[rel="stylesheet"]' : "";
+    if (document.querySelector(`link[href="${n}"]${o}`)) return;
+    const i = document.createElement("link");
+    if (i.rel = s ? "stylesheet" : Rt, s || (i.as = "script", i.crossOrigin = ""), i.href = n, document.head.appendChild(i), s) return new Promise((c, p) => {
+      i.addEventListener("load", c), i.addEventListener("error", p);
+    });
+  })).then(() => a());
+}, Ft = (e, { cookie: a } = {}) => {
+  const r = a || document.cookie;
+  if (!r) return null;
+  const n = r.match(`(^|;) ?${e}=([^;]*)(;|$)`);
+  return n ? n[2] : null;
+}, xt = (e) => {
+  const a = /^(ar-)/;
+  let r = "//www.apple.com/wss/fonts";
+  if (a.test(e)) return `${r}?families=SF+Pro+AR,v2|SF+Pro+AR+Text,v2|SF+Pro+AR+Display,v2|SF+Pro,v3|SF+Pro+Icons,v3`;
+  switch (e) {
+    case "ja-jp":
+      r += "?families=SF+Pro,v2|SF+Pro+JP,v1|SF+Pro+Icons,v3";
+      break;
+    case "zh-cn":
+      r += "?families=SF+Pro,v2|SF+Pro+SC,v1|SF+Pro+Icons,v3";
+      break;
+    case "zh-hk":
+      r += "?families=SF+Pro,v2|SF+Pro+HK,v1|SF+Pro+Icons,v3";
+      break;
+    case "zh-mo":
+    case "zh-tw":
+      r += "?families=SF+Pro,v2|SF+Pro+TC,v1|SF+Pro+Icons,v3";
+      break;
+    case "th-th":
+      r += "?families=SF+Pro,v2|SF+Pro+TH,v2|SF+Pro+Icons,v3";
+      break;
+    case "ko-kr":
+      r += "?families=SF+Pro,v2|SF+Pro+KR,v2|SF+Pro+Icons,v3";
+      break;
+    default:
+      r += "?families=SF+Pro,v2|SF+Pro+Icons,v3";
+  }
+  return r;
+}, st = "apple-web-fonts", Kt = () => {
+  const e = document.createElement("link");
+  return e.setAttribute("as", "style"), e.setAttribute("rel", "stylesheet"), e.id = st, e;
+}, Gt = () => {
+  let e = document.getElementById(st);
+  return e || (e = Kt()), e;
+}, Ot = (e) => {
+  const a = xt(e);
+  if (!a) return;
+  const r = Gt();
+  r.setAttribute("href", a);
+  const { head: n, head: { firstChild: s } } = document;
+  n.insertBefore(r, s);
+};
+var t = ((e) => (e.Afghanistan = "AFG", e.Albania = "ALB", e.Algeria = "DZA", e.Andorra = "AND", e.Angola = "AGO", e.Anguilla = "AIA", e.AntiguaAndBarbuda = "ATG", e.Argentina = "ARG", e.Armenia = "ARM", e.Australia = "AUS", e.Austria = "AUT", e.Azerbaijan = "AZE", e.Bahamas = "BHS", e.Bahrain = "BHR", e.Bangladesh = "BGD", e.Barbados = "BRB", e.Belarus = "BLR", e.Belgium = "BEL", e.Belize = "BLZ", e.Benin = "BEN", e.Bermuda = "BMU", e.Bhutan = "BTN", e.Bolivia = "BOL", e.BosniaAndHerzegovina = "BIH", e.Botswana = "BWA", e.Brazil = "BRA", e.BritishVirginIslands = "VGB", e.Brunei = "BRN", e.Bulgaria = "BGR", e.BurkinaFaso = "BFA", e.CaboVerde = "CPV", e.Cambodia = "KHM", e.Cameroon = "CMR", e.Canada = "CAN", e.CaymanIslands = "CYM", e.CentralAfricanRepublic = "CAF", e.Chad = "TCD", e.Chile = "CHL", e.China = "CHN", e.Colombia = "COL", e.Congo = "COG", e.CostaRica = "CRI", e.CotedIvoire = "CIV", e.Croatia = "HRV", e.Cyprus = "CYP", e.Czechia = "CZE", e.DemocraticRepublicOfTheCongo = "COD", e.Denmark = "DNK", e.Dominica = "DMA", e.DominicanRepublic = "DOM", e.Ecuador = "ECU", e.Egypt = "EGY", e.ElSalvador = "SLV", e.Estonia = "EST", e.Eswatini = "SWZ", e.Ethiopia = "ETH", e.FederatedStatesOfMicronesia = "FSM", e.Fiji = "FJI", e.Finland = "FIN", e.France = "FRA", e.Gabon = "GAB", e.Gambia = "GMB", e.Georgia = "GEO", e.Germany = "DEU", e.Ghana = "GHA", e.Greece = "GRC", e.Grenada = "GRD", e.Guatemala = "GTM", e.Guinea = "GIN", e.GuineaBissau = "GNB", e.Guyana = "GUY", e.Honduras = "HND", e.HongKong = "HKG", e.Hungary = "HUN", e.Iceland = "ISL", e.India = "IND", e.Indonesia = "IDN", e.Iraq = "IRQ", e.Ireland = "IRL", e.Israel = "ISR", e.Italy = "ITA", e.Jamaica = "JAM", e.Japan = "JPN", e.Jordan = "JOR", e.Kazakhstan = "KAZ", e.Kenya = "KEN", e.Kosovo = "XKS", e.Kuwait = "KWT", e.Kyrgyzstan = "KGZ", e.LaoPeoplesDemocraticRepublic = "LAO", e.Latvia = "LVA", e.Lebanon = "LBN", e.Liberia = "LBR", e.Libya = "LBY", e.Liechtenstein = "LIE", e.Lithuania = "LTU", e.Luxembourg = "LUX", e.Macao = "MAC", e.Madagascar = "MDG", e.Malawi = "MWI", e.Malaysia = "MYS", e.Maldives = "MDV", e.Mali = "MLI", e.Malta = "MLT", e.Mauritania = "MRT", e.Mauritius = "MUS", e.Mexico = "MEX", e.Moldova = "MDA", e.Monaco = "MCO", e.Mongolia = "MNG", e.Montenegro = "MNE", e.Montserrat = "MSR", e.Morocco = "MAR", e.Mozambique = "MOZ", e.Myanmar = "MMR", e.Namibia = "NAM", e.Nauru = "NRU", e.Nepal = "NPL", e.Netherlands = "NLD", e.NewZealand = "NZL", e.Nicaragua = "NIC", e.Niger = "NER", e.Nigeria = "NGA", e.NorthMacedonia = "MKD", e.Norway = "NOR", e.Oman = "OMN", e.Pakistan = "PAK", e.Palau = "PLW", e.Palestine = "PSE", e.Panama = "PAN", e.PapuaNewGuinea = "PNG", e.Paraguay = "PRY", e.Peru = "PER", e.Philippine = "PHL", e.Poland = "POL", e.Portugal = "PRT", e.Qatar = "QAT", e.Romania = "ROU", e.Russia = "RUS", e.Rwanda = "RWA", e.SaintKittsAndNevis = "KNA", e.SaintLucia = "LCA", e.SaintVincentAndTheGrenadines = "VCT", e.Samoa = "WSM", e.SaoTomeAndPrincipe = "STP", e.SaudiArabia = "SAU", e.Senegal = "SEN", e.Serbia = "SRB", e.Seychelles = "SYC", e.SierraLeone = "SLE", e.Singapore = "SGP", e.Slovakia = "SVK", e.Slovenia = "SVN", e.SolomanIslands = "SLB", e.SouthAfrica = "ZAF", e.SouthKorea = "KOR", e.Spain = "ESP", e.SriLanka = "LKA", e.Suriname = "SUR", e.Sweden = "SWE", e.Switzerland = "CHE", e.Taiwan = "TWN", e.Tajikistan = "TJK", e.Tanzania = "TZA", e.Thailand = "THA", e.Tonga = "TON", e.TrinidadAndTobago = "TTO", e.Tunisia = "TUN", e.Turkey = "TUR", e.Turkmenistan = "TKM", e.TurksAndCaicosIslands = "TCA", e.Uganda = "UGA", e.Ukraine = "UKR", e.UnitedArabEmirates = "ARE", e.UnitedKingdom = "GBR", e.UnitedStatesOfAmerica = "USA", e.Uruguay = "URY", e.Uzbekistan = "UZB", e.Vanuatu = "VUT", e.Venezuela = "VEN", e.Vietnam = "VNM", e.Yemen = "YEM", e.Zambia = "ZMB", e.Zimbabwe = "ZWE", e))(t || {});
+const Vt = { BD: t.Bangladesh, BE: t.Belgium, BF: t.BurkinaFaso, BG: t.Bulgaria, BA: t.BosniaAndHerzegovina, BB: t.Barbados, BM: t.Bermuda, BN: t.Brunei, BO: t.Bolivia, BH: t.Bahrain, BJ: t.Benin, BT: t.Bhutan, JM: t.Jamaica, BW: t.Botswana, WS: t.Samoa, BR: t.Brazil, BS: t.Bahamas, BY: t.Belarus, BZ: t.Belize, RU: t.Russia, RW: t.Rwanda, RS: t.Serbia, TM: t.Turkmenistan, TJ: t.Tajikistan, RO: t.Romania, GW: t.GuineaBissau, GT: t.Guatemala, GR: t.Greece, JP: t.Japan, GY: t.Guyana, GE: t.Georgia, GD: t.Grenada, GB: t.UnitedKingdom, GA: t.Gabon, SV: t.ElSalvador, GN: t.Guinea, GM: t.Gambia, GH: t.Ghana, OM: t.Oman, TN: t.Tunisia, JO: t.Jordan, HR: t.Croatia, HU: t.Hungary, HK: t.HongKong, HN: t.Honduras, VE: t.Venezuela, PS: t.Palestine, PW: t.Palau, PT: t.Portugal, PY: t.Paraguay, IQ: t.Iraq, PA: t.Panama, PG: t.PapuaNewGuinea, PE: t.Peru, PK: t.Pakistan, PH: t.Philippine, PL: t.Poland, ZM: t.Zambia, EE: t.Estonia, EG: t.Egypt, ZA: t.SouthAfrica, EC: t.Ecuador, IT: t.Italy, VN: t.Vietnam, SB: t.SolomanIslands, ET: t.Ethiopia, ZW: t.Zimbabwe, SA: t.SaudiArabia, ES: t.Spain, ME: t.Montenegro, MD: t.Moldova, MG: t.Madagascar, MA: t.Morocco, MC: t.Monaco, UZ: t.Uzbekistan, MM: t.Myanmar, ML: t.Mali, MO: t.Macao, MN: t.Mongolia, MK: t.NorthMacedonia, MU: t.Mauritius, MT: t.Malta, MW: t.Malawi, MV: t.Maldives, MS: t.Montserrat, MR: t.Mauritania, UG: t.Uganda, TZ: t.Tanzania, MY: t.Malaysia, MX: t.Mexico, IL: t.Israel, FR: t.France, FI: t.Finland, FJ: t.Fiji, FM: t.FederatedStatesOfMicronesia, NI: t.Nicaragua, NL: t.Netherlands, NO: t.Norway, NA: t.Namibia, VU: t.Vanuatu, NE: t.Niger, NG: t.Nigeria, NZ: t.NewZealand, NP: t.Nepal, NR: t.Nauru, XK: t.Kosovo, CI: t.CotedIvoire, CH: t.Switzerland, CO: t.Colombia, CN: t.China, CM: t.Cameroon, CL: t.Chile, CC: t.Switzerland, CA: t.Canada, CG: t.Congo, CF: t.CentralAfricanRepublic, CD: t.DemocraticRepublicOfTheCongo, CZ: t.Czechia, CY: t.Cyprus, CR: t.CostaRica, CV: t.CaboVerde, SZ: t.Eswatini, KG: t.Kyrgyzstan, KE: t.Kenya, SR: t.Suriname, KH: t.Cambodia, KN: t.SaintKittsAndNevis, ST: t.SaoTomeAndPrincipe, SK: t.Slovakia, KR: t.SouthKorea, SI: t.Slovenia, KW: t.Kuwait, SN: t.Senegal, SL: t.SierraLeone, SC: t.Seychelles, KZ: t.Kazakhstan, KY: t.CaymanIslands, SG: t.Singapore, SE: t.Sweden, DO: t.DominicanRepublic, DM: t.Dominica, DK: t.Denmark, VG: t.BritishVirginIslands, DE: t.Germany, YE: t.Yemen, DZ: t.Algeria, US: t.UnitedStatesOfAmerica, UY: t.Uruguay, LB: t.Lebanon, LC: t.SaintLucia, LA: t.LaoPeoplesDemocraticRepublic, TW: t.Taiwan, TT: t.TrinidadAndTobago, TR: t.Turkey, LK: t.SriLanka, LI: t.Liechtenstein, LV: t.Latvia, TO: t.Tonga, LT: t.Lithuania, LU: t.Luxembourg, LR: t.Liberia, TH: t.Thailand, TD: t.Chad, TC: t.TurksAndCaicosIslands, LY: t.Libya, VC: t.SaintVincentAndTheGrenadines, AE: t.UnitedArabEmirates, AD: t.Andorra, AG: t.AntiguaAndBarbuda, AF: t.Afghanistan, AI: t.Anguilla, IS: t.Iceland, AM: t.Armenia, AL: t.Albania, AO: t.Angola, AR: t.Argentina, AU: t.Australia, AT: t.Austria, IN: t.India, AZ: t.Azerbaijan, IE: t.Ireland, ID: t.Indonesia, UA: t.Ukraine, QA: t.Qatar, MZ: t.Mozambique }, ot = { [t.Albania]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.UnitedArabEmirates]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.Argentina]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Australia]: { supportedLanguages: ["en-au", "en-gb"] }, [t.Austria]: { supportedLanguages: ["de-de", "en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Belgium]: { supportedLanguages: ["en-gb", "fr-fr", "nl-nl"], copyrightKey: "CopyrightApple.Europe" }, [t.Benin]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.BurkinaFaso]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Bahrain]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.BosniaAndHerzegovina]: { supportedLanguages: ["en-gb", "hr-hr"] }, [t.Belize]: { supportedLanguages: ["en-gb", "es-mx"] }, [t.Bolivia]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Brazil]: { supportedLanguages: ["pt-br", "en-gb"] }, [t.CentralAfricanRepublic]: { supportedLanguages: ["fr-fr", "en-gb"] }, [t.Canada]: { supportedLanguages: ["en-ca", "fr-ca"] }, [t.Switzerland]: { supportedLanguages: ["de-ch", "de-de", "en-gb", "fr-fr", "it-it"], copyrightKey: "CopyrightApple.Europe" }, [t.Chile]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.China]: { supportedLanguages: ["zh-cn", "en-gb"], copyrightKey: "CopyrightApple.CHN" }, [t.CotedIvoire]: { supportedLanguages: ["fr-fr", "en-gb"] }, [t.Cameroon]: { supportedLanguages: ["fr-fr", "en-gb"] }, [t.DemocraticRepublicOfTheCongo]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Congo]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Colombia]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.CostaRica]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Cyprus]: { supportedLanguages: ["en-gb", "el-gr", "tr-tr"], copyrightKey: "CopyrightApple.Europe" }, [t.Czechia]: { supportedLanguages: ["en-gb", "cs-cz"], copyrightKey: "CopyrightApple.Europe" }, [t.Germany]: { supportedLanguages: ["de-de", "en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Denmark]: { supportedLanguages: ["en-gb", "da-dk"], copyrightKey: "CopyrightApple.Europe" }, [t.DominicanRepublic]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Algeria]: { supportedLanguages: ["en-gb", "fr-fr", "ar-sa"] }, [t.Ecuador]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Egypt]: { supportedLanguages: ["en-gb", "fr-fr", "ar-sa"] }, [t.Spain]: { supportedLanguages: ["es-es", "en-gb", "ca-es"], copyrightKey: "CopyrightApple.Europe" }, [t.Estonia]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Finland]: { supportedLanguages: ["en-gb", "fi-fi"], copyrightKey: "CopyrightApple.Europe" }, [t.France]: { supportedLanguages: ["fr-fr", "en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Gabon]: { supportedLanguages: ["fr-fr", "en-gb"] }, [t.UnitedKingdom]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Guinea]: { supportedLanguages: ["fr-fr", "en-gb"] }, [t.GuineaBissau]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Greece]: { supportedLanguages: ["en-gb", "el-gr"], copyrightKey: "CopyrightApple.Europe" }, [t.Guatemala]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Guyana]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.HongKong]: { supportedLanguages: ["zh-hk", "en-gb", "zh-tw"] }, [t.Honduras]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Croatia]: { supportedLanguages: ["en-gb", "hr-hr"], copyrightKey: "CopyrightApple.HRV" }, [t.Hungary]: { supportedLanguages: ["en-gb", "hu-hu"], copyrightKey: "CopyrightApple.Europe" }, [t.Indonesia]: { supportedLanguages: ["en-gb", "id-id"] }, [t.India]: { supportedLanguages: ["en-gb", "hi-in", "bn-bd", "ur-pk", "pa-in", "mr-in", "te-in", "ta-in", "gu-in", "kn-in", "or-in", "ml-in"] }, [t.Ireland]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Iraq]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.Iceland]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.ISL" }, [t.Israel]: { supportedLanguages: ["en-gb", "iw-il"] }, [t.Italy]: { supportedLanguages: ["it-it", "en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Jordan]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.Japan]: { supportedLanguages: ["ja-jp", "en-us"], copyrightKey: "CopyrightApple.JPN" }, [t.Cambodia]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.SouthKorea]: { supportedLanguages: ["ko-kr", "en-gb"], copyrightKey: "CopyrightApple.KOR" }, [t.Kuwait]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.LaoPeoplesDemocraticRepublic]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Lebanon]: { supportedLanguages: ["en-gb", "fr-fr", "ar-sa"] }, [t.Libya]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.Lithuania]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Luxembourg]: { supportedLanguages: ["en-gb", "fr-fr", "de-de"], copyrightKey: "CopyrightApple.Europe" }, [t.Latvia]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Macao]: { supportedLanguages: ["zh-hk", "en-gb", "zh-tw"] }, [t.Morocco]: { supportedLanguages: ["en-gb", "fr-fr", "ar-sa"] }, [t.Monaco]: { supportedLanguages: ["fr-fr", "en-gb"] }, [t.Madagascar]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Mexico]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Mali]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Malta]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Montenegro]: { supportedLanguages: ["en-gb", "hr-hr"] }, [t.Mauritania]: { supportedLanguages: ["en-gb", "fr-fr", "ar-sa"] }, [t.Mauritius]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Malaysia]: { supportedLanguages: ["en-gb", "ms-my"] }, [t.Niger]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Nicaragua]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Netherlands]: { supportedLanguages: ["nl-nl", "en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Norway]: { supportedLanguages: ["en-gb", "no-no"], copyrightKey: "CopyrightApple.Europe" }, [t.NewZealand]: { supportedLanguages: ["en-au", "en-gb"] }, [t.Oman]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.Panama]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Peru]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Poland]: { supportedLanguages: ["en-gb", "pl-pl"], copyrightKey: "CopyrightApple.Europe" }, [t.Portugal]: { supportedLanguages: ["pt-pt", "en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Paraguay]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Qatar]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.Romania]: { supportedLanguages: ["en-gb", "ro-ro"], copyrightKey: "CopyrightApple.Europe" }, [t.Russia]: { supportedLanguages: ["ru-ru", "en-gb", "uk-ua"], copyrightKey: "CopyrightApple.Europe" }, [t.Rwanda]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.SaudiArabia]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.Senegal]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Singapore]: { supportedLanguages: ["en-gb", "zh-cn"] }, [t.ElSalvador]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Serbia]: { supportedLanguages: ["en-gb", "hr-hr"] }, [t.Suriname]: { supportedLanguages: ["en-gb", "nl-nl"] }, [t.Slovakia]: { supportedLanguages: ["en-gb", "sk-sk"], copyrightKey: "CopyrightApple.Europe" }, [t.Slovenia]: { supportedLanguages: ["en-gb", "sl-si"], copyrightKey: "CopyrightApple.Europe" }, [t.Sweden]: { supportedLanguages: ["sv-se", "en-gb"], copyrightKey: "CopyrightApple.Europe" }, [t.Seychelles]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Chad]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Thailand]: { supportedLanguages: ["en-gb", "th-th"] }, [t.TrinidadAndTobago]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Tunisia]: { supportedLanguages: ["en-gb", "fr-fr", "ar-sa"] }, [t.Turkey]: { supportedLanguages: ["en-gb", "tr-tr"] }, [t.Taiwan]: { supportedLanguages: ["zh-tw", "en-gb"] }, [t.Ukraine]: { supportedLanguages: ["en-gb", "uk-ua", "ru-ru"] }, [t.Uruguay]: { supportedLanguages: ["en-gb", "es-mx"] }, [t.UnitedStatesOfAmerica]: { supportedLanguages: ["en-us", "es-mx", "zh-cn", "ar-sa", "ru-ru", "fr-fr", "pt-br", "vi-vi", "ko-kr", "zh-tw", "sl-si", "bn-bd", "ur-pk", "pa-in", "mr-in", "te-in", "ta-in", "gu-in", "kn-in", "or-in", "ml-in"] }, [t.Venezuela]: { supportedLanguages: ["es-mx", "en-gb"] }, [t.Vietnam]: { supportedLanguages: ["en-gb", "vi-vi"] }, [t.Vanuatu]: { supportedLanguages: ["en-gb", "fr-fr"] }, [t.Yemen]: { supportedLanguages: ["en-gb", "ar-sa"] }, [t.SouthAfrica]: { supportedLanguages: ["en-gb"], copyrightKey: "CopyrightApple.ZAF" } }, Ht = (e) => {
+  let a = null;
+  return (...r) => a || (a = e(...r).finally(() => {
+    a = null;
+  }), a);
+}, Jt = "en-us", jt = (e) => {
+  const [, a = ""] = e.split("-");
+  return a.length === 3 && /[a-z]{3}/i.test(a) ? a.toLowerCase() : "";
+}, qt = (e) => {
+  const [, a = "", r = ""] = e.split("-");
+  let n = "";
+  if (a.length === 4 ? n = a : r.length === 4 && (n = r), !n) return n;
+  const s = n.split("");
+  return s[0] = s[0].toUpperCase(), s.join("");
+}, Zt = (e) => e.length === 2 && /[a-z]{2}/i.test(e), $t = (e) => e.length === 3 && /[0-9]{3}/.test(e), Ee = (e) => Zt(e) || $t(e), Ct = (e) => {
+  const [, a = "", r = "", n = ""] = e.split("-");
+  let s = "";
+  return Ee(a) ? s = a : Ee(r) ? s = r : Ee(n) && (s = n), s.toUpperCase();
+}, Qt = ["ar", "he", "iw", "ur"], Yt = (e) => Qt.includes(e), Xt = (e) => {
+  const [a] = (e || "").split("-");
+  if (!((a.length === 2 || a.length === 3) && /[a-z]/i.test(a))) return null;
+  const n = a.toLowerCase(), s = jt(e), o = qt(e), i = Ct(e);
+  return { languageTag: [n, s, o, i].filter(Boolean).join("-"), languageCode: n, extlang: s, script: o, region: i, direction: Yt(a) ? "rtl" : "ltr", get isRtlLanguage() {
+    return this.direction === "rtl";
+  }, get isLtrLanguage() {
+    return this.direction === "ltr";
+  } };
+}, ea = ["en", "id", "mk"], ta = ["da", "cs", "de", "es", "ca", "fi", "fr", "hu", "hr", "it", "no", "pl", "pt", "ro", "sk", "sv", "tr", "vi", "nl"], aa = ["ko", "zh", "yue"], ra = ["ar", "el", "he", "ja", "ru", "th", "uk", "hi"], na = (e) => {
+  const [a] = e.split("-");
+  return ea.includes(a) ? "script-latin" : ta.includes(a) ? "script-latin-accent" : aa.includes(a) ? "script-non-latin" : ra.includes(a) ? "script-non-latin-accent" : "script-latin-accent";
+};
+var pe = ((e) => (e.iCloud = "icloud", e.Music = "music", e.Tv = "tv", e.AppStore = "apps", e.Business = "business", e.BusinessEssentials = "businessessentials", e.ClassicalMusic = "classical", e.Education = "education", e.Podcasts = "podcasts", e.PodcastsConnect = "podcastcreators", e.SeasonalTV = "seasonaltv", e.SeasonSubscription = "seasonsubscription", e.SharedBusiness = "sharedbusiness", e.SharedEducation = "sharededucation", e.BusinessIntegrated = "businessintegrated", e.EducationIntegrated = "educationintegrated", e.PodcastsConnectDeprecated = "xyzw", e.Activate = "activate", e.Car = "car", e.Other = "other", e))(pe || {});
+const sa = Lt;
+let X = "", Ze = false, de = {}, se = "", Ie = false, it = false, ct = false, lt = true;
+pe.Tv + "", pe.Music + "", pe.Podcasts + "";
+let Pe = Ht(async () => {
+  if (se && !Ze) {
+    const a = await (await fetch(`${se}/default-localizations.json`)).json();
+    return Ze = true, a;
+  }
+});
+const Re = Jt, me = {};
+class oa extends Error {
+  constructor(a, r) {
+    const n = `Missing translation, using fallback. requestedKey=${a} : requestedLanguage=${r}`;
+    super(n);
+  }
+  toString() {
+    return `MissingTranslationError: ${this.message}`;
+  }
+}
+class ia extends Error {
+  constructor(a, r) {
+    const n = `Translation requested before localizations for language is loaded, using fallback. This indicates a possible race condition. requestedKey=${a} : requestedLanguage=${r}`;
+    super(n);
+  }
+  toString() {
+    return `LocalizationsNotYetLoadedError: ${this.message}`;
+  }
+}
+class ca extends Error {
+  constructor(a) {
+    const r = `Deprecated loc key was requested from legacy translation file. requestedKey=${a}`;
+    super(r);
+  }
+  toString() {
+    return `DeprecatedLocKeyError: ${this.message}`;
+  }
+}
+const la = (e, a = { showScreamers: false }) => {
+  const { defaultLocalizations: r, importDefaultLocalizations: n, showScreamers: s, showScreamersOverDefaults: o, showUnlocalizedUi: i, logDeprecatedLocKeys: c } = a;
+  se = e, typeof r == "object" && r && (Pe = () => Promise.resolve(void 0), de = r), typeof n == "function" && (Pe = n), typeof s == "boolean" && (Ie = s), typeof o == "boolean" && (it = o && Ie), typeof i == "boolean" && (ct = i), typeof c == "boolean" && (lt = c);
+};
+let Q = "", Y;
+const pa = async (e = Re) => {
+  if (!se) return {};
+  const a = `${se}/${e}.json`;
+  return (await fetch(a)).json();
+}, ua = async (e = Re) => {
+  if (!e) throw new Error("loadLocalizations: did not receive newLanguage");
+  const a = e.toLowerCase(), [r, n] = await Promise.allSettled([pa(a), Pe()]);
+  r.status === "fulfilled" ? me[a] = r.value : console.error(`Failed to load localizations for ${a}`), n.status === "fulfilled" ? de = (Array.isArray(n.value) ? n.value : [n.value]).reduce((o, i) => J(J({}, o), i), {}) : console.error("Failed to load default localizations"), X = a;
+}, $e = (e) => ua(e).finally(() => {
+  Q = "", Y = Promise.resolve();
+}), ga = async (e = Re) => {
+  if (!e) throw new Error("loadLocalizationsIfNeeded: did not receive newLanguage");
+  const a = e.toLowerCase();
+  if (me[a]) {
+    X = a;
+    return;
+  }
+  return Q || (Q = a, Y = $e(a)), Q !== a && Y && (Q = a, Y = Y.finally(() => (Q = a, $e(a)))), Y;
+}, da = /@@([^@]+)@@/g, ma = (e, a = {}) => typeof e != "string" ? "" : e.replace(da, (r, n) => a[n] || n), ha = /^\*\*.+\*\*$/, ba = (e) => ha.test(e), fa = (e, a = { skipDefaultLocalizationsGet: false }) => {
+  const r = me[X] || {}, n = r[e], s = e in r && !ba(n);
+  return s || (me[X] ? we(new oa(e, X)) : we(new ia(e, X))), lt && typeof e == "string" && !e.startsWith("ASE.Web.Commerce.") && we(new ca(e)), ct ? s ? e : `**${e}**` : s ? n : e in de && !a.skipDefaultLocalizationsGet && !it ? de[e] : Ie ? `**${e}**` : "";
+}, Aa = (e, a = {}, r = { skipDefaultLocalizationsGet: false }) => {
+  const n = fa(e, r);
+  return ma(n, a);
+}, Be = (e) => e.toLowerCase().replace(/_/g, "-"), Ce = (e, a) => {
+  if (!e || !a) return;
+  const r = Be(e);
+  if (a.includes(r)) return r;
+  const n = r.split("-")[0];
+  return a.find((o) => {
+    const i = o.split("-")[0], c = ["no", "nb", "nn"], p = c.includes(n), l = c.includes(i);
+    if (p && l) return true;
+    const g = ["iw", "he"], m = g.includes(n), v = g.includes(i);
+    return m && v ? true : n === i;
+  });
+}, va = (e = t.UnitedStatesOfAmerica, a = "", r = { preferBagLanguage: false, bagLanguage: void 0, allowAliasedLocales: false }) => {
+  const n = e.toUpperCase(), { supportedLanguages: s = [] } = ot[n] || {}, o = s[0], i = "en-gb", c = Ce(a, s);
+  if (r.preferBagLanguage) {
+    const l = Be(r.bagLanguage || "");
+    return l && sa.includes(l) ? l : c || o || i;
+  }
+  if (r.allowAliasedLocales) {
+    const l = ya(Be(a || navigator.language), n);
+    if (l) return l;
+  }
+  return c || Ce(navigator.language, s) || o || i;
+}, ya = (e, a) => {
+  const r = ot[a], n = r == null ? void 0 : r.supportedLanguages, s = Me.get(e);
+  if (s) {
+    if (n.includes(s)) return s;
+    const o = he[s], i = o == null ? void 0 : o.fallback;
+    if (i) {
+      if (n.includes(i)) return i;
+      const c = he[i];
+      if ((c == null ? void 0 : c.fallback) && n.includes(c.fallback)) return c.fallback;
+    }
+  }
+}, he = { "zh-tw": { fallback: "en-gb", aliases: ["zh-mo", "zh-hant", "zh-hant-tw"] }, "zh-hk": { fallback: "zh-tw", aliases: ["zh-hant-hk"] }, "zh-cn": { fallback: "en-gb", aliases: ["zh", "zh-hans", "zh-hans-cn"] } }, Me = /* @__PURE__ */ new Map();
+Object.keys(he).forEach((e) => {
+  var a;
+  (a = he[e].aliases) == null || a.forEach((r) => {
+    Me.set(r, e);
+  }), Me.set(e, e);
+});
+const La = k({ __name: "CCLanguageProvider", props: { language: { default: "en-us" }, setWebAppStyles: { type: Boolean } }, emits: ["language-metadata"], setup(e, { emit: a }) {
+  const r = a, n = (l) => {
+    document.documentElement.setAttribute("dir", l ? "rtl" : "ltr");
+  }, s = e, o = _(false), i = _(""), c = u(() => {
+    const l = o.value ? "is-rtl" : "is-ltr", g = s.setWebAppStyles ? "cc-language-provider--web-app" : "";
+    return `${l} ${i.value} ${g}`.trim();
+  }), p = () => {
+    const l = Xt(s.language);
+    if (l) {
+      const { languageTag: g, languageCode: m, isRtlLanguage: v } = l;
+      o.value = v, i.value = na(g), document.documentElement.setAttribute("lang", g), document.documentElement.classList.add(`lang-${m}`), r("language-metadata", { isRtlLanguage: v, languageTag: g, languageCode: m });
+    }
+  };
+  return _t(() => s.language, () => {
+    p(), n(o.value);
+  }), p(), n(o.value), (l, g) => (d(), T("div", { class: ee(["cc-language-provider", c.value]) }, [re(l.$slots, "default")], 2));
+} }), Ne = Symbol("$loadLocalizationsIfNeededKey"), Ue = Symbol("$t"), _a = { install(e, a) {
+  const { localeDirectoryPath: r, defaultLocalizations: n, importDefaultLocalizations: s, showScreamers: o, showUnlocalizedUi: i } = a;
+  la(r, { defaultLocalizations: n, importDefaultLocalizations: s, showScreamers: o, showUnlocalizedUi: i });
+  const c = St({ language: null }), p = (g, m = {}) => (c.language, Aa(g, m));
+  e.provide(Ue, p);
+  const l = async (g) => {
+    await ga(g), c.language = g;
+  };
+  e.provide(Ne, l);
+} };
+var x = ((e) => (e.AffiliateToken = "at", e.Base64EncodedThirdPartyInfo = "ai", e.Base64EncodedMusicUserTokenData = "ap", e.CampaignToken = "ct", e.ReferrerUrl = "ac", e))(x || {}), R = ((e) => (e.App = "app", e.AffiliateToken = "at", e.CampaignToken = "ct", e.ClientId = "ign-refClientId", e.Path = "p", e.Source = "source", e.InteralFigaroCampaignGroup = "itscg", e.InternalFigaroCampaignGroupToken = "itsct", e))(R || {}), O = ((e) => (e.App = "music", e.Path = "subscribe", e.Source = "webPlayerUpsell", e[e.InteralFigaroCampaignGroup = 5e4] = "InteralFigaroCampaignGroup", e.InternalFigaroCampaignGroupToken = "web_player", e))(O || {});
+const Sa = "0.0.0", ka = k({ __name: "App", setup(e) {
+  const a = nt(Ne);
+  if (a === void 0) throw new Error(`Failed to inject '${Ne.toString()}'`);
+  const r = _(false), n = _("en-us"), s = async () => {
+    const i = Ft("geo") || "", p = (Vt[i.toUpperCase()] || "USA").toUpperCase(), l = va(p) || "en-us";
+    n.value = l, Ot(l), await a(l);
+  }, o = () => {
+    document.querySelector('[name="version"]').setAttribute("content", Sa);
+  };
+  return ze(async () => {
+    o();
+    try {
+      await s();
+    } catch (i) {
+      console.error(i);
+    }
+    r.value = true;
+  }), (i, c) => {
+    const p = kt("RouterView");
+    return d(), A(La, { language: n.value }, { default: P(() => [r.value ? (d(), A(p, { key: 0 })) : V("", true)]), _: 1 }, 8, ["language"]);
+  };
+} }), We = (e, a) => {
+  if (!e) return "";
+  const r = new URLSearchParams(a);
+  if (!`${r}`.length) return e;
+  try {
+    const n = new URL(e);
+    for (const [s, o] of r.entries()) n.searchParams.append(s, o);
+    return n.href;
+  } catch {
+    return e.includes("?") ? e.indexOf("?") === e.length - 1 || e.indexOf("&") === e.length - 1 ? `${e}${r}` : `${e}&${r}` : `${e}?${r}`;
+  }
+}, Ta = "https://activate.apple.com/mkauth", De = (e) => {
+  const a = We(Ta, { jwtToken: e, LogoURL: "" });
+  window.location.assign(a);
+}, wa = (e) => {
+  const { error: a } = e.query;
+  if (a) return { name: "error", query: { errorMessage: a } };
+}, Qe = (e) => {
+  const { jwt: a, supported: r } = e.query;
+  if (a && r === "0") return { name: "error-unsupported-country", query: { jwt: a } };
+}, Ea = (e) => {
+  const { a, at: r, ct: n, referrer: s } = e.query;
+  if (a) {
+    sessionStorage.clear(), sessionStorage.setItem(x.Base64EncodedThirdPartyInfo, a), r && sessionStorage.setItem(x.AffiliateToken, r), n && sessionStorage.setItem(x.CampaignToken, n);
+    let o = document.referrer;
+    if (s) {
+      let c;
+      try {
+        c = new URL(s);
+      } catch {
+        return console.error(`Failed to parse referrer URL from query param, invalid URL provided: ${s}`), { name: "error" };
+      }
+      const p = o ? new URL(o) : null;
+      p && c.origin === p.origin && (o = c.href);
+    }
+    o && sessionStorage.setItem(x.ReferrerUrl, o);
+    let i;
+    try {
+      ({ thirdPartyToken: i } = JSON.parse(atob(a)));
+    } catch (c) {
+      return console.error("Failed to decode and parse third party info", c), { name: "error" };
+    }
+    De(i);
+  }
+}, Ia = (e) => {
+  const { cid: a, error: r, isAppleMusicSubscriber: n, jwt: s } = e.query;
+  if (r === "ERROR_NO_DSID" || n === "false") {
+    const c = { cid: a, jwt: s, supported: "1" }, p = sessionStorage.getItem("at"), l = sessionStorage.getItem("ct");
+    return p && (c.at = p), l && (c.ct = l), { name: "upsell", query: c };
+  }
+};
+var S = ((e) => (e.Music = "music", e.Podcasts = "podcasts", e))(S || {}), G = ((e) => (e.Music = "music", e.MusicSocialInfo = "music_social_info", e.Podcasts = "podcasts", e))(G || {});
+const Pa = () => Dt(() => import("./idtoken-verifier.esm.61302cb6.js"), []), Ba = { issuer: "AMPOAuth2", jwksURI: "https://buy.itunes.apple.com/commerce/jwt/jwks.json" }, Ma = async (e) => {
+  const { default: a } = await Pa(), r = new a(Ba);
+  return new Promise((n, s) => {
+    r.verify(e, null, (o, i) => {
+      if (o) return s(o);
+      n(i);
+    });
+  });
+};
+async function Na(e, { affiliateToken: a, appleId: r, appName: n, callbackUrl: s, campaignToken: o, cancel: i, isLoading: c, product: p, scopes: l, suppressUpsell: g, thirdPartyIconUrl: m }) {
+  const v = oe();
+  try {
+    c.value = true;
+    const h = await Ma(e);
+    if (!h) return;
+    if (a.value = h["com.apple.at"], r.value = h["com.apple.apple-id"], n.value = h["com.apple.app-name"], s.value = h["com.apple.scope-redirect-uri"] || h["com.apple.callback"], o.value = h["com.apple.ct"], i.value = h["com.apple.cancel"], h["com.apple.scopes"]) {
+      const U = h["com.apple.scopes"];
+      l.value = [], U.split(",").forEach((L) => {
+        const I = L.toLowerCase();
+        switch (I) {
+          case G.Music:
+            l.value.push(G.Music), p.value = S.Music;
+            break;
+          case G.Podcasts:
+            l.value.push(G.Podcasts), p.value = S.Podcasts;
+            break;
+          case G.MusicSocialInfo:
+            l.value.push(G.MusicSocialInfo);
+            break;
+          default:
+            console.error(`Unsupported Product Type: ${I}`);
+        }
+      });
+    } else console.warn("No scope received on JWT payload; Defaulting to Music."), p.value = S.Music, l.value = [G.Music];
+    h["com.apple.upsell"] && (g.value = h["com.apple.upsell"] === "false"), h["com.apple.app-icon-url"] ? m.value = h["com.apple.app-icon-url"] : h["com.apple.app-icon"] && (m.value = `/static/images/partners/${h["com.apple.app-icon"]}`);
+  } catch (h) {
+    console.error("verifyAndExtractValuesFromJwt:", h), v.push({ name: "error" });
+  } finally {
+    c.value = false;
+  }
+}
+const ve = (e) => {
+  const a = _(), r = _(), n = _(), s = _(), o = _(), i = _(), c = _(false), p = _(), l = _(), g = _(false), m = _(), v = u(() => Boolean(e && s.value && n.value));
+  return e && Na(e, { affiliateToken: a, appleId: r, appName: n, callbackUrl: s, campaignToken: o, cancel: i, isLoading: c, isPartnerIntegration: v, product: p, scopes: l, suppressUpsell: g, thirdPartyIconUrl: m }), { affiliateToken: a, appleId: r, appName: n, callbackUrl: s, campaignToken: o, cancel: i, isLoading: c, isPartnerIntegration: v, product: p, scopes: l, suppressUpsell: g, thirdPartyIconUrl: m };
+};
+var Ye = "/assets/music-note.aca18a78.png", Ua = "/assets/music-note@2x.9026686a.png", za = "/assets/music-note@3x.dce81269.png", Xe = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEwAAABMCAMAAADwSaEZAAAAHlBMVEXm5ub////z8/PPz8/ExMS5ubnd3d3U1NT6+vqmpqYoM2yTAAACtklEQVR42q2Y4XLsIAiFFQ5I3v+F753UUDHLNtuSH4m6s9+I4BFpTL231uPjQ3nPP94mbsRUAyOm81UAOyd1Tk//DtOv5WpNhdv+jPFDLw6y6NWEaAJThvgD1gR2TccneTezAYNWi2gA7W6mL1Tz5dtgymgr2ptgjbDLhQ7rG40EljnAILQOenA5LNCMx3tvDj4/ztpgK62BfgoNQvv/cdYN5jS0J3HW4FO4wZxmoGdBS6LO2mGTRni+A4ROVgLrhOOT7SSg/gYmTM9hyscbmMEX4QFMQR2WwmR3z9kHIAKAKToA2rshg4H2wCFA7eqZwj3t+5Fwg/k7hLRBdzMV5hvG//UKht7DZmO2+5oZ89zKbs8rGFNfaE1hrx1AmCLjoX6H0VhFg/nIVUMG0zI4HOyaKVFoD85lmw8Og+LtOawIMPkWdcUUbR8QPgIMOtuXmWx9eWCXkivUpm8Vemm0YbXdeFszrCy2qeSEoNANNGPCeF1IRFhcYZ5KrrI7ADpjgm2BtRZgCEZOw1Roh5HoFdCri5HCSC9pXuTKA1BmtCplMJ1BFkIaQUgnyxfIsMCGLjCmO0yjxHun6VdvhRF/w3Yr3XIHOPibomu6gwUmIS6+LNegIc5yimGBSQLDDCmLGuIsp8hzmAQNCcmI/ArmNFVnpTBXjVUyvtq8DqmEBE6Gf+JQBhu/gRWYWeqA+tAoDdrS7VS60f8mQT2RoEwc5ZU4IhfHetnODxTsMMkOlPqj7vUhLL87hJP04HifHkiSHjxKXHhLXEaSuCQp1RBLE+SDk5QqTfZaluxZkuwVp6H1CXJ96n7SPr5UdPQMRpXXnU7HZxcxeXurg3xyRTwQYPWX1/prtf9gBRf+ylJELLl8XCSpLd/UF5ZqS16ndBYV456VCTkrE8baYGkBs7S0Wlr0LS1H/wOpxB4WmJBcCAAAAABJRU5ErkJggg==", Ra = "data:image/png;base64,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", Wa = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOQAAADkBAMAAAB6eZW+AAAAHlBMVEWYmJjGxsb///+ysrKgoKCpqan29vbn5+fX19e9vb2bQUNpAAAJ0UlEQVR4AcTaSZfauBYHcKkx006tnnctubCpHTFUDzsnkHRqRw0kveQ5qQw74p53PDLvePUyfts+pcO5Jv7LlBjiuMdcDvdX14MkXxXj2hxdXXz40dpBTEgRwYQsl1ScKV4uKSTTQpZJKq6ZVrxMUkjNzL/LIk19zPynLNKUx8x/yyJNdcxUWxYppCFNmaWQprYFqXg5pJBEaiHLIC+KJFLxMkghl0gt+h+f7C1mENY1R491i49ef4PgAD5kiw8Z/dmZPBgNBswcg8HoxJnsEUVVu53Y+y97jHkn7z//8urn7w9ixvrv/nQ7sXTtWHZtHcgHXzHvyos/s+D9F1/E7OiZA5ndoUQqfil5/yvWf57kswd/99jRn5eSQgKphVxNBl+xynP72f67w46S1aTiGknFV5IPhpVvIEjHo0712UpSSCRNtJh8zH5NVj2XwVP2k5WkIm0klYlk+MpblIgkFRofpkhSkTayuEz/x04zvXz0CeeV34CkIm1kcZmt+KbbgPfEOwaSirSQhWW2hw3XMXZanQFJtSAJZZI4ch/WR2QSSaUgWVBmOPx1nZnkaTUF0lRSRGKZwfz2epPXH80kTwq5gsQyn/B150txkxJSkcUklvlHJVmXDDq3KSGVUUhCmQ+92fqrgnb8hhJSFXYSywxjuclCRHkpJaQi7CSUKW5vtvb5g0MNdhLKvNPcdLk1/wGulI2EMsN4tinZ9lK8H5GEMsXtzReVZxyeOitJZdJp3ZjU836uSCBxfAqGs23INktyRQIJo/Dvv2y3Wh/+khW5kqQyw0G6HXkwSKnIlSSVObm17TvJWZ2KdCAVb1eTbclgOBPSmdSiE23/5uVXuHYn/arentTDaA1yOpTbk6racCfDiuLbk0J2UmdycqyF3JZUXLfqrmR4PdGKb0sKqYPT1JG8e4OGqs3JHjeZnMjFz6b4dmQsF+fLhfTrNNIWZP/7u+4o9kbd/z1Pikjlmf9MIidSzGiktZHhFzGrdt9/efV9d8i8K6mNpM5Am7uQYZNGWkq0DLKKaUiY4F8vO+wCBZI6A/PUgbx7TF9D8j9x9ZtkORg8GnpfI0mdgdYNB5KeXyrTj5ZelbE9QS/YFFzqDISVy0nVyK+CKFEgTEMASn8w5AkF852BqbyUnJznV0F0DuccL9vik2ayCEJnYL9+GRlch1dRk8iIiUZyUX8zoWCuc36aWEn8oahMSiSuJhpIMr/kWVBxPG0ryIlBqExKRO+NQNJ7KAWFXCZV/RLyNN8hWiR6WE1XD3jh8M0imN/rub6abDegD2YS0ctCEWnet0wQdrSms5Xk3Qi6fSa7uHX5sH7GTRD27fwbK8l5orFMP7rDXWYS8cNFEHYng+YqMuRaY5n+j4OZC9ke/BZpxXGeSFeQrWOtsUx/eMttvjyrRtAZoKwF5DTVljJblcSNDDrHimsgw8YKcqTxUFxcc10V7HHoDFBaJOkRwTI994VIDJ0BekyQpJO+a5LyErm8rTE86eJx4MUV162ZjhefUMKlFNXlyAdk3LUcw37Hy8dGA48xbzDKx+NKr2ohu95yhE4s3Vl00LTux3I5EryMWf9iudVj3rvkwzEv0h3sVJonwX4tfdudefeW9q/wpcCDjnex3vKji62huPJs+ap/EemzGxZyLyogJzMAzQzrRyIr8yE7Sj/YPHmTFcn9SAd9C9muF5BzBM1SyI8UlfkP++bDO/YRe0tFyovgVCIZNAvIQws5WcwkclEjrSD9iNaZizrVYiapI6lf2UhTPRxmKeTTYN2OjZiRxvRmNAFE5lIgOZlZyf1rSO7XFtlNmUHnB42kvlNJTJGL4PgcyVZkJccSSXNH0cT75KZG0sRpMjf3CpKqZiFhGqF1Cy0vVCWxk0FH0pJF62CEZNiwkDCN0OqMFlGdwp6FatLCzNxyQOqRjQwaSI7Ps+zii0bxsD69wrPgfg3JaWIhVQ3JV0mWSLFZMdlmMgsGh0iOpYVsRSAGfCm7z2QxqVi0FBQJkP6xhRxL6yNCiTr/5cWk+La5FByfA6lqFnKS4qWkNy8z8oni24frqcyCqgZkWLeQQsMhEsp+kbKw5WWeoEYWDDiQmlvIExCDZpY96JvMSNJrRC/JgiIB8gBJfEZo0PWjxTs/tryoSPNuQcHJDMhpAiQO6rT6MlPSjHIDqfhieUjB1jGQkxmQCgf18YyyB7AHQST9IL2Egu0akHsSSMtjKRLKvl+j7EAqTkMVNTI4kP4xkOMZkP0s+0RSeiCFpAGZgj0g2zUg8bEMG1n2V0lhy4t+iuAwC05TIunBBHKawDRSo+wB1wRgI4vKTSg4lnkyaAD5Clf7x5T94lKSAI2sbN4hshXlSX0IZBfI7yWRY1nY8hJLH9WIVJ9Bvi6QV4GcpERO06KWFxVpLj6RYR3IL4FsWJ4RIg9sLS/cLj8hMuBATvPkAZL0Jf8Hbm15kU+f3Inoy0ie5Mk6kIdE/lS3tbygSD1+TOQrICdA1jTc1UT+fM3W8oIi9d7/iZwCOc6Tvc80PLtE9s5tLS8oUu/3M/IEHoB+nrymYYQisjOztbygSN2uEDkGsgUktAkU1e0PU1vLC4rUYTWCmlaQEay1jjMysbS8IihSBxnZAtLPk53z4paHP7C1vCIoUutBBEBWQsWRxK/T2ysUSefKkZRw7umH8Jsay/QjLFLPIwDoUBuT1ImgnsXuyD1JpCW58mKJUREBACR1t2JoVnUo0vO6eMTWoOU7ENktOaTvHMDHFCn/xJZ/+5T/kJQ/FJQ/4JU/rJc/eZU+Re/1S1+IAInLLb375dZHWFROHBaVO146T3HpjGT5Lwhlvga9+vQve+W/0pb94l5+e6K4CXOyeRPmla0JU36rqfSG2vfyk7UN3Zuj/u6bo9u3gE/dW8DlN7rLb+e7b1rMd7Vp4b41c2eXWzPlb0CVv83mvpk43/Fmon3LdLTBlqm2bpl+1I1h5b4x7F9D0t/R9vde9Ok3+T/ZrzJo8fF+YeNwnV9L6a38tZTw3+LuoAZAGAqi4BkfpNQIBjCBAvyTcP8p6aYZH/tm/85SovFNT8c3YGI0O6T6EvfJIRWYi4FRHJ7+gYGjmHGuGavul5/ksuExmFfnI/Jej8j5VN4HAXX20ILsAcQdQcKyFQnLMU5YXKgDciQQXeVp2Z2nZSigG2eCLcgEQQwJkk8QtoJ8F0TKIMUGwTnI6gEeAIgEAEEA7gKgHoAuWQe0PDXQohkagO0AUgjASYCHAggWoL4AaAbYNoDTAYIvhQbbGBpUnCJAIwGNCQBQwJwCzBWQtQDmjfjhc4YfBsgyoKQBmA1YcICfA+IdQPaA6wenBOB6ARxMgBsNcBYCLlHA8csLlSmglz22q74AAAAASUVORK5CYII=", et = "/assets/apple-podcasts.476c74e7.png", Da = "/assets/apple-podcasts@2x.6964788b.png", Fa = "/assets/apple-podcasts@3x.7054100f.png";
+const W = () => {
+  const e = nt(Ue);
+  if (e === void 0) throw new Error(`Failed to inject '${Ue.toString()}'`);
+  return e;
+};
+const xa = { class: "base-icon" }, Ka = ["alt", "src"], Ga = ["alt", "src", "srcset"], Oa = { key: 3, class: "base-icon__label" }, j = k({ __name: "BaseIcon", props: { alt: { default: void 0 }, label: { default: void 0 }, thirdPartyIconUrl: { default: void 0 }, type: {} }, setup(e) {
+  const a = e, r = W(), n = u(() => a.type === "third-party" && a.thirdPartyIconUrl), s = u(() => a.type === "gdpr"), o = u(() => {
+    switch (a.type) {
+      case "third-party":
+        return "third-party-placeholder";
+      case "podcasts":
+        return "apple-podcasts";
+      case "gdpr":
+        return "gdpr";
+      case "music":
+      default:
+        return "apple-music";
+    }
+  }), i = u(() => {
+    const g = "base-icon__icon", m = `${g}--${o.value}`;
+    return `${g} ${m}`;
+  }), c = u(() => {
+    switch (a.type) {
+      case "third-party":
+        return Xe;
+      case "podcasts":
+        return et;
+      case "music":
+      default:
+        return Ye;
+    }
+  }), p = u(() => {
+    switch (a.type) {
+      case "third-party":
+        return `${Xe}, ${Ra} 2x, ${Wa} 3x`;
+      case "podcasts":
+        return `${et}, ${Da} 2x, ${Fa} 3x`;
+      case "music":
+      default:
+        return `${Ye}, ${Ua} 2x, ${za} 3x`;
+    }
+  }), l = u(() => {
+    if (a.alt !== void 0) return a.alt;
+    switch (a.type) {
+      case "music":
+        return r("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.AX.Music.Label");
+      case "podcasts":
+        return r("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.AX.Podcasts.Label");
+      case "gdpr":
+        return "";
+      case "third-party":
+        return "";
+      default:
+        return "";
+    }
+  });
+  return (g, m) => (d(), T("div", xa, [n.value ? (d(), T("img", { key: 0, alt: l.value, class: "base-icon__icon base-icon__icon--third-party", referrerpolicy: "no-referrer", rel: "noreferrer", src: a.thirdPartyIconUrl }, null, 8, Ka)) : s.value ? (d(), T("div", { key: 1, class: ee(i.value) }, null, 2)) : (d(), T("img", { key: 2, alt: l.value, class: ee(i.value), src: c.value, srcset: p.value }, null, 10, Ga)), a.label !== void 0 && a.label !== "" ? (d(), T("p", Oa, N(a.label), 1)) : V("", true)]));
+} });
+var Va = (e, a) => {
+  const r = e.__vccOpts || e;
+  for (const [n, s] of a) r[n] = s;
+  return r;
+};
+const Ha = {}, Ja = { class: "loading-spinner loading-spinner--center" }, ja = Tt('<div class="loading-spinner__nib loading-spinner__nib-0"></div><div class="loading-spinner__nib loading-spinner__nib-1"></div><div class="loading-spinner__nib loading-spinner__nib-2"></div><div class="loading-spinner__nib loading-spinner__nib-3"></div><div class="loading-spinner__nib loading-spinner__nib-4"></div><div class="loading-spinner__nib loading-spinner__nib-5"></div><div class="loading-spinner__nib loading-spinner__nib-6"></div><div class="loading-spinner__nib loading-spinner__nib-7"></div><div class="loading-spinner__nib loading-spinner__nib-8"></div><div class="loading-spinner__nib loading-spinner__nib-9"></div><div class="loading-spinner__nib loading-spinner__nib-10"></div><div class="loading-spinner__nib loading-spinner__nib-11"></div>', 12), qa = [ja];
+function Za(e, a) {
+  return d(), T("div", Ja, qa);
+}
+var C = Va(Ha, [["render", Za]]);
+const $a = ["disabled"], be = k({ __name: "BaseButton", props: { color: {}, disabled: { type: Boolean } }, setup(e) {
+  const a = e;
+  return (r, n) => (d(), T("button", { class: ee({ button: true, "button-block": true, "button-elevated": true, [`button-${a.color}`]: true, "base-button": true, [`base-button--${a.color}`]: true }), disabled: r.disabled }, [re(r.$slots, "default")], 10, $a));
+} });
+const Ca = { class: "base-footer" }, Qa = { class: "base-footer__copyright", "data-test": "copyright" }, Ya = k({ __name: "BaseFooter", setup(e) {
+  const a = W(), r = u(() => a("ASE.Web.Commerce.WebAuthorize.Authorize.Copyright", { entityName: "Apple Inc", year: `${(/* @__PURE__ */ new Date()).getFullYear()}` }));
+  return (n, s) => (d(), T("footer", Ca, [w("p", Qa, N(r.value), 1)]));
+} });
+const Xa = w("div", { class: "base-content-wrapper__apple-icon-wrapper" }, [w("div", { class: "base-content-wrapper__apple-icon" })], -1), er = { class: "base-content-wrapper__content" }, tr = { key: 0, class: "base-content-wrapper__title typography-label", "data-test": "title" }, ar = { class: "base-content-wrapper__button-container" }, q = k({ __name: "BaseContentWrapper", props: { title: {}, description: {}, descriptionClass: {}, shouldDisableButtons: { type: Boolean }, primaryButtonLabel: {}, secondaryButtonLabel: {}, product: {} }, emits: ["primary-button-click", "secondary-button-click"], setup(e, { emit: a }) {
+  const r = e, n = a, s = (c) => {
+    n("primary-button-click", c);
+  }, o = (c) => {
+    n("secondary-button-click", c);
+  }, i = u(() => {
+    let c;
+    switch (r.product) {
+      case S.Podcasts:
+        c = "podcasts";
+        break;
+      default:
+        c = "music";
+    }
+    return `theme-${c}`;
+  });
+  return (c, p) => (d(), T("div", { class: ee(["base-content-wrapper", i.value]) }, [Xa, w("section", er, [re(c.$slots, "content-top"), c.title ? (d(), T("h1", tr, N(c.title), 1)) : V("", true), c.description ? (d(), T("p", { key: 1, class: ee(["base-content-wrapper__description typography-body-tight", c.descriptionClass]), "data-test": "description" }, N(c.description), 3)) : V("", true), re(c.$slots, "content-middle"), w("div", ar, [c.primaryButtonLabel ? (d(), A(be, { key: 0, class: "base-content-wrapper__button", color: "primary", "data-test": "primary-button", disabled: c.shouldDisableButtons, onClick: s }, { default: P(() => [ge(N(c.primaryButtonLabel), 1)]), _: 1 }, 8, ["disabled"])) : V("", true), c.secondaryButtonLabel ? (d(), A(be, { key: 1, class: "base-content-wrapper__button", color: "secondary", "data-test": "secondary-button", disabled: c.shouldDisableButtons, onClick: o }, { default: P(() => [ge(N(c.secondaryButtonLabel), 1)]), _: 1 }, 8, ["disabled"])) : V("", true)])]), re(c.$slots, "content-bottom"), D(Ya)], 2));
+} }), rr = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjU1VDNUMjM4UTQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg1NTQyNjI5LCJleHAiOjE4MDEwOTQ2MjksInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSIsIm16c3RhdGljLmNvbSJdfQ.LiA3waTcXXCEaAC1c-wN_bccw6rtueC5p30qt-CwTFlkvfAm3DjlMVmPv6vzkz2a9xbRzWWrKMfjRaOKatpfRA", nr = "https://amp-api.music.apple.com/v1";
+let fe;
+const tt = (e) => {
+  if (e.thirdPartyIconURL) {
+    const a = new URL(e.thirdPartyIconURL);
+    a.protocol === "http:" || a.protocol === "https:" ? e.thirdPartyIconURL = a.href : delete e.thirdPartyIconURL;
+  }
+  return e;
+}, sr = () => (fe = new wt.StoreKit(rr, { apiBase: nr, persist: "cookie", deeplink: { [R.Path]: O.Path, [R.Source]: O.Source, [R.InteralFigaroCampaignGroup]: O.InteralFigaroCampaignGroup, [R.InternalFigaroCampaignGroupToken]: O.InternalFigaroCampaignGroupToken } }), fe), Fe = () => fe || sr(), te = () => {
+  var r;
+  const e = Fe(), a = e && ((r = e._serviceSetupView) == null ? void 0 : r.dispatch);
+  return (a == null ? void 0 : a.destination) ? a : void 0;
+}, or = ({ consumerId: e, restrictionsEnabled: a, musicUserToken: r }) => {
+  const n = Fe();
+  !n || (n.cid = e, n.userToken = r, n.restrictedEnabled = Boolean(a === "1"));
+}, at = async () => {
+  const e = Fe();
+  if (!!e) return e.requestStorefrontCountryCode();
+}, ue = async ({ consumerId: e, restrictionsEnabled: a, musicUserToken: r }) => {
+  const n = te();
+  if (!n) {
+    sessionStorage && sessionStorage.setItem(x.Base64EncodedMusicUserTokenData, btoa(JSON.stringify({ cid: e, itre: a, musicUserToken: r })));
+    return;
+  }
+  return n.call("authorize", r, a, e);
+}, ir = async () => {
+  const e = te();
+  if (!!e) return e.call("decline");
+}, cr = async () => {
+  const e = te();
+  if (!!e) return e.call("close");
+}, lr = async () => {
+  const e = te();
+  if (!!e) return e.call("unavailable");
+}, pr = async () => {
+  const e = te();
+  if (!!e) return e.call("switchUserId");
+}, ur = async () => {
+  const e = te();
+  if (!e) {
+    if (sessionStorage) {
+      const n = sessionStorage.getItem(x.Base64EncodedThirdPartyInfo);
+      if (n) {
+        let s = {};
+        try {
+          s = tt(JSON.parse(atob(n)));
+        } catch (o) {
+          throw console.error(o), new Error("Failed to parse third party data");
+        }
+        return s;
+      }
+    }
+    return;
+  }
+  const a = await e.call("thirdPartyInfo");
+  let r = {};
+  try {
+    r = tt(JSON.parse(a));
+  } catch (n) {
+    throw console.error(n), new Error("Failed to parse third party data");
+  }
+  return r;
+}, pt = 200, ut = (e) => new Promise((a) => {
+  setTimeout(() => {
+    window.location.assign(e), a();
+  }, pt);
+}), gr = () => new Promise((e) => {
+  setTimeout(() => {
+    window.self.close(), e();
+  }, pt);
+}), K = async () => {
+  try {
+    await cr();
+  } catch (r) {
+    console.error(r);
+  }
+  window.opener && window.opener !== window && await gr();
+  const e = sessionStorage.getItem(x.ReferrerUrl), a = sessionStorage.getItem(x.Base64EncodedMusicUserTokenData);
+  e && a && (sessionStorage.clear(), window.location.assign(`${e}#${a}`));
+}, ye = () => {
+  if (window.opener && window.opener !== window) return true;
+  const e = sessionStorage.getItem(x.ReferrerUrl), a = sessionStorage.getItem(x.Base64EncodedMusicUserTokenData);
+  return !!(e && a);
+}, dr = k({ __name: "ErrorNoSubscription", props: { jwt: {} }, setup(e) {
+  const a = e, r = W(), { isLoading: n, appName: s, isPartnerIntegration: o, product: i } = ve(a.jwt), c = u(() => o.value && s.value ? r("ASE.Web.Commerce.WebAuthorize.Authorize.Partner.Upsell.Description", { appName: s.value }) : r("ASE.Web.Commerce.WebAuthorize.Authorize.Error.CountryNotAvailable")), p = u(() => ye() ? r("ASE.Web.Commerce.WebAuthorize.Authorize.Error.UnsupportedClient.Button") : ""), l = u(() => {
+    switch (i.value) {
+      case S.Music:
+        return "music";
+      case S.Podcasts:
+        return "podcasts";
+    }
+    return "music";
+  });
+  return (g, m) => b(n) ? (d(), A(C, { key: 0 })) : (d(), A(q, { key: 1, class: "error-no-subscription", description: c.value, "primary-button-label": p.value, product: b(i), onPrimaryButtonClick: b(K) }, { "content-top": P(() => [D(j, { type: l.value }, null, 8, ["type"])]), _: 1 }, 8, ["description", "primary-button-label", "product", "onPrimaryButtonClick"]));
+} }), xe = async (e, a = "access_denied") => {
+  const r = e.replace(/code=[^?|&]+/gi, `error=${a}`);
+  return ut(r);
+}, mr = async (e) => ut(e), hr = k({ __name: "ErrorUnsupportedCountry", props: { jwt: {} }, setup(e) {
+  const a = e, r = W(), { isLoading: n, appName: s, callbackUrl: o, isPartnerIntegration: i, product: c } = ve(a.jwt), p = u(() => {
+    if (i.value && s.value) {
+      let v;
+      switch (c.value) {
+        case S.Podcasts:
+          v = "ASE.Web.Commerce.WebAuthorize.Authorize.Partner.Podcasts.CountryNotAvailable";
+          break;
+        default:
+          v = "ASE.Web.Commerce.WebAuthorize.Authorize.Partner.CountryNotAvailable";
+      }
+      return r(v, { appName: s.value });
+    }
+    return r("ASE.Web.Commerce.WebAuthorize.Authorize.Error.CountryNotAvailable");
+  }), l = u(() => ye() ? r("ASE.Web.Commerce.WebAuthorize.Authorize.Error.UnsupportedClient.Button") : ""), g = u(() => {
+    switch (c.value) {
+      case S.Music:
+        return "music";
+      case S.Podcasts:
+        return "podcasts";
+    }
+    return "music";
+  }), m = async () => o.value ? xe(o.value) : K();
+  return (v, h) => b(n) ? (d(), A(C, { key: 0 })) : (d(), A(q, { key: 1, class: "error-unsupported-country", description: p.value, "primary-button-label": l.value, product: b(c), onPrimaryButtonClick: m }, { "content-top": P(() => [D(j, { type: g.value }, null, 8, ["type"])]), _: 1 }, 8, ["description", "primary-button-label", "product"]));
+} }), br = k({ __name: "ErrorUnsupportedDevice", setup(e) {
+  const a = W(), r = u(() => a("ASE.Web.Commerce.WebAuthorize.Authorize.Error.UnsupportedClient.Title")), n = u(() => a("ASE.Web.Commerce.WebAuthorize.Authorize.Error.UnsupportedClient.Message")), s = u(() => ye() ? a("ASE.Web.Commerce.WebAuthorize.Authorize.Error.UnsupportedClient.Button") : "");
+  return (o, i) => (d(), A(q, { description: n.value, "primary-button-label": s.value, title: r.value, onPrimaryButtonClick: b(K) }, null, 8, ["description", "primary-button-label", "title", "onPrimaryButtonClick"]));
+} });
+const fr = { class: "error-view theme-music" }, Ar = { class: "error-view__content" }, vr = { class: "error-view__title typography-label", "data-test": "title" }, yr = { class: "error-view__description typography-body-tight", "data-test": "description" }, Lr = { class: "error-view__button-container" }, _r = k({ __name: "ErrorView", props: { jwtToken: {}, errorMessage: {} }, setup(e) {
+  const a = e, r = W(), n = r("ASE.Web.Commerce.WebAuthorize.Authorize.Error.NoConnection.Title"), s = r("ASE.Web.Commerce.WebAuthorize.Authorize.Error.NoConnection.Message"), o = r("ASE.Web.Commerce.WebAuthorize.Authorize.Error.NoConnection.CTA"), i = r("ASE.Web.Commerce.WebAuthorize.Authorize.Error.UnsupportedClient.Button"), c = async () => {
+    const { jwtToken: p } = a;
+    if (!!p) try {
+      await pr(), De(p);
+    } catch (l) {
+      console.error(l);
+    }
+  };
+  return (p, l) => (d(), T("div", fr, [w("section", Ar, [w("h1", vr, N(b(n)), 1), w("p", yr, N(b(s)), 1), w("div", Lr, [a.jwtToken ? (d(), A(be, { key: 0, color: "primary", "data-test": "try-again-button", onClick: c }, { default: P(() => [ge(N(b(o)), 1)]), _: 1 })) : (d(), A(be, { key: 1, color: "primary", "data-test": "close-window-button", onClick: b(K) }, { default: P(() => [ge(N(b(i)), 1)]), _: 1 }, 8, ["onClick"]))])])]));
+} }), Sr = (e, a, r = false) => {
+  let n;
+  return (...s) => {
+    const o = () => {
+      n = void 0, r || e(...s);
+    }, i = r && !n;
+    n && clearTimeout(n), n = setTimeout(o, a), i && e(...s);
+  };
+};
+let gt = false, kr = false, Le = {}, f, ne, $, M;
+const Tr = (e) => {
+  var r, n;
+  M = new Je(e, je), (r = f.metricsKitHtmlDelegatePoperties) == null || r.forEach(({ topic: s, properties: o = {} }) => {
+    Et.setProperties(s, o);
+  }), M.init();
+  const a = It;
+  M.system.environment.setDelegate(a), f.appDelegates && M.system.environment.setDelegate(f.appDelegates), (n = f.setMetricsDelegate) == null || n.call(f, M.system.environment, M.utils.network, M.eventHandlers), M.config.setDelegate(J({ sources: () => [f.metricsBaseData] }, f.constraintProfiles && { constraintProfiles: f.constraintProfiles })), f.sendFunnelEvents && ($ = new Je(f.funnelTopic, je), $.init(), f.appDelegates && $.system.environment.setDelegate(f.appDelegates), $.config.setDelegate(J({ sources: () => [f.metricsBaseData] }, f.funnelConstraintProfiles && { constraintProfiles: f.funnelConstraintProfiles })));
+}, wr = (e) => {
+  ne !== e.topic && (ne = e.topic, f = e, Tr(ne), gt = true);
+}, Er = Sr((e) => {
+  M == null || M.system.eventRecorder.flushUnreportedEvents(e);
+}, 100), dt = (e = false) => {
+  Er(e);
+}, Ir = (e) => {
+  for (const a in e) Le[a] = e[a];
+}, mt = (e, a = {}, r = false) => {
+  var n;
+  if (gt && !kr) {
+    const s = JSON.parse(JSON.stringify(e)), o = s.topic ? s.topic : ne;
+    if (M.system.eventRecorder.recordEvent(o, s), f.sendFunnelEvents && f.funnelTopic && ((n = f.shouldRecordFunnelEvent) == null ? void 0 : n.call(f, e))) {
+      const i = JSON.parse(JSON.stringify(a));
+      $.system.eventRecorder.recordEvent(f.funnelTopic, i);
+    }
+    r && dt();
+  }
+}, Ae = (e, ...a) => {
+  {
+    const r = [f.metricsBaseData || {}], n = {};
+    f.recordTopicInMetricsData && (n.topic = ne);
+    const { pageId: s, pageType: o, pageContext: i } = Le, c = (a || []).concat(r, n);
+    return s && o && i ? e.metricsData(s, o, i, c[0], ...c.slice(1)) : {};
+  }
+}, Pr = () => {
+  let e = {};
+  const a = { pageLoadTime: Date.now() }, r = Le, n = Ae(M.eventHandlers.page, a, r);
+  f.sendFunnelEvents && (e = Ae($.eventHandlers.page, a, r)), mt(n, e);
+}, Br = (e = {}) => {
+  let a;
+  const { pageUrl: r, hostApp: n, offerType: s, upsellType: o } = Le, i = Ae(M.eventHandlers.click, {}, e, { pageUrl: r, hostApp: n, offerType: s, upsellType: o });
+  f.sendFunnelEvents && (a = Ae($.eventHandlers.click, {}, e, { pageUrl: r, hostApp: n, offerType: s, upsellType: o })), mt(i, a);
+};
+var ht = ((e) => (e.AppStore = "xp_amp_appstore", e.AppStoreUserExperience = "xp_ase_appstore_ue", e.AppStorePayments = "xp_ase_payments/appstore_payments_ue", e.AppStoreRedeem = "xp_ase_payments/appstore_redeem_ue", e.AppStoreSubscriptions = "xp_ase_subscriptions/ue", e.AppStoreUnidentified = "xp_amp_appstore_unidentified", e.Main = "xp_its_main", e.MusicMain = "xp_its_music_main", e.MusicUnidentified = "xp_amp_music_cs_unidentified", e.MusicWebplayer = "xp_amp_music_webplayer", e.CommercePh = "xp_amp_commerce_ph", e.Payments = "xp_amp_payments", e.PodcastsMain = "xp_amp_podcasts_main", e.Redeem = "xp_amp_redeem", e.IdVerification = "xp_ase_idverify/ue_dnu", e.Segmentation = "xp_ase_idverify_ue", e.Subscriptions = "xp_amp_subscriptions_cs", e.TvMain = "xp_amp_tv_main", e.TvUnidentified = "xp_amp_tv_unidentified", e.Retail = "xp_retail_applestore_cs", e.RetailBuy = "xp_retail_applestore_cs_identified", e.ItsMetricsTest = "its_metricstest", e))(ht || {});
+const Mr = () => "com.apple.music.authorize", Nr = (e) => {
+  const a = document.querySelector(`[name="${e}"]`);
+  return a ? a.content : "";
+}, Ur = { app: Mr, appVersion: () => Nr("version") }, zr = () => ({ appName: "com.apple.music.authorize", hostApp: navigator.userAgent, metricsUrl: "https://xp.apple.com/report", compoundSeparator: "_", pageContext: "MusicKitEmbedWebPlayer", pageType: "Picker", refUrl: document.referrer, pageUrl: window.location.href }), Rr = () => wr({ topic: ht.MusicWebplayer, appDelegates: Ur, metricsBaseData: zr() }), ce = () => (Rr(), { flushUnreportedEvents: dt, recordClickEvent: Br, recordPageEvent: Pr, updatePageData: Ir });
+const Wr = { class: "privacy-summary", "data-test": "privacy-summary" }, Dr = { class: "privacy-summary__link-container" }, Fr = { key: 0, class: "privacy-summary__link-intro typography-caption", "data-test": "privacy-summary-first-party-intro" }, xr = ["href"], Ke = k({ __name: "PrivacySummary", props: { isFirstPartyIntegration: { type: Boolean, default: false }, isPartnerIntegration: { type: Boolean, default: false }, product: { default: S.Music }, thirdPartyJwtToken: { default: void 0 } }, setup(e) {
+  const a = e, r = W(), { flushUnreportedEvents: n, recordClickEvent: s, updatePageData: o } = ce();
+  ie(() => {
+    const m = "WebPlayerAccessRequest";
+    o({ pageId: m, pageType: "Picker", pageContext: "MusicKitEmbedWebPlayer", page: `Picker_${m}`, userType: "signedIn" });
+  });
+  const i = u(() => r("ASE.Web.Commerce.WebAuthorize.Authorize.UseDifferentAppleID")), c = u(() => r("ASE.Web.Commerce.WebAuthorize.Authorize.Privacy.Description")), p = u(() => r("ASE.Web.Commerce.WebAuthorize.Authorize.Privacy.DataManaged")), l = u(() => a.product === S.Podcasts ? "https://support.apple.com/en-us/HT207929" : r("ASE.Web.Commerce.WebAuthorize.Authorize.Privacy.DataManaged.Url")), g = () => (s({ targetId: "continue", targetType: "link", actionType: "navigate" }), n(true), De(a.thirdPartyJwtToken));
+  return (m, v) => (d(), T("div", Wr, [D(j, { type: "gdpr" }), w("div", Dr, [a.isFirstPartyIntegration ? (d(), T("p", Fr, N(c.value), 1)) : V("", true), w("a", { class: "privacy-summary__link-text typography-caption", "data-test": "privacy-summary-privacy-text", href: l.value, target: "_blank" }, N(p.value), 9, xr), !a.isFirstPartyIntegration && !a.isPartnerIntegration && a.thirdPartyJwtToken ? (d(), T("a", { key: 1, class: "privacy-summary__link-text privacy-summary__link-text--margin-top typography-caption", "data-test": "privacy-summary-use-different-apple-id", href: "#", onClick: Pt(g, ["prevent"]) }, N(i.value), 1)) : V("", true)])]));
+} }), Kr = k({ __name: "FirstPartySignedIn", props: { consumerId: {}, restrictionsEnabled: {}, musicUserToken: {}, product: {} }, setup(e) {
+  const a = e, r = oe(), n = W(), { flushUnreportedEvents: s, recordClickEvent: o, recordPageEvent: i, updatePageData: c } = ce();
+  let p = false;
+  const l = _(true);
+  ze(async () => {
+    const { consumerId: E, restrictionsEnabled: y, musicUserToken: z } = a;
+    or({ consumerId: E, restrictionsEnabled: y, musicUserToken: z });
+    try {
+      return "hasStorageAccess" in document && "requestStorageAccess" in document ? (I(), await at()) : (await at(), await ue({ consumerId: E, restrictionsEnabled: y, musicUserToken: z }));
+    } catch (H) {
+      console.error(H), r.push({ name: "error" });
+    } finally {
+      l.value = false;
+    }
+  }), ie(() => {
+    const E = "WebPlayerConfirmConnection";
+    c({ consumerId: a.consumerId, pageId: E, pageType: "Picker", pageContext: "MusicKitEmbedWebPlayer", page: `Picker_${E}`, userType: "signedIn" }), i();
+  });
+  const g = u(() => n("ASE.Web.Commerce.WebAuthorize.Authorize.SignedIn.Header")), m = u(() => n("ASE.Web.Commerce.WebAuthorize.Authorize.SignedIn.Description")), v = u(() => n("ASE.Web.Commerce.WebAuthorize.Authorize.SignedIn.CTA")), h = u(() => {
+    switch (a.product) {
+      case S.Music:
+        return "music";
+      case S.Podcasts:
+        return "podcasts";
+    }
+  }), U = async () => {
+    const { consumerId: E, restrictionsEnabled: y, musicUserToken: z } = a;
+    if (o({ targetId: "continue", targetType: "button", actionType: "select" }), s(true), !p) return K();
+    F();
+    try {
+      await ue({ consumerId: E, restrictionsEnabled: y, musicUserToken: z });
+    } catch (H) {
+      console.error(H), r.push({ name: "error" });
+    }
+    return K();
+  }, L = async () => {
+    const { consumerId: E, restrictionsEnabled: y, musicUserToken: z } = a;
+    ue({ consumerId: E, restrictionsEnabled: y, musicUserToken: z });
+  }, I = () => {
+    window.addEventListener("beforeunload", L), p = true;
+  }, F = () => {
+    window.removeEventListener("beforeunload", L), p = false;
+  };
+  return (E, y) => l.value ? (d(), A(C, { key: 0 })) : (d(), A(q, { key: 1, description: m.value, "primary-button-label": v.value, product: a.product, title: g.value, onPrimaryButtonClick: U }, { "content-top": P(() => [D(j, { type: h.value }, null, 8, ["type"])]), "content-bottom": P(() => [D(Ke, { "is-first-party-integration": true, "is-partner-integration": false })]), _: 1 }, 8, ["description", "primary-button-label", "product", "title"]));
+} });
+const Gr = { class: "base-authorization-request__icons-container" }, Or = { class: "base-authorization-request__icon" }, Vr = w("div", { class: "base-authorization-request__arrows" }, null, -1), Hr = { class: "base-authorization-request__icon" }, Jr = { key: 0, class: "base-authorization-request__checkbox-container typography-body-tight" }, jr = { "data-test": "allow-social-info-scope-label", for: "allow-social-info-scope" }, bt = k({ __name: "BaseAuthorizationRequest", props: { appName: {}, approveActivation: { type: Function }, approveActivationButtonLabel: {}, declineActivation: { type: Function }, declineActivationButtonLabel: {}, description: {}, isPartnerIntegration: { type: Boolean }, product: {}, scopes: {}, thirdPartyIconUrl: {}, thirdPartyJwtToken: {}, title: {} }, emits: ["social-info-checkbox-click"], setup(e, { emit: a }) {
+  const r = e, n = oe(), s = W(), o = _(false), i = _(false), c = u(() => {
+    switch (r.product) {
+      case S.Music:
+        return "music";
+      case S.Podcasts:
+        return "podcasts";
+    }
+  }), p = u(() => {
+    switch (r.product) {
+      case S.Music:
+        return s("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Music.Label");
+      case S.Podcasts:
+        return s("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Podcasts.Label");
+    }
+  }), l = u(() => s("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Profile", { appName: r.appName })), g = async () => U(r.approveActivation), m = async () => U(r.declineActivation), v = a, h = (L) => {
+    v("social-info-checkbox-click", L);
+  }, U = async (L) => {
+    if (!(o.value || i.value)) {
+      o.value = true;
+      try {
+        await L() === "redirecting" && (i.value = true);
+      } catch (I) {
+        console.error(I), n.push({ name: "error" });
+      } finally {
+        o.value = false;
+      }
+    }
+  };
+  return (L, I) => o.value ? (d(), A(C, { key: 0 })) : (d(), A(q, { key: 1, class: "base-authorization-request", description: r.description, "primary-button-label": r.approveActivationButtonLabel, product: L.product, "secondary-button-label": r.declineActivationButtonLabel, "should-disable-buttons": i.value, title: r.title, onPrimaryButtonClick: g, onSecondaryButtonClick: m }, { "content-top": P(() => [w("div", Gr, [w("div", Or, [D(j, { alt: "", label: p.value, type: c.value }, null, 8, ["label", "type"])]), Vr, w("div", Hr, [D(j, { alt: "", label: r.appName, "third-party-icon-url": r.thirdPartyIconUrl, type: "third-party" }, null, 8, ["label", "third-party-icon-url"])])])]), "content-middle": P(() => {
+    var F;
+    return [((F = L.scopes) == null ? void 0 : F.includes(b(G).MusicSocialInfo)) && L.product === b(S).Music ? (d(), T("div", Jr, [w("input", { id: "allow-social-info-scope", class: "base-authorization-request__checkbox-container__input", "data-test": "allow-social-info-scope-checkbox", name: "allow-social-info-scope", type: "checkbox", onClick: h }), w("label", jr, N(l.value), 1)])) : V("", true)];
+  }), "content-bottom": P(() => [D(Ke, { "is-first-party-integration": false, "is-partner-integration": r.isPartnerIntegration, product: L.product, "third-party-jwt-token": r.thirdPartyJwtToken }, null, 8, ["is-partner-integration", "product", "third-party-jwt-token"])]), _: 1 }, 8, ["description", "primary-button-label", "product", "secondary-button-label", "should-disable-buttons", "title"]));
+} }), qr = k({ __name: "PartnerAuthorizationRequest", props: { appleId: {}, appName: {}, jwt: {} }, setup(e) {
+  const a = e, r = W(), { flushUnreportedEvents: n, recordClickEvent: s, recordPageEvent: o, updatePageData: i } = ce(), c = _(false), { appleId: p, appName: l, callbackUrl: g, cancel: m, isLoading: v, product: h, scopes: U, thirdPartyIconUrl: L } = ve(a.jwt);
+  ie(() => {
+    const B = "WebPlayerAccessRequest";
+    i({ pageId: B, pageType: "Picker", pageContext: "MusicKitEmbedWebPlayer", page: `Picker_${B}`, userType: "signedOut" }), o();
+  });
+  const I = () => {
+    c.value = !c.value;
+  }, F = r("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Header"), E = u(() => {
+    let B;
+    switch (h.value) {
+      case S.Podcasts:
+        B = "ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Podcasts.Description";
+        break;
+      default:
+        B = "ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Description";
+    }
+    return r(B, { appName: H.value, appleId: _e.value });
+  }), y = r("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Approve.CTA"), z = r("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Decline.CTA"), H = u(() => a.appName || l.value || ""), _e = u(() => a.appleId || p.value || ""), le = u(() => m.value || g.value), Se = async () => {
+    if (s({ targetId: "approve", targetType: "button", actionType: "select" }), n(true), g.value) {
+      const B = Te(g.value);
+      return await mr(B.href), "redirecting";
+    }
+    return "complete";
+  }, ke = async () => (s({ targetId: "notNow", targetType: "button", actionType: "select" }), n(true), le.value ? (await xe(le.value), "redirecting") : "complete"), Te = (B) => {
+    const ae = new URL(B), Z = c.value ? U.value.join(" ") : h.value;
+    return ae.searchParams.append("scope", Z), ae;
+  };
+  return (B, ae) => b(v) ? (d(), A(C, { key: 0 })) : (d(), A(bt, { key: 1, "app-name": H.value, "approve-activation": Se, "approve-activation-button-label": b(y), "decline-activation": ke, "decline-activation-button-label": b(z), description: E.value, "is-partner-integration": true, product: b(h), scopes: b(U), "third-party-icon-url": b(L), title: b(F), onSocialInfoCheckboxClick: I }, null, 8, ["app-name", "approve-activation-button-label", "decline-activation-button-label", "description", "product", "scopes", "third-party-icon-url", "title"]));
+} }), Zr = "https://buy.itunes.apple.com/commerce/account/getMusicUserToken", $r = "https://p%@-buy.itunes.apple.com/commerce/account/getMusicUserToken", Cr = /^\d{1,3}$/, Qr = async (e, a, r) => {
+  const n = r && Cr.test(r) ? $r.replace("%@", r) : Zr, s = new Request(We(n, { liteSessionId: e, jwtToken: a }), { method: "GET" }), o = await fetch(s), { musicUserToken: i, itre: c } = await o.json();
+  return { musicUserToken: i, restrictionsEnabled: c };
+}, rt = { PYHJN9Z6W2: "Sony Music Entertainment" }, Yr = (e) => {
+  const [, a] = e.split(".");
+  try {
+    const r = atob(a), n = JSON.parse(r);
+    if (rt[n.iss]) return rt[n.iss];
+  } catch {
+  }
+}, Xr = k({ __name: "ThirdPartyAuthorizationRequest", props: { appleId: {}, appName: {}, liteSessionId: {}, pod: {} }, setup(e) {
+  const a = e, r = oe(), n = W(), { recordClickEvent: s, recordPageEvent: o, updatePageData: i } = ce(), c = S.Music, p = _([G.Music]);
+  ie(() => {
+    const y = "WebPlayerAccessRequest";
+    i({ pageId: y, pageType: "Picker", pageContext: "MusicKitEmbedWebPlayer", page: `Picker_${y}`, userType: "signedOut" }), o();
+  });
+  const l = _(true), g = _({});
+  ze(async () => {
+    try {
+      g.value = await ur() || {};
+    } catch (y) {
+      console.error(y), r.push({ name: "error" });
+    } finally {
+      l.value = false;
+    }
+  });
+  const m = u(() => (g.value.thirdPartyToken ? Yr(g.value.thirdPartyToken) : void 0) || a.appName || g.value.thirdPartyName || ""), v = u(() => g.value.thirdPartyIconURL), h = n("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Header"), U = u(() => n("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Description", { appName: m.value, appleId: a.appleId })), L = n("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Approve.CTA"), I = n("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Decline.CTA"), F = async () => {
+    s({ targetId: "approve", targetType: "button", actionType: "select" });
+    try {
+      const { musicUserToken: y, restrictionsEnabled: z } = await Qr(a.liteSessionId, g.value.thirdPartyToken || "", a.pod);
+      await ue({ restrictionsEnabled: z, musicUserToken: y });
+    } catch (y) {
+      return console.error(y), r.push({ name: "error" }), "complete";
+    }
+    return await K(), "redirecting";
+  }, E = async () => {
+    s({ targetId: "notNow", targetType: "button", actionType: "select" });
+    try {
+      await ir();
+    } catch (y) {
+      return console.error(y), r.push({ name: "error" }), "complete";
+    }
+    return await K(), "redirecting";
+  };
+  return (y, z) => l.value ? (d(), A(C, { key: 0 })) : (d(), A(bt, { key: 1, "app-name": m.value, "approve-activation": F, "approve-activation-button-label": b(L), "decline-activation": E, "decline-activation-button-label": b(I), description: U.value, "is-partner-integration": false, product: b(c), scopes: p.value, "third-party-icon-url": v.value, "third-party-jwt-token": g.value.thirdPartyToken, title: b(h) }, null, 8, ["app-name", "approve-activation-button-label", "decline-activation-button-label", "description", "product", "scopes", "third-party-icon-url", "third-party-jwt-token", "title"]));
+} }), en = k({ __name: "OAuth", props: { appName: {}, appleId: {}, consumerId: {}, error: {}, isAppleMusicSubscriber: { type: Boolean }, restrictionsEnabled: {}, jwt: {}, liteSessionId: {}, musicUserToken: {}, pod: {} }, setup(e) {
+  const a = e, r = u(() => {
+    const { musicUserToken: o, isAppleMusicSubscriber: i, error: c } = a;
+    return Boolean(o && i && !c);
+  }), n = u(() => {
+    const { jwt: o, error: i } = a;
+    return Boolean(o && !i);
+  }), s = u(() => {
+    const { liteSessionId: o, error: i } = a;
+    return Boolean(o && !i);
+  });
+  return (o, i) => r.value ? (d(), A(Kr, { key: 0, "consumer-id": a.consumerId, "data-test": "oauth-first-party-signed-in", "music-user-token": a.musicUserToken, product: b(S).Music, "restrictions-enabled": a.restrictionsEnabled }, null, 8, ["consumer-id", "music-user-token", "product", "restrictions-enabled"])) : n.value ? (d(), A(qr, { key: 1, "app-name": a.appName, "apple-id": a.appleId, "data-test": "oauth-authorization-request-partner", jwt: a.jwt }, null, 8, ["app-name", "apple-id", "jwt"])) : s.value ? (d(), A(Xr, { key: 2, "app-name": a.appName, "apple-id": a.appleId, "data-test": "oauth-authorization-request-third-party", "lite-session-id": a.liteSessionId, pod: a.pod }, null, 8, ["app-name", "apple-id", "lite-session-id", "pod"])) : (d(), A(q, { key: 3, "data-test": "oauth-privacy-summary" }, { "content-bottom": P(() => [D(Ke, { "is-first-party-integration": false, "is-partner-integration": false })]), _: 1 }));
+} }), tn = k({ __name: "UpgradeView", setup(e) {
+  const a = W(), r = u(() => a("ASE.Web.Commerce.WebAuthorize.Authorize.Partner.Upsell.Header")), n = u(() => a("ASE.Web.Commerce.WebAuthorize.Authorize.ConnectTo.Upgrade.Description")), s = u(() => ye() ? a("ASE.Web.Commerce.WebAuthorize.Authorize.Error.UnsupportedClient.Button") : "");
+  return (o, i) => (d(), A(q, { description: n.value, "primary-button-label": s.value, title: r.value, onPrimaryButtonClick: b(K) }, { "content-top": P(() => [D(j, { type: "music" })]), _: 1 }, 8, ["description", "primary-button-label", "title", "onPrimaryButtonClick"]));
+} }), an = k({ __name: "UpsellView", props: { affiliateToken: { default: void 0 }, campaignToken: { default: void 0 }, consumerId: { default: void 0 }, jwt: { default: void 0 }, supported: { type: Boolean, default: true } }, setup(e) {
+  const a = e, r = oe(), n = W(), { flushUnreportedEvents: s, recordClickEvent: o, recordPageEvent: i, updatePageData: c } = ce(), { appName: p, callbackUrl: l, affiliateToken: g, campaignToken: m, isLoading: v, isPartnerIntegration: h, product: U, suppressUpsell: L } = ve(a.jwt);
+  ie(() => {
+    const Z = "WebPlayerSubscriptionUpsell";
+    c({ consumerId: a.consumerId, pageId: Z, pageType: "Picker", pageContext: "MusicKitEmbedWebPlayer", page: `Picker_${Z}`, userType: "signedOut" }), i();
+  });
+  const I = u(() => a.affiliateToken || g.value), F = u(() => a.campaignToken || m.value), E = u(() => h.value ? n("ASE.Web.Commerce.WebAuthorize.Authorize.Partner.Upsell.Header") : n("ASE.Web.Commerce.WebAuthorize.Authorize.ConnectTo.Upsell.Header")), y = u(() => h.value && p.value ? n("ASE.Web.Commerce.WebAuthorize.Authorize.Partner.Upsell.Description", { appName: p.value }) : n("ASE.Web.Commerce.WebAuthorize.Authorize.ConnectTo.Upsell.Description")), z = n("ASE.Web.Commerce.WebAuthorize.Authorize.Error.UnsupportedClient.Button"), H = n("ASE.Web.Commerce.WebAuthorize.Authorize.Upsell.CTA"), _e = n("ASE.Web.Commerce.WebAuthorize.Authorize.AccessRequest.Decline.CTA"), le = u(() => L.value ? z : H), Se = u(() => {
+    if (!L.value) return _e;
+  }), ke = async () => L.value ? B() : ae(), Te = async () => {
+    if (!L.value) return B();
+  }, B = async () => (o({ targetId: "notNow", targetType: "button", actionType: "select" }), s(true), l.value ? xe(l.value) : K()), ae = async () => {
+    o({ targetId: "signUp", targetType: "button", actionType: "select" }), s(true);
+    try {
+      await lr();
+    } catch (Oe) {
+      console.error(Oe);
+    }
+    if (!a.supported) return r.push({ name: "error-unsupported-country", query: { jwt: a.jwt } });
+    const Z = We("https://music.apple.com/deeplink", J(J(J({ [R.App]: O.App, [R.Path]: O.Path, [R.Source]: O.Source, [R.InteralFigaroCampaignGroup]: O.InteralFigaroCampaignGroup, [R.InternalFigaroCampaignGroupToken]: O.InternalFigaroCampaignGroupToken }, I.value && { [R.AffiliateToken]: I.value }), F.value && { [R.CampaignToken]: F.value }), a.consumerId && { [R.ClientId]: a.consumerId }));
+    return window.open(Z, "_blank"), K();
+  };
+  return (Z, Oe) => b(v) ? (d(), A(C, { key: 0 })) : (d(), A(q, { key: 1, class: "upsell", description: y.value, "description-class": "upsell__description", "primary-button-label": le.value, product: b(U), "secondary-button-label": Se.value, title: E.value, onPrimaryButtonClick: ke, onSecondaryButtonClick: Te }, { "content-top": P(() => [D(j, { type: "music" })]), _: 1 }, 8, ["description", "primary-button-label", "product", "secondary-button-label", "title"]));
+} }), ft = Bt({ history: Mt(), routes: [{ path: "/", name: "oauth", component: en, beforeEnter: [Qe, Ia], props: ({ query: { an: e, appleId: a, cid: r, error: n, isAppleMusicSubscriber: s, itre: o, jwt: i, liteSessionId: c, musicUserToken: p, pod: l } }) => ({ appName: e, appleId: a, consumerId: r, error: n, isAppleMusicSubscriber: s === "true", restrictionsEnabled: o, jwt: i, liteSessionId: c, musicUserToken: p, pod: l }) }, { path: "/woa", name: "woa", component: Nt, beforeEnter: [Ea] }, { path: "/error", name: "error", component: _r, props: ({ query: { jwtToken: e, errorMessage: a } }) => ({ jwtToken: e, errorMessage: a }) }, { path: "/error/unsupported-country", name: "error-unsupported-country", component: hr, props: (e) => ({ jwt: e.query.jwt }) }, { path: "/error/unsupported-device", name: "error-unsupported-device", component: br }, { path: "/error/no-subscription", name: "error-no-subscription", component: dr, props: (e) => ({ jwt: e.query.jwt }) }, { path: "/upgrade", name: "upgrade", component: tn }, { path: "/upsell", name: "upsell", component: an, beforeEnter: [Qe], props: ({ query: { at: e, ct: a, cid: r, jwt: n, supported: s } }) => ({ affiliateToken: e, campaignToken: a, consumerId: r, jwt: n, supported: s !== "0" }) }] });
+ft.beforeResolve(wa);
+const rn = false, Ge = Ut(ka), nn = null, sn = `${location.origin}/locales`;
+Ge.use(_a, { localeDirectoryPath: sn, importDefaultLocalizations: nn, showScreamers: rn });
+Ge.use(ft);
+Ge.mount("#app");
+export { cn as __vite_legacy_guard };

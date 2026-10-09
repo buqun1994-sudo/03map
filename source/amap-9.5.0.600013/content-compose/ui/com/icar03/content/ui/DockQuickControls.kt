@@ -170,7 +170,7 @@ internal fun dockLevelGesture(control: ControlId, state: ControlState, overlay: 
 
 /** Kept above the entire Panel, outside Dock Surface/pager clipping. */
 @Composable
-internal fun DockLevelOverlayHost(overlay: DockLevelOverlayState,
+internal fun DockLevelOverlayHost(overlay: DockLevelOverlayState, uiOpacity: Float = 1f,
     icon: @Composable (ControlId, Int, Modifier) -> Unit) {
     val density = LocalDensity.current
     SideEffect {
@@ -200,7 +200,7 @@ internal fun DockLevelOverlayHost(overlay: DockLevelOverlayState,
                 scale.fraction(current.level), overlay.visible,
                 Modifier.offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
                     .width(with(density) { bounds.width.toDp() }).height(with(density) { bounds.height.toDp() })
-                    .graphicsLayer { alpha = opacity }.semantics {
+                    .graphicsLayer { alpha = opacity * uiOpacity }.semantics {
                         this[DockOverlayLevel] = current.level
                         this[DockOverlaySelecting] = current.selectionStarted
                     },

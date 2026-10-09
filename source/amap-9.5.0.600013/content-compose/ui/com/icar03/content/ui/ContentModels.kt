@@ -207,7 +207,11 @@ data class ContentUiState(
     val features: Map<VehicleFeature, FeatureState> = VehicleFeature.entries.associateWith { FeatureState() },
     val systemLevels: Map<SystemQuickControl, LevelState> = SystemQuickControl.entries.associateWith { LevelState(0f, available = false) },
     val screenCleanAvailable: Boolean = false,
-)
+) {
+    /** Only interactive surfaces consume this preference; facts and the scene stay opaque. */
+    val interfaceOpacity: Float get() = uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1f) ?: 1f
+    val canCollapseSettings: Boolean get() = settingsOpen && settingsSection == SettingsSection.Lyrics
+}
 sealed interface ContentEvent {
     data class ControlTapped(val id: ControlId) : ContentEvent
     data class ControlPowerTapped(val id: ControlId) : ContentEvent

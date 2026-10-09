@@ -1,9 +1,13 @@
 package com.icar03.content.model
 
 /** Confirmed vehicle transmission state; Unknown never implies a driving gear. */
-enum class VehicleGear { Unknown, Park, Reverse, Neutral, Drive }
+enum class VehicleGear {
+    Unknown, Park, Reverse, Neutral, Drive;
 
-/** Automotive's single-value bit enum, plus the target selector-only P compatibility. */
+    fun isNonPark(): Boolean = this == Reverse || this == Neutral || this == Drive
+}
+
+/** The public CURRENT_GEAR bit enum and the S56 selector are different wire contracts. */
 object DrivingGearMapper {
     @JvmStatic
     fun fromCurrentGear(raw: Int?, parkGear: Int = 4): VehicleGear = when (raw) {
@@ -16,7 +20,13 @@ object DrivingGearMapper {
         else -> VehicleGear.Unknown
     }
 
+    /** S56_HQX GEAR_SELECTION, validated against Vehicle HAL and SmartScene. */
     @JvmStatic
-    fun fromGearSelection(raw: Int?, parkGear: Int = 4): VehicleGear =
-        if (raw == 11) VehicleGear.Park else fromCurrentGear(raw, parkGear)
+    fun fromGearSelection(raw: Int?): VehicleGear = when (raw) {
+        1 -> VehicleGear.Drive
+        9 -> VehicleGear.Reverse
+        10 -> VehicleGear.Neutral
+        11 -> VehicleGear.Park
+        else -> VehicleGear.Unknown
+    }
 }

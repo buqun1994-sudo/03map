@@ -64,23 +64,16 @@ class AutomotiveGearReaderTest {
         return result
     }
 
-    @Test fun currentPropertyHasPriorityAndSelectorElevenIsAnIsolatedFallback() {
-        val manager = GearReaderPropertyFixture(current = 4, selector = 8)
+    @Test fun verifiedS56SelectorOwnsEveryGearAndUnverifiedCurrentCannotOverrideIt() {
+        val manager = GearReaderPropertyFixture(current = 4, selector = 11)
         val reader = reader(manager)
-        assertEquals(VehicleGear.Park, read(reader))
-        assertEquals(listOf(289408001 to 0), manager.reads)
-        manager.reads.clear()
-        manager.current = 11
-        manager.selector = 11
-        assertEquals(VehicleGear.Park, read(reader))
-        assertEquals(listOf(289408001 to 0, 289408000 to 0), manager.reads)
-        manager.reads.clear()
-        manager.current = 8
-        assertEquals(VehicleGear.Drive, read(reader))
-        assertEquals(listOf(289408001 to 0), manager.reads)
-        manager.current = 8192
-        manager.selector = 8192
-        assertEquals(VehicleGear.Unknown, read(reader))
+        for ((raw, expected) in listOf(11 to VehicleGear.Park, 1 to VehicleGear.Drive,
+            9 to VehicleGear.Reverse, 10 to VehicleGear.Neutral, 8192 to VehicleGear.Unknown)) {
+            manager.reads.clear()
+            manager.selector = raw
+            assertEquals(expected, read(reader))
+            assertEquals("one verified property read; CURRENT_GEAR never overrides it", listOf(289408000 to 0), manager.reads)
+        }
         assertEquals(1, GearReaderCarFixture.instances.single().connects)
     }
 
@@ -92,7 +85,7 @@ class AutomotiveGearReaderTest {
         assertEquals(VehicleGear.Unknown, read(reader))
         assertEquals(VehicleGear.Unknown, read(reader))
         manager.permissionDenied = false
-        manager.current = 4
+        manager.selector = 11
         assertEquals(VehicleGear.Park, read(reader))
         val reads = manager.reads.size
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(10))
@@ -100,7 +93,7 @@ class AutomotiveGearReaderTest {
     }
 
     @Test fun warmReadsReuseTheSameManagerAndResolvedPublicMethods() {
-        val manager = GearReaderPropertyFixture(current = 2, selector = 11)
+        val manager = GearReaderPropertyFixture(current = 4, selector = 9)
         val resolutions = mutableListOf<String>()
         val reader = reader(manager, resolutions = resolutions)
         assertEquals(VehicleGear.Reverse, read(reader))
@@ -109,12 +102,12 @@ class AutomotiveGearReaderTest {
         assertEquals(warmResolutions, resolutions)
         assertEquals(1, GearReaderCarFixture.instances.single().managerRequests)
         assertEquals(25, manager.reads.size)
-        assertTrue(manager.reads.all { it == (289408001 to 0) })
+        assertTrue(manager.reads.all { it == (289408000 to 0) })
     }
 
     @Test fun disconnectPublishesUnavailableAndLateCallbacksCannotReacquireTheStoppedGeneration() {
         var unavailable = 0
-        val manager = GearReaderPropertyFixture(current = 4)
+        val manager = GearReaderPropertyFixture(selector = 11)
         val reader = reader(manager, disconnected = { unavailable++ })
         assertEquals(VehicleGear.Park, read(reader))
         val firstCar = GearReaderCarFixture.instances.single()
@@ -122,7 +115,7 @@ class AutomotiveGearReaderTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(1, unavailable)
         assertEquals(1, firstCar.disconnects)
-        val secondManager = GearReaderPropertyFixture(current = 8)
+        val secondManager = GearReaderPropertyFixture(selector = 1)
         GearReaderCarFixture.managers += secondManager
         assertEquals(VehicleGear.Drive, read(reader))
         val secondCar = GearReaderCarFixture.instances.last()
@@ -141,7 +134,7 @@ class AutomotiveGearReaderTest {
     }
 
     @Test fun stopDuringAReadRejectsItsOtherwiseValidResult() {
-        val manager = GearReaderPropertyFixture(current = 4)
+        val manager = GearReaderPropertyFixture(selector = 11)
         val reader = reader(manager)
         manager.onRead = { reader.stop() }
         assertEquals(VehicleGear.Unknown, read(reader))
@@ -186,7 +179,7 @@ class AutomotiveGearReaderTest {
         assertEquals(VehicleGear.Park, snapshots.last().gear)
         assertTrue(snapshots.last().dataAvailable)
         assertFalse(adapter.isAvailable())
-        manager.selector = 8
+        manager.selector = 1
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500))
         assertEquals(VehicleGear.Drive, snapshots.last().gear)
         assertEquals(2, snapshots.size)
@@ -201,7 +194,7 @@ class AutomotiveGearReaderTest {
         val service = VehicleCommandBinder()
         val adapter = attachedVehicleCommandAdapter(service).also(adapters::add)
         val worker = vehicleAdapterField(adapter, "workerHandler") as Handler
-        val manager = GearReaderPropertyFixture(current = 4)
+        val manager = GearReaderPropertyFixture(selector = 11)
         val reader = reader(manager, disconnected = {
             ContentVehicleAdapter::class.java.getDeclaredMethod("invalidateGear", Handler::class.java)
                 .apply { isAccessible = true }.invoke(adapter, worker)
@@ -224,21 +217,21 @@ class AutomotiveGearReaderTest {
         assertFalse(adapter.isAvailable())
         assertTrue("OEM loss must perform a fresh Car read", manager.reads.size > readsBeforeDisconnect)
         assertEquals(VehicleGear.Park, store.snapshot().gear)
-        manager.current = 8
+        manager.selector = 1
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500))
         assertEquals(VehicleGear.Drive, store.snapshot().gear)
         assertEquals("independent Car departure survives OEM loss", 1L, store.snapshot().settingsAutoCloseSequence)
 
-        manager.current = 4
+        manager.selector = 11
         pollVehicleCommandAdapter(adapter)
         assertEquals(VehicleGear.Park, store.snapshot().gear)
         GearReaderCarFixture.instances.single().connection.onServiceDisconnected(GEAR_COMPONENT)
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(VehicleGear.Unknown, store.snapshot().gear)
-        GearReaderCarFixture.managers += GearReaderPropertyFixture(current = 8)
+        GearReaderCarFixture.managers += GearReaderPropertyFixture(selector = 1)
         pollVehicleCommandAdapter(adapter)
         assertEquals(VehicleGear.Drive, store.snapshot().gear)
-        assertEquals("Car disconnect clears P; first recovered D is not an edge", 1L,
+        assertEquals("fresh recovered D is a confirmed non-P fact", 2L,
             store.snapshot().settingsAutoCloseSequence)
         assertTrue(service.writes.isEmpty())
     }
@@ -247,7 +240,7 @@ class AutomotiveGearReaderTest {
         val originalService = VehicleCommandBinder()
         val adapter = attachedVehicleCommandAdapter(originalService).also(adapters::add)
         val worker = vehicleAdapterField(adapter, "workerHandler") as Handler
-        val manager = GearReaderPropertyFixture(current = 4)
+        val manager = GearReaderPropertyFixture(selector = 11)
         val reader = reader(manager)
         set(adapter, "gearReader", reader)
         val store = ContentStore(app, adapter, ContentPorts.PreviewMediaPort(),
@@ -267,11 +260,11 @@ class AutomotiveGearReaderTest {
         assertFalse(store.snapshot().vehicleDataAvailable)
         assertEquals(0L, store.snapshot().settingsAutoCloseSequence)
 
-        // A first non-P read after the invalidation is not a Park departure.
-        manager.current = 8
+        // The first recovered selector is a fresh non-P fact and may close settings.
+        manager.selector = 1
         pollVehicleCommandAdapter(adapter)
         assertEquals(VehicleGear.Drive, store.snapshot().gear)
-        assertEquals(0L, store.snapshot().settingsAutoCloseSequence)
+        assertEquals(1L, store.snapshot().settingsAutoCloseSequence)
     }
 
     private fun set(owner: Any, name: String, value: Any?) = owner.javaClass.getDeclaredField(name)

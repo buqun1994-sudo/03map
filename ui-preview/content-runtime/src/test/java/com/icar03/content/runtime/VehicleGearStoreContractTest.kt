@@ -69,14 +69,14 @@ class VehicleGearStoreContractTest {
         assertEquals(11, drive.featureSnapshot.screenGearRaw)
     }
 
-    @Test fun reducerRecordsEachConfirmedParkDepartureExactlyOnceWithoutAUiConsumer() {
+    @Test fun reducerKeepsConfirmedNonParkEntriesAcrossCoalescedSnapshotsWithoutAUiConsumer() {
         val store = store()
         assertTrue(store.snapshot().autoCloseSettingsOnDrive)
         for (nonPark in listOf(VehicleGear.Reverse, VehicleGear.Neutral, VehicleGear.Drive)) {
             store.acceptVehicleSnapshot(gear(nonPark))
-            assertEquals(0L, store.snapshot().settingsAutoCloseSequence)
+            assertEquals(1L, store.snapshot().settingsAutoCloseSequence)
         }
-        var expected = 0L
+        var expected = 1L
         for (departure in listOf(VehicleGear.Drive, VehicleGear.Reverse, VehicleGear.Neutral)) {
             store.acceptVehicleSnapshot(gear(VehicleGear.Park))
             store.acceptVehicleSnapshot(gear(VehicleGear.Park))
@@ -91,20 +91,22 @@ class VehicleGearStoreContractTest {
         }
     }
 
-    @Test fun unavailableAndPreviewClearTheParkBaselineAndNeverInventADeparture() {
+    @Test fun unavailableAndPreviewNeverInventGearButFreshNonParkRecoveryRemainsARealFact() {
         val store = store()
         val previewPark = ContentPorts.VehicleSnapshot(true, true, 25f, 60, 100, ContentState.CHARGE_DEFAULT,
             0, 0, 0, Float.NaN, -1, 0, 0, 0, 0, true, false, true, true, true).withGear(VehicleGear.Park)
+        var expected = 0L
         for (gap in listOf(gear(VehicleGear.Unknown), ContentPorts.VehicleSnapshot.unavailable(), previewPark)) {
             store.acceptVehicleSnapshot(gear(VehicleGear.Park))
             store.acceptVehicleSnapshot(gap)
             assertEquals(VehicleGear.Unknown, store.snapshot().gear)
+            assertEquals(expected, store.snapshot().settingsAutoCloseSequence)
             store.acceptVehicleSnapshot(gear(VehicleGear.Drive))
-            assertEquals(0L, store.snapshot().settingsAutoCloseSequence)
+            assertEquals(++expected, store.snapshot().settingsAutoCloseSequence)
         }
         store.acceptVehicleSnapshot(gear(VehicleGear.Park))
         store.acceptVehicleSnapshot(gear(VehicleGear.Drive))
-        assertEquals(1L, store.snapshot().settingsAutoCloseSequence)
+        assertEquals(++expected, store.snapshot().settingsAutoCloseSequence)
     }
 
     @Test fun disabledPreferenceConsumesTheEdgeAndEnablingLaterDoesNotReplayIt() {

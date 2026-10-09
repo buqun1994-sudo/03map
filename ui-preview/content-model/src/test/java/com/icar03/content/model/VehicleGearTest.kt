@@ -19,14 +19,17 @@ class VehicleGearTest {
         }
     }
 
-    @Test fun targetSelectorParkCompatibilityCannotLeakIntoCurrentGear() {
-        assertEquals(VehicleGear.Park, DrivingGearMapper.fromGearSelection(11))
-        assertEquals(VehicleGear.Unknown, DrivingGearMapper.fromCurrentGear(11))
-        for (raw in listOf(1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096)) {
-            assertEquals(DrivingGearMapper.fromCurrentGear(raw), DrivingGearMapper.fromGearSelection(raw))
+    @Test fun s56SelectorPreservesTheHalAndSmartSceneIdentitiesWithoutImportingTheStandardEnum() {
+        val verified = mapOf(1 to VehicleGear.Drive, 9 to VehicleGear.Reverse,
+            10 to VehicleGear.Neutral, 11 to VehicleGear.Park)
+        verified.forEach { (raw, expected) -> assertEquals("S56 selector raw=$raw", expected, DrivingGearMapper.fromGearSelection(raw)) }
+        for (raw in listOf(null, Int.MIN_VALUE, -1000, -1, 0, 2, 3, 4, 8, 12, 16, 8192, Int.MAX_VALUE)) {
+            assertEquals("unverified selector=$raw", VehicleGear.Unknown, DrivingGearMapper.fromGearSelection(raw))
         }
-        for (raw in listOf(null, -1000, -1, 0, 3, 9, 8192)) {
-            assertEquals(VehicleGear.Unknown, DrivingGearMapper.fromGearSelection(raw))
-        }
+        assertEquals(VehicleGear.Neutral, DrivingGearMapper.fromCurrentGear(1))
+        assertEquals(VehicleGear.Unknown, DrivingGearMapper.fromCurrentGear(9))
+        assertFalse(VehicleGear.Unknown.isNonPark())
+        assertFalse(VehicleGear.Park.isNonPark())
+        for (gear in listOf(VehicleGear.Reverse, VehicleGear.Neutral, VehicleGear.Drive)) assertTrue(gear.isNonPark())
     }
 }

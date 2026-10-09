@@ -490,15 +490,16 @@ open class SettingsSheetInteractionTest {
         assertEquals(eventCount + 2, events.size)
     }
 
-    @Test fun collapseEntryBelongsOnlyToTheUnderlyingLyricsPage() {
+    @Test fun collapseEntryBelongsOnlyToLyricsSettingsRegardlessOfTheUnderlyingPage() {
         mount(open = true, section = SettingsSection.Lyrics)
-        compose.onNodeWithTag("settings-collapse").assertDoesNotExist()
-        compose.runOnIdle { state.value = state.value.copy(page = PanelPage.Lyrics) }
-        compose.onNodeWithTag("settings-collapse").assertIsDisplayed()
-        compose.runOnIdle { state.value = state.value.copy(settingsSection = SettingsSection.Interaction) }
-        compose.onNodeWithTag("settings-collapse").assertIsDisplayed()
-        compose.runOnIdle { state.value = state.value.copy(page = PanelPage.Shortcuts) }
-        compose.onNodeWithTag("settings-collapse").assertDoesNotExist()
+        for (page in PanelPage.entries) {
+            for (section in SettingsSection.entries) {
+                compose.runOnIdle { state.value = state.value.copy(page = page, settingsSection = section) }
+                compose.mainClock.advanceTimeBy(600)
+                if (section == SettingsSection.Lyrics) compose.onNodeWithTag("settings-collapse").assertIsDisplayed()
+                else compose.onNodeWithTag("settings-collapse").assertDoesNotExist()
+            }
+        }
     }
 
     @Test fun exposedContentRestoresTheSameSectionWithoutDispatchingItsUnderlyingAction() {
@@ -521,8 +522,8 @@ open class SettingsSheetInteractionTest {
     }
 
     @Test fun restoreRejectsDragCancelLongPressAndAcceptsOneSemanticClick() {
-        state.value = state.value.copy(page = PanelPage.Lyrics)
-        mount(open = true, section = SettingsSection.Interaction)
+        state.value = state.value.copy(page = PanelPage.Shortcuts)
+        mount(open = true, section = SettingsSection.Lyrics)
         compose.onNodeWithTag("settings-collapse").performClick()
         compose.mainClock.advanceTimeBy(600)
         val count = events.size
@@ -542,7 +543,7 @@ open class SettingsSheetInteractionTest {
 
     @Test fun closingACollapsedSheetLeavesDirectlyFromItsCurrentPoseWithoutRestoringFirst() {
         state.value = state.value.copy(page = PanelPage.Lyrics)
-        mount(open = true)
+        mount(open = true, section = SettingsSection.Lyrics)
         compose.onNodeWithTag("settings-collapse").performClick()
         compose.mainClock.advanceTimeBy(600)
         var previousTop = unclippedBounds("settings-sheet").top

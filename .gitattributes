@@ -2,3 +2,7 @@
 ui-preview/content-ui/src/main/res/drawable/content_oem_*.xml whitespace=-blank-at-eof
 # The generated Windows wrapper retains CRLF; CR is an end-of-line character.
 ui-preview/gradlew.bat whitespace=cr-at-eol
+# Locked public Apple bundles and generated outputs preserve template-string whitespace.
+# Keep locked bytes unchanged; formatting checks still apply to maintained sources.
+tools/apple-authorize/upstream/*.js -text -whitespace
+source/amap-9.5.0.600013/assets/content-apple-authorize/*.js -text -whitespace
