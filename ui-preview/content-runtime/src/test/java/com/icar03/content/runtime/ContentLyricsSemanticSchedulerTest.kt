@@ -303,12 +303,13 @@ class ContentLyricsSemanticSchedulerTest {
             store.acceptMediaSnapshot(media(-1, title = "Unknown", generation = 2))
             val unknown = media(-1, title = "Unknown", generation = 2)
             store.acceptLyricsSnapshot(lyrics(unknown, listOf(row(0), row(1_000))))
-            assertFalse(store.snapshot().lyricsTimelineReady)
-            assertEquals(emptyQueue, main.nextScheduledTaskTime)
+            assertTrue(store.snapshot().lyricsTimelineReady)
+            assertEquals(0L, store.snapshot().lyricsPositionMs)
+            assertNotEquals(emptyQueue, main.nextScheduledTaskTime)
             val before = publications
-            idle(10_000)
-            assertEquals(before, publications)
-            assertEquals(-1L, store.snapshot().lyricsPositionMs)
+            idle(1_000)
+            assertTrue(publications > before)
+            assertEquals(1_000L, store.snapshot().lyricsPositionMs)
         } finally { store.destroy() }
     }
 

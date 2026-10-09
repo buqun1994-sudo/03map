@@ -127,7 +127,7 @@ class ContentLyricsStoreTest {
         } finally { store.destroy() }
     }
 
-    @Test fun recordingGenerationRejectsLateLyricsAndNewRecordingStartsUntrusted() {
+    @Test fun recordingGenerationRejectsLateLyricsAndNewRecordingStartsAtZero() {
         val store = store()
         try {
             store.startLyrics()
@@ -139,11 +139,11 @@ class ContentLyricsStoreTest {
             store.acceptMediaSnapshot(second)
             store.acceptLyricsSnapshot(oldLyrics)
             assertTrue(store.snapshot().lyricsLines.isEmpty())
-            assertFalse(store.snapshot().lyricsTimelineReady)
-            assertEquals(-1L, store.snapshot().lyricsPositionMs)
+            assertTrue(store.snapshot().lyricsTimelineReady)
+            assertEquals(0L, store.snapshot().lyricsPositionMs)
             store.acceptLyricsSnapshot(lyrics(second, listOf(0L, 1_000L)))
-            assertEquals(-1, store.snapshot().lyricsActiveIndex)
-            assertEquals(-1, store.snapshot().lyricsScrollIndex)
+            assertEquals(0, store.snapshot().lyricsActiveIndex)
+            assertEquals(0, store.snapshot().lyricsScrollIndex)
             store.acceptMediaSnapshot(media(title = "Second", generation = 2, sequence = 2L, position = 0L))
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
             assertTrue(store.snapshot().lyricsTimelineReady)
@@ -317,7 +317,7 @@ class ContentLyricsStoreTest {
                 ContentPorts.LyricsSnapshot.INSTRUMENTAL, emptyList(), null, false))
             assertEquals(ContentPorts.LyricsSnapshot.EMPTY, store.snapshot().lyricsStatus)
             assertTrue(store.snapshot().lyricsLines.isEmpty())
-            assertFalse(store.snapshot().lyricsTimelineReady)
+            assertTrue(store.snapshot().lyricsTimelineReady)
         } finally { store.destroy() }
     }
 

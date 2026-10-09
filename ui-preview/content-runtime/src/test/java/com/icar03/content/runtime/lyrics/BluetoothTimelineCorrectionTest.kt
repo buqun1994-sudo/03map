@@ -260,6 +260,15 @@ class BluetoothTimelineCorrectionTest {
         assertEquals(1_000L, rig.timeline.positionMs())
         rig.avrcp(0L, 4L, title = "Next Song")
         assertEquals(0L, rig.timeline.positionMs())
+        rig.now += 100L
+        rig.avrcp(120_000L, 5L, title = "Next Song")
+        assertEquals(100L, rig.timeline.positionMs())
+        rig.now += 100L
+        rig.avrcp(120_100L, 6L, title = "Next Song")
+        assertEquals(200L, rig.timeline.positionMs())
+        rig.now += 100L
+        rig.avrcp(120_200L, 7L, title = "Next Song")
+        assertEquals(120_200L, rig.timeline.positionMs())
     }
 
     @Test fun sourceChangesCreateANewRecordingGenerationAndResetCorrectionEvidence() {
@@ -459,7 +468,7 @@ class BluetoothTimelineCorrectionTest {
         assertEquals(500L, anchor.sampleAt(rig.now + 5_400L) - anchor.sampleAt(rig.now + 4_400L))
     }
 
-    @Test fun mediaSessionPositionsAreIgnoredAfterAvrcpEstablishesTheBluetoothTimeline() {
+    @Test fun nearbyMediaSessionPositionNoiseDoesNotOverrideAvrcpTimeline() {
         val rig = Rig()
         rig.avrcp(40_000L, 1L)
         val owner = rig.timeline.anchor()
@@ -481,7 +490,7 @@ class BluetoothTimelineCorrectionTest {
         assertTrue(rig.timeline.anchor().trajectory.correctionMs < 0.0)
     }
 
-    @Test fun freshMediaSessionSeekCannotOverrideAvrcpUntilAvrcpConfirmsIt() {
+    @Test fun freshPositionSeekStaysHeldUntilTwoConsistentFactsConfirmIt() {
         val rig = correctingRig()
         rig.now += 50L
         val before = rig.timeline.positionMs()
@@ -522,6 +531,21 @@ class BluetoothTimelineCorrectionTest {
         rig.now++
         rig.avrcp(20_002L, 8L)
         assertEquals(20_002L, rig.timeline.positionMs())
+        assertCorrection(rig.timeline.anchor(), 0.0, 0L)
+    }
+
+    @Test fun freshPublisherSeekAfterAvrcpRequiresConsistentPositionSamples() {
+        val rig = correctingRig()
+        rig.now += 50L
+        val owner = rig.timeline.anchor()
+        rig.media(80_000L, publisherTime = rig.now)
+        assertSame(owner, rig.timeline.anchor())
+        rig.now += 1L
+        rig.media(80_001L, publisherTime = rig.now)
+        assertSame(owner, rig.timeline.anchor())
+        rig.now += 1L
+        rig.media(80_002L, publisherTime = rig.now)
+        assertEquals(80_002L, rig.timeline.positionMs())
         assertCorrection(rig.timeline.anchor(), 0.0, 0L)
     }
 
