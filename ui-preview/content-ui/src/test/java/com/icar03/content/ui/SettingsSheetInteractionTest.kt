@@ -126,7 +126,7 @@ open class SettingsSheetInteractionTest {
         compose.onNodeWithTag("settings-menu").assertDoesNotExist()
         compose.onNodeWithTag("settings-menu-divider").assertDoesNotExist()
         compose.onNodeWithTag("settings-gesture-bar").assertDoesNotExist()
-        for (section in SettingsSection.entries.filter { it != SettingsSection.Home }) {
+        for (section in SettingsSection.entries.filter { it != SettingsSection.Home && it != SettingsSection.Media }) {
             val item = compose.onNodeWithTag("settings-menu-${section.name}").performScrollTo().assertIsDisplayed()
             assertTrue(item.fetchSemanticsNode().boundsInRoot.height >= 48f * density - 1)
         }
@@ -175,13 +175,138 @@ open class SettingsSheetInteractionTest {
         val dock = bounds("floating-dock")
         val media = bounds("media-card")
         val host = bounds("settings-sheet-host")
-        assertEquals(dock.left, host.left, 1f)
-        assertEquals(dock.right, host.right, 1f)
-        assertEquals(media.bottom, host.bottom, 1f)
-        assertEquals(host.top, bounds("settings-sheet").top, 1f)
-        assertEquals(host.bottom, bounds("settings-sheet").bottom, 1f)
-        assertTrue(host.bottom <= dock.top + 1f)
+        val sheet = bounds("settings-sheet")
+        val root = bounds("settings-native-root")
+        assertEquals(root.left, host.left, 1f)
+        assertEquals(root.right, host.right, 1f)
+        assertEquals(dock.left, sheet.left, 1f)
+        assertEquals(dock.right, sheet.right, 1f)
+        assertEquals(host.top, sheet.top, 1f)
+        assertEquals(media.bottom, sheet.bottom, 1f)
+        assertEquals(dock.top, host.bottom, 1f)
+        assertEquals("the fixed 640px fixture reserves the media-to-Dock gap for shadow", 16f, host.bottom - sheet.bottom, 1f)
+        assertTrue("the drawing viewport contains the surface and its horizontal shadow", host.left < sheet.left && host.right > sheet.right)
         capture("settings-home")
+    }
+
+    @Test fun headerButtonEdgesOwnBothSideMarginsAndDispatchOnceWithoutMovingGlyphs() {
+        mount(open = true, section = SettingsSection.Lyrics)
+        val sheet = bounds("settings-sheet")
+        val header = bounds("settings-header")
+        val divider = bounds("settings-header-divider")
+        val back = bounds("settings-back")
+        val collapse = bounds("settings-collapse")
+        val backGlyph = compose.onNodeWithTag("settings-back-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val collapseGlyph = compose.onNodeWithTag("settings-collapse-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val tolerance = maxOf(1.5f, density)
+        assertEquals(sheet.left, back.left, tolerance)
+        assertEquals(sheet.right, collapse.right, tolerance)
+        assertEquals(96f * density, back.width, tolerance)
+        assertEquals(back.width, collapse.width, tolerance)
+        assertEquals(header.top, back.top, tolerance)
+        assertEquals(divider.top, back.bottom, tolerance)
+        assertEquals(header.top, collapse.top, tolerance)
+        assertEquals(divider.top, collapse.bottom, tolerance)
+        assertEquals(48f * density, backGlyph.center.x - sheet.left, tolerance)
+        assertEquals(48f * density, sheet.right - collapseGlyph.center.x, tolerance)
+        assertEquals(header.center.y, backGlyph.center.y, tolerance)
+        assertEquals(header.center.y, collapseGlyph.center.y, tolerance)
+        assertTrue("header targets keep separate pointer ownership", back.right <= collapse.left)
+        val edgePoints = listOf(Offset(1f, back.height / 2), Offset(back.width - 1f, back.height / 2),
+            Offset(back.width / 2, 1f), Offset(back.width / 2, back.height - 1f))
+        edgePoints.forEach { point ->
+            val before = events.size
+            val beforeSound = sounds
+            compose.onNodeWithTag("settings-back").performTouchInput { click(point) }
+            assertEquals(SettingsSection.Home, state.value.settingsSection)
+            assertEquals(before + 1, events.size)
+            assertEquals(ContentEvent.SettingsBack, events.last())
+            assertEquals(beforeSound + 1, sounds)
+            compose.runOnIdle { state.value = state.value.copy(settingsSection = SettingsSection.Lyrics) }
+            compose.mainClock.advanceTimeBy(500)
+        }
+        edgePoints.forEach { point ->
+            val before = events.size
+            val beforeSound = sounds
+            val wasCollapsed = state.value.settingsCollapsed
+            compose.onNodeWithTag("settings-collapse").performTouchInput { click(point) }
+            assertEquals(!wasCollapsed, state.value.settingsCollapsed)
+            assertEquals(before + 1, events.size)
+            assertEquals(ContentEvent.SettingsCollapseTapped, events.last())
+            assertEquals(beforeSound + 1, sounds)
+            compose.mainClock.advanceTimeBy(500)
+        }
+        capture("settings-header-complete-touch-targets")
+    }
+
+    @Test fun switchItemEdgesIncludeTheRightPaddingAndRespectDividersAndDisabledState() {
+        mount(open = true, section = SettingsSection.TopBar)
+        val firstTag = "settings-switch-显示秒数"
+        val first = bounds(firstTag)
+        val second = bounds("settings-switch-显示星期")
+        val card = bounds("settings-card-时间")
+        val track = compose.onNodeWithTag("$firstTag-track", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val tolerance = maxOf(1.5f, density)
+        assertEquals(card.top, first.top, tolerance)
+        assertEquals(card.right, first.right, tolerance)
+        assertEquals(108f * density, first.width, tolerance)
+        assertEquals(24f * density, track.left - first.left, tolerance)
+        assertEquals(24f * density, first.right - track.right, tolerance)
+        assertTrue("targets stop on opposite sides of the divider", first.bottom < second.top)
+        val start = events.size
+        val startSound = sounds
+        compose.onNodeWithTag("settings-card-时间").performTouchInput {
+            click(Offset(first.center.x - card.left, (first.bottom + second.top) / 2 - card.top))
+        }
+        assertEquals(start, events.size)
+        assertEquals(startSound, sounds)
+        val edges = listOf(Offset(1f, first.height / 2), Offset(first.width - 1f, first.height / 2),
+            Offset(first.width / 2, 1f), Offset(first.width / 2, first.height - 1f))
+        edges.forEachIndexed { index, point ->
+            compose.onNodeWithTag(firstTag).performTouchInput { click(point) }
+            assertEquals(start + index + 1, events.size)
+            assertTrue(events.last() is ContentEvent.ShowSecondsChanged)
+            assertEquals(startSound + index + 1, sounds)
+        }
+        capture("settings-switch-complete-touch-targets")
+        compose.runOnIdle { state.value = state.value.copy(lyricsProviderSettings = state.value.lyricsProviderSettings.copy(available = false)) }
+        compose.waitForIdle()
+        val button = compose.onNodeWithTag(firstTag).assertIsNotEnabled()
+        edges.forEach { point -> button.performTouchInput { click(point) } }
+        button.performSemanticsAction(SemanticsActions.OnClick) { it() }
+        assertEquals(start + 4, events.size)
+        assertEquals(startSound + 4, sounds)
+        capture("settings-switch-complete-touch-targets-disabled")
+    }
+
+    @Test fun sheetBottomShadowDrawsBeyondItsSurfaceWithoutClaimingDockInput() {
+        mount()
+        val baseline = capture("settings-bottom-shadow-baseline")
+        compose.onNodeWithTag("dock-Settings").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        val sheet = bounds("settings-sheet")
+        val host = bounds("settings-sheet-host")
+        val dock = bounds("floating-dock")
+        assertEquals(bounds("media-card").bottom, sheet.bottom, 1f)
+        assertEquals(dock.top, host.bottom, 1f)
+        assertEquals(16f, host.bottom - sheet.bottom, 1f)
+        val frame = capture("settings-bottom-shadow-visible")
+        val origin = bounds("settings-native-root").topLeft
+        val x = (sheet.center.x - origin.x).toInt()
+        val nearY = (sheet.bottom + 2f * density - origin.y).toInt()
+        assertTrue("the shadow sample lies in the reserved gap", nearY < host.bottom - origin.y)
+        fun brightness(color: Int): Int = listOf(16, 8, 0).sumOf { (color ushr it) and 255 }
+        assertTrue("the sheet's own downward shadow survives below the surface bottom",
+            brightness(frame.getPixel(x, nearY)) < brightness(baseline.getPixel(x, nearY)))
+        assertPixelsUnchangedBelowHost(baseline, frame, host, sheet.center.x)
+        val before = events.size
+        val beforeSound = sounds
+        compose.onNodeWithTag("dock-Settings").performTouchInput { click(Offset(center.x, 1f)) }
+        assertFalse("the shadow viewport cannot intercept the Dock", state.value.settingsOpen)
+        assertEquals(before + 1, events.size)
+        assertEquals(beforeSound + 1, sounds)
+        baseline.recycle()
+        frame.recycle()
     }
 
     @Test fun headerStaysFixedAndLyricsSettingsHaveNoPreview() {
@@ -314,6 +439,14 @@ open class SettingsSheetInteractionTest {
         assertEquals(soundCount, sounds)
         assertFalse(state.value.showSeconds)
         compose.onNodeWithTag("settings-back").assertIsNotEnabled()
+            .performSemanticsAction(SemanticsActions.OnClick) { it() }
+            .performTouchInput {
+                click(Offset(1f, center.y))
+                click(Offset(width.toFloat() - 1f, center.y))
+            }
+        assertEquals(count, events.size)
+        assertEquals(soundCount, sounds)
+        capture("settings-header-disabled-exit")
         compose.mainClock.advanceTimeBy(500)
         compose.mainClock.autoAdvance = true
         compose.onNodeWithTag("settings-sheet").assertDoesNotExist()
@@ -338,55 +471,70 @@ open class SettingsSheetInteractionTest {
     @Test fun outerSheetEntersAndLeavesThroughTheBottomWithoutHorizontalTravel() {
         mount()
         val host = bounds("settings-sheet-host")
+        val dock = bounds("floating-dock")
+        val surface = Rect(dock.left, host.top, dock.right, bounds("media-card").bottom)
+        val baseline = capture("settings-motion-shadow-baseline")
         compose.mainClock.autoAdvance = false
         compose.runOnIdle { state.value = state.value.copy(settingsOpen = true) }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
         compose.mainClock.advanceTimeByFrame()
         val initial = unclippedBounds("settings-sheet")
-        assertEquals(host.left, initial.left, 1f)
-        assertEquals(host.right, initial.right, 1f)
-        assertTrue("The sheet starts below its host", initial.top >= host.bottom - 1f)
+        assertEquals(surface.left, initial.left, 1f)
+        assertEquals(surface.right, initial.right, 1f)
+        assertEquals(surface.height, initial.height, 1f)
+        assertTrue("The sheet starts below its content viewport", initial.top >= surface.bottom - 1f)
 
         compose.mainClock.advanceTimeBy(80)
         val enterFirst = unclippedBounds("settings-sheet")
-        assertTrue(enterFirst.top > host.top + 1f && enterFirst.top < host.bottom - 1f)
+        assertTrue(enterFirst.top > surface.top + 1f && enterFirst.top < surface.bottom - 1f)
         assertEquals(initial.left, enterFirst.left, 1f)
         assertEquals(initial.right, enterFirst.right, 1f)
-        assertSheetPixel(capture("settings-enter-bottom-80ms"), enterFirst)
+        val enterFirstFrame = capture("settings-enter-bottom-80ms")
+        assertSheetPixel(enterFirstFrame, enterFirst)
+        assertPixelsUnchangedBelowHost(baseline, enterFirstFrame, host, surface.center.x)
+        enterFirstFrame.recycle()
         compose.mainClock.advanceTimeBy(80)
         val enterSecond = unclippedBounds("settings-sheet")
         assertTrue(enterSecond.top < enterFirst.top)
         assertTrue("Entrance slows down instead of moving linearly",
             initial.top - enterFirst.top > (enterFirst.top - enterSecond.top) * 1.2f)
         assertEquals(initial.left, enterSecond.left, 1f)
-        capture("settings-enter-bottom-160ms")
+        val enterSecondFrame = capture("settings-enter-bottom-160ms")
+        assertPixelsUnchangedBelowHost(baseline, enterSecondFrame, host, surface.center.x)
+        enterSecondFrame.recycle()
         compose.mainClock.advanceTimeBy(500)
-        assertRectNear(host, unclippedBounds("settings-sheet"))
+        assertRectNear(surface, unclippedBounds("settings-sheet"))
 
         compose.runOnIdle { state.value = state.value.copy(settingsOpen = false) }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
         compose.mainClock.advanceTimeByFrame()
         val exitInitial = unclippedBounds("settings-sheet")
-        assertRectNear(host, exitInitial)
+        assertRectNear(surface, exitInitial)
         compose.mainClock.advanceTimeBy(80)
         val exitFirst = unclippedBounds("settings-sheet")
-        assertTrue(exitFirst.top > host.top + 1f && exitFirst.top < host.bottom - 1f)
-        assertEquals(host.left, exitFirst.left, 1f)
-        assertEquals(host.right, exitFirst.right, 1f)
-        assertSheetPixel(capture("settings-exit-bottom-80ms"), exitFirst)
+        assertTrue(exitFirst.top > surface.top + 1f && exitFirst.top < surface.bottom - 1f)
+        assertEquals(surface.left, exitFirst.left, 1f)
+        assertEquals(surface.right, exitFirst.right, 1f)
+        val exitFirstFrame = capture("settings-exit-bottom-80ms")
+        assertSheetPixel(exitFirstFrame, exitFirst)
+        assertPixelsUnchangedBelowHost(baseline, exitFirstFrame, host, surface.center.x)
+        exitFirstFrame.recycle()
         compose.mainClock.advanceTimeBy(80)
         val exitSecond = unclippedBounds("settings-sheet")
         assertTrue(exitSecond.top > exitFirst.top)
         assertTrue("Exit slows down: first=${exitFirst.top - exitInitial.top}, second=${exitSecond.top - exitFirst.top}",
             exitFirst.top - exitInitial.top > (exitSecond.top - exitFirst.top) * 1.2f)
-        assertEquals(host.left, exitSecond.left, 1f)
-        capture("settings-exit-bottom-160ms")
+        assertEquals(surface.left, exitSecond.left, 1f)
+        val exitSecondFrame = capture("settings-exit-bottom-160ms")
+        assertPixelsUnchangedBelowHost(baseline, exitSecondFrame, host, surface.center.x)
+        exitSecondFrame.recycle()
         compose.mainClock.advanceTimeBy(500)
         compose.mainClock.autoAdvance = true
         compose.onNodeWithTag("settings-sheet").assertDoesNotExist()
         assertTrue(events.none { it is ContentEvent.PageSelected })
+        baseline.recycle()
     }
 
     @Test fun childPagesTravelLeftAndRightNonlinearlyInsideAStationaryShell() {
@@ -456,8 +604,9 @@ open class SettingsSheetInteractionTest {
         val eventCount = events.size
         val originalSheet = unclippedBounds("settings-sheet")
         val originalButton = unclippedBounds("settings-collapse")
-        assertEquals(48f * density, originalButton.width, 1f)
-        assertEquals(48f * density, originalButton.height, 1f)
+        assertEquals(96f * density, originalButton.width, 1f)
+        assertEquals(originalSheet.right, originalButton.right, 1f)
+        assertEquals(unclippedBounds("settings-header").height, originalButton.height, 1f)
         compose.onNodeWithTag("settings-collapse").assertContentDescriptionEquals("下移收起设置页")
         val down = arrowInk(capture("settings-arrow-down"), originalButton)
         assertTrue("The supplied arrow points down", down.spanAt(.25f) > down.spanAt(.75f) + 2f * density)
@@ -648,7 +797,10 @@ open class SettingsSheetInteractionTest {
         val sectionTitle = bounds("settings-section-title-布局")
         val card = bounds("settings-card-布局")
         val tolerance = maxOf(1.5f, density)
-        assertEquals(24f * density, back.left - sheet.left, tolerance)
+        assertEquals(sheet.left, back.left, tolerance)
+        assertEquals(96f * density, back.width, tolerance)
+        val glyph = compose.onNodeWithTag("settings-back-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(48f * density, glyph.center.x - sheet.left, tolerance)
         assertEquals(24f * density, title.top - sheet.top, tolerance)
         assertEquals(24f * density, divider.top - title.bottom, tolerance)
         assertEquals(24f * density, sectionTitle.top - divider.bottom, tolerance)
@@ -692,6 +844,19 @@ open class SettingsSheetInteractionTest {
         assertEquals(expected.top, actual.top, 1f)
         assertEquals(expected.right, actual.right, 1f)
         assertEquals(expected.bottom, actual.bottom, 1f)
+    }
+
+    private fun assertPixelsUnchangedBelowHost(baseline: Bitmap, frame: Bitmap, host: Rect, centerX: Float) {
+        val origin = bounds("settings-native-root").topLeft
+        val x = (centerX - origin.x).toInt()
+        val firstY = kotlin.math.ceil(host.bottom - origin.y).toInt()
+        val lastY = kotlin.math.ceil(host.bottom + downwardSoftShadowOutsetPx(density) - origin.y)
+            .toInt().coerceAtMost(frame.height - 1)
+        assertTrue("the complete clipped shadow span lies in the native frame", x in 0 until frame.width && firstY in 0..lastY)
+        for (y in firstY..lastY) {
+            assertEquals("the settings surface and shadow cannot paint the Dock at y=$y",
+                baseline.getPixel(x, y), frame.getPixel(x, y))
+        }
     }
 
     private fun assertSheetPixel(bitmap: Bitmap, sheet: Rect) {

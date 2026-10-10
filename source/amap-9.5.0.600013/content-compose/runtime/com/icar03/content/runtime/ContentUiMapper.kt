@@ -17,6 +17,7 @@ data class RuntimeCapabilities(
     val writableSeatControls: Set<String> = emptySet(),
     val writableFeatures: Set<String> = emptySet(),
     val screenClean: Boolean = false,
+    val controlCenter: Boolean = false,
 )
 
 /** Each domain is projected before publication; a lyrics event never allocates the shell. */
@@ -225,6 +226,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
              features = featureStates,
              systemLevels = projectedSystemLevels,
              screenCleanAvailable = screenCleanAvailable,
+              controlCenterAvailable = capabilities.controlCenter,
             media = MediaState(title = state.mediaTitle.takeIf { ready && it.isNotBlank() },
                 artist = state.mediaArtist.takeIf { ready && it.isNotBlank() },
                 isSong = song(state), playing = realMedia && state.mediaPlaying,

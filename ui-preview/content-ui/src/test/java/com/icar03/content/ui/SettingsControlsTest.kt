@@ -151,7 +151,7 @@ open class SettingsControlsTest {
         assertEquals(24f, bounds("field-body").top - bounds("field-label").bottom, 1f)
     }
 
-    @Test fun onlyTheSwitchAndItsSmallExpandedTouchAreaToggleAndRejectCancelOrDisable() {
+    @Test fun onlyTheSwitchAndItsCompleteItemTouchAreaToggleAndRejectCancelOrDisable() {
         val checked = mutableStateOf(false)
         val enabled = mutableStateOf(true)
         var changes = 0
@@ -169,11 +169,15 @@ open class SettingsControlsTest {
         compose.onNodeWithTag("switch-row").assertIsOn().assertContentDescriptionEquals("显示星期").performClick()
         compose.onNodeWithTag("switch-row").assertIsOff()
         assertEquals(2, changes)
-        assertEquals(72f, bounds("switch-row").width, 1f)
-        assertEquals(30f, bounds("switch-row").height, 1f)
+        assertEquals(108f, bounds("switch-row").width, 1f)
+        assertEquals(78f, bounds("switch-row").height, 1f)
         compose.runOnIdle { enabled.value = false }
         compose.onNodeWithTag("switch-row").assertIsNotEnabled()
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
+        compose.onNodeWithTag("switch-row").performTouchInput {
+            click(Offset(1f, center.y))
+            click(Offset(width.toFloat() - 1f, center.y))
+        }
         assertEquals(2, changes)
     }
 
@@ -181,30 +185,158 @@ open class SettingsControlsTest {
         val checked = mutableStateOf(false)
         var changes = 0
         mount {
-            SettingsSection("时间") {
+            SettingsItemSection("时间") {
                 SettingsSwitchRow("显示星期", checked.value, { checked.value = it; changes++ }, tag = "switch-row")
             }
         }
         val card = bounds("settings-card-时间")
         val row = bounds("switch-row-row")
+        val hit = bounds("switch-row")
         val text = bounds("switch-row-label")
         val track = bounds("switch-row-track")
         val thumb = bounds("switch-row-thumb")
         assertEquals(78f, card.height, 1f)
-        assertEquals(30f, row.height, 1f)
+        assertEquals(78f, row.height, 1f)
+        assertEquals(78f, hit.height, 1f)
+        assertEquals(108f, hit.width, 1f)
+        assertEquals(card.top, hit.top, 1f)
+        assertEquals(card.bottom, hit.bottom, 1f)
         assertEquals(24f, text.top - card.top, 1f)
         assertEquals(24f, card.bottom - text.bottom, 1f)
         assertEquals(60f, track.width, 1f)
         assertEquals(30f, track.height, 1f)
-        assertEquals(row.top, track.top, 1f)
-        assertEquals(row.right, track.right, 1f)
+        assertEquals(row.top + 24f, track.top, 1f)
+        assertEquals(24f, row.right - track.right, 1f)
         assertEquals(30f, thumb.width, 1f)
         assertEquals(25f, thumb.height, 1f)
         assertEquals(2.5f, thumb.left - track.left, 1f)
         assertEquals(track.center.y, thumb.center.y, 1f)
-        compose.onNodeWithTag("switch-row").performTouchInput { click(Offset(center.x, -6f)) }
-        compose.onNodeWithTag("switch-row").assertIsOn()
-        assertEquals(1, changes)
+        assertEquals(card.right, hit.right, 1f)
+        assertEquals(24f, track.left - hit.left, 1f)
+        assertEquals(24f, hit.right - track.right, 1f)
+        val button = compose.onNodeWithTag("switch-row")
+        val edges = listOf(Offset(1f, hit.height / 2), Offset(hit.width - 1f, hit.height / 2),
+            Offset(hit.width / 2, 1f), Offset(hit.width / 2, hit.height - 1f))
+        edges.forEachIndexed { index, point ->
+            button.performTouchInput { click(point) }
+            assertEquals(index + 1, changes)
+        }
+        button.assertIsOff()
+        assertEquals(4, changes)
+    }
+
+    @Test fun expandedSwitchRowsStopAtTheirDividerBoundary() {
+        val firstChecked = mutableStateOf(false)
+        val secondChecked = mutableStateOf(false)
+        var changes = 0
+        mount {
+            SettingsItemSection("相邻开关") {
+                SettingsSwitchRow("第一项", firstChecked.value, { firstChecked.value = it; changes++ }, tag = "first-switch")
+                SettingsItemDivider()
+                SettingsSwitchRow("第二项", secondChecked.value, { secondChecked.value = it; changes++ }, tag = "second-switch")
+            }
+        }
+        val firstRow = bounds("first-switch-row")
+        val secondRow = bounds("second-switch-row")
+        val firstHit = bounds("first-switch")
+        val secondHit = bounds("second-switch")
+        assertEquals(78f, firstRow.height, 1f)
+        assertEquals(78f, secondRow.height, 1f)
+        assertEquals(79f, secondRow.top - firstRow.top, 1f)
+        assertTrue("expanded switch targets must stop at the divider boundary", firstHit.bottom <= secondHit.top)
+        assertEquals(firstRow.top, firstHit.top, 1f)
+        assertEquals(secondRow.top, secondHit.top, 1f)
+        val card = bounds("settings-card-相邻开关")
+        compose.onNodeWithTag("settings-card-相邻开关").performTouchInput {
+            click(Offset(firstHit.center.x - card.left, (firstHit.bottom + secondHit.top) / 2 - card.top))
+        }
+        assertEquals("the divider belongs to neither switch", 0, changes)
+        compose.onNodeWithTag("first-switch").performTouchInput {
+            click(Offset(center.x, height.toFloat() - 1f))
+        }
+        compose.onNodeWithTag("first-switch").assertIsOn()
+        compose.onNodeWithTag("second-switch").assertIsOff()
+        compose.onNodeWithTag("second-switch").performTouchInput {
+            click(Offset(center.x, 1f))
+        }
+        compose.onNodeWithTag("second-switch").assertIsOn()
+        compose.onNodeWithTag("first-switch").assertIsOn()
+        assertEquals(2, changes)
+    }
+
+    @Test fun longSwitchLabelsOwnTheirFullHeightAndDisabledItemEdgesRemainSilent() {
+        val title = "行车时自动关闭设置页并保持当前歌词设置和滚动位置"
+        val checked = mutableStateOf(false)
+        val enabled = mutableStateOf(true)
+        var changes = 0
+        mount(240.dp) {
+            SettingsItemSection("长标签") {
+                SettingsSwitchRow(title, checked.value, { checked.value = it; changes++ },
+                    enabled = enabled.value, tag = "long-switch")
+            }
+        }
+        val card = bounds("settings-card-长标签")
+        val row = bounds("long-switch-row")
+        val hit = bounds("long-switch")
+        val label = bounds("long-switch-label")
+        compose.onNodeWithTag("long-switch-label").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
+            val layouts = mutableListOf<TextLayoutResult>()
+            assertTrue(action(layouts))
+            val text = layouts.single()
+            assertTrue("exercise a label beyond the old two-line limit", text.lineCount > 2)
+            assertFalse("the complete label must stay readable", text.hasVisualOverflow)
+        }
+        assertEquals(label.height + 48f, row.height, 1f)
+        assertEquals(card.top, row.top, 1f)
+        assertEquals(card.bottom, row.bottom, 1f)
+        assertEquals(row.top, hit.top, 1f)
+        assertEquals(row.bottom, hit.bottom, 1f)
+        assertEquals(row.right, hit.right, 1f)
+        assertTrue("the passive label cannot overlap the switch target", label.right <= hit.left + 1f)
+        compose.onNodeWithTag("long-switch-label").performTouchInput { click() }
+        assertEquals(0, changes)
+        captureNativeControl("settings-card-长标签", "long-switch-item")
+        val edges = listOf(Offset(1f, hit.height / 2), Offset(hit.width - 1f, hit.height / 2),
+            Offset(hit.width / 2, 1f), Offset(hit.width / 2, hit.height - 1f))
+        val button = compose.onNodeWithTag("long-switch")
+        edges.forEachIndexed { index, point ->
+            button.performTouchInput { click(point) }
+            assertEquals(index + 1, changes)
+        }
+        compose.runOnIdle { enabled.value = false }
+        button.assertIsNotEnabled()
+        edges.forEach { point -> button.performTouchInput { click(point) } }
+        button.performSemanticsAction(SemanticsActions.OnClick) { it() }
+        assertEquals(4, changes)
+        captureNativeControl("settings-card-长标签", "long-switch-item-disabled")
+    }
+
+    @Test fun explicitItemPaddingControlsBothVisualInsetAndTouchBounds() {
+        val padding = mutableStateOf(12.dp)
+        mount {
+            SettingsGroupCard(Modifier.testTag("custom-card"),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), itemSpacing = 0.dp) {
+                SettingsSwitchRow("显示星期", false, {}, tag = "custom-switch",
+                    contentPadding = padding.value)
+            }
+        }
+        val card = bounds("custom-card")
+        val row = bounds("custom-switch-row")
+        val hit = bounds("custom-switch")
+        val track = bounds("custom-switch-track")
+        assertEquals(54f, card.height, 1f)
+        assertEquals(card, row)
+        assertEquals(84f, hit.width, 1f)
+        assertEquals(row.top, hit.top, 1f)
+        assertEquals(row.bottom, hit.bottom, 1f)
+        assertEquals(row.right, hit.right, 1f)
+        assertEquals(12f, track.left - hit.left, 1f)
+        assertEquals(12f, hit.right - track.right, 1f)
+        assertEquals(12f, track.top - row.top, 1f)
+        compose.runOnIdle { padding.value = 0.dp }
+        assertEquals(48f, bounds("custom-switch-row").height, 1f)
+        assertEquals(48f, bounds("custom-switch").height, 1f)
+        assertEquals(bounds("custom-switch-label").center.y, bounds("custom-switch-track").center.y, 1f)
     }
 
     @Test fun sliderRowsShareTheirLabelColumnAndReflowBelow360Dp() {
@@ -235,13 +367,14 @@ open class SettingsControlsTest {
         val value = mutableStateOf(40f)
         var finishes = 0
         mount(570.dp) {
-            SettingsGroupCard {
+            SettingsGroupCard(Modifier.testTag("numeric-card")) {
                 SettingsFieldBlock("字号", tag = "field") {
                     SettingsSliderRow("分屏", value.value, "sp", 24f..64f, { value.value = it },
                         { finishes++ }, modifier = Modifier.testTag("numeric-row"), tag = "numeric")
                 }
             }
         }
+        val card = bounds("numeric-card")
         val field = bounds("field")
         val label = bounds("numeric-label")
         val row = bounds("numeric-row")
@@ -253,6 +386,9 @@ open class SettingsControlsTest {
         assertEquals(374f, track.width, 1f)
         assertEquals(40f, track.height, 1f)
         assertEquals(field.left, row.left, 1f)
+        assertEquals(24f, field.top - card.top, 1f)
+        assertEquals(30f, bounds("field-label").height, 1f)
+        assertEquals(card.top + 78f, track.top, 1f)
         assertEquals(row.top, track.top, 1f)
         assertEquals(24f, track.top - bounds("field-label").bottom, 1f)
         assertEquals(5f, label.top - row.top, 1f)
@@ -331,6 +467,63 @@ open class SettingsControlsTest {
         }
         assertEquals(widths[0], widths[1], 1f)
         assertEquals(widths[1], widths[2], 1f)
+    }
+
+    @Test fun narrowSegmentsKeepCompleteLabelsAndFourPhysicalEdgesAcrossDensityAndFontScale() {
+        val options = listOf("theme" to "跟随主题", "system" to "系统主题色", "custom" to "自定义")
+        val presentation = mutableStateOf(androidx.compose.ui.unit.Density(1.8f, 1f))
+        val selected = mutableStateOf("theme")
+        val changes = mutableListOf<String>()
+        compose.setContent {
+            ContentTheme(dark) {
+                CompositionLocalProvider(LocalSettingsDesign provides settingsDesign(dark),
+                    androidx.compose.ui.platform.LocalDensity provides presentation.value) {
+                    Column(Modifier.width(160.dp)) {
+                        SettingsSegmented(options, selected.value, { selected.value = it; changes += it }, tagPrefix = "mode")
+                    }
+                }
+            }
+        }
+        for (density in listOf(1.8f, 1.325f, 2f)) for (fontScale in listOf(1f, 1.3f)) {
+            compose.runOnIdle {
+                presentation.value = androidx.compose.ui.unit.Density(density, fontScale)
+                selected.value = "theme"
+                changes.clear()
+            }
+            compose.waitForIdle()
+            val widths = mutableListOf<Float>()
+            for ((id, label) in options) {
+                val button = compose.onNodeWithTag("mode-$id").performScrollTo().assertIsDisplayed()
+                val area = button.fetchSemanticsNode().boundsInRoot
+                widths += area.width
+                compose.onNodeWithText(label, useUnmergedTree = true)
+                    .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
+                        val layouts = mutableListOf<TextLayoutResult>()
+                        assertTrue(action(layouts))
+                        val text = layouts.single()
+                        assertEquals("one complete option line at density=$density fontScale=$fontScale", 1, text.lineCount)
+                        assertFalse("full label at density=$density fontScale=$fontScale: $label", text.hasVisualOverflow)
+                        assertFalse("no ellipsis at density=$density fontScale=$fontScale: $label", text.isLineEllipsized(0))
+                    }
+                val edges = listOf(Offset(1f, area.height / 2), Offset(area.width - 1f, area.height / 2),
+                    Offset(area.width / 2, 1f), Offset(area.width / 2, area.height - 1f))
+                for (point in edges) {
+                    compose.runOnIdle { selected.value = if (id == "theme") "custom" else "theme" }
+                    compose.waitForIdle()
+                    button.performScrollTo().performTouchInput { click(point) }
+                    assertEquals(id, selected.value)
+                    val accepted = changes.size
+                    assertEquals(id, changes.last())
+                    button.performTouchInput { click(point) }
+                    button.performClick()
+                    assertEquals("selected physical and semantic repeats do not submit", accepted, changes.size)
+                }
+                if (id == "system") captureNativeControl("mode", "segmented-density-$density-font-$fontScale")
+            }
+            assertEquals(widths[0], widths[1], 1f)
+            assertEquals(widths[1], widths[2], 1f)
+            assertEquals("each physical edge accepts one new selection", options.size * 4, changes.size)
+        }
     }
 
     @Test fun numericSliderUsesMaterialStepsAndCommitsOnceForAStandardProgressAction() {
@@ -591,6 +784,25 @@ open class SettingsControlsTest {
         assertEquals(design.switchThumb.toArgb(), pixelAt("green-thumb", .5f, .5f))
         assertEquals(design.sliderFill.toArgb(), pixelAt("blue-fill", .5f, .5f))
         assertEquals(2.5f, bounds("green-track").right - bounds("green-thumb").right, 1f)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun captureNativeControl(tag: String, label: String) {
+        val node = compose.onNodeWithTag(tag).fetchSemanticsNode()
+        val root = node.root as ViewRootForTest
+        val area = node.boundsInRoot
+        compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(area.width.roundToInt(), area.height.roundToInt(), Bitmap.Config.ARGB_8888)
+            try {
+                val canvas = Canvas(bitmap)
+                canvas.translate(-area.left, -area.top)
+                root.view.draw(canvas)
+                val directory = java.io.File("build/frames").apply { mkdirs() }
+                java.io.File(directory, "${javaClass.simpleName}-$label.png").outputStream().use {
+                    assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                }
+            } finally { bitmap.recycle() }
+        }
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

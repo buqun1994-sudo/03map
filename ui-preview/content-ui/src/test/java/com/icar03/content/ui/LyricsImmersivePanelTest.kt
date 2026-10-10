@@ -39,6 +39,7 @@ open class LyricsImmersivePanelTest {
         updateGestureWidth(60)
     }
     private var state by mutableStateOf(previewState().copy(previewMode = false, dark = dark,
+        dockButtonCount = DockShortcuts.MAX_BUTTONS,
         page = PanelPage.Lyrics, media = MediaState(title = "沿途的风", artist = "独立预览 · 布局验证", playing = false, isSong = true),
         lyrics = LyricsState(recordingKey = "immersive-fixture", timelineReady = true, positionMs = 5_000L,
             durationMs = 60_000L, scrollIndex = 2, activeIndex = 2,
@@ -173,7 +174,7 @@ open class LyricsImmersivePanelTest {
 
         val topPixels = nativePixels("top-bar")
         val dockBounds = DockShortcuts.items.associateWith { compose.onNodeWithTag("dock-${it.name}").fetchSemanticsNode().boundsInRoot }
-        val dockInk = dockInkMask()
+        val dockInk = dockInkCoverage()
         // Each divider update must reach composition/measurement before the next one.
         // Applying both endpoints in one idle block would skip the former pager-to-root move.
         listOf(.44f, .45f, .49f, .5f, .51f, .55f, .56f, 1f, .56f, .55f, .51f, .5f, .49f, .45f, .44f, 0f).forEach { progress ->
@@ -190,7 +191,7 @@ open class LyricsImmersivePanelTest {
                 assertEquals("Dock target stays fixed at progress=$progress", dockBounds.getValue(id),
                     compose.onNodeWithTag("dock-${id.name}").fetchSemanticsNode().boundsInRoot)
             }
-            assertArrayEquals("Dock icon stays painted at progress=$progress", dockInk, dockInkMask())
+            assertArrayEquals("Dock icon stays painted at progress=$progress", dockInk, dockInkCoverage(), .02f)
             if (progress in listOf(.34f, .5f, 1f)) capture("lyrics-chrome-$platform-${if (dark) "dark" else "light"}-$progress")
             compose.onAllNodesWithTag("wallpaper-lyrics", useUnmergedTree = true).assertCountEquals(1)
             assertEquals("lyric view is retained at progress=$progress", initialBody,
@@ -327,15 +328,31 @@ open class LyricsImmersivePanelTest {
         }
     }
 
-    private fun dockInkMask(): BooleanArray {
-        val pixels = nativePixels("dock-icon-Settings")
-        return BooleanArray(pixels.size) { index ->
-            val pixel = pixels[index]
-            val red = android.graphics.Color.red(pixel)
-            val green = android.graphics.Color.green(pixel)
-            val blue = android.graphics.Color.blue(pixel)
-            if (dark) minOf(red, green, blue) > 210 else maxOf(red, green, blue) < 90
-        }.also { assertTrue("the Dock glyph must have actual ink", it.any { ink -> ink }) }
+    private fun dockInkCoverage(): FloatArray {
+        val icon = compose.onNodeWithTag("dock-icon-Settings", useUnmergedTree = true).fetchSemanticsNode()
+        val bounds = icon.boundsInRoot
+        val foreground = Color(icon.config[OemTint].toULong())
+        val bitmap = Bitmap.createBitmap(nativeView.width, nativeView.height, Bitmap.Config.ARGB_8888)
+        compose.runOnIdle { nativeView.draw(Canvas(bitmap)) }
+        val left = kotlin.math.ceil(bounds.left).toInt()
+        val top = kotlin.math.ceil(bounds.top).toInt()
+        val width = kotlin.math.floor(bounds.right).toInt() - left
+        val height = kotlin.math.floor(bounds.bottom).toInt() - top
+        return FloatArray(width * height) { index ->
+            val y = top + index / width
+            val background = bitmap.getPixel(left - 4, y)
+            val pixel = bitmap.getPixel(left + index % width, y)
+            val back = listOf(android.graphics.Color.red(background), android.graphics.Color.green(background), android.graphics.Color.blue(background))
+            val actual = listOf(android.graphics.Color.red(pixel), android.graphics.Color.green(pixel), android.graphics.Color.blue(pixel))
+            val ink = listOf(foreground.red * 255f, foreground.green * 255f, foreground.blue * 255f)
+            val channel = (0..2).maxBy { kotlin.math.abs(ink[it] - back[it]) }
+            val contrast = ink[channel] - back[channel]
+            assertTrue("the opaque Dock icon retains contrast", kotlin.math.abs(contrast) > 100f)
+            (actual[channel] - back[channel]) / contrast
+        }.also {
+            bitmap.recycle()
+            assertTrue("the Dock glyph keeps opaque ink", it.any { coverage -> coverage > .98f })
+        }
     }
 
     private fun capture(name: String) {

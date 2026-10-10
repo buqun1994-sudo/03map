@@ -507,7 +507,7 @@ class ContentPreferenceContractTest {
             "lyrics_immersive_show_dock" to true,
             "ambient_show_artwork" to true,
             "media_show_source_switcher" to true,
-            DOCK_COUNT to 6,
+            DOCK_COUNT to 5,
             "interaction_show_action_feedback" to true,
             "interaction_auto_close_settings_on_drive" to true,
              "interaction_gesture_bar_reminder" to true,

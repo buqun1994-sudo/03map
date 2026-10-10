@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.DisposableEffect
@@ -13,29 +14,28 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.Canvas
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.VectorGroup
 import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.airbnb.lottie.LottieComposition
 import com.airbnb.lottie.LottieCompositionFactory
 import com.airbnb.lottie.LottieListener
@@ -178,29 +178,16 @@ internal fun OemIcon(
     playbackSpeed: Float = 1f,
     animateOnPress: Boolean = false, animateOnAction: Boolean = true,
     acceptedActionOnly: Boolean = false,
+    glyphHeight: Dp? = null,
+    actionTint: Color = Color.Unspecified,
 ) {
     val mediaGlyph = resource == R.drawable.content_oem_ico_media_play_f || resource == R.drawable.content_oem_ico_media_pause_f
     val action = LocalIconAction.current
     val stateTrigger = motionKey ?: resource
     val transition = remember { Animatable(1f) }
-    val owner = LocalLifecycleOwner.current
-    val view = LocalView.current
-    var started by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
-    var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
-    val visible = started && focused && LocalIconVisible.current
+    val visible = contentDrawingVisible()
     val pressed = LocalIconPressed.current && visible
     val scale by pressScale(pressed)
-    DisposableEffect(owner, view) {
-        val observer = LifecycleEventObserver { _, _ -> started = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
-        val tree = view.viewTreeObserver
-        val focus = android.view.ViewTreeObserver.OnWindowFocusChangeListener { focused = it }
-        owner.lifecycle.addObserver(observer)
-        tree.addOnWindowFocusChangeListener(focus)
-        onDispose {
-            owner.lifecycle.removeObserver(observer)
-            if (tree.isAlive) tree.removeOnWindowFocusChangeListener(focus)
-        }
-    }
     // Menu rows leave after a selection. Their path animation begins on DOWN;
     // the persistent source button plays the new target through the same consumer.
     var pressAction by remember { mutableIntStateOf(0) }
@@ -335,10 +322,26 @@ internal fun OemIcon(
     val frame = if (renderedFrame.hasSamePlaybackRecipe(targetFrame)) {
         targetFrame.copy(composition = renderedFrame.composition)
     } else renderedFrame
-    val semantics = modifier.graphicsLayer { scaleX = scale * transition.value; scaleY = scale * transition.value }
-        .semantics {
-            this[OemTint] = frame.tint.value.toLong(); this[OemResource] = frame.resource
-            this[IconMotion] = scale * transition.value
+    val animated = canRender && frame.composition != null
+    val viewport = if (glyphHeight != null) remember(frame.resource, if (animated) frame.asset else null,
+        if (animated) frame.frames else null) {
+        oemGlyphViewport(frame.resource, if (animated) frame.asset else null, if (animated) frame.frames else null)
+    } else null
+    val fittedModifier = if (glyphHeight != null) modifier.size(glyphHeight * (viewport?.aspectRatio ?: 1f), glyphHeight)
+        else modifier
+    // The transient colour shares the actual OEM playback clock and its cancellation policy.
+    val displayTint = if (drawing && animated && actionTint != Color.Unspecified) actionTint else frame.tint
+    val filter = remember(displayTint) {
+        if (displayTint == Color.Unspecified) null else SimpleColorFilter(displayTint.toArgb())
+    }
+    val staticFilter = remember(displayTint) {
+        if (displayTint == Color.Unspecified) null else ColorFilter.tint(displayTint)
+    }
+    val currentFilter = rememberUpdatedState<android.graphics.ColorFilter?>(filter)
+    val visualScale = scale * transition.value
+    val drawModifier = fittedModifier.semantics {
+            this[OemTint] = displayTint.value.toLong(); this[OemResource] = frame.resource
+            this[IconMotion] = visualScale
             this[IconAnimationReady] = composition != null && frame.composition != null && frame.hasSameRecipe(targetFrame)
             this[IconAnimationVisible] = visible
             this[IconAnimationPlaying] = drawing && canRender && frame.composition != null
@@ -353,8 +356,13 @@ internal fun OemIcon(
                 setComposition(frame.composition!!)
                 @Suppress("DEPRECATION")
                 enableMergePathsForKitKatAndAbove(!frame.mediaGlyph)
-                if (frame.tint != Color.Unspecified) addValueCallback(KeyPath("**"), LottieProperty.COLOR_FILTER,
-                    LottieValueCallback<android.graphics.ColorFilter>(SimpleColorFilter(frame.tint.toArgb())))
+                if (frame.tint != Color.Unspecified || actionTint != Color.Unspecified) {
+                    addValueCallback(KeyPath("**"), LottieProperty.COLOR_FILTER,
+                        object : LottieValueCallback<android.graphics.ColorFilter>() {
+                            override fun getValue(frameInfo: LottieFrameInfo<android.graphics.ColorFilter>): android.graphics.ColorFilter? =
+                                currentFilter.value
+                        })
+                }
                 // These two OEM assets contain the old button disc as path 1.
                 // Keep their original symbol paths 2/3 and baked transforms; the
                 // content panel already supplies the button's press surface.
@@ -385,17 +393,69 @@ internal fun OemIcon(
             }
         }
         DisposableEffect(drawable) { onDispose { drawable.cancelAnimation() } }
-        Canvas(semantics) {
-            drawable.setBounds(0, 0, size.width.toInt(), size.height.toInt())
+        Canvas(drawModifier) {
             if (frame.frames == null) drawable.progress = progress.value
             else frame.frames.let { drawable.frame = (it.first + progress.value * (it.last - it.first)).roundToInt() }
-            if (frame.mediaGlyph) scale(1.6f) { drawIntoCanvas { drawable.draw(it.nativeCanvas) } }
-            else drawIntoCanvas { drawable.draw(it.nativeCanvas) }
+            if (viewport != null) {
+                val bounds = frame.composition!!.bounds
+                val sourceWidth = bounds.width().coerceAtLeast(1)
+                val sourceHeight = bounds.height().coerceAtLeast(1)
+                val ink = viewport.normalizedRect
+                val visibleHeight = size.height * visualScale
+                val fit = visibleHeight / (ink.height * sourceHeight)
+                val inkWidth = ink.width * sourceWidth * fit
+                drawable.setBounds(0, 0, sourceWidth, sourceHeight)
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    native.save()
+                    native.translate((size.width - inkWidth) / 2f - ink.left * sourceWidth * fit,
+                        (size.height - visibleHeight) / 2f - ink.top * sourceHeight * fit)
+                    native.scale(fit, fit)
+                    drawable.draw(native)
+                    native.restore()
+                }
+            } else {
+                val drawWidth = size.width * visualScale
+                val drawHeight = size.height * visualScale
+                drawable.setBounds(0, 0, drawWidth.toInt().coerceAtLeast(1), drawHeight.toInt().coerceAtLeast(1))
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    native.save()
+                    native.translate((size.width - drawWidth) / 2f, (size.height - drawHeight) / 2f)
+                    if (frame.mediaGlyph) native.scale(1.6f, 1.6f, drawWidth / 2f, drawHeight / 2f)
+                    drawable.draw(native)
+                    native.restore()
+                }
+            }
         }
-    } else if (frame.pathColors.isEmpty()) Icon(painter = painterResource(frame.resource), contentDescription = description, modifier = semantics, tint = frame.tint)
-    else {
-        val original = androidx.compose.ui.graphics.vector.ImageVector.vectorResource(frame.resource)
-        val layered = remember(original, frame.pathColors) { oemLayerColors(original, frame.pathColors) }
-        Icon(imageVector = layered, contentDescription = description, modifier = semantics, tint = Color.Unspecified)
+    } else {
+        val painter = if (frame.pathColors.isEmpty()) painterResource(frame.resource) else {
+            val original = ImageVector.vectorResource(frame.resource)
+            val layered = remember(original, frame.pathColors) { oemLayerColors(original, frame.pathColors) }
+            rememberVectorPainter(layered)
+        }
+        Canvas(drawModifier) {
+            if (viewport == null) {
+                val drawWidth = size.width * visualScale
+                val drawHeight = size.height * visualScale
+                translate((size.width - drawWidth) / 2f, (size.height - drawHeight) / 2f) {
+                    with(painter) {
+                        draw(Size(drawWidth, drawHeight), colorFilter = staticFilter)
+                    }
+                }
+            } else {
+                val ink = viewport.normalizedRect
+                val visibleHeight = size.height * visualScale
+                val fullHeight = visibleHeight / ink.height
+                val fullWidth = fullHeight * viewport.sourceAspectRatio
+                val left = (size.width - ink.width * fullWidth) / 2f - ink.left * fullWidth
+                val top = (size.height - visibleHeight) / 2f - ink.top * fullHeight
+                translate(left, top) {
+                    with(painter) {
+                        draw(Size(fullWidth, fullHeight), colorFilter = staticFilter)
+                    }
+                }
+            }
+        }
     }
 }

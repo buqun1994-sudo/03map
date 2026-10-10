@@ -34,7 +34,8 @@ enum class ShortcutId(
     ExternalDischarge(feature = VehicleFeature.ExternalDischarge),
     PassengerSeatAdjust(feature = VehicleFeature.PassengerSeatAdjust),
     Wiper(ControlId.Wiper, QuickControlType.SteppedVertical, QuickControlPlacement.Vertical),
-    ScreenClean(type = QuickControlType.OrdinaryToggle, title = "清洁屏幕");
+    ScreenClean(type = QuickControlType.OrdinaryToggle, title = "清洁屏幕"),
+    ControlCenter(title = "控制中心");
     val label: String get() = title ?: control?.label ?: feature?.label ?: name
 }
 enum class SystemQuickControl(val label: String) {
@@ -58,7 +59,8 @@ object ShortcutGrid {
     // New feature descriptors keep their domain owner; grid registration requires a completed UI consumer.
     val buttons = ShortcutId.entries.filter {
         it.placement == QuickControlPlacement.ButtonRows &&
-            (it.control != null || it.feature != null || it == ShortcutId.Settings || it == ShortcutId.ScreenClean)
+            (it.control != null || it.feature != null || it == ShortcutId.Settings ||
+                it == ShortcutId.ScreenClean || it == ShortcutId.ControlCenter)
     }
     val lowerToggles = ShortcutId.entries.filter { it.placement == QuickControlPlacement.LowerToggles }
     val verticals = ShortcutId.entries.filter { it.placement == QuickControlPlacement.Vertical }
@@ -196,7 +198,7 @@ data class ContentUiState(
     val immersiveShowTopBar: Boolean = true, val immersiveTopBarKeepSplit: Boolean = true,
     val immersiveShowDock: Boolean = true,
     val showAmbientArtwork: Boolean = true,
-    val showMediaSourceSwitcher: Boolean = true, val dockButtonCount: Int = 6,
+    val showMediaSourceSwitcher: Boolean = true, val dockButtonCount: Int = 5,
     val showActionFeedback: Boolean = true, val gestureBarReminder: Boolean = true, val uiOpacity: Float = 1.0f,
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,
@@ -207,6 +209,7 @@ data class ContentUiState(
     val features: Map<VehicleFeature, FeatureState> = VehicleFeature.entries.associateWith { FeatureState() },
     val systemLevels: Map<SystemQuickControl, LevelState> = SystemQuickControl.entries.associateWith { LevelState(0f, available = false) },
     val screenCleanAvailable: Boolean = false,
+     val controlCenterAvailable: Boolean = true,
 ) {
     /** Only interactive surfaces consume this preference; facts and the scene stay opaque. */
     val interfaceOpacity: Float get() = uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1f) ?: 1f
@@ -222,6 +225,7 @@ sealed interface ContentEvent {
      data class SystemVolumeChanged(val id: SystemQuickControl, val value: Float) : ContentEvent
 
     data object ScreenCleanTapped : ContentEvent
+     data object ControlCenterTapped : ContentEvent
     data object RearWashTapped : ContentEvent
     data class BrightnessChanged(val value: Float) : ContentEvent
     data class VolumeChanged(val value: Float) : ContentEvent

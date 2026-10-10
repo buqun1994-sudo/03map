@@ -149,7 +149,7 @@ public final class ContentPreferenceStore {
         state.immersiveShowDock = readBoolean(KEY_IMMERSIVE_SHOW_DOCK, true);
         state.showAmbientArtwork = readBoolean(KEY_SHOW_AMBIENT_ARTWORK, true);
         state.showMediaSourceSwitcher = readBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, true);
-        state.dockButtonCount = clampDockButtonCount(readInt(KEY_DOCK_BUTTON_COUNT, 6));
+        state.dockButtonCount = clampDockButtonCount(readInt(KEY_DOCK_BUTTON_COUNT, 5));
         state.showActionFeedback = readBoolean(KEY_SHOW_ACTION_FEEDBACK, true);
         state.autoCloseSettingsOnDrive = readBoolean(KEY_AUTO_CLOSE_SETTINGS_ON_DRIVE, true);
         // Versions 1..4 predate this preference; migrate them to the default-on behavior without rewriting old entries.
@@ -160,7 +160,7 @@ public final class ContentPreferenceStore {
         if (version > PREFERENCES_VERSION) {
             state.lyricsFontScale = 1.0f;
             state.lyricsLineSpacing = 1;
-            state.dockButtonCount = 6;
+            state.dockButtonCount = 5;
             state.uiOpacity = 1.0f;
         }
         String savedPageId = readString(KEY_PAGE_ID, ContentRegistry.Pages.LYRICS);
@@ -298,7 +298,7 @@ public final class ContentPreferenceStore {
     }
 
     private int clampDockButtonCount(int value) {
-        return value >= 3 && value <= 6 ? value : 6;
+        return value >= 3 && value <= 6 ? value : 5;
     }
 
     private java.util.Map<String, Integer> loadManualLevels() {

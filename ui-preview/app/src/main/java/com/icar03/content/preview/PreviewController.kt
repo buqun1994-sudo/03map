@@ -175,7 +175,8 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.AutoCloseSettingsOnDriveChanged -> update { it.copy(autoCloseSettingsOnDrive = event.value) }
             is ContentEvent.GestureBarReminderChanged -> update { it.copy(gestureBarReminder = event.value) }
               is ContentEvent.UiOpacityChanged -> update { it.copy(uiOpacity = if (event.value.isFinite()) event.value.coerceIn(.20f, 1.0f) else 1.0f) }
-            ContentEvent.OpenScenarios -> update { it.copy(scenariosOpen = true, sourcesOpen = false) }
+            ContentEvent.ControlCenterTapped -> Unit
+             ContentEvent.OpenScenarios -> update { it.copy(scenariosOpen = true, sourcesOpen = false) }
             is LyricsPlatformSelected -> if (active && state.value.lyricsProviderSettings.available) update {
                 it.copy(lyricsProviderSettings = it.lyricsProviderSettings.copy(preferredPlatform = event.id))
             }

@@ -67,6 +67,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.geometry.Offset
 import kotlin.math.roundToInt
 
 internal val NaturalTextWidth = SemanticsPropertyKey<Float>("NaturalTextWidth")
@@ -94,6 +96,7 @@ fun ContentPanel(
     appleMusicLogin: @Composable ((ContentEvent) -> Unit) -> Unit = {},
     canDispatch: (ContentEvent) -> Boolean = { true },
 ) {
+    val windowActive = rememberContentWindowActive()
     val view = LocalView.current
     val clickSound = LocalContentClickSound.current
     val dockOverlay = remember { DockLevelOverlayState() }
@@ -165,18 +168,34 @@ fun ContentPanel(
                     if (!lyricMode) 1f else if (geometryReady) lyricsTransitionAlpha(presentation?.progress ?: 0f) else 0f
                 } }
                 val leftWidth = if (lyricMode) splitWidth else maxWidth
-                val compact = !state.previewMode && leftWidth < 600.dp
+                val geometry = remember(leftWidth, density.density) {
+                    contentGeometry(leftWidth, density.density)
+                }
+                val compact = !state.previewMode && geometry.compact
                 val edge = if (compact) 8.dp else 20.dp
+                val mediaEdge = geometry.dp(CONTENT_REFERENCE_MEDIA_EDGE_PX)
+                val mediaDockGap = geometry.dp(CONTENT_REFERENCE_MEDIA_DOCK_GAP_PX)
                 val topBarWidth = if (wide && !state.immersiveTopBarKeepSplit) fullWidth else leftWidth
                 val topBarHeight = TopBarMetrics.height(compact)
-                val dockHeight = if (compact) 72.dp else 112.dp
-                val mediaHeight = if (compact) 80.dp else 136.dp
+                val dockHeight = geometry.dockSurfaceHeight + geometry.edge
+                val mediaHeight = geometry.mediaSurfaceHeight + mediaDockGap
                 val feedbackWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
                 val showTop = !wide || state.immersiveShowTopBar
                 val showDock = !wide || state.immersiveShowDock
+                val compactMetadataVisible by remember(settingsActive, compactOpacity) {
+                    derivedStateOf { !settingsActive && compactOpacity() > 0f }
+                }
+                val immersiveMetadataVisible by remember(settingsActive, wideOpacity) {
+                    derivedStateOf { !settingsActive && wideOpacity() > 0f }
+                }
+                val dockIconsVisible by remember(state.immersiveShowDock, compactOpacity) {
+                    derivedStateOf { state.immersiveShowDock || compactOpacity() > 0f }
+                }
                 ambientBackground?.invoke()
                 CompositionLocalProvider(
-                     LocalInterfaceOpacity provides uiOpacity,
+                    LocalContentGeometry provides geometry,
+                    LocalContentWindowActive provides windowActive,
+                    LocalInterfaceOpacity provides uiOpacity,
                      LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
                     LocalQuickControlClickAcceptance provides acceptsQuickControlClick,
                     LocalQuickControlDispatch provides dispatchAccepted,
@@ -188,22 +207,28 @@ fun ContentPanel(
                         if (showTop) Spacer(Modifier.height(topBarHeight))
                         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                             if (wide) {
-                                ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
-                                    Modifier.fillMaxSize().graphicsLayer { alpha = wideOpacity() })
+                                CompositionLocalProvider(LocalIconVisible provides immersiveMetadataVisible) {
+                                    ImmersiveMedia(state, dispatch, artwork, lyricsState, compact,
+                                        Modifier.fillMaxSize().graphicsLayer { alpha = wideOpacity() })
+                                }
                             }
                         }
                         if (!wide) Box(Modifier.fillMaxWidth().height(mediaHeight)
-                            .padding(start = edge, end = edge, bottom = if (compact) 8.dp else 16.dp).graphicsLayer {
+                            .padding(start = mediaEdge, end = mediaEdge, bottom = mediaDockGap).graphicsLayer {
                                 alpha = compactOpacity()
                             }) {
-                            PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
-                                compact, state.showMediaSourceSwitcher)
+                            CompositionLocalProvider(LocalIconVisible provides compactMetadataVisible) {
+                                PrototypeMediaCard(state.media, dispatch, artwork, state.previewMode || state.media.sourceAvailable,
+                                    compact)
+                            }
                         }
                         if (showDock) Box(Modifier.fillMaxWidth().graphicsLayer {
                             alpha = if (state.immersiveShowDock) 1f else compactOpacity()
                         }) {
-                            PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning,
-                                backgroundOpacity = compactOpacity)
+                            CompositionLocalProvider(LocalIconVisible provides dockIconsVisible) {
+                                PrototypeDock(state, dispatch, compact, dockOverlay, contentInteractive && !transitioning,
+                                    backgroundOpacity = compactOpacity)
+                            }
                         }
                     }
                     // The pager and its lyric page keep the same composition in both modes.
@@ -211,7 +236,9 @@ fun ContentPanel(
                     Layout(content = {
                         if (state.previewMode) {
                             if (state.page == PanelPage.Shortcuts) {
-                                Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                CompositionLocalProvider(LocalIconVisible provides contentInteractive) {
+                                    Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
+                                }
                             } else Box(Modifier.fillMaxSize()) {
                                 LyricsPage(latestPanelState.value, dispatch, { latestLyricsState.value() }, presentationScale = if (wide) 3.0f else 1f,
                                     externalGestureActive = transitioning, interactionEnabled = contentInteractive && !transitioning,
@@ -238,7 +265,10 @@ fun ContentPanel(
                             }
                             HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"),
                                 userScrollEnabled = contentInteractive && !transitioning && !wide) { index ->
-                                CompositionLocalProvider(LocalIconVisible provides (index == pager.currentPage)) {
+                                CompositionLocalProvider(
+                                    LocalIconVisible provides (index == pager.currentPage),
+                                    LocalContentDrawingVisible provides contentInteractive,
+                                ) {
                                     if (PanelPage.entries[index] == PanelPage.Shortcuts) {
                                         Column(Modifier.fillMaxSize().padding(horizontal = edge).verticalScroll(rememberScrollState())) { PrototypeGrid(state, dispatch) }
                                     } else Box(Modifier.fillMaxSize()) {
@@ -262,7 +292,6 @@ fun ContentPanel(
                             child.place(if (wide) with(density) { leftWidth.roundToPx() } else 0, pagesTop)
                         }
                     }
-                }
                 if (state.page == PanelPage.Lyrics) {
                     // The action lease belongs to the lyrics page. Keep its host at
                     // the compact page width even after the lyrics surface expands;
@@ -311,11 +340,14 @@ fun ContentPanel(
                     SettingsSheet(state, dispatch,
                         Modifier.align(Alignment.TopStart).width(splitWidth).fillMaxHeight()
                             .padding(
-                                start = if (compact) 8.dp else 12.dp,
-                                end = if (compact) 8.dp else 12.dp,
                                 top = if (showTop) topBarHeight else 12.dp,
-                                bottom = if (showDock) dockHeight + if (compact) 8.dp else 16.dp else 12.dp,
+                                bottom = if (showDock) dockHeight else geometry.edge,
                             ).zIndex(7f),
+                        contentPadding = PaddingValues(
+                            start = geometry.edge,
+                            end = geometry.edge,
+                            bottom = if (showDock) mediaDockGap else 0.dp,
+                        ),
                         onVisibilityChanged = { settingsRetained = it })
                 }
                 if (state.lyricsProviderSettings.appleLoginOpen) {
@@ -345,6 +377,7 @@ fun ContentPanel(
                 // owner. It never assumes 640px or modifies either map Surface.
                 Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp)
                     .background(MaterialTheme.colorScheme.outline.copy(alpha = .5f)).testTag("content-divider"))
+                }
             }
         }
 }
@@ -595,6 +628,7 @@ private fun shortcutStatus(id: ShortcutId, state: ContentUiState): String {
         }
     }
     if (id == ShortcutId.ScreenClean) return if (state.screenCleanAvailable) "可用" else "能力不可用"
+    if (id == ShortcutId.ControlCenter) return if (state.controlCenterAvailable) "打开" else "能力不可用"
     val control = id.control?.let { state.controls.getValue(it) }
     if (id == ShortcutId.RearWiper || id == ShortcutId.RearWash) {
         val value = control ?: return "状态未知"
@@ -627,6 +661,7 @@ private fun shortcutIcon(id: ShortcutId, state: ContentUiState): Int = when (id)
     ShortcutId.RearWash -> state.controls.getValue(ControlId.RearWash).let { rearWashIconRecipe(it.displayed == 1, state.dark).resource }
     ShortcutId.Settings -> R.drawable.content_oem_ic_settings
      ShortcutId.ScreenClean -> R.drawable.content_oem_ico_screen_clean
+     ShortcutId.ControlCenter -> R.drawable.content_oem_ico_home_applist
     else -> id.feature?.let { vehicleFeatureIconRecipe(it, state.features[it]?.displayed ?: 0, state.dark).resource }
          ?: seatIcon(requireNotNull(id.control), state)
 }
@@ -673,6 +708,7 @@ private fun shortcutEvent(id: ShortcutId, state: ContentUiState): ContentEvent? 
     ShortcutId.RearWash -> ContentEvent.RearWashTapped
     ShortcutId.Settings -> ContentEvent.SettingsTapped
     ShortcutId.ScreenClean -> ContentEvent.ScreenCleanTapped
+    ShortcutId.ControlCenter -> ContentEvent.ControlCenterTapped
     else -> if (id.feature != null) ContentEvent.FeatureTapped(id) else id.control?.let { ContentEvent.ControlTapped(it) }
 }
 
@@ -690,6 +726,7 @@ private fun ContentUiState.acceptsQuickControlEvent(event: ContentEvent): Boolea
         } == true
         ContentEvent.SettingsCollapseTapped -> canCollapseSettings && !lyricsProviderSettings.appleLoginOpen
         ContentEvent.SettingsRestored -> canCollapseSettings && settingsCollapsed
+        ContentEvent.ControlCenterTapped -> !sourcesOpen && controlCenterAvailable
         ContentEvent.ScreenCleanTapped -> screenCleanAvailable
         else -> true
     }
@@ -698,6 +735,7 @@ private fun ContentUiState.acceptsQuickControlEvent(event: ContentEvent): Boolea
 private fun dockEvent(id: ShortcutId, state: ContentUiState): ContentEvent? = shortcutEvent(id, state)
 
 internal fun shortcutRippleEnabled(id: ShortcutId, state: ContentUiState): Boolean {
+    if (id == ShortcutId.ControlCenter) return false
     id.feature?.let { feature ->
         val value = state.features[feature] ?: return false
         return value.available && !value.pending && (feature.action || value.known)
@@ -714,6 +752,7 @@ private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (Conten
     val control = id.control?.let { state.controls.getValue(it) }
     val enabled = when {
         id.feature != null -> state.features[id.feature]?.available == true
+        id == ShortcutId.ControlCenter -> state.controlCenterAvailable
         id == ShortcutId.ScreenClean -> state.screenCleanAvailable
         control == null -> true
         else -> control.available && control.known && !control.pending && id.control!!.isLevel(control.actual)
@@ -728,7 +767,7 @@ private fun ShortcutTile(id: ShortcutId, state: ContentUiState, onEvent: (Conten
         ShortcutOemIcon(id, state, shortcutIcon(id, state), modifier.testTag("shortcut-icon-${id.name}"))
     }
     val onClick: () -> Boolean = {
-        effectiveEnabled && event != null && dispatchClick(event)
+        event?.let { effectiveEnabled && dispatchClick(it) } ?: false
     }
     if (id.type == QuickControlType.OrdinaryToggle) {
         OrdinaryToggle(id.label, shortcutStatus(id, state), shortcutSelected(id, state), effectiveEnabled,
@@ -747,37 +786,91 @@ internal fun shortcutTag(id: ShortcutId): String =
 @Composable
 private fun PrototypeMediaCard(
     media: MediaState, onEvent: (ContentEvent) -> Unit, artwork: @Composable (() -> Unit)?,
-    sourcesEnabled: Boolean, compact: Boolean, showSourceSwitcher: Boolean,
+    sourcesEnabled: Boolean, compact: Boolean,
 ) {
-    val button = if (compact) 48.dp else 80.dp
-    val icon = if (compact) 28.dp else 42.dp
+    val geometry = LocalContentGeometry.current
+    val cell = geometry.mediaSurfaceHeight
+    val fontScale = LocalDensity.current.fontScale
     val colors = LocalContentColors.current
-    Surface(Modifier.fillMaxSize().testTag("media-card").downwardSoftShadow(colors.mediaBase, MaterialTheme.colorScheme.background.luminance() < 0.2f,
-         opacity = LocalInterfaceOpacity.current), shape = RoundedCornerShape(12.dp), color = interfaceSurfaceColor(colors.mediaBase), shadowElevation = 0.dp) {
+    Surface(
+        Modifier.fillMaxSize().testTag("media-card").downwardSoftShadow(
+            colors.mediaBase, MaterialTheme.colorScheme.background.luminance() < 0.2f,
+            cornerRadius = geometry.mediaCorner, opacity = LocalInterfaceOpacity.current,
+        ),
+        shape = RoundedCornerShape(geometry.mediaCorner),
+        color = interfaceSurfaceColor(colors.mediaBase),
+        shadowElevation = 0.dp,
+    ) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.width(if (compact) 72.dp else 120.dp).fillMaxHeight(), color = interfaceSurfaceColor(colors.mediaArtworkBase)) {
-                Box(contentAlignment = Alignment.Center) { if (artwork != null) artwork() else OemIcon(R.drawable.content_oem_ico_media_music, Modifier.size(48.dp), "音乐封面") }
-            }
-            Column(Modifier.weight(1f).padding(horizontal = if (compact) 4.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(media.title ?: "暂无媒体", Modifier.testTag("media-card-title"), style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(media.artist ?: "未连接", Modifier.testTag("media-card-artist"), style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            RoundedPressButton(Modifier.size(button), "media-play", if (media.playing) "暂停" else "播放",
-                media.available && media.playbackAvailable && !media.pending, compact,
-                onClick = { onEvent(ContentEvent.PlayPause); true }) {
-                OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f, Modifier.size(icon).testTag("media-play-icon"), animateOnAction = false)
-            }
-            Spacer(Modifier.width(if (compact) 0.dp else 12.dp))
-            RoundedPressButton(Modifier.size(button), "media-next", "下一首", media.available && media.nextAvailable && !media.pending, compact,
-                onClick = { onEvent(ContentEvent.NextTrack); true }) { OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(icon).testTag("media-next-icon")) }
-            if (showSourceSwitcher) {
-                Spacer(Modifier.width(if (compact) 0.dp else 12.dp))
-                VerticalDivider(Modifier.height(64.dp), color = MaterialTheme.colorScheme.outline)
-                RoundedPressButton(Modifier.width(if (compact) 48.dp else 96.dp).fillMaxHeight()
-                    .semantics { stateDescription = if (media.targetSource != null) "切换中：${media.targetSource.label}" else media.source.label },
-                    "source-button", "选择来源", sourcesEnabled, compact, onClick = { onEvent(ContentEvent.OpenSources); true }) {
-                    OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(icon).testTag("media-source-icon"), tint = sourceTint())
+            Surface(
+                Modifier.size(cell),
+                shape = RoundedCornerShape(topStart = geometry.mediaCorner, bottomStart = geometry.mediaCorner),
+                color = interfaceSurfaceColor(colors.mediaArtworkBase),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (artwork != null) artwork() else OemIcon(
+                        R.drawable.content_oem_ico_media_music,
+                        Modifier.size(geometry.dp(48f)), "音乐封面",
+                    )
                 }
+            }
+            Column(
+                Modifier.weight(1f).fillMaxHeight().padding(horizontal = geometry.dp(16f)),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                MarqueeText(
+                    media.title ?: "暂无媒体",
+                    Modifier.fillMaxWidth().testTag("media-card-title"),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = geometry.mediaSp(24f, fontScale), lineHeight = geometry.mediaSp(30f, fontScale), fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Spacer(Modifier.height(geometry.dp(4f)))
+                MarqueeText(
+                    media.artist ?: "未连接",
+                    Modifier.fillMaxWidth().testTag("media-card-artist"),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = geometry.mediaSp(20f, fontScale), lineHeight = geometry.mediaSp(26f, fontScale), fontWeight = FontWeight.Medium,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            RoundedPressButton(
+                Modifier.size(cell), "media-play", if (media.playing) "暂停" else "播放",
+                media.available && media.playbackAvailable && !media.pending, compact,
+                pressAreaSize = geometry.mediaFeedbackSize, feedbackCornerRadius = geometry.feedbackCorner,
+                onClick = { onEvent(ContentEvent.PlayPause); true },
+            ) {
+                OemIcon(
+                    if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f
+                    else R.drawable.content_oem_ico_media_play_f,
+                    Modifier.testTag("media-play-icon"), glyphHeight = geometry.mediaPlayGlyphHeight, animateOnAction = false,
+                )
+            }
+            RoundedPressButton(
+                Modifier.size(cell), "media-next", "下一首",
+                media.available && media.nextAvailable && !media.pending, compact,
+                pressAreaSize = geometry.mediaFeedbackSize, feedbackCornerRadius = geometry.feedbackCorner,
+                onClick = { onEvent(ContentEvent.NextTrack); true },
+            ) {
+                OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.testTag("media-next-icon"), glyphHeight = geometry.mediaActionGlyphHeight)
+            }
+            RoundedPressButton(
+                Modifier.size(cell).drawBehind {
+                    val half = geometry.dp(48f).toPx() / 2f
+                    val center = size.height / 2f
+                    drawLine(colors.mediaDivider, Offset(0f, center - half), Offset(0f, center + half),
+                        strokeWidth = geometry.dp(1f).toPx())
+                }.semantics {
+                    stateDescription = media.targetSource?.let { "切换中：${it.label}" } ?: media.source.label
+                }, "source-button", "选择来源", sourcesEnabled, compact,
+                pressAreaSize = geometry.mediaFeedbackSize, feedbackCornerRadius = geometry.feedbackCorner,
+                onClick = { onEvent(ContentEvent.OpenSources); true },
+            ) {
+                OemIcon(
+                    sourceIcon(media.targetSource ?: media.source),
+                    Modifier.testTag("media-source-icon"), tint = sourceTint(), glyphHeight = geometry.mediaActionGlyphHeight,
+                )
             }
         }
     }
@@ -795,7 +888,7 @@ private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Uni
         val mediaWidth = (maxWidth * .88f).coerceAtMost(560.dp)
         val coverGap = if (compact) 32.dp else 40.dp
         val buttonSize = if (maxWidth < 360.dp || maxHeight < 500.dp) 52.dp else if (compact) 72.dp else 84.dp
-        val iconSize = buttonSize * (2f / 3f)
+        val geometry = LocalContentGeometry.current
         val media = state.media
         Layout(modifier = Modifier.align(Alignment.Center).fillMaxWidth().testTag("immersive-media-group"), content = {
             Box(Modifier.testTag("immersive-cover-space"), contentAlignment = Alignment.Center) {
@@ -809,14 +902,13 @@ private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Uni
             Column(Modifier.fillMaxWidth().testTag("immersive-media-details")) {
                 Column(Modifier.fillMaxWidth().testTag("immersive-media-header"),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(media.title ?: "暂无媒体", Modifier.testTag("immersive-title"),
+                    MarqueeText(media.title ?: "暂无媒体", Modifier.fillMaxWidth().testTag("immersive-title"),
                         style = MaterialTheme.typography.headlineMedium.copy(
-                            fontSize = if (compact) 26.sp else 30.sp, fontWeight = FontWeight.SemiBold),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(media.artist ?: "未连接", Modifier.testTag("immersive-artist"),
-                        style = MaterialTheme.typography.titleLarge.copy(fontSize = if (compact) 22.sp else 24.sp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .78f),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            fontSize = if (compact) 26.sp else 30.sp, fontWeight = FontWeight.Bold))
+                    MarqueeText(media.artist ?: "未连接", Modifier.fillMaxWidth().testTag("immersive-artist"),
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = if (compact) 22.sp else 24.sp, fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .78f))
                 }
                 Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
                 ImmersivePlaybackProgress(lyrics, compact, Modifier.fillMaxWidth())
@@ -825,22 +917,20 @@ private fun ImmersiveMedia(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(if (compact) 14.dp else 20.dp)) {
                     RoundedPressButton(Modifier.size(buttonSize), "immersive-play", if (media.playing) "暂停" else "播放",
-                        media.available && media.playbackAvailable && !media.pending, compact, pressAreaSize = buttonSize,
+                        media.available && media.playbackAvailable && !media.pending, compact, pressAreaSize = geometry.mediaFeedbackSize, feedbackCornerRadius = geometry.feedbackCorner,
                         onClick = { onEvent(ContentEvent.PlayPause); true }) {
                         OemIcon(if (media.targetPlaying ?: media.playing) R.drawable.content_oem_ico_media_pause_f else R.drawable.content_oem_ico_media_play_f,
-                            Modifier.size(iconSize), animateOnAction = false)
+                            Modifier.testTag("immersive-play-icon"), glyphHeight = geometry.mediaPlayGlyphHeight, animateOnAction = false)
                     }
                     RoundedPressButton(Modifier.size(buttonSize), "immersive-next", "下一首",
-                        media.available && media.nextAvailable && !media.pending, compact, pressAreaSize = buttonSize,
+                        media.available && media.nextAvailable && !media.pending, compact, pressAreaSize = geometry.mediaFeedbackSize, feedbackCornerRadius = geometry.feedbackCorner,
                         onClick = { onEvent(ContentEvent.NextTrack); true }) {
-                        OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.size(iconSize))
+                        OemIcon(R.drawable.content_oem_ico_media_next_f, Modifier.testTag("immersive-next-icon"), glyphHeight = geometry.mediaActionGlyphHeight)
                     }
-                    if (state.showMediaSourceSwitcher) {
-                        RoundedPressButton(Modifier.size(buttonSize), "immersive-source", "选择来源", media.sourceAvailable, compact, pressAreaSize = buttonSize,
+                        RoundedPressButton(Modifier.size(buttonSize), "immersive-source", "选择来源", media.sourceAvailable, compact, pressAreaSize = geometry.mediaFeedbackSize, feedbackCornerRadius = geometry.feedbackCorner,
                             onClick = { onEvent(ContentEvent.OpenSources); true }) {
-                            OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.size(iconSize), tint = sourceTint())
+                            OemIcon(sourceIcon(media.targetSource ?: media.source), Modifier.testTag("immersive-source-icon"), tint = sourceTint(), glyphHeight = geometry.mediaActionGlyphHeight)
                         }
-                    }
                 }
             }
         }) { measurables, constraints ->
@@ -872,47 +962,53 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
     val acceptClick = LocalQuickControlClickAcceptance.current
     val dispatchClick = LocalQuickControlDispatch.current
     val items = dockItemsForCount(state.dockButtonCount)
-    Box(Modifier.fillMaxWidth().height(if (compact) 72.dp else 112.dp).padding(start = if (compact) 8.dp else 12.dp, end = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp)) {
+    val geometry = LocalContentGeometry.current
+    Box(Modifier.fillMaxWidth().height(geometry.dockSurfaceHeight + geometry.edge)
+        .padding(start = geometry.edge, end = geometry.edge, bottom = geometry.edge)) {
         Box(Modifier.fillMaxSize().testTag("floating-dock")) {
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = backgroundOpacity() }
-                .testTag("dock-background").downwardSoftShadow(colors.dockBase, state.dark,
+                .testTag("dock-background").downwardSoftShadow(colors.dockBase, state.dark, cornerRadius = geometry.dockCorner,
                  opacity = LocalInterfaceOpacity.current)
-                .background(interfaceSurfaceColor(colors.dockBase), RoundedCornerShape(12.dp)))
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val minDockWidth = if (compact) 48.dp * items.size
-                    else 114.dp + 72.dp * (items.size - 1)
-                val dockWidth = maxWidth.coerceAtLeast(minDockWidth)
-                Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
-                    Row(Modifier.width(dockWidth).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
-                        items.forEach { id -> key(id) {
-                            val control = id.control?.let { state.controls.getValue(it) }
-                            val selected = shortcutSelected(id, state)
-                            val glyphStateKnown = control == null ||
-                                control.known && id.control!!.isLevel(control.actual)
-                            val event = dockEvent(id, state)
-                            val accepted = event != null && acceptClick(event)
-                            val interactionEnabled = (interactive || id == ShortcutId.Settings) && accepted
-                            val stepped = id.type == QuickControlType.SteppedVertical
-                            val rippleEnabled = if (stepped) interactionEnabled else shortcutRippleEnabled(id, state) && interactionEnabled
-                            val levelGesture = if (stepped) dockLevelGesture(id.control!!, control!!, overlay) {
-                                onEvent(ContentEvent.ControlLevelChanged(id.control, it))
-                            } else Modifier
-                            val slot = (if (!compact && id == ShortcutId.Lock) Modifier.width(114.dp) else Modifier.weight(1f))
-                                .fillMaxHeight().then(levelGesture)
-                                .semantics { this.selected = selected; stateDescription = shortcutStatus(id, state) }
-                            RoundedPressButton(slot, "dock-${id.name}", id.label, glyphStateKnown, compact,
-                                interactionEnabled = interactionEnabled,
-                                onClick = { event != null && dispatchClick(event) }, rectangular = false,
-                                selected = selected && id != ShortcutId.Lock,
-                                selectedColor = colors.selectedSurface,
-                                baseColor = Color.Transparent,
-                                rippleEnabled = rippleEnabled,
-                                rippleColor = if (selected && id != ShortcutId.Lock) colors.dockBase else colors.selectedSurface) {
-                                ShortcutOemIcon(id, state, shortcutIcon(id, state), Modifier.size(if (compact) 32.dp else 48.dp).testTag("dock-icon-${id.name}"))
-                            }
-                        } }
+                .background(interfaceSurfaceColor(colors.dockBase), RoundedCornerShape(geometry.dockCorner)))
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                val rightSlotWidth = ((geometry.dockWidth - geometry.dockLockWidth).coerceAtLeast(0.dp) /
+                    (items.size - 1).coerceAtLeast(1)).coerceAtLeast(48.dp)
+                @Composable fun DockSlot(id: ShortcutId, width: Dp) {
+                    val control = id.control?.let { state.controls.getValue(it) }
+                    val selected = shortcutSelected(id, state)
+                    val glyphStateKnown = control == null ||
+                        control.known && id.control!!.isLevel(control.actual)
+                    val event = dockEvent(id, state)
+                    val accepted = event != null && acceptClick(event)
+                    val interactionEnabled = (interactive || id == ShortcutId.Settings) && accepted
+                    val stepped = id.type == QuickControlType.SteppedVertical
+                    val rippleEnabled = if (stepped) interactionEnabled else shortcutRippleEnabled(id, state) && interactionEnabled
+                    val levelGesture = if (stepped) dockLevelGesture(id.control!!, control!!, overlay) {
+                        onEvent(ContentEvent.ControlLevelChanged(id.control, it))
+                    } else Modifier
+                    val slot = Modifier.width(width).fillMaxHeight().then(levelGesture)
+                        .semantics { this.selected = selected; stateDescription = shortcutStatus(id, state) }
+                    RoundedPressButton(slot, "dock-${id.name}", id.label, glyphStateKnown, compact,
+                        interactionEnabled = interactionEnabled,
+                        pressAreaSize = if (id == ShortcutId.Lock) geometry.dockLockFeedbackSize else geometry.dockFeedbackSize,
+                        feedbackCornerRadius = geometry.feedbackCorner,
+                        onClick = { event != null && dispatchClick(event) }, rectangular = false,
+                        selected = selected && id != ShortcutId.Lock,
+                        selectedColor = colors.selectedSurface,
+                        baseColor = Color.Transparent,
+                        rippleEnabled = rippleEnabled,
+                        rippleColor = if (selected && id != ShortcutId.Lock) colors.dockBase else colors.selectedSurface) {
+                        ShortcutOemIcon(id, state, shortcutIcon(id, state), Modifier.testTag("dock-icon-${id.name}"),
+                            glyphHeight = if (id == ShortcutId.Lock) geometry.dockLockGlyphHeight else geometry.dockGlyphHeight)
                     }
                 }
+                DockSlot(items.first(), geometry.dockLockWidth)
+                Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(rememberScrollState()).testTag("dock-middle-scroll")) {
+                    Row(Modifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+                        items.drop(1).dropLast(1).forEach { id -> key(id) { DockSlot(id, rightSlotWidth) } }
+                    }
+                }
+                DockSlot(items.last(), rightSlotWidth)
             }
         }
     }
@@ -922,7 +1018,8 @@ private fun PrototypeDock(state: ContentUiState, onEvent: (ContentEvent) -> Unit
 private fun RoundedPressButton(
     modifier: Modifier, tag: String, description: String, enabled: Boolean, compact: Boolean,
     interactionEnabled: Boolean = enabled,
-    pressAreaSize: androidx.compose.ui.unit.Dp? = null,
+    pressAreaSize: Dp? = null,
+    feedbackCornerRadius: Dp? = null,
     onClick: () -> Boolean, rectangular: Boolean = true, selected: Boolean = false,
     baseColor: Color? = null,
     selectedColor: Color? = null,
@@ -954,12 +1051,14 @@ private fun RoundedPressButton(
         .excludeDisabledActionTap(canInteract)
         .semantics { contentDescription = description; this[PressActive] = active; this[PressBackground] = background.value.toLong(); this[PressScale] = scale; this[PressFeedback] = if (rectangular || rippleEnabled) if (rectangular) "opacity-rectangle" else "touch-ripple" else "none" },
         contentAlignment = Alignment.Center) {
-        val shape = RoundedCornerShape(if (compact) 12.dp else 16.dp)
+        val shape = RoundedCornerShape(feedbackCornerRadius ?: if (compact) 12.dp else 16.dp)
         val pressArea = Modifier.size(pressAreaSize ?: if (compact) 48.dp else 72.dp)
             .clip(shape)
             .then(if (rectangular) Modifier.background(background, shape) else feedback.area(base))
             .testTag("$tag-press-area")
-        Box(pressArea.graphicsLayer { alpha = if (enabled) 1f else .38f }, contentAlignment = Alignment.Center) {
+        // Feedback never measures or clips the glyph. Both are centred in the complete hit slot.
+        Box(pressArea.graphicsLayer { alpha = if (enabled) 1f else .38f })
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (enabled) 1f else .38f }, contentAlignment = Alignment.Center) {
             CompositionLocalProvider(LocalIconPressed provides active, LocalIconAction provides action) { content() }
         }
     }
@@ -968,6 +1067,7 @@ private fun RoundedPressButton(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> Unit, anchorWidth: androidx.compose.ui.unit.Dp? = null) {
+    val geometry = LocalContentGeometry.current
     BoxWithConstraints(Modifier.fillMaxSize().testTag("sources-overlay")) {
          val colors = LocalContentColors.current
         val compact = !state.previewMode && (maxWidth < 600.dp || maxHeight < 800.dp)
@@ -984,8 +1084,10 @@ private fun PrototypeSources(state: ContentUiState, onEvent: (ContentEvent) -> U
         })
         Surface(
             Modifier.align(if (anchorWidth == null) Alignment.BottomEnd else Alignment.BottomStart).padding(
-                start = if (anchorWidth == null) 0.dp else (anchorWidth - menuWidth - if (compact) 8.dp else 20.dp).coerceAtLeast(8.dp),
-                end = if (compact) 8.dp else 20.dp, bottom = if (compact) 152.dp else 264.dp)
+                start = if (anchorWidth == null) 0.dp else (anchorWidth - menuWidth - geometry.dp(CONTENT_REFERENCE_MEDIA_EDGE_PX)).coerceAtLeast(0.dp),
+                end = geometry.dp(CONTENT_REFERENCE_MEDIA_EDGE_PX),
+                bottom = geometry.dockSurfaceHeight + geometry.edge + geometry.mediaSurfaceHeight +
+                    geometry.dp(CONTENT_REFERENCE_MEDIA_DOCK_GAP_PX * 2))
                 .width(menuWidth).testTag("sources-menu")
                 .downwardSoftShadow(colors.sourceBase, state.dark, opacity = LocalInterfaceOpacity.current),
             shape = RoundedCornerShape(12.dp), color = interfaceSurfaceColor(colors.sourceBase),
@@ -1073,7 +1175,7 @@ private fun LyricsEmptyContent(state: ContentUiState, onEvent: (ContentEvent) ->
             Text(emptyText, Modifier.testTag("lyrics-empty-copy"), style = MaterialTheme.typography.headlineMedium,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 color = MaterialTheme.colorScheme.onBackground)
-            if (!state.previewMode && state.showMediaSourceSwitcher && state.media.sourceAvailable &&
+            if (!state.previewMode && state.media.sourceAvailable &&
                 emptyState == LyricsEmptyState.NetworkError) {
                 val interactions = remember { MutableInteractionSource() }
                 val pressed by interactions.collectIsPressedAsState()
@@ -1126,17 +1228,17 @@ private fun seatIcon(id: ControlId, state: ContentUiState): Int =
 
 /** The same OEM resource, frame segment and palette feed both visible entrances. */
 @Composable
-internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, modifier: Modifier) {
+internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, modifier: Modifier, glyphHeight: Dp? = null) {
     val control = id.control
     val projected = control?.let { state.controls.getValue(it) }
     if (projected != null && !projected.known && !projected.pending) {
-        OemIcon(icon, modifier, tint = MaterialTheme.colorScheme.primary,
+        OemIcon(icon, modifier, glyphHeight = glyphHeight, tint = MaterialTheme.colorScheme.primary,
             motionKey = "unknown", animationAsset = null, animateOnAction = false, acceptedActionOnly = true)
         return
     }
     val base = MaterialTheme.colorScheme.primary
     if (id == ShortcutId.AutoWiper) {
-        OemIcon(icon, modifier, tint = if (shortcutSelected(id, state)) ContentFunctionalBlue else base,
+        OemIcon(icon, modifier, glyphHeight = glyphHeight, tint = if (shortcutSelected(id, state)) ContentFunctionalBlue else base,
             motionKey = projected?.displayed, animationAsset = null, animateOnAction = false, acceptedActionOnly = true)
         return
     }
@@ -1146,7 +1248,7 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
         val selected = value.pending && value.target == 1 || !value.pending && value.actual == 1
         val recipe = if (id == ShortcutId.RearWiper) rearWiperIconRecipe(selected, state.dark, base)
             else rearWashIconRecipe(selected, state.dark, base)
-        OemIcon(recipe.resource, modifier, tint = Color.Unspecified, pathColors = recipe.pathColors,
+        OemIcon(recipe.resource, modifier, glyphHeight = glyphHeight, tint = Color.Unspecified, pathColors = recipe.pathColors,
             motionKey = if (value.known || value.pending) selected else "unknown", animationAsset = recipe.asset,
             animationFrames = recipe.frames, animationColors = recipe.animationColors,
             animationStrokePathColors = recipe.animationStrokePathColors,
@@ -1159,7 +1261,7 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
         val known = value.known || value.pending
         val displayed = value.displayed.takeIf { it == 0 || it == 1 } ?: 0
         val recipe = vehicleFeatureIconRecipe(feature, displayed, state.dark, base)
-        OemIcon(recipe.resource, modifier, tint = recipe.tint,
+        OemIcon(recipe.resource, modifier, glyphHeight = glyphHeight, tint = recipe.tint,
             pathColors = recipe.pathColors,
             motionKey = if (known) displayed else "unknown",
             animationAsset = recipe.asset.takeIf { known && !it.isNullOrEmpty() },
@@ -1169,32 +1271,43 @@ internal fun ShortcutOemIcon(id: ShortcutId, state: ContentUiState, icon: Int, m
         return
     }
     if (id == ShortcutId.ScreenClean) {
-        OemIcon(icon, modifier, tint = base,
+        OemIcon(icon, modifier, glyphHeight = glyphHeight, tint = base,
             motionKey = "screen-clean", animateOnAction = false, acceptedActionOnly = true)
         return
     }
+    if (id == ShortcutId.ControlCenter) {
+        ControlCenterOemIcon(icon, modifier, base)
+        return
+    }
     if (control == null || control == ControlId.Lock) {
-        OemIcon(icon, modifier, tint = if (id == ShortcutId.RearWash && shortcutSelected(id, state)) ContentFunctionalBlue else shortcutTint(id, state),
+        OemIcon(icon, modifier, glyphHeight = glyphHeight, tint = if (id == ShortcutId.RearWash && shortcutSelected(id, state)) ContentFunctionalBlue else shortcutTint(id, state),
             motionKey = if (control == null) state.placeholderSwitches[id] ?: false else state.controls.getValue(control).displayed,
             animateOnAction = control == null, acceptedActionOnly = true)
         return
     }
-    VehicleControlOemIcon(control, state.controls.getValue(control), state.dark, modifier, acceptedActionOnly = true)
+    VehicleControlOemIcon(control, state.controls.getValue(control), state.dark, modifier, acceptedActionOnly = true, glyphHeight = glyphHeight)
 }
 
 @Composable
 internal fun VehicleControlOemIcon(control: ControlId, value: ControlState, dark: Boolean, modifier: Modifier,
-    acceptedActionOnly: Boolean = false) {
+    acceptedActionOnly: Boolean = false, glyphHeight: Dp? = null) {
     val base = MaterialTheme.colorScheme.primary
     val level = (if (control == ControlId.Wiper) value.manualWiperDisplayed else value.displayed).coerceIn(0, control.maxLevel)
     val recipe = vehicleControlIconRecipe(control, level, dark, base)
     val known = value.known || value.pending
-    OemIcon(recipe.resource, modifier, tint = if (known) Color.Unspecified else base,
+    OemIcon(recipe.resource, modifier, glyphHeight = glyphHeight, tint = if (known) Color.Unspecified else base,
         pathColors = if (known) recipe.pathColors else emptyMap(),
         motionKey = if (known) level else "unknown", animationAsset = recipe.asset.takeIf { known && it.isNotEmpty() },
         animationColors = recipe.animationColors, animationFrames = recipe.frames,
         animationStrokePathColors = recipe.animationStrokePathColors,
         animationPathOpacities = recipe.animationPathOpacities, animateOnAction = false, acceptedActionOnly = acceptedActionOnly)
+}
+
+@Composable
+private fun ControlCenterOemIcon(resource: Int, modifier: Modifier, base: Color) {
+    OemIcon(resource, modifier, tint = base, actionTint = ContentFunctionalBlue,
+        motionKey = "control-center", animationAsset = "ico_home_applist.json",
+        animateOnAction = true, acceptedActionOnly = true)
 }
 
 @Preview(name = "原型浅色默认态", widthDp = 640, heightDp = 1080, locale = "zh")

@@ -206,7 +206,8 @@ private fun PageActionButton(
     }
     DisposableEffect(interactions) { onDispose { currentRelease() } }
     val colors = LocalContentColors.current
-    val interfaceOpacity = LocalInterfaceOpacity.current
+    val geometry = LocalContentGeometry.current
+     val interfaceOpacity = LocalInterfaceOpacity.current
      val scale = pressScale(pressed)
     val pressedOpacity = animateFloatAsState(if (pressed) 1f else 0f, tween(if (pressed) 200 else 240), label = "page-action-press")
     val shape = RoundedCornerShape(if (compact) 14.dp else 16.dp)
@@ -220,7 +221,7 @@ private fun PageActionButton(
         .excludeDisabledActionTap(enabled)
         .semantics { contentDescription = action.label }
         .testTag("page-action-${action.id}"), contentAlignment = Alignment.Center) {
-        OemIcon(action.iconRes, Modifier.size(if (compact) 32.dp else 36.dp),
+        OemIcon(action.iconRes, Modifier, glyphHeight = geometry.fullscreenIcon,
             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (action.enabled) 1f else .38f),
             animateOnPress = false, animateOnAction = false)
     }

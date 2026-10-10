@@ -29,6 +29,7 @@ import kotlin.math.roundToInt
 
 private const val SHADOW_BLUR_DP = 5f
 private const val SHADOW_OFFSET_Y_DP = 3f
+private const val MAX_SHADOW_PADDING = 64
 private const val LIGHT_SHADOW = 0x30000000
 private const val DARK_SHADOW = 0xA0000000.toInt()
 
@@ -54,6 +55,17 @@ internal fun Modifier.downwardSoftShadow(
  * is intentionally constant and cannot become part of the cache key.
  */
 private fun Color.toArgbForShadowCompatibility(): Int = 0
+
+/** Drawing outsets share the mask's quantization and cap; they do not expand hit bounds. */
+internal fun downwardSoftShadowOutsetPx(density: Float): Float {
+    if (!density.isFinite() || density <= 0f) return 0f
+    val blur = (density * SHADOW_BLUR_DP * 16f).roundToInt().coerceAtLeast(0) / 16f
+    val offset = (density * SHADOW_OFFSET_Y_DP * 16f).roundToInt().coerceAtLeast(0) / 16f
+    return shadowMaskPadding(blur, offset).toFloat()
+}
+
+private fun shadowMaskPadding(blur: Float, offset: Float): Int =
+    (ceil(blur * 3f + abs(offset)).toInt() + 1).coerceAtMost(MAX_SHADOW_PADDING)
 
 private val sharedDownwardShadowTextures = DownwardShadowTextureCache()
 
@@ -97,9 +109,8 @@ internal class DownwardShadowTextureCache(
         val requestedRadius = cornerRadius.coerceAtLeast(0f)
         val effectiveRadius = quantize(min(requestedRadius, min(size.width, size.height) / 2f))
         val blurPx = blur / 16f
-        val offsetPx = offsetY / 16f
         val radiusPx = effectiveRadius / 16f
-        val padding = (ceil(blurPx * 3f + abs(offsetPx)).toInt() + 1).coerceAtMost(MAX_PADDING)
+        val padding = shadowMaskPadding(blurPx, offsetY / 16f)
         val idealFixed = ceil(radiusPx + blurPx * 3f).toInt().coerceAtLeast(1)
         val availableFixedX = (ceil(size.width / 2f).toInt() - 1).coerceAtLeast(1)
         val availableFixedY = (ceil(size.height / 2f).toInt() - 1).coerceAtLeast(1)
@@ -134,7 +145,11 @@ internal class DownwardShadowTextureCache(
         val stretchY = contentHeight - key.fixedY * 2
         val bitmapWidth = contentWidth + key.padding * 2
         val bitmapHeight = contentHeight + key.padding * 2
-        val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888).apply {
+            // Mask geometry is already in physical px. Cached NinePatch edges must not inherit
+            // the process's default dpi and scale again when drawn into another density context.
+            density = Bitmap.DENSITY_NONE
+        }
         val shape = RectF(
             key.padding.toFloat(),
             key.padding.toFloat(),
@@ -175,7 +190,6 @@ internal class DownwardShadowTextureCache(
 
     private companion object {
         const val MAX_FIXED_EXTENT = 160
-        const val MAX_PADDING = 64
 
         /**
          * Runtime Res_png_9patch form consumed by NinePatch(Bitmap, chunk, ...).

@@ -120,8 +120,10 @@ open class ImmersiveMediaGeometryTest {
             assertTrue("$tag keeps at least 48 system dp", button.width + 1f >= 48f * density && button.height + 1f >= 48f * density)
             assertTrue("$tag remains inside the shared media width", button.left >= details.left && button.right <= details.right)
             val pressArea = bounds("$tag-press-area")
-            assertEquals("$tag visible press area follows its outer size", button.width.toDouble(), pressArea.width.toDouble(), 1.0)
-            assertEquals(button.height.toDouble(), pressArea.height.toDouble(), 1.0)
+            assertEquals("$tag feedback is independent of its touch region", minOf(72f, button.width).toDouble(), pressArea.width.toDouble(), 1.0)
+            assertEquals(minOf(72f, button.height).toDouble(), pressArea.height.toDouble(), 1.0)
+            assertEquals(button.center.x, pressArea.center.x, 1f)
+            assertEquals(button.center.y, pressArea.center.y, 1f)
         }
         val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
         compose.onNodeWithTag("immersive-artist").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
@@ -132,14 +134,13 @@ open class ImmersiveMediaGeometryTest {
         capture("immersive-media-$platform-${if (dark) "dark" else "light"}-$dpi")
         compose.runOnIdle { state = state.copy(showMediaSourceSwitcher = false) }
         settleLayout()
-        compose.onNodeWithTag("immersive-source").assertDoesNotExist()
+        compose.onNodeWithTag("immersive-source").assertIsDisplayed()
         val noSourceCover = bounds("immersive-cover-space")
         val noSourceDetails = bounds("immersive-media-details")
         val noSourceControls = bounds("immersive-media-controls")
         assertEquals(noSourceDetails.width.toDouble(), noSourceCover.width.toDouble(), 1.0)
         assertEquals(noSourceDetails.center.x, noSourceControls.center.x, 1f)
-        assertTrue(noSourceControls.width < noSourceDetails.width)
-        assertEquals("the complete group remains centred without the source button",
+        assertEquals("the complete group remains centred with the fixed source button",
             (bounds("top-bar").bottom + bounds("floating-dock").top) / 2f,
             bounds("immersive-media-group").center.y, 1f)
     }

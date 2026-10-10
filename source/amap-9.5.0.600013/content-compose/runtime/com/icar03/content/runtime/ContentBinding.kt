@@ -55,6 +55,7 @@ class ContentBinding(
     private var brightness = ContentPorts.SystemSnapshot(false, 0)
     private var volume = ContentPorts.SystemSnapshot(false, 0)
     private var screenCleaningAvailable = false
+    private var controlCenterAvailable = false
     private var systemLevels: Map<SystemQuickControl, ContentPorts.SystemSnapshot> =
         SystemQuickControl.entries.associateWith { ContentPorts.SystemSnapshot(false, 0) }
     private var sourcesOpen = false
@@ -178,8 +179,10 @@ class ContentBinding(
             }
         }.also(store::addListener)
         lyricsSettings?.start()
+        controlCenterAvailable = readControlCenterAvailability()
         attachObservers()
         projectClock(System.currentTimeMillis())
+        publishShell()
         systemTick.run()
     }
 
@@ -201,6 +204,7 @@ class ContentBinding(
         systemReadDirty = false
         systemTargets.fill(null)
         screenCleaningAvailable = false
+        controlCenterAvailable = false
         listener?.let(store::removeListener)
         listener = null
         detachObservers()
@@ -232,6 +236,7 @@ class ContentBinding(
         features = state.features.mapValues { it.value.copy(available = false, target = null) },
         systemLevels = state.systemLevels.mapValues { it.value.copy(available = false, target = null) },
         screenCleanAvailable = false,
+         controlCenterAvailable = false,
             )
 
     override fun close() {
@@ -289,6 +294,7 @@ class ContentBinding(
             is ContentEvent.FeatureTapped -> event.id.feature?.let { shell(store.snapshot()).features[it]?.available } == true
             ContentEvent.RearWashTapped -> shell(store.snapshot()).controls[ControlId.RearWash]?.available == true
             ContentEvent.ScreenCleanTapped -> screenCleaningAvailable && state.value.screenCleanAvailable
+            ContentEvent.ControlCenterTapped -> !sourcesOpen && controlCenterAvailable && state.value.controlCenterAvailable
             else -> true
         }
     }
@@ -308,7 +314,8 @@ class ContentBinding(
             event is ContentEvent.ControlAutomaticTapped || event is ContentEvent.ControlLevelChanged ||
             event == ContentEvent.PlayPause || event == ContentEvent.NextTrack || event == ContentEvent.RearWashTapped ||
             event is ContentEvent.SourceSelected || event is ContentEvent.BrightnessChanged || event is ContentEvent.VolumeChanged ||
-             event is ContentEvent.SystemVolumeChanged || event is ContentEvent.FeatureTapped || event == ContentEvent.ScreenCleanTapped) replaceFeedback(null)
+             event is ContentEvent.SystemVolumeChanged || event is ContentEvent.FeatureTapped ||
+             event == ContentEvent.ScreenCleanTapped || event == ContentEvent.ControlCenterTapped) replaceFeedback(null)
         // A fresh capability snapshot is a cached fact, never a synchronous service probe.
         when (event) {
             is ContentEvent.ControlTapped -> {
@@ -340,6 +347,15 @@ class ContentBinding(
                 if (state.value.screenCleanAvailable && !store.systemPort().startScreenCleaning()) {
                     screenCleaningAvailable = false
                     replaceFeedback("系统清洁屏幕不可用，请稍后重试")
+                    publishShell()
+                    requestSystemRead()
+                }
+            }
+            ContentEvent.ControlCenterTapped -> {
+                val sent = try { store.systemPort().openControlCenter() } catch (_: RuntimeException) { false }
+                if (!sent) {
+                    controlCenterAvailable = readControlCenterAvailability()
+                    replaceFeedback("控制中心打开失败，请稍后重试")
                     publishShell()
                     requestSystemRead()
                 }
@@ -461,6 +477,10 @@ class ContentBinding(
         store.systemPort().read(kind) ?: ContentPorts.SystemSnapshot(false, 0)
     } catch (_: RuntimeException) { ContentPorts.SystemSnapshot(false, 0) }
 
+    private fun readControlCenterAvailability(): Boolean = try {
+        store.systemPort().controlCenterAvailable()
+    } catch (_: RuntimeException) { false }
+
     private fun requestSystemRead() {
         if (!running || closed) return
         if (systemReadInFlight) { systemReadDirty = true; return }
@@ -475,10 +495,11 @@ class ContentBinding(
             val navigation = read(3)
             val voice = read(4)
             val screenClean = try { store.systemPort().screenCleaningAvailable() } catch (_: RuntimeException) { false }
+            val controlCenter = readControlCenterAvailability()
             handler.post {
                 if (!running || generation != epoch) return@post
                 systemReadInFlight = false
-                applySystem(sequence, light, sound, call, navigation, voice, screenClean)
+                applySystem(sequence, light, sound, call, navigation, voice, screenClean, controlCenter)
                 if (systemReadDirty) { systemReadDirty = false; requestSystemRead() }
             }
         }
@@ -492,6 +513,7 @@ class ContentBinding(
         navigation: ContentPorts.SystemSnapshot,
         voice: ContentPorts.SystemSnapshot,
         screenClean: Boolean,
+        controlCenter: Boolean,
     ) {
         if (sequence <= appliedSystemObservation) return
         appliedSystemObservation = sequence
@@ -505,6 +527,7 @@ class ContentBinding(
             SystemQuickControl.VoiceVolume to voice,
         )
         screenCleaningAvailable = screenClean
+        controlCenterAvailable = controlCenter
         publishShell()
     }
 
@@ -611,7 +634,7 @@ class ContentBinding(
             handler.post {
                 if (!running || generation != epoch || latestSystemRequest.get(kind) != requestSequence ||
                     systemKindSequence[kind] != requestSequence || systemTargets[kind] == null) return@post
-                applySystem(observation, light, sound, call, navigation, voice, screenCleaningAvailable)
+                applySystem(observation, light, sound, call, navigation, voice, screenCleaningAvailable, controlCenterAvailable)
                 if (matched) {
                     systemTargets[kind] = null
                     if (feedbackRevision == feedbackOwner) replaceFeedback(null)
@@ -635,7 +658,7 @@ class ContentBinding(
         }.map { it.id }.toSet()
         return mapper.mapShell(snapshot, brightness, volume, RuntimeCapabilities(
             snapshot.vehicleWriteAvailable, snapshot.lockWriteAvailable, snapshot.mediaSourceWriteAvailable, snapshot.writableSeatControls,
-            writableFeatures, screenCleaningAvailable),
+            writableFeatures, screenCleaningAvailable, controlCenterAvailable),
             lyricsSystemAccentColor, systemLevels).copy(lyricsProviderSettings = lyricsSettings?.state ?: LyricsProviderUiState())
     }
 

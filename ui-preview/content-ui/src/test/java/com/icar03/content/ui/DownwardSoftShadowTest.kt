@@ -51,6 +51,66 @@ open class DownwardSoftShadowTest {
     private val fill: Int get() = if (dark) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
     private val rootTag = "shadow-test-root"
 
+    @Test fun nativeNinePatchCacheKeepsPhysicalAlphaAcrossCanvasDensities() {
+        val cache = DownwardShadowTextureCache()
+        val size = Size(360f, 180f)
+        val physicalDensity = 2f
+        val radius = 24f
+        val padding = downwardSoftShadowOutsetPx(physicalDensity).toInt()
+        val texture = requireNotNull(cache.texture(size, physicalDensity, radius, fill, dark))
+        assertTrue("exercise the native NinePatch path", texture.usesNativeNinePatch)
+        val frame = texture.frame(size, 0xFF000000.toInt())
+        fun image(canvasDensity: Int): Bitmap = Bitmap.createBitmap(size.width.toInt() + padding * 2,
+            size.height.toInt() + padding * 2, Bitmap.Config.ARGB_8888).apply { this.density = canvasDensity }
+        fun render(canvasDensity: Int): Bitmap = image(canvasDensity).also { bitmap ->
+            Canvas(bitmap).apply {
+                assertEquals(canvasDensity, density)
+                translate(padding.toFloat(), padding.toFloat())
+                frame.draw(this)
+            }
+        }
+        fun exteriorAlpha(bitmap: Bitmap): IntArray {
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            return pixels.indices.filter { index ->
+                val x = index % bitmap.width
+                val y = index / bitmap.width
+                x < padding || x >= padding + size.width || y < padding || y >= padding + size.height
+            }.map { pixels[it] ushr 24 }.toIntArray()
+        }
+        val first = render(160)
+        assertSame("a Canvas density change must reuse the same physical mask", texture,
+            cache.texture(size, physicalDensity, radius, fill, dark))
+        val warm = render(320)
+        val reference = image(160).also { bitmap ->
+            Canvas(bitmap).drawRoundRect(padding.toFloat(), padding.toFloat(), padding + size.width,
+                padding + size.height, radius, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0xFFFFFFFF.toInt()
+                    setShadowLayer(5f * physicalDensity, 0f, 3f * physicalDensity, 0xFF000000.toInt())
+                })
+        }
+        try {
+            save(first, "ninepatch-canvas-density-160")
+            save(warm, "ninepatch-canvas-density-320")
+            save(reference, "ninepatch-canvas-density-reference")
+            assertEquals("one rasterization across both destination Canvas densities", 1L, cache.rasterizationCount)
+            assertEquals("both draws use the published cached frame", 2L, texture.warmDrawCount)
+            val firstAlpha = exteriorAlpha(first)
+            val warmAlpha = exteriorAlpha(warm)
+            val referenceAlpha = exteriorAlpha(reference)
+            assertArrayEquals("the complete external alpha envelope is independent of Canvas density", firstAlpha, warmAlpha)
+            val worst = firstAlpha.indices.maxOf { abs(firstAlpha[it] - referenceAlpha[it]) }
+            assertTrue("the physical mask retains the native reference falloff; alpha delta=$worst", worst <= 8)
+            assertTrue("the cached mask must retain a visible downward tail",
+                android.graphics.Color.alpha(warm.getPixel(padding + size.width.toInt() / 2,
+                    padding + size.height.toInt() + 4)) > 0)
+        } finally {
+            first.recycle()
+            warm.recycle()
+            reference.recycle()
+        }
+    }
+
     @Test fun smallNativeMaskMatchesAcceptedShadowWithoutStretchSeamsOrFillTint() {
         val cache = DownwardShadowTextureCache()
         // Dock/media-sized surfaces, a small switch, and a large independent window at three densities.

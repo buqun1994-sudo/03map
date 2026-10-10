@@ -48,6 +48,7 @@ internal fun SettingsSheet(
     state: ContentUiState,
     onEvent: (ContentEvent) -> Unit,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     onVisibilityChanged: (Boolean) -> Unit = {},
     onOcclusionChanged: (Boolean) -> Unit = {},
 ) {
@@ -55,7 +56,11 @@ internal fun SettingsSheet(
         val design = LocalSettingsDesign.current
         val currentState by rememberUpdatedState(state)
         val currentEvent by rememberUpdatedState(onEvent)
-        BoxWithConstraints(modifier.clipToBounds().testTag("settings-sheet-host")) {
+        Box(modifier.clipToBounds().testTag("settings-sheet-host")) {
+        // The outer viewport owns clipping. Insets reserve real space around the surface for
+        // the shared shadow; surface size, travel and pointer clipping use the inner viewport.
+        BoxWithConstraints(Modifier.fillMaxSize().padding(contentPadding)
+            .testTag("settings-sheet-surface-viewport")) {
             val density = LocalDensity.current
             val heightPx = with(density) { maxHeight.toPx() }
             val headerHeight = with(density) { design.pageTitleStyle.lineHeight.toDp() } + design.pagePadding * 2
@@ -66,7 +71,8 @@ internal fun SettingsSheet(
             var wasOpen by remember { mutableStateOf(false) }
             val open = state.settingsOpen
             val collapsed = state.canCollapseSettings && state.settingsCollapsed
-            val controlsEnabled = open && !collapsed && !state.lyricsProviderSettings.appleLoginOpen
+            val controlsEnabled = open && !collapsed && !state.lyricsProviderSettings.appleLoginOpen &&
+                state.lyricsProviderSettings.available
             val settingsEvent: (ContentEvent) -> Unit = {
                 if (currentState.settingsOpen && (!currentState.lyricsProviderSettings.appleLoginOpen ||
                         it == AppleMusicLoginDismissed || it == ContentEvent.SettingsBack)) currentEvent(it)
@@ -96,78 +102,86 @@ internal fun SettingsSheet(
                 onOcclusionChanged(fullyCovering)
             }
             if (!open && !wasOpen) return@BoxWithConstraints
-            Box(
-                Modifier.fillMaxSize()
-                    .graphicsLayer {
-                        translationY = verticalOffset.value
-                    }
-                    .settingsSurfaceShadow(design.page, design.dark, design.pageCornerRadius, design.surfaceOpacity)
-                    .clip(design.pageShape)
-                    .background(interfaceSurfaceColor(design.page, design.surfaceOpacity))
-                    .testTag("settings-sheet"),
-            ) {
-                Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.fillMaxWidth().height(headerHeight).testTag("settings-header")) {
-                        SettingsIconButton(
-                            onClick = { settingsEvent(ContentEvent.SettingsBack) },
-                            contentDescription = "返回",
-                            enabled = open,
-                            modifier = Modifier.align(Alignment.CenterStart).padding(start = design.pagePadding),
-                            tag = "settings-back",
-                        ) { iconModifier ->
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, iconModifier, tint = design.text)
+            Box(Modifier.matchParentSize().graphicsLayer {
+                translationY = verticalOffset.value
+            }.settingsSurfaceShadow(design.page, design.dark, design.pageCornerRadius, design.surfaceOpacity)
+                .testTag("settings-sheet-shadow"))
+            Box(Modifier.fillMaxSize().clipToBounds()) {
+                Box(
+                    Modifier.fillMaxSize()
+                        .graphicsLayer {
+                            translationY = verticalOffset.value
                         }
-                        val title = when (state.settingsSection) {
-                            SettingsSection.Home -> "设置"
-                            SettingsSection.Lyrics -> "歌词设置"
-                            else -> "${state.settingsSection.label}设置"
+                        .clip(design.pageShape)
+                        .background(interfaceSurfaceColor(design.page, design.surfaceOpacity))
+                        .testTag("settings-sheet"),
+                ) {
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxWidth().height(headerHeight).testTag("settings-header")) {
+                            SettingsIconButton(
+                                onClick = { settingsEvent(ContentEvent.SettingsBack) },
+                                contentDescription = "返回",
+                                enabled = open,
+                                modifier = Modifier.align(Alignment.CenterStart),
+                                tag = "settings-back",
+                                fillRow = true,
+                            ) { iconModifier ->
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, iconModifier, tint = design.text)
+                            }
+                            val title = when (state.settingsSection) {
+                                SettingsSection.Home -> "设置"
+                                SettingsSection.Lyrics -> "歌词设置"
+                                else -> "${state.settingsSection.label}设置"
+                            }
+                            SettingsLineText(title,
+                                Modifier.align(Alignment.Center).padding(horizontal = 72.dp).testTag("settings-title"),
+                                design.pageTitleStyle, design.text, textAlign = TextAlign.Center)
+                            if (state.canCollapseSettings) SettingsIconButton(
+                                onClick = { settingsEvent(ContentEvent.SettingsCollapseTapped) },
+                                contentDescription = if (collapsed) "恢复设置页" else "下移收起设置页",
+                                enabled = open && !state.lyricsProviderSettings.appleLoginOpen,
+                                modifier = Modifier.align(Alignment.CenterEnd),
+                                tag = "settings-collapse",
+                                fillRow = true,
+                            ) { iconModifier ->
+                                Icon(
+                                    painter = painterResource(R.drawable.content_ic_settings_collapse),
+                                    contentDescription = null,
+                                    modifier = iconModifier.graphicsLayer {
+                                        rotationZ = if (collapsed) 180f else 0f
+                                        transformOrigin = TransformOrigin.Center
+                                    },
+                                    tint = design.text,
+                                )
+                            }
                         }
-                        SettingsLineText(title,
-                            Modifier.align(Alignment.Center).padding(horizontal = 72.dp).testTag("settings-title"),
-                            design.pageTitleStyle, design.text, textAlign = TextAlign.Center)
-                        if (state.canCollapseSettings) SettingsIconButton(
-                            onClick = { settingsEvent(ContentEvent.SettingsCollapseTapped) },
-                            contentDescription = if (collapsed) "恢复设置页" else "下移收起设置页",
-                            enabled = open && !state.lyricsProviderSettings.appleLoginOpen,
-                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = design.pagePadding),
-                            tag = "settings-collapse",
-                        ) { iconModifier ->
-                            Icon(
-                                painter = painterResource(R.drawable.content_ic_settings_collapse),
-                                contentDescription = null,
-                                modifier = iconModifier.graphicsLayer {
-                                    rotationZ = if (collapsed) 180f else 0f
-                                    transformOrigin = TransformOrigin.Center
-                                },
-                                tint = design.text,
-                            )
-                        }
-                    }
-                    HorizontalDivider(color = design.divider, modifier = Modifier.testTag("settings-header-divider"))
-                    AnimatedContent(
-                        targetState = state.settingsSection,
-                        modifier = Modifier.weight(1f),
-                        transitionSpec = {
-                            val direction = if (targetState == SettingsSection.Home) -1 else 1
-                            (slideInHorizontally(
-                                animationSpec = tween(320, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)),
-                                initialOffsetX = { it * direction },
-                            ) + fadeIn(tween(220))) togetherWith
-                                (slideOutHorizontally(
-                                    animationSpec = tween(320, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)),
-                                    targetOffsetX = { -it * direction },
-                                ) + fadeOut(tween(180))) using SizeTransform(clip = true)
-                        },
-                        label = "settings-page-transition",
-                    ) { section ->
-                        when (section) {
-                            SettingsSection.Home -> SettingsHome(settingsEvent, controlsEnabled, Modifier.fillMaxSize())
-                            SettingsSection.Lyrics -> LyricsSettings(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
-                            else -> SettingsDetail(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
+                        HorizontalDivider(color = design.divider, modifier = Modifier.testTag("settings-header-divider"))
+                        AnimatedContent(
+                            targetState = state.settingsSection,
+                            modifier = Modifier.weight(1f),
+                            transitionSpec = {
+                                val direction = if (targetState == SettingsSection.Home) -1 else 1
+                                (slideInHorizontally(
+                                    animationSpec = tween(320, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)),
+                                    initialOffsetX = { it * direction },
+                                ) + fadeIn(tween(220))) togetherWith
+                                    (slideOutHorizontally(
+                                        animationSpec = tween(320, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)),
+                                        targetOffsetX = { -it * direction },
+                                    ) + fadeOut(tween(180))) using SizeTransform(clip = true)
+                            },
+                            label = "settings-page-transition",
+                        ) { section ->
+                            when (section) {
+                                SettingsSection.Home -> SettingsHome(settingsEvent, controlsEnabled, Modifier.fillMaxSize())
+                                SettingsSection.Lyrics -> LyricsSettings(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
+                                else -> SettingsDetail(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
+                            }
                         }
                     }
                 }
             }
+        }
         }
     }
 }
@@ -187,7 +201,7 @@ private fun SettingsHome(onEvent: (ContentEvent) -> Unit, enabled: Boolean, modi
         val groups = listOf(
             "布局" to listOf(SettingsSection.TopBar, SettingsSection.Layout),
             "音乐" to listOf(SettingsSection.Lyrics, SettingsSection.Artwork),
-            "其它" to listOf(SettingsSection.Media, SettingsSection.Interaction),
+            "其它" to listOf(SettingsSection.Interaction),
         )
         groups.forEach { (title, sections) ->
             SettingsSection(title, contentPadding = PaddingValues(0.dp)) {
@@ -293,35 +307,39 @@ private fun LyricsSettings(
                 onPreview = { normalColorDraft = it to state.lyricsColorMode },
                 onCommit = { color, drag -> onEvent(ContentEvent.LyricsCustomColorChanged(color, fromDrag = drag)); normalColorDraft = null })
         }
-        SettingsSection("当前句歌词") {
+        SettingsItemSection("当前句歌词") {
             SettingsSwitchRow("放大强调", state.lyricsHighlight, { onEvent(ContentEvent.LyricsHighlightChanged(it)) },
                 enabled = controlsEnabled, tag = "settings-switch-当前句歌词放大")
             if (state.lyricsHighlight) {
-                SettingsDivider()
-                SettingsFieldBlock("字号") {
-                    SettingsSliderRow("分屏", current, "sp", currentRange,
-                        { currentDraft = it },
-                        { onEvent(ContentEvent.LyricsCurrentFontSizeChanged(LyricPreferenceRules.currentFontSize(currentDraft ?: state.lyricsCurrentFontSizeSp, normal))); currentDraft = null },
-                        enabled = controlsEnabled, tag = "settings-current-font-size",
-                        steps = (currentRange.endInclusive - currentRange.start).roundToInt() - 1)
-                    SettingsSliderRow("全屏", immersiveCurrent, "sp", immersiveCurrentRange,
-                        { immersiveCurrentDraft = it },
-                        { onEvent(ContentEvent.LyricsImmersiveCurrentFontSizeChanged(LyricPreferenceRules.immersiveCurrentFontSize(immersiveCurrentDraft ?: state.lyricsImmersiveCurrentFontSizeSp, immersive))); immersiveCurrentDraft = null },
-                        enabled = controlsEnabled, tag = "settings-immersive-current-font-size",
-                        steps = ((immersiveCurrentRange.endInclusive - immersiveCurrentRange.start) / 2f).roundToInt() - 1)
+                SettingsItemDivider()
+                SettingsItemContent {
+                    SettingsFieldBlock("字号") {
+                        SettingsSliderRow("分屏", current, "sp", currentRange,
+                            { currentDraft = it },
+                            { onEvent(ContentEvent.LyricsCurrentFontSizeChanged(LyricPreferenceRules.currentFontSize(currentDraft ?: state.lyricsCurrentFontSizeSp, normal))); currentDraft = null },
+                            enabled = controlsEnabled, tag = "settings-current-font-size",
+                            steps = (currentRange.endInclusive - currentRange.start).roundToInt() - 1)
+                        SettingsSliderRow("全屏", immersiveCurrent, "sp", immersiveCurrentRange,
+                            { immersiveCurrentDraft = it },
+                            { onEvent(ContentEvent.LyricsImmersiveCurrentFontSizeChanged(LyricPreferenceRules.immersiveCurrentFontSize(immersiveCurrentDraft ?: state.lyricsImmersiveCurrentFontSizeSp, immersive))); immersiveCurrentDraft = null },
+                            enabled = controlsEnabled, tag = "settings-immersive-current-font-size",
+                            steps = ((immersiveCurrentRange.endInclusive - immersiveCurrentRange.start) / 2f).roundToInt() - 1)
+                    }
                 }
-                SettingsDivider()
+                SettingsItemDivider()
             }
-            SettingsLyricColor(state.lyricsCurrentColorMode, currentColorDraft?.first ?: state.lyricsCurrentCustomColor, controlsEnabled, true,
-                onMode = { onEvent(ContentEvent.LyricsCurrentColorModeChanged(it)) },
-                onPreview = { currentColorDraft = it to state.lyricsCurrentColorMode },
-                onCommit = { color, drag -> onEvent(ContentEvent.LyricsCurrentCustomColorChanged(color, fromDrag = drag)); currentColorDraft = null })
+            SettingsItemContent(topPadding = if (state.lyricsHighlight) null else 0.dp) {
+                SettingsLyricColor(state.lyricsCurrentColorMode, currentColorDraft?.first ?: state.lyricsCurrentCustomColor, controlsEnabled, true,
+                    onMode = { onEvent(ContentEvent.LyricsCurrentColorModeChanged(it)) },
+                    onPreview = { currentColorDraft = it to state.lyricsCurrentColorMode },
+                    onCommit = { color, drag -> onEvent(ContentEvent.LyricsCurrentCustomColorChanged(color, fromDrag = drag)); currentColorDraft = null })
+            }
         }
-        SettingsSection("对唱布局") {
+        SettingsItemSection("对唱布局") {
             SettingsSwitchRow("显示对唱布局", state.lyricsSpeakerLayout, { onEvent(ContentEvent.LyricsSpeakerLayoutChanged(it)) },
                 enabled = controlsEnabled, tag = "settings-switch-对唱布局")
         }
-        SettingsSection("歌词翻译") {
+        SettingsItemSection("歌词翻译") {
             SettingsSwitchRow("显示歌词翻译", state.lyricsShowTranslation, { onEvent(ContentEvent.LyricsShowTranslationChanged(it)) },
                 enabled = controlsEnabled, tag = "settings-switch-显示歌词翻译")
         }
@@ -342,28 +360,28 @@ private fun SettingsDetail(state: ContentUiState, onEvent: (ContentEvent) -> Uni
     SettingsPageList(modifier, "settings-detail-scroll") {
         when (state.settingsSection) {
             SettingsSection.TopBar -> {
-                SettingsSection("时间") {
+                SettingsItemSection("时间") {
                     flag("显示秒", state.showSeconds, "settings-switch-显示秒数") { onEvent(ContentEvent.ShowSecondsChanged(it)) }
-                    SettingsDivider()
+                    SettingsItemDivider()
                     flag("显示星期", state.showWeekday) { onEvent(ContentEvent.ShowWeekdayChanged(it)) }
                 }
-                SettingsSection("温度") { flag("显示车内温度", state.showIndoorTemperature) { onEvent(ContentEvent.ShowIndoorTemperatureChanged(it)) } }
-                SettingsSection("电池") {
+                SettingsItemSection("温度") { flag("显示车内温度", state.showIndoorTemperature) { onEvent(ContentEvent.ShowIndoorTemperatureChanged(it)) } }
+                SettingsItemSection("电池") {
                     flag("显示电量", state.showBattery, "settings-switch-显示电量图标") { onEvent(ContentEvent.ShowBatteryChanged(it)) }
-                    SettingsDivider()
+                    SettingsItemDivider()
                     flag("显示续航", state.showRange) { onEvent(ContentEvent.ShowRangeChanged(it)) }
-                    SettingsDivider()
+                    SettingsItemDivider()
                     flag("显示插枪", state.showPluggedStatus) { onEvent(ContentEvent.ShowPluggedStatusChanged(it)) }
-                    SettingsDivider()
+                    SettingsItemDivider()
                     flag("显示预约充电", state.showScheduledCharging) { onEvent(ContentEvent.ShowScheduledChargingChanged(it)) }
-                    SettingsDivider()
+                    SettingsItemDivider()
                     flag("显示充电剩余时长", state.showChargingRemainingTime) { onEvent(ContentEvent.ShowChargingRemainingTimeChanged(it)) }
-                    SettingsDivider()
+                    SettingsItemDivider()
                     flag("显示充电功率", state.showChargingPower) { onEvent(ContentEvent.ShowChargingPowerChanged(it)) }
                 }
-                SettingsSection("沉浸式全屏") {
+                SettingsItemSection("沉浸式全屏") {
                     flag("显示状态栏", state.immersiveShowTopBar, "settings-switch-全屏时显示状态栏") { onEvent(ContentEvent.ImmersiveShowTopBarChanged(it)) }
-                    SettingsDivider()
+                    SettingsItemDivider()
                     flag("状态栏保持分屏", state.immersiveTopBarKeepSplit) { onEvent(ContentEvent.ImmersiveTopBarKeepSplitChanged(it)) }
                 }
             }
@@ -374,10 +392,10 @@ private fun SettingsDetail(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                             { onEvent(ContentEvent.DockButtonCountChanged(it.toInt())) }, enabled = enabled, tagPrefix = "settings-dock-count")
                     }
                 }
-                SettingsSection("沉浸式全屏") { flag("显示底栏", state.immersiveShowDock, "settings-switch-全屏时显示底栏") { onEvent(ContentEvent.ImmersiveShowDockChanged(it)) } }
+                SettingsItemSection("沉浸式全屏") { flag("显示底栏", state.immersiveShowDock, "settings-switch-全屏时显示底栏") { onEvent(ContentEvent.ImmersiveShowDockChanged(it)) } }
             }
-            SettingsSection.Artwork -> SettingsSection("背景") { flag("模糊封面背景", state.showAmbientArtwork) { onEvent(ContentEvent.ShowAmbientArtworkChanged(it)) } }
-            SettingsSection.Media -> SettingsSection("媒体") { flag("来源切换入口", state.showMediaSourceSwitcher) { onEvent(ContentEvent.ShowMediaSourceSwitcherChanged(it)) } }
+            SettingsSection.Artwork -> SettingsItemSection("背景") { flag("模糊封面背景", state.showAmbientArtwork) { onEvent(ContentEvent.ShowAmbientArtworkChanged(it)) } }
+            SettingsSection.Media -> Unit
             SettingsSection.Interaction -> {
                 SettingsSection("界面") {
                     SettingsFieldBlock("透明度") {
@@ -386,9 +404,9 @@ private fun SettingsDetail(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                             enabled = enabled, tagPrefix = "settings-opacity")
                     }
                 }
-                SettingsSection("交互") {
+                SettingsItemSection("交互") {
                     flag("操作结果提示", state.showActionFeedback) { onEvent(ContentEvent.ShowActionFeedbackChanged(it)) }
-                    SettingsDivider()
+                    SettingsItemDivider()
                     flag("行车时自动关闭设置页", state.autoCloseSettingsOnDrive) {
                         onEvent(ContentEvent.AutoCloseSettingsOnDriveChanged(it))
                     }

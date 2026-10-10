@@ -52,7 +52,7 @@ public final class ContentState {
     public boolean immersiveShowDock = true;
     public boolean showAmbientArtwork = true;
     public boolean showMediaSourceSwitcher = true;
-    public int dockButtonCount = 6;
+    public int dockButtonCount = 5;
     public boolean showActionFeedback = true;
     public boolean autoCloseSettingsOnDrive = true;
     public boolean gestureBarReminder = true;

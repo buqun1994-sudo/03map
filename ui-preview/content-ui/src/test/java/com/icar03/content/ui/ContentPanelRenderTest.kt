@@ -66,9 +66,9 @@ open class ContentPanelLightPrototypeRenderTest {
         val time = compose.onNodeWithTag("top-time").getUnclippedBoundsInRoot()
         assertTrue("time must start at 12dp, not the old geometry center: $time", kotlin.math.abs(time.left.value - 12f) <= 1f)
         val media = compose.onNodeWithTag("media-card").getUnclippedBoundsInRoot()
-        assertTrue("media left/top/right/bottom must follow prototype: $media", kotlin.math.abs(media.left.value - 20f) <= 1f && kotlin.math.abs(media.top.value - 832f) <= 1f && kotlin.math.abs(media.right.value - 620f) <= 1f && kotlin.math.abs(media.bottom.value - 952f) <= 1f)
+        assertTrue("media left/top/right/bottom must follow prototype: $media", kotlin.math.abs(media.left.value - 20f) <= 1f && kotlin.math.abs(media.top.value - 832f) <= 1f && kotlin.math.abs(media.right.value - 620f) <= 1f && kotlin.math.abs(media.bottom.value - 932f) <= 1f)
         val dock = compose.onNodeWithTag("floating-dock").getUnclippedBoundsInRoot()
-        assertTrue("dock must float inside 12dp outer gap: $dock", kotlin.math.abs(dock.left.value - 12f) <= 1f && kotlin.math.abs(dock.top.value - 968f) <= 1f && kotlin.math.abs(dock.right.value - 628f) <= 1f && kotlin.math.abs(dock.bottom.value - 1068f) <= 1f)
+        assertTrue("dock must float inside 12dp outer gap: $dock", kotlin.math.abs(dock.left.value - 12f) <= 1f && kotlin.math.abs(dock.top.value - 948f) <= 1f && kotlin.math.abs(dock.right.value - 628f) <= 1f && kotlin.math.abs(dock.bottom.value - 1068f) <= 1f)
         val lock = compose.onNodeWithTag("dock-Lock").getUnclippedBoundsInRoot()
         val ventilation = compose.onNodeWithTag("dock-Ventilation").getUnclippedBoundsInRoot()
         assertTrue("lock touch area must be larger than each dock slot", lock.right - lock.left > ventilation.right - ventilation.left && lock.bottom - lock.top >= 80.dp)
@@ -81,8 +81,8 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithContentDescription("播放").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithContentDescription("下一首").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithContentDescription("选择来源").assertIsDisplayed().assertIsEnabled()
-        compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(6)
-        DockShortcuts.items.forEach { id ->
+        compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(5)
+        dockItemsForCount(5).forEach { id ->
             val node = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed()
             node.assertHasClickAction()
         }
@@ -91,12 +91,12 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithTag("shortcut-Settings").assertIsDisplayed().assertHasClickAction()
         val playBounds = compose.onNodeWithContentDescription("播放").getUnclippedBoundsInRoot()
         val nextBounds = compose.onNodeWithContentDescription("下一首").getUnclippedBoundsInRoot()
-        assertTrue("media controls must have 80dp square touch areas", playBounds.right - playBounds.left >= 80.dp && playBounds.bottom - playBounds.top >= 80.dp && nextBounds.right - nextBounds.left >= 80.dp && nextBounds.bottom - nextBounds.top >= 80.dp)
-        assertTrue("media controls must have a 12dp clear gap", nextBounds.left - playBounds.right >= 12.dp)
+        assertTrue("media controls must have 100dp square touch areas", playBounds.right - playBounds.left == 100.dp && playBounds.bottom - playBounds.top == 100.dp && nextBounds.right - nextBounds.left == 100.dp && nextBounds.bottom - nextBounds.top == 100.dp)
+        assertEquals("media controls are adjacent", nextBounds.left, playBounds.right)
         val sourceBounds = compose.onNodeWithTag("source-button").getUnclippedBoundsInRoot()
-        assertTrue("source gets a dedicated 96x120dp area", sourceBounds.right - sourceBounds.left == 96.dp && sourceBounds.bottom - sourceBounds.top == 120.dp)
-        assertTrue("next and source retain separation", sourceBounds.left - nextBounds.right >= 12.dp)
-        assertTrue("source remains inside media card", sourceBounds.right == media.right)
+        assertTrue("source gets a dedicated 100x100dp area", sourceBounds.right - sourceBounds.left == 100.dp && sourceBounds.bottom - sourceBounds.top == 100.dp)
+        assertEquals("next and source are adjacent", sourceBounds.left, nextBounds.right)
+        assertEquals("source remains inside media card", sourceBounds.right, media.right)
         compose.onNodeWithContentDescription("下一首").performClick()
         assertTrue(events.last() == ContentEvent.NextTrack)
         compose.onNodeWithContentDescription("播放").performClick()
@@ -360,7 +360,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test
-    fun hidingSourcePreferenceRemovesBothEntrancesWithoutMovingTheEmptyCopy() {
+    fun sourceEntrancesRemainVisibleWithoutMovingTheEmptyCopy() {
         val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
             previewMode = false, page = PanelPage.Lyrics, media = MediaState(isSong = true),
             lyrics = LyricsState(emptyState = LyricsEmptyState.NetworkError)))
@@ -371,9 +371,9 @@ open class ContentPanelLightPrototypeRenderTest {
         val mediaBounds = compose.onNodeWithTag("media-card").getUnclippedBoundsInRoot()
         compose.runOnIdle { state.value = state.value.copy(showMediaSourceSwitcher = false) }
         compose.waitForIdle()
-        compose.onNodeWithTag("source-button").assertDoesNotExist()
-        compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
-        compose.onNodeWithContentDescription("选择来源").assertDoesNotExist()
+        compose.onNodeWithTag("source-button").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("lyrics-source-action").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithContentDescription("选择来源").assertIsDisplayed()
         compose.onNodeWithTag("lyrics-empty-copy").assertTextEquals("网络错误")
         assertEquals("the optional action cannot shift the centered text", copyBounds,
             compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot())
@@ -506,7 +506,7 @@ open class ContentPanelLightPrototypeRenderTest {
         listOf("shortcut-icon", "dock-icon") else listOf("shortcut-icon")
 
     private fun mountInteractionState(state: androidx.compose.runtime.State<ContentUiState>, lifecycleOwner: androidx.lifecycle.LifecycleOwner? = null,
-        useStateTheme: Boolean = false, onEvent: (ContentEvent) -> Unit = {}) {
+        useStateTheme: Boolean = false, fullDock: Boolean = false, onEvent: (ContentEvent) -> Unit = {}) {
         compose.setContent {
             val view = LocalView.current
             @Suppress("DEPRECATION")
@@ -520,7 +520,7 @@ open class ContentPanelLightPrototypeRenderTest {
             val parentOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
             androidx.compose.runtime.CompositionLocalProvider(androidx.lifecycle.compose.LocalLifecycleOwner provides (lifecycleOwner ?: parentOwner)) {
                 val current = state.value.copy(dark = if (useStateTheme) state.value.dark else dark)
-                ContentTheme(current.dark) { ContentPanel(current, { events += it; onEvent(it) }, Modifier.testTag(hostTag)) }
+                ContentTheme(current.dark) { ContentPanel(current.copy(dockButtonCount = if (fullDock) DockShortcuts.MAX_BUTTONS else current.dockButtonCount), { events += it; onEvent(it) }, Modifier.testTag(hostTag)) }
             }
         }
         compose.waitForIdle()
@@ -587,7 +587,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val seatIds = listOf(ControlId.Ventilation, ControlId.Heating, ControlId.PassengerHeating, ControlId.Massage)
         preloadOemAnimations(seatIds.flatMap { id -> (0..id.maxLevel).map { vehicleControlIconRecipe(id, it, dark).asset } }.distinct())
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
-        mountInteractionState(state)
+        mountInteractionState(state, fullDock = true)
         val resources = seatIds.associateWith { mutableSetOf<Int>() }
         for (level in 0..3) {
             compose.runOnIdle { state.value = state.value.copy(controls = state.value.controls.mapValues { (id, control) -> if (id in seatIds) control.copy(actual = level) else control }) }
@@ -815,6 +815,7 @@ open class ContentPanelLightPrototypeRenderTest {
             mediaBase = androidx.compose.ui.graphics.Color(0xFF556677),
             mediaArtworkBase = androidx.compose.ui.graphics.Color(0xFF667799),
             mediaPressed = androidx.compose.ui.graphics.Color(0xFF667788),
+            mediaDivider = androidx.compose.ui.graphics.Color(0xFF9966BB),
             sourceBase = androidx.compose.ui.graphics.Color(0xFF7788AA),
             sourceSelected = androidx.compose.ui.graphics.Color(0xFF8899AA),
             sheetBase = androidx.compose.ui.graphics.Color(0xFF99AACC),
@@ -938,7 +939,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun completeGearCyclesLatchBoundaryRippleAcrossPendingRecomposition() {
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
-        mountInteractionState(state)
+        mountInteractionState(state, fullDock = true)
         compose.mainClock.autoAdvance = false
         val cycles = mapOf(ControlId.Ventilation to listOf(0, 3, 2, 1, 0),
             ControlId.Massage to listOf(0, 3, 2, 1, 0), ControlId.Heating to listOf(0, 3, 2, 1, 4, 0),
@@ -1170,7 +1171,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun unknownControlsNeverAdvertiseOrEmitStateFeedback() {
         val state = androidx.compose.runtime.mutableStateOf(previewState(PreviewScenario.NoData).copy(previewMode = false))
-        mountInteractionState(state)
+        mountInteractionState(state, fullDock = true)
         ControlId.entries.forEach { id ->
             (listOf("control-${id.name}") + if (DockShortcuts.items.any { it.control == id }) listOf("dock-${id.name}") else emptyList()).forEach { tag ->
                 val node = compose.onNodeWithTag(tag)
@@ -1195,7 +1196,7 @@ open class ContentPanelLightPrototypeRenderTest {
                  ControlId.RearWiper, ControlId.RearWash -> 0
             })
         }))
-        mountInteractionState(state)
+        mountInteractionState(state, fullDock = true)
         listOf("Ventilation", "Heating", "PassengerHeating", "Massage", "SteeringHeat").forEach { id ->
             compose.onNodeWithTag("control-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
             if (DockShortcuts.items.any { it.name == id }) compose.onNodeWithTag("dock-$id").assert(SemanticsMatcher.expectValue(PressFeedback, "none"))
@@ -1486,6 +1487,58 @@ open class ContentPanelLightPrototypeRenderTest {
         return IntArray(w * h).also { frame.getPixels(it, 0, w, bounds.left.toInt(), bounds.top.toInt(), w, h) }
     }
 
+    private fun assertRegisteredGlyphGeometry(tag: String, initial: androidx.compose.ui.geometry.Rect,
+        control: ControlId, glyphHeightPx: Float) {
+        val icon = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        val bounds = icon.boundsInRoot
+        if (!tag.startsWith("dock-icon-")) {
+            assertEquals("grid registration keeps $tag fixed", initial, bounds)
+            return
+        }
+        val resource = icon.config[OemResource]
+        val asset = icon.config[IconAnimationAsset].takeIf { it.isNotEmpty() }
+        val frames = if (control == ControlId.Lock || asset == null) null else (0..control.maxLevel)
+            .map { vehicleControlIconRecipe(control, it, dark) }
+            .firstOrNull { it.resource == resource && it.asset == asset }?.frames
+        val viewport = requireNotNull(oemGlyphViewport(resource, asset, frames)) {
+            "missing calibrated viewport for $tag/$resource/$asset/$frames"
+        }
+        assertEquals("$tag keeps its fixed centre x", initial.center.x, bounds.center.x, 1f)
+        assertEquals("$tag keeps its fixed centre y", initial.center.y, bounds.center.y, 1f)
+        assertEquals("$tag keeps the declared physical glyph height", glyphHeightPx, bounds.height, 1f)
+        assertEquals("$tag width follows the actual registered OEM aspect", glyphHeightPx * viewport.aspectRatio, bounds.width, 1f)
+        val slot = compose.onNodeWithTag("dock-${control.name}").fetchSemanticsNode().boundsInRoot
+        assertTrue("$tag stays centred inside its unchanged Dock touch slot",
+            bounds.center.x >= slot.left && bounds.center.x <= slot.right &&
+                bounds.center.y >= slot.top && bounds.center.y <= slot.bottom)
+    }
+
+    private fun assertFilledMediaTail(frame: Bitmap, bounds: androidx.compose.ui.geometry.Rect, playing: Boolean) {
+        val background = (if (dark) androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+            else androidx.compose.ui.graphics.Color.White).toArgb()
+        fun distance(pixel: Int): Int = kotlin.math.abs(android.graphics.Color.red(pixel) - android.graphics.Color.red(background)) +
+            kotlin.math.abs(android.graphics.Color.green(pixel) - android.graphics.Color.green(background)) +
+            kotlin.math.abs(android.graphics.Color.blue(pixel) - android.graphics.Color.blue(background))
+        fun inkFraction(left: Float, top: Float, right: Float, bottom: Float): Float {
+            val x0 = (bounds.left + bounds.width * left).toInt()
+            val x1 = (bounds.left + bounds.width * right).toInt().coerceAtLeast(x0 + 1)
+            val y0 = (bounds.top + bounds.height * top).toInt()
+            val y1 = (bounds.top + bounds.height * bottom).toInt().coerceAtLeast(y0 + 1)
+            var ink = 0
+            for (y in y0 until y1) for (x in x0 until x1) if (distance(frame.getPixel(x, y)) > 70) ink++
+            return ink.toFloat() / ((x1 - x0) * (y1 - y0))
+        }
+        val centre = inkFraction(.44f, .4f, .56f, .6f)
+        if (playing) {
+            assertTrue("pause tail keeps the centre gap clear", centre < .2f)
+            assertTrue("pause tail has its left vertical bar", inkFraction(.1f, .25f, .3f, .75f) > .65f)
+            assertTrue("pause tail has its right vertical bar", inkFraction(.7f, .25f, .9f, .75f) > .65f)
+        } else {
+            assertTrue("play tail has a filled centre triangle", centre > .65f)
+            assertTrue("play triangle keeps its upper-right exterior clear", inkFraction(.78f, .06f, .94f, .22f) < .2f)
+        }
+    }
+
     private fun sampleOemFrames(durationMs: Long = 16L, assertFrame: () -> Unit = {}) {
         check(!compose.mainClock.autoAdvance)
         val deadline = compose.mainClock.currentTime + durationMs
@@ -1524,7 +1577,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val families = mapOf(ControlId.Ventilation to "ventilate", ControlId.Heating to "heat", ControlId.Massage to "massage")
         preloadOemAnimations(families.values.map { "ico_skin_seat_${it}_l_$suffix.json" })
         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
-        mountInteractionState(state)
+        mountInteractionState(state, fullDock = true)
         compose.mainClock.autoAdvance = false
         sampleOemFrames()
         val geometry = families.keys.flatMap { id -> iconEntrances(id).map { "$it-${id.name}" } }
@@ -1644,9 +1697,7 @@ open class ContentPanelLightPrototypeRenderTest {
             compose.onNodeWithTag("media-play-icon", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
             val frame = captureHost("oem-media-${if (playing) "pause" else "play"}-tail")
             val bounds = compose.onNodeWithTag("media-play-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            val center = frame.getPixel(bounds.center.x.toInt(), bounds.center.y.toInt())
-            val empty = frame.getPixel(bounds.left.toInt()+1, bounds.top.toInt()+1)
-            assertTrue("tail must be two pause bars or one filled play triangle", if (playing) center == empty else center != empty)
+            assertFilledMediaTail(frame, bounds, playing)
             val terminal = iconPixels(frame, "media-play-icon")
             repeat(8) {
                 compose.mainClock.advanceTimeByFrame()
@@ -1736,7 +1787,7 @@ open class ContentPanelLightPrototypeRenderTest {
             features = com.icar03.content.model.VehicleFeature.entries.associateWith {
                 FeatureState(actual = 0, known = true, available = true)
             })
-        mountInteractionState(androidx.compose.runtime.mutableStateOf(ready))
+        mountInteractionState(androidx.compose.runtime.mutableStateOf(ready), fullDock = true)
         compose.onNodeWithTag(shortcutTag(ShortcutId.PassengerSeatAdjust)).assertDoesNotExist()
         val catalog = ShortcutGrid.productionButtons + ShortcutGrid.lowerToggles + ShortcutGrid.verticals
         val bounds = catalog.associateWith { compose.onNodeWithTag(shortcutTag(it)).assertExists().getUnclippedBoundsInRoot() }
@@ -1772,7 +1823,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun compactSixSlotsScrollWithoutShrinkingHitRegionsOrTruncatingNames() {
         val width = androidx.compose.runtime.mutableStateOf(400.dp)
-        val ready = ContentUiState(previewMode = false, dark = dark, screenCleanAvailable = true,
+        val ready = ContentUiState(previewMode = false, dark = dark, dockButtonCount = 6, screenCleanAvailable = true,
             shortcutButtons = ShortcutGrid.productionButtons,
             features = com.icar03.content.model.VehicleFeature.entries.associateWith {
                 FeatureState(actual = 0, known = true, available = true)
@@ -1794,9 +1845,9 @@ open class ContentPanelLightPrototypeRenderTest {
                 assertTrue("narrow full name is fully visible: ${id.label} at $value / tile=$region / text=${layouts.single().size} / lines=${layouts.single().lineCount} / widthOverflow=${layouts.single().didOverflowWidth} / heightOverflow=${layouts.single().didOverflowHeight}", layouts.single().lineCount <= 2 && !layouts.single().hasVisualOverflow)
             }
             compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(6)
-            DockShortcuts.items.forEach { id ->
-                val dock = compose.onNodeWithTag("dock-${id.name}").performScrollTo().assertIsDisplayed().getUnclippedBoundsInRoot()
-                assertTrue("seven-slot minimum width is scrollable, not squeezed below 48dp", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
+            dockItemsForCount(6).forEach { id ->
+                val dock = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed().getUnclippedBoundsInRoot()
+                assertTrue("six-slot minimum width is scrollable, not squeezed below 48dp", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
             }
         }
     }
@@ -1817,7 +1868,8 @@ open class ContentPanelLightPrototypeRenderTest {
                 icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
                 icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
                 icon.assert(SemanticsMatcher.expectValue(IconMotion, 1f))
-                assertEquals("shared readback preserves $tag geometry", bounds, icon.fetchSemanticsNode().boundsInRoot)
+                val id = ids.first { tag.endsWith("-${it.name}") }
+                assertRegisteredGlyphGeometry(tag, bounds, id, if (id == ControlId.Lock) 36f else 32f)
             }
         }
         val seats = listOf(3, 2, 1, 4, 0)
@@ -1889,7 +1941,7 @@ open class ContentPanelLightPrototypeRenderTest {
                 icon.assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
                 icon.assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
                 icon.assert(SemanticsMatcher.expectValue(IconMotion, 1f))
-                assertEquals("unclicked $prefix keeps its geometry", geometry.getValue(prefix), icon.fetchSemanticsNode().boundsInRoot)
+                assertRegisteredGlyphGeometry("$prefix-Lock", geometry.getValue(prefix), ControlId.Lock, 36f)
             }
         }
         fun assertMoving(clickedPrefix: String, target: Int, previous: Float = 0f): Float {
@@ -1951,7 +2003,7 @@ open class ContentPanelLightPrototypeRenderTest {
                 node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
                 node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
                 node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationAsset, asset))
-                assertEquals("settled $prefix retains geometry", geometry.getValue(prefix), node(prefix).fetchSemanticsNode().boundsInRoot)
+                                 assertRegisteredGlyphGeometry(tag, geometry.getValue(prefix), ControlId.Lock, 36f)
                 assertNativeVehiclePalette(tail, tag, ControlId.Lock, target)
                 val samePixels = iconPixels(middle, tag).contentEquals(iconPixels(tail, tag))
                 assertTrue("$prefix native paths ${if (prefix == clickedPrefix) "move only for the accepted click" else "stay at the unclicked tail"}",
@@ -1991,7 +2043,7 @@ open class ContentPanelLightPrototypeRenderTest {
                 node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationPlaying, false))
                 node(prefix).assert(SemanticsMatcher.expectValue(IconAnimationProgress, 1f))
                 node(prefix).assert(SemanticsMatcher.expectValue(IconMotion, 1f))
-                assertEquals("unclicked $prefix keeps its geometry", geometry.getValue(prefix), node(prefix).fetchSemanticsNode().boundsInRoot)
+                assertRegisteredGlyphGeometry("$prefix-Lock", geometry.getValue(prefix), ControlId.Lock, 36f)
             }
         }
         fun progress(clickedPrefix: String, previous: Float = 0f): Float {
@@ -2040,7 +2092,7 @@ open class ContentPanelLightPrototypeRenderTest {
                 assertTrue("known $prefix native paths ${if (prefix == clickedPrefix) "move only after its click" else "remain at the shared target tail"}",
                     if (prefix == clickedPrefix) !samePixels else samePixels)
                 assertNativeVehiclePalette(tail, tag, ControlId.Lock, target)
-                assertEquals("known $prefix tail retains geometry", geometry.getValue(prefix), node(prefix).fetchSemanticsNode().boundsInRoot)
+                                 assertRegisteredGlyphGeometry(tag, geometry.getValue(prefix), ControlId.Lock, 36f)
             }
             publishOemState(state) { it.copy(time = "12:27", controls = it.controls.toMap()) }
             sampleOemFrames(96) { assertOtherIdle(clickedPrefix) }
@@ -2072,11 +2124,17 @@ open class ContentPanelLightPrototypeRenderTest {
         }
         assertTrue("empty native capture", bitmap.width > 0 && bitmap.height > 0)
         assertTrue("expected 640x1080 native capture", bitmap.width == 640 && bitmap.height == 1080)
+        val directory = File("build/frames")
+        assertTrue(directory.isDirectory || directory.mkdirs())
+        File(directory, "640x1080-${if (dark) "dark" else "light"}-$name.png").outputStream().use { output ->
+            assertTrue("PNG encoding failed", bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+        }
         fun brightness(x: Int, y: Int): Int {
             val pixel = bitmap.getPixel(x, y)
             return android.graphics.Color.red(pixel) + android.graphics.Color.green(pixel) + android.graphics.Color.blue(pixel)
         }
-        val background = brightness(300, 800)
+        // The exterior corner stays clear when a newly registered shortcut grows the grid.
+        val background = brightness(0, bitmap.height - 1)
         val surfaces = if (dark) emptyList() else {
             val tags = (if (checkShortcutShadows) listOf("control-Lock") else emptyList()) +
                 listOf("media-card", "floating-dock")
@@ -2101,11 +2159,6 @@ open class ContentPanelLightPrototypeRenderTest {
         val colors = mutableSetOf<Int>()
         for (y in 0 until bitmap.height step 11) for (x in 0 until bitmap.width step 11) colors += bitmap.getPixel(x, y)
         assertTrue("capture must contain rendered color variation", colors.size > 8)
-        val directory = File("build/frames")
-        assertTrue(directory.isDirectory || directory.mkdirs())
-        File(directory, "640x1080-${if (dark) "dark" else "light"}-$name.png").outputStream().use { output ->
-            assertTrue("PNG encoding failed", bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
-        }
         return bitmap
     }
 

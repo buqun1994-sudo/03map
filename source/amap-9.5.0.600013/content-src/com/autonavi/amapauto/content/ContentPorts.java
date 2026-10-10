@@ -45,6 +45,16 @@ public final class ContentPorts {
             return false;
         }
 
+        /** The OEM SystemUI control-center broadcast is available to the content host. */
+        default boolean controlCenterAvailable() {
+            return false;
+        }
+
+        /** Sends the verified registered-only SystemUI control-center action. */
+        default boolean openControlCenter() {
+            return false;
+        }
+
         /** Releases a cached vendor Binder connection when the owning Store is destroyed. */
         default void close() {
         }
@@ -167,6 +177,23 @@ public final class ContentPorts {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), options.toBundle());
                 return true;
             } catch (ReflectiveOperationException | RuntimeException exception) {
+                return false;
+            }
+        }
+
+        @Override public boolean controlCenterAvailable() {
+            return !closed;
+        }
+
+        @Override public boolean openControlCenter() {
+            if (!controlCenterAvailable()) return false;
+            try {
+                Intent open = new Intent("action.plugin.test.open.ac");
+                open.setPackage("com.android.systemui");
+                open.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
+                context.sendBroadcast(open);
+                return true;
+            } catch (RuntimeException exception) {
                 return false;
             }
         }

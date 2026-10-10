@@ -79,13 +79,17 @@ class ContentModelsTest {
         }
     }
 
-    @Test fun dockKeepsSixExplicitShortcutsIndependentOfTheExpandedPage() {
+    @Test fun dockAndShortcutCatalogKeepFixedEndsAndExcludeSteeringHeat() {
+        assertEquals(5, ContentUiState().dockButtonCount)
         assertEquals(6, DockShortcuts.MAX_BUTTONS)
         assertEquals(listOf("Lock", "Wiper", "Ventilation", "Heating", "Massage", "Settings"), DockShortcuts.items.map { it.name })
         assertNotSame(ShortcutId.entries, DockShortcuts.items)
         assertTrue(ShortcutId.entries.containsAll(DockShortcuts.items))
         assertEquals(listOf(ControlId.Lock, ControlId.Wiper, ControlId.Ventilation, ControlId.Heating,
             ControlId.Massage), DockShortcuts.items.mapNotNull { it.control })
+        assertTrue(ShortcutGrid.buttons.contains(ShortcutId.ControlCenter))
+        assertFalse(DockShortcuts.items.contains(ShortcutId.ControlCenter))
+        assertTrue(ContentUiState().controlCenterAvailable)
         assertEquals(ControlId.SteeringHeat, ShortcutId.SteeringHeat.control)
         assertFalse(DockShortcuts.items.contains(ShortcutId.SteeringHeat))
         assertFalse(DockShortcuts.items.contains(ShortcutId.PassengerHeating))
@@ -126,7 +130,7 @@ class ContentModelsTest {
 
     @Test fun metadataDeclaresFourPresentationsWithoutDuplicatingVehicleState() {
         assertEquals(4, QuickControlType.entries.size)
-        assertEquals(22, ShortcutId.entries.size)
+        assertEquals(23, ShortcutId.entries.size)
         assertTrue(ShortcutGrid.buttons.take(4).all { it.type == QuickControlType.DynamicIconSwitch })
         assertEquals(listOf(ShortcutId.RearWiper, ShortcutId.RearWash), ShortcutGrid.lowerToggles)
         assertEquals(listOf(ShortcutId.Wiper), ShortcutGrid.verticals)

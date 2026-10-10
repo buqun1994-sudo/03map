@@ -81,6 +81,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
 import kotlinx.coroutines.flow.Flow
@@ -125,6 +126,7 @@ internal fun SettingsIconButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     tag: String = "",
+    fillRow: Boolean = false,
     icon: @Composable (Modifier) -> Unit,
 ) {
     val design = LocalSettingsDesign.current
@@ -133,7 +135,8 @@ internal fun SettingsIconButton(
          interfaceSurfaceColor(design.page, design.surfaceOpacity), interfaceSurfaceColor(design.pressed, design.surfaceOpacity))
     val shape = RoundedCornerShape(12.dp)
     Box(
-        modifier.size(design.minimumTouchHeight).settingsTag(tag)
+        modifier.then(if (fillRow) Modifier.width(design.minimumTouchHeight + design.pagePadding * 2).fillMaxHeight()
+                else Modifier.size(design.minimumTouchHeight)).settingsTag(tag)
             .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
             .clip(shape).then(feedback.area(interfaceSurfaceColor(design.page, design.surfaceOpacity)))
             .clickable(interactionSource = interactions, indication = null, enabled = enabled,
@@ -141,7 +144,7 @@ internal fun SettingsIconButton(
             .excludeDisabledActionTap(enabled)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
-    ) { icon(Modifier.size(28.dp)) }
+    ) { icon(Modifier.size(28.dp).settingsTag(settingsChildTag(tag, "icon"))) }
 }
 
 /** Text actions retain a single rounded surface and the shared settings shadow. */
@@ -178,6 +181,7 @@ fun SettingsSection(
     title: String,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues? = null,
+    itemSpacing: Dp? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val design = LocalSettingsDesign.current
@@ -185,8 +189,26 @@ fun SettingsSection(
         verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
         SettingsLineText(title, Modifier.padding(start = design.pagePadding)
             .testTag("settings-section-title-$title"), design.sectionTitleStyle, design.text)
-        SettingsGroupCard(Modifier.testTag("settings-card-$title"), contentPadding, content)
+        SettingsGroupCard(Modifier.testTag("settings-card-$title"), contentPadding, itemSpacing, content)
     }
+}
+
+/** Every item owns its visual inset and hit bounds; the card only supplies the surface. */
+@Composable
+internal fun SettingsItemSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    SettingsSection(title, contentPadding = PaddingValues(0.dp), itemSpacing = 0.dp, content = content)
+}
+
+@Composable
+internal fun SettingsItemContent(topPadding: Dp? = null, content: @Composable ColumnScope.() -> Unit) {
+    val design = LocalSettingsDesign.current
+    Column(Modifier.fillMaxWidth().padding(start = design.pagePadding, end = design.pagePadding,
+        top = topPadding ?: design.pagePadding, bottom = design.pagePadding), content = content)
+}
+
+@Composable
+internal fun SettingsItemDivider() {
+    SettingsDivider(Modifier.padding(horizontal = LocalSettingsDesign.current.pagePadding))
 }
 
 /** A divider carries no implicit margins, so its page owner supplies the intended inset. */
@@ -296,15 +318,18 @@ fun SettingsSegmented(
     val density = LocalDensity.current
     val optionStyle = LocalTextStyle.current.merge(design.optionStyle)
     val selectionInset = design.segmentInset
-    val naturalLabelWidth = remember(options, optionStyle, textMeasurer, density) {
-        with(density) {
-            options.maxOf { textMeasurer.measure(it.second, style = optionStyle,
-                maxLines = 1, softWrap = false).size.width }.toDp()
-        }
+    val naturalLabelWidthPx = remember(options, optionStyle, textMeasurer, density) {
+        options.maxOf { textMeasurer.measure(it.second, style = optionStyle,
+            maxLines = 1, softWrap = false).size.width }
     }
     BoxWithConstraints(modifier.fillMaxWidth().height(design.segmentHeight).settingsTag(tagPrefix)) {
-        val minimumWidth = maxOf(design.segmentMinimumWidth, naturalLabelWidth + selectionInset * 2) * options.size
-        val rowWidth = if (maxWidth == Dp.Infinity) minimumWidth else maxOf(maxWidth, minimumWidth)
+        val minimumSlotWidthPx = with(density) {
+            maxOf(kotlin.math.ceil(design.segmentMinimumWidth.toPx()).toInt(),
+                naturalLabelWidthPx + selectionInset.roundToPx() * 2)
+        }
+        val minimumRowWidthPx = minimumSlotWidthPx * options.size
+        val rowWidthPx = if (constraints.hasBoundedWidth) maxOf(constraints.maxWidth, minimumRowWidthPx) else minimumRowWidthPx
+        val rowWidth = with(density) { rowWidthPx.toDp() }
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             Box(
                 Modifier.width(rowWidth).height(design.segmentHeight)
@@ -393,23 +418,30 @@ fun SettingsSwitchRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     tag: String = "",
+    contentPadding: Dp? = null,
 ) {
     val design = LocalSettingsDesign.current
-    Row(
-        modifier.fillMaxWidth().heightIn(min = design.switchHeight).settingsTag(settingsChildTag(tag, "row")),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(design.smallGap),
-    ) {
-        SettingsLineText(title, Modifier.weight(1f).settingsTag(settingsChildTag(tag, "label")),
-            design.labelStyle, design.text.copy(alpha = if (enabled) 1f else .38f), maxLines = 2)
-        SettingsToggle(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.height(design.switchHeight).offset(x = design.smallGap / 2)
-                .semantics { contentDescription = title },
-            enabled = enabled,
-            tag = tag,
-        )
+    val inset = contentPadding ?: design.pagePadding
+    androidx.compose.ui.layout.Layout(
+        modifier = modifier.fillMaxWidth().settingsTag(settingsChildTag(tag, "row")),
+        content = {
+            SettingsLineText(title, Modifier.settingsTag(settingsChildTag(tag, "label")),
+                design.labelStyle, design.text.copy(alpha = if (enabled) 1f else .38f), maxLines = Int.MAX_VALUE)
+            SettingsToggle(checked, onCheckedChange,
+                modifier = Modifier.semantics { contentDescription = title }, enabled = enabled, tag = tag)
+        },
+    ) { measurables, constraints ->
+        val padding = inset.roundToPx()
+        val touchWidth = (design.switchWidth.roundToPx() + padding * 2).coerceAtMost(constraints.maxWidth)
+        val label = measurables[0].measure(constraints.copy(minWidth = 0, minHeight = 0,
+            maxWidth = (constraints.maxWidth - padding - touchWidth).coerceAtLeast(0)))
+        val bodyHeight = maxOf(label.height, design.switchHeight.roundToPx())
+        val height = constraints.constrainHeight(maxOf(bodyHeight + padding * 2, design.minimumTouchHeight.roundToPx()))
+        val toggle = measurables[1].measure(androidx.compose.ui.unit.Constraints.fixed(touchWidth, height))
+        layout(constraints.maxWidth, height) {
+            label.placeRelative(padding, (height - label.height) / 2)
+            toggle.placeRelative(constraints.maxWidth - touchWidth, 0)
+        }
     }
 }
 
@@ -488,6 +520,7 @@ internal fun Modifier.settingsSurfaceShadow(fill: Color, dark: Boolean, cornerRa
 fun SettingsGroupCard(
     modifier: Modifier = Modifier,
     contentPadding: androidx.compose.foundation.layout.PaddingValues? = null,
+    itemSpacing: Dp? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val design = LocalSettingsDesign.current
@@ -499,7 +532,7 @@ fun SettingsGroupCard(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(contentPadding ?: PaddingValues(design.pagePadding)),
-            verticalArrangement = Arrangement.spacedBy(design.itemGap),
+            verticalArrangement = Arrangement.spacedBy(itemSpacing ?: design.itemGap),
             content = content,
         )
     }

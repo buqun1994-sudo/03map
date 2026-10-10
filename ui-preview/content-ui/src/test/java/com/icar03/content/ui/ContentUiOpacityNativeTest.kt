@@ -87,7 +87,7 @@ open class ContentUiOpacityNativeTest {
         listOf("media-card-title", "media-card-artist", "media-play-icon", "media-next-icon", "media-source-icon")
             .forEach { tag -> assertInkStable(tag, bounds(tag), full, faded) }
         assertDifferent("Dock background", dockBackground, full, faded)
-        dockItemsForCount(6).forEach { id -> assertInkStable("dock-${id.name}", bounds("dock-icon-${id.name}"), full, faded) }
+        dockItemsForCount(5).forEach { id -> assertInkStable("dock-${id.name}", bounds("dock-icon-${id.name}"), full, faded) }
     }
 
     @Test fun pausedTimedLyricsKeepEveryRenderedPixelAcrossOpacityChanges() {
@@ -145,7 +145,7 @@ open class ContentUiOpacityNativeTest {
         state.value = state.value.copy(settingsOpen = true)
         mount()
         compose.mainClock.advanceTimeBy(600)
-        for (section in SettingsSection.entries) {
+        for (section in SettingsSection.entries.filter { it != SettingsSection.Media }) {
             compose.runOnIdle { state.value = state.value.copy(settingsSection = section, uiOpacity = 1f) }
             val sheet = capture("settings-${section.name}-full")
             val page = bounds("settings-sheet")

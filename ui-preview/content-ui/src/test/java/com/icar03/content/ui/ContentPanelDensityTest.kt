@@ -20,6 +20,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.width
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -39,6 +41,7 @@ open class ContentPanelSystem141Test {
     protected open val referenceWidthDp: Float? = null
     @get:Rule val compose = createComposeRule()
     private val events = mutableListOf<ContentEvent>()
+    private var panelWidthPx by mutableFloatStateOf(640f)
     private val state = mutableStateOf(ContentUiState(
         previewMode = false, weekday = "星期三", rangeUnit = "km", time = "12:24", range = "366",
         temperature = "25°", batteryPercent = 70,
@@ -72,7 +75,7 @@ open class ContentPanelSystem141Test {
                             is ContentEvent.PageSelected -> state.value = state.value.copy(page = event.page)
                             else -> Unit
                         }
-                    }, Modifier.testTag("density-host"))
+                    }, Modifier.width((panelWidthPx / density).dp).testTag("density-host"))
                 }
             }
         }
@@ -93,8 +96,10 @@ open class ContentPanelSystem141Test {
         // At 320dpi the page scrolls; controls below the fold remain reachable.
         compose.onNodeWithTag("brightness-card").performScrollTo(); touch("brightness-card")
         compose.onNodeWithTag("volume-card").performScrollTo(); touch("volume-card"); touch("source-button")
-        DockShortcuts.items.forEach {
-            compose.onNodeWithTag("dock-${it.name}").performScrollTo()
+        dockItemsForCount(5).forEach {
+            if (it != ShortcutId.Lock && it != ShortcutId.Settings) {
+                compose.onNodeWithTag("dock-${it.name}").performScrollTo()
+            }
             touch("dock-${it.name}")
         }
         assertTopBar()
@@ -108,7 +113,27 @@ open class ContentPanelSystem141Test {
             assertTrue("$label crosses media edge", bounds.left >= media.left && bounds.right <= media.right)
         }
         compose.onNodeWithText("暂无媒体").assertIsDisplayed()
-        capture("closed")
+        val closed = capture("closed")
+        val buttons = listOf("media-play", "media-next", "source-button").map { tag ->
+            val b = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            assertEquals("reference media action width", 100f, b.width, 1f)
+            assertEquals("reference media action height", 100f, b.height, 1f)
+            val feedback = compose.onNodeWithTag("$tag-press-area", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals("feedback is a separate centred rectangle", 72f, feedback.width, 1f)
+            assertEquals(b.center.x, feedback.center.x, 1f)
+            b
+        }
+        buttons.zipWithNext().forEach { (a, b) -> assertEquals("actual slots are adjacent", a.right, b.left, 1f) }
+        val source = buttons.last()
+        val divider = closed.getPixel(source.left.toInt(), source.center.y.toInt())
+        val blank = closed.getPixel(source.left.toInt() + 5, source.center.y.toInt())
+        assertNotEquals("next/source boundary has the required visible separator", blank, divider)
+        for ((tag, weight) in listOf("media-card-title" to androidx.compose.ui.text.font.FontWeight.Bold,
+            "media-card-artist" to androidx.compose.ui.text.font.FontWeight.Medium)) {
+            val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            compose.onNodeWithTag(tag, useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            assertEquals("metadata has the requested stronger font", weight, layouts.single().layoutInput.style.fontWeight)
+        }
         compose.onNodeWithTag("source-button").performClick()
         MediaSource.entries.forEach { touch("source-${it.name}") }
         capture("sources")
@@ -122,6 +147,53 @@ open class ContentPanelSystem141Test {
         touch("source-button")
         compose.onNodeWithTag("source-button").performClick()
         assertEquals(ContentEvent.OpenSources, events.last())
+    }
+
+    @Test fun everyConfiguredDockCountUsesDistinctFullSlotsAndKeepsBothEndsFixed() {
+        mount()
+        for (count in 3..6) {
+            compose.runOnIdle { state.value = state.value.copy(dockButtonCount = count) }
+            compose.waitForIdle()
+            val ids = dockItemsForCount(count)
+            compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(count)
+            val dock = compose.onNodeWithTag("floating-dock").fetchSemanticsNode().boundsInRoot
+            val lock = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
+            val settings = compose.onNodeWithTag("dock-Settings").fetchSemanticsNode().boundsInRoot
+            assertEquals("fixed lock width", 136f, lock.width, 1f)
+            assertEquals(dock.left, lock.left, 1f)
+            assertEquals(dock.right, settings.right, 1f)
+            for (id in ids) {
+                val node = compose.onNodeWithTag("dock-${id.name}")
+                if (id != ShortcutId.Lock && id != ShortcutId.Settings) node.performScrollTo()
+                touch("dock-${id.name}")
+                val b = node.fetchSemanticsNode().boundsInRoot
+                if (id != ShortcutId.Lock) assertEquals("right lane divides by configured count", 480f / (count - 1), b.width, 1f)
+                val before = events.size
+                node.performTouchInput { click(androidx.compose.ui.geometry.Offset(1f, height / 2f)) }
+                assertEquals("one slot-edge tap dispatches exactly one event", before + 1, events.size)
+            }
+        }
+    }
+
+    @Test fun narrowSixSlotDockScrollsOnlyTheMiddleWithoutReducingTouchWidths() {
+        state.value = state.value.copy(dockButtonCount = 6)
+        panelWidthPx = 400f
+        mount()
+        val lock = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
+        val settings = compose.onNodeWithTag("dock-Settings").fetchSemanticsNode().boundsInRoot
+        val dock = compose.onNodeWithTag("floating-dock").fetchSemanticsNode().boundsInRoot
+        val middle = compose.onNodeWithTag("dock-middle-scroll").fetchSemanticsNode().boundsInRoot
+        for (id in dockItemsForCount(6).drop(1).dropLast(1)) {
+            val node = compose.onNodeWithTag("dock-${id.name}").performScrollTo().assertIsDisplayed()
+            val b = node.fetchSemanticsNode().boundsInRoot
+            assertTrue("middle touch slot keeps at least 48 system dp", b.width + 1 >= 48 * density && b.height + 1 >= 48 * density)
+            assertTrue("scrolled slot is fully visible", b.left >= middle.left - 1 && b.right <= middle.right + 1)
+            assertEquals("horizontal scrolling never moves lock", lock, compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot)
+            assertEquals("horizontal scrolling never moves settings", settings, compose.onNodeWithTag("dock-Settings").fetchSemanticsNode().boundsInRoot)
+        }
+        assertEquals(dock.left, lock.left, 1f)
+        assertEquals(dock.right, settings.right, 1f)
+        assertTrue(lock.right <= middle.left && middle.right <= settings.left)
     }
 
     private fun assertTopBar() {
@@ -202,7 +274,7 @@ open class ContentPanelSystem141Test {
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
-    private fun capture(suffix: String) {
+    private fun capture(suffix: String): Bitmap {
         val node = compose.onNodeWithTag("density-host").fetchSemanticsNode()
         val root = node.root as ViewRootForTest
         val bounds = node.boundsInRoot
@@ -219,6 +291,7 @@ open class ContentPanelSystem141Test {
         File(directory, "640x1080-system${systemDpi}-map${(systemDpi * 1.25f).toInt()}-${if (dark) "dark" else "light"}-$suffix.png").outputStream().use {
             assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
         }
+        return bitmap
     }
 
     private tailrec fun Context.activity(): Activity = when (this) {

@@ -85,7 +85,7 @@ open class QuickControlsNativeTest {
 
     private fun mountPanel(onEvent: (ContentEvent) -> Unit = {}) {
         compose.setContent {
-            FrameHost { ContentPanel(state.value.copy(dark = dark), { events += it; onEvent(it) },
+            FrameHost { ContentPanel(state.value.copy(dark = dark, dockButtonCount = DockShortcuts.MAX_BUTTONS), { events += it; onEvent(it) },
                 Modifier.width(panelWidth.value).testTag("quick-native-host")) }
         }
         compose.waitForIdle()
