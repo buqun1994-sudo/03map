@@ -508,8 +508,8 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
                 val saved = native.save()
-                // Ink shaders carry the vertical edge fade: no viewport-sized offscreen DST_IN layer.
-                native.clipRect(inset, 0f, size.width - inset, size.height)
+                // The outer viewport clips the page; inset only anchors text layout.
+                // Let the prepared blur extend into its margins. Ink shaders fade vertical edges.
                 native.translate(inset, 0f)
                 painter.draw(native, slices, measured, tops, cache, offset, emphasized, focus, now, position, dark,
                     fallback = missing, contentAlpha = frameAlpha, scroll = drawSample,
