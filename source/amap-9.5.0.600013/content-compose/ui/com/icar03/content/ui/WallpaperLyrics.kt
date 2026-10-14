@@ -44,6 +44,7 @@ internal val LyricLineGapPixels = SemanticsPropertyKey<Float>("LyricLineGapPixel
 internal val LyricNormalColor = SemanticsPropertyKey<Int>("LyricNormalColor")
 internal val LyricCurrentColor = SemanticsPropertyKey<Int>("LyricCurrentColor")
 internal val LyricTranslationVisible = SemanticsPropertyKey<Boolean>("LyricTranslationVisible")
+internal val LyricRomanizationVisible = SemanticsPropertyKey<Boolean>("LyricRomanizationVisible")
 internal val LyricTextAlignment = SemanticsPropertyKey<String>("LyricTextAlignment")
 internal val LyricRowHeights = SemanticsPropertyKey<List<Int>>("LyricRowHeights")
 internal val LyricWordProgress = SemanticsPropertyKey<Float>("LyricWordProgress")
@@ -128,7 +129,8 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             LyricMetrics(normal, active, normal * .55f, normal * .5f,
                 rowPadding, 4.dp.toPx() * sceneScale,
                 LyricVisuals.INACTIVE_BLUR_DP.dp.toPx() * sceneScale, LyricVisuals.LIFT_DP.dp.toPx() * sceneScale,
-                showTranslation = renderStyle?.showTranslation ?: true)
+                showTranslation = renderStyle?.showTranslation ?: true,
+                showRomanization = renderStyle?.showRomanization ?: true)
         }
         val displayLines = remember(lyrics.lines, speakerLayout) {
             if (speakerLayout) lyrics.lines else lyrics.lines.map { it.copy(side = LyricSide.Unspecified) }
@@ -246,7 +248,9 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
         var dragging by remember(presentationKey) { mutableStateOf(false) }
         var pointerDown by remember(presentationKey) { mutableStateOf(false) }
         val paused = lyrics.playbackSpeed <= 0f || !lyrics.playbackSpeed.isFinite()
-        val scrollBlocked = !workEnabled || holdFollow || !layoutReady || pointerDown ||
+        val multiFingerArbitration = LocalMultiFingerGestureArbitration.current
+        val multiFingerOwned = multiFingerArbitration?.owned == true
+        val scrollBlocked = !workEnabled || holdFollow || !layoutReady || pointerDown || multiFingerOwned ||
             externalGestureActive || !autoFollowEnabled
         val commands = remember(presentationKey) { LyricFollowHistory() }
         val commandSample = remember { LyricScrollSample() }
@@ -428,17 +432,23 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
                 try {
                     var pressed = true
                     while (pressed) {
-                        pressed = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                            .changes.any { it.pressed }
+                        val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        if (multiFingerArbitration?.owned == true) break
+                        pressed = event.changes.any { it.pressed }
                     }
                 } finally { pointerDown = false }
             }
         }.pointerInput(presentationKey, geometry, workEnabled, holdFollow, interactionEnabled, externalGestureActive) {
             if (!workEnabled || holdFollow || !interactionEnabled || externalGestureActive) return@pointerInput
             detectVerticalDragGestures(
-                onDragStart = { dragging = true; browsingTravel = travel.value },
+                onDragStart = {
+                    if (multiFingerArbitration?.claimSingle() != false) {
+                        dragging = true; browsingTravel = travel.value
+                    }
+                },
                 onDragEnd = { dragging = false }, onDragCancel = { dragging = false },
             ) { change, amount ->
+                if (!dragging || multiFingerArbitration?.owned == true) return@detectVerticalDragGestures
                 change.consume()
                 val minimum = minOf(height * anchorFraction - tops.last(), height * anchorFraction)
                 val destination = ((browsingTravel ?: travel.value) + amount)
@@ -462,6 +472,7 @@ internal fun WallpaperLyrics(lyrics: LyricsState, dark: Boolean, modifier: Modif
             this[LyricCurrentColor] = renderStyle?.currentColor ?: if (dark) NativeColor.WHITE else NativeColor.rgb(39, 48, 59)
             this[LyricTextAlignment] = ready.request.alignment
             this[LyricTranslationVisible] = metrics.showTranslation
+             this[LyricRomanizationVisible] = metrics.showRomanization
             this[LyricRowHeights] = heights
             this[LyricWordProgress] = words.firstOrNull()?.let { lyricWordFraction(it, position) } ?: 0f
             this[LyricScrollAnchor] = lyrics.scrollIndex

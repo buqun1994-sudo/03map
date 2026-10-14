@@ -96,8 +96,8 @@ class ContentComposeDensityHostTest {
             val node = checkNotNull(hostTag(host, "source-button"))
             assertFalse("Source node config: ${node.config}", node.config.contains(SemanticsProperties.Disabled))
             val bounds = node.boundsInRoot
-            assertEquals(48 * systemDpi / 160f, bounds.width, 1f)
-            assertTrue(bounds.height >= 48 * systemDpi / 160f)
+            assertEquals("source retains its 100px physical touch slot at system density", 100f, bounds.width, 1f)
+            assertEquals(100f, bounds.height, 1f)
             assertTrue(bounds.left >= 0 && bounds.right <= 640)
             assertEquals(640, host.width)
             assertFalse(projection.handleBack())

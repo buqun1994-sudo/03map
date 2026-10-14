@@ -32,12 +32,24 @@ internal class AppleMusicTtmlTracks private constructor(
         return candidate.copy(
             lyrics = lyrics, plainLyrics = plain,
             wordLyrics = words.ifBlank { candidate.wordLyrics },
-            translatedLyrics = translation.ifBlank { candidate.translatedLyrics },
-            romanizedLyrics = romanization.ifBlank { candidate.romanizedLyrics },
+            translatedLyrics = mergeAuxiliaryTrack(lyrics, translation, candidate.translatedLyrics),
+            romanizedLyrics = mergeAuxiliaryTrack(lyrics, romanization, candidate.romanizedLyrics),
             backgroundLyrics = background.ifBlank { candidate.backgroundLyrics },
             ttmlLyrics = if (preserveBase && words.isBlank() && candidate.ttmlLyrics.isNotBlank()) candidate.ttmlLyrics else raw,
             lyricsKind = if (lyrics.isNotBlank() || words.isNotBlank()) LyricsKind.SYNCHRONIZED else LyricsKind.PLAIN
         )
+    }
+
+    private fun mergeAuxiliaryTrack(axisRaw: String, freshRaw: String, previousRaw: String): String {
+        if (freshRaw.isBlank()) return previousRaw
+        if (previousRaw.isBlank() || freshRaw == previousRaw) return freshRaw
+        val aligned = LrcParser.align(axisRaw, previousRaw, romanizedRaw = freshRaw)
+        if (aligned.none { it.romanization.isNotBlank() }) return previousRaw
+        return aligned.mapNotNull { line ->
+            line.romanization.ifBlank { line.translation }.takeIf(String::isNotBlank)?.let {
+                timestamp(line.timeMs) + singleLine(it)
+            }
+        }.joinToString("\n")
     }
 
     companion object {

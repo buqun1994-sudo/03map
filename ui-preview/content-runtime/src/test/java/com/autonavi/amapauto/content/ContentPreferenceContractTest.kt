@@ -44,7 +44,7 @@ class ContentPreferenceContractTest {
             val expected = valuesOf(original)
             ContentPreferenceStore(app).save(original)
             assertStoredValues(expected, "round trip $index")
-            assertEquals(8, preferences.getInt(VERSION, -1))
+            assertEquals(10, preferences.getInt(VERSION, -1))
             val loaded = freshLoad()
             assertValues(expected, loaded, "round trip $index")
             assertLegacyValues(original, loaded, "round trip $index")
@@ -85,8 +85,8 @@ class ContentPreferenceContractTest {
             assertEquals("load must not eagerly rewrite v1", before, preferences.all)
 
             ContentPreferenceStore(app).save(migrated)
-            assertEquals(8, preferences.getInt(VERSION, -1))
-            assertStoredValues(expected, "v1 saved as v8")
+            assertEquals(10, preferences.getInt(VERSION, -1))
+            assertStoredValues(expected, "v1 saved as v10")
             val reloaded = freshLoad()
             assertValues(expected, reloaded, "v1 after migration save")
             assertLegacyValues(legacy, reloaded, "v1 after migration save")
@@ -114,7 +114,7 @@ class ContentPreferenceContractTest {
             assertEquals(before, preferences.all)
             loaded.immersiveShowTopBar = false
             ContentPreferenceStore(app).save(loaded)
-            assertEquals(8, preferences.getInt(VERSION, -1))
+            assertEquals(10, preferences.getInt(VERSION, -1))
             val reloaded = freshLoad()
             assertFalse(reloaded.immersiveShowTopBar)
             assertTrue(reloaded.immersiveShowDock)
@@ -140,7 +140,7 @@ class ContentPreferenceContractTest {
         assertEquals("theme", loaded.lyricsColorMode)
         assertEquals(0xFF5C66BF.toInt(), loaded.lyricsCustomColor)
         ContentPreferenceStore(app).save(loaded)
-        assertEquals(8, preferences.getInt(VERSION, -1))
+        assertEquals(10, preferences.getInt(VERSION, -1))
         assertValues(valuesOf(loaded), freshLoad(), "v5 migration after save")
     }
     @Test fun v6MigratesImmersiveCurrentFromTheExistingOrdinaryCurrentRatio() {
@@ -325,6 +325,7 @@ class ContentPreferenceContractTest {
          lyricsImmersiveCurrentFontSizeSp = 260f
         lyricsImmersiveLineGapDp = 114f
          lyricsShowTranslation = false
+          lyricsShowRomanization = false
         lyricsSpeakerLayout = false
         lyricsHighlight = false
         immersiveShowTopBar = false
@@ -372,6 +373,7 @@ class ContentPreferenceContractTest {
           IMMERSIVE_FONT_SIZE to LyricPreferenceRules.immersiveFontSize(state.lyricsImmersiveFontSizeSp),
          IMMERSIVE_LINE_GAP to LyricPreferenceRules.immersiveLineGap(state.lyricsImmersiveLineGapDp),
          "lyrics_show_translation" to state.lyricsShowTranslation,
+          "lyrics_show_romanization" to state.lyricsShowRomanization,
         "lyrics_speaker_layout" to state.lyricsSpeakerLayout,
         "lyrics_highlight" to state.lyricsHighlight,
         "lyrics_immersive_show_top_bar" to state.immersiveShowTopBar,
@@ -499,6 +501,7 @@ class ContentPreferenceContractTest {
              IMMERSIVE_FONT_SIZE to 120f,
               IMMERSIVE_CURRENT_FONT_SIZE to 144f,
               "lyrics_show_translation" to true,
+              "lyrics_show_romanization" to true,
              IMMERSIVE_LINE_GAP to 84f,
             "lyrics_speaker_layout" to true,
             "lyrics_highlight" to false,

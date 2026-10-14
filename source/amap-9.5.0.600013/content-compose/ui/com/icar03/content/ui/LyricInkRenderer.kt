@@ -36,6 +36,7 @@ internal data class LyricMetrics(
     val main: Float, val activeMain: Float, val translation: Float, val romanization: Float,
     val padding: Float, val gap: Float, val blur: Float, val lift: Float,
     val showTranslation: Boolean = true,
+    val showRomanization: Boolean = true,
 )
 
 internal fun lyricTypeface(assets: AssetManager): Typeface = runCatching {
@@ -220,7 +221,7 @@ internal fun prepareLyricRow(line: LyricLine, width: Int, metrics: LyricMetrics,
         top += shaped.height + metrics.gap
     }
     add(line.text, metrics.activeMain, 1f, true, line.words)
-    add(line.romanization, metrics.romanization, .62f, false)
+    if (metrics.showRomanization) add(line.romanization, metrics.romanization, .62f, false)
     if (metrics.showTranslation) add(line.translation, metrics.translation, .76f, false)
     add(line.backgroundWords.joinToString("") { it.text }, metrics.translation, .9f, false, line.backgroundWords)
     val mainTrack = tracks.firstOrNull { it.isMain }

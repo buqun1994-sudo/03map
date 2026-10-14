@@ -157,6 +157,7 @@ open class ContentUiOpacityNativeTest {
                 SettingsSection.Artwork -> "背景"
                 SettingsSection.Media -> "媒体"
                 SettingsSection.Interaction -> "界面"
+                SettingsSection.Gestures -> "二指"
             }
             val card = bounds("settings-card-$contentTitle")
             compose.runOnIdle { state.value = state.value.copy(uiOpacity = .2f) }
@@ -173,6 +174,7 @@ open class ContentUiOpacityNativeTest {
                 SettingsSection.Artwork -> listOf("settings-switch-模糊封面背景-label")
                 SettingsSection.Media -> listOf("settings-switch-来源切换入口-label")
                 SettingsSection.Interaction -> emptyList()
+                SettingsSection.Gestures -> listOf("settings-gesture-label-two_up", "settings-gesture-two_right-value")
             }
             contentTags.forEach { tag -> assertInkStable("$section $tag", bounds(tag), sheet, faded) }
             assertRegionIdentical("clock above settings", bounds("top-time"), sheet, faded)

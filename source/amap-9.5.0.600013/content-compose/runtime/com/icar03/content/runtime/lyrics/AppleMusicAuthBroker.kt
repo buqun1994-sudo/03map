@@ -61,6 +61,37 @@ internal class AppleMusicAuthBroker(
         return AppleMusicSession(credential, token)
     }
 
+    /** A returned browser token remains local until Apple's user endpoint accepts it. */
+    fun verifyExternalCandidate(attempt: AppleMusicConnection.LoginAttempt, candidate: AppleMusicBrowserCredential,
+        deadline: Long, cancellation: LyricsCancellationSignal): AppleMusicConnection.CookieAcceptance {
+        val account = connection?.account ?: throw AppleMusicAuthenticationException(LyricsFailureReason.AUTH_REQUIRED)
+        fun requireAttempt() {
+            appleMusicCheckBudget(deadline, cancellation)
+            if (!attempt.external || !account.isReadyLoginAttempt(attempt)) throw CancellationException("Login superseded")
+        }
+        requireAttempt()
+        val developer = developerToken(deadline, cancellation, retryFailedFetch = true, beforeFetch = ::requireAttempt)
+        requireAttempt()
+        for (token in (listOf(candidate.token) + candidate.alternatives).distinct()) {
+            requireAttempt()
+            val payload = try {
+                transport.getBytes(ME_STOREFRONT_URL, appleMusicHeaders(developer.token, token), deadline, cancellation)
+            } catch (error: LyricsHttpStatusException) {
+                requireAttempt()
+                if (error.statusCode in listOf(401, 403)) continue
+                throw error
+            }
+            requireAttempt()
+            if (payload.size > MAX_API_BYTES) appleMusicSchemaError("bounded account verification")
+            val data = appleMusicJson(payload, cancellation).optJSONArray("data") ?: appleMusicSchemaError("storefront data")
+            val storefront = appleMusicStorefront(data.optJSONObject(0)?.contentString("id").orEmpty())
+            if (storefront.isEmpty()) appleMusicSchemaError("account storefront")
+            requireAttempt()
+            return account.completeExternalLogin(attempt, token, storefront)
+        }
+        throw AppleMusicAuthenticationException(LyricsFailureReason.AUTH_REJECTED)
+    }
+
     fun requireCurrent(value: AppleMusicCredential) {
         val account = connection?.account ?: throw AppleMusicAuthenticationException(LyricsFailureReason.AUTH_REQUIRED)
         if (!account.isCurrent(value)) {

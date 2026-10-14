@@ -92,6 +92,8 @@ fun ContentPanel(
         ClockText(if (state.showSeconds) state.time else state.time.take(5), if (state.showWeekday) state.weekday else "")
     },
     lyricsState: @Composable () -> LyricsState = { state.lyrics },
+    cruiseSignalsAvailable: Boolean = false,
+    cruiseSignals: @Composable () -> CruiseSignalState = { CruiseSignalState() },
     presentation: ContentPresentation? = null,
     appleMusicLogin: @Composable ((ContentEvent) -> Unit) -> Unit = {},
     canDispatch: (ContentEvent) -> Boolean = { true },
@@ -109,7 +111,8 @@ fun ContentPanel(
     SideEffect {
         presentation?.updateModalActive(!contentInteractive)
     }
-    rememberQuickControlGestureGate(contentInteractive) { dockOverlay.cancel() }
+    val multiFingerArbitration = remember { MultiFingerGestureArbitration() }
+    val inputGate = rememberQuickControlGestureGate(contentInteractive) { dockOverlay.cancel() }
     var retainedMessage by remember { androidx.compose.runtime.mutableStateOf(state.message.orEmpty()) }
     androidx.compose.runtime.SideEffect { state.message?.let { retainedMessage = it } }
     val latestEvent by rememberUpdatedState(onEvent)
@@ -120,7 +123,7 @@ fun ContentPanel(
     var blankTapRevision by remember { mutableLongStateOf(0L) }
     val pageMotion by remember(presentation) { derivedStateOf { presentation?.moving == true } }
     val acceptsQuickControlClick: (ContentEvent) -> Boolean = { event ->
-        latestCanDispatch(event) && (!pageMotion || event == ContentEvent.ExitLyricsImmersive) &&
+        !multiFingerArbitration.owned && latestCanDispatch(event) && (!pageMotion || event == ContentEvent.ExitLyricsImmersive) &&
             (!settingsActive || event.isSettingsInteraction()) && latestPanelState.value.acceptsQuickControlEvent(event)
     }
     val dispatchAccepted: (ContentEvent) -> Boolean = dispatch@{ event ->
@@ -128,7 +131,7 @@ fun ContentPanel(
         // Compose does not call View.performClick(): use the same system sound path
         // as the old Android buttons, respecting the user's sound-effects setting.
         val audible = when (event) {
-            is ContentEvent.PageSelected, ContentEvent.DismissSheet,
+            is ContentEvent.PageSelected, ContentEvent.DismissSheet, is ContentEvent.GesturePerformed,
             is ContentEvent.ControlLevelChanged, is ContentEvent.BrightnessChanged, is ContentEvent.VolumeChanged,
             is ContentEvent.LyricsFontSizeChanged, is ContentEvent.LyricsCurrentFontSizeChanged,
             is ContentEvent.LyricsLineGapChanged, is ContentEvent.LyricsImmersiveFontSizeChanged,
@@ -143,8 +146,31 @@ fun ContentPanel(
     }
     val dispatch: (ContentEvent) -> Unit = { dispatchAccepted(it) }
     val uiOpacity = state.interfaceOpacity
+    val inputEpoch = inputGate.revision
+    val presentationInputEpoch = presentation?.inputGeneration
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            BoxWithConstraints(Modifier.fillMaxSize().observeUnconsumedPageTap(
+            BoxWithConstraints(Modifier.fillMaxSize().testTag("content-gesture-region")
+                .multiFingerGestures(
+                    sessionKey = Triple(state.page, inputEpoch, presentationInputEpoch),
+                    arbitration = multiFingerArbitration,
+                    enabled = {
+                        val current = latestPanelState.value
+                        inputGate.enabled && inputGate.revision == inputEpoch &&
+                            presentation?.inputGeneration == presentationInputEpoch &&
+                            presentation?.geometryReady == true && !presentation.moving &&
+                            !presentation.pagerMotion && !presentation.modalActive &&
+                            !current.settingsOpen && !settingsActive && !current.sourcesOpen &&
+                            !current.scenariosOpen && !current.lyricsProviderSettings.appleLoginOpen
+                    },
+                    onOwnershipChanged = { owned -> if (owned) dockOverlay.cancel() },
+                    onGesture = { result ->
+                        if (latestPanelState.value.page.supportsImmersive) {
+                            MultiFingerGestureRouting.command(result)?.let { command ->
+                                dispatchAccepted(ContentEvent.GesturePerformed(command))
+                            }
+                        }
+                    },
+                ).observeUnconsumedPageTap(
                 state.page == PanelPage.Lyrics && contentInteractive && !pageMotion) {
                 clickSound(view)
                 blankTapRevision++
@@ -176,6 +202,7 @@ fun ContentPanel(
                 val mediaEdge = geometry.dp(CONTENT_REFERENCE_MEDIA_EDGE_PX)
                 val mediaDockGap = geometry.dp(CONTENT_REFERENCE_MEDIA_DOCK_GAP_PX)
                 val topBarWidth = if (wide && !state.immersiveTopBarKeepSplit) fullWidth else leftWidth
+                val showCruiseSignals = wide && state.immersiveShowTopBar && state.showCruiseSignals && cruiseSignalsAvailable
                 val topBarHeight = TopBarMetrics.height(compact)
                 val dockHeight = geometry.dockSurfaceHeight + geometry.edge
                 val mediaHeight = geometry.mediaSurfaceHeight + mediaDockGap
@@ -194,15 +221,19 @@ fun ContentPanel(
                 ambientBackground?.invoke()
                 CompositionLocalProvider(
                     LocalContentGeometry provides geometry,
+                    LocalMultiFingerGestureArbitration provides multiFingerArbitration,
                     LocalContentWindowActive provides windowActive,
                     LocalInterfaceOpacity provides uiOpacity,
-                     LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion),
+                     LocalQuickControlInteractionEnabled provides (contentInteractive && !pageMotion && !multiFingerArbitration.owned),
                     LocalQuickControlClickAcceptance provides acceptsQuickControlClick,
                     LocalQuickControlDispatch provides dispatchAccepted,
                      LocalPresentationInteractionEnabled provides !pageMotion) {
                     if (showTop) Box(Modifier.width(topBarWidth).graphicsLayer {
                         alpha = if (state.immersiveShowTopBar) 1f else compactOpacity()
-                    }.zIndex(1f)) { PrototypeTopBar(state, clockText, compactLayout = compact) }
+                    }.zIndex(1f)) {
+                        PrototypeTopBar(state, clockText, compactLayout = compact,
+                            showCruiseSignals = showCruiseSignals, cruiseSignals = cruiseSignals)
+                    }
                     Column(Modifier.width(if (lyricMode) splitWidth else maxWidth).fillMaxHeight()) {
                         if (showTop) Spacer(Modifier.height(topBarHeight))
                         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
@@ -264,7 +295,7 @@ fun ContentPanel(
                                 }
                             }
                             HorizontalPager(pager, Modifier.fillMaxSize().testTag("runtime-pages"),
-                                userScrollEnabled = contentInteractive && !transitioning && !wide) { index ->
+                                userScrollEnabled = contentInteractive && !transitioning && !wide && !multiFingerArbitration.owned) { index ->
                                 CompositionLocalProvider(
                                     LocalIconVisible provides (index == pager.currentPage),
                                     LocalContentDrawingVisible provides contentInteractive,
@@ -383,8 +414,15 @@ fun ContentPanel(
 }
 
 @Composable
-private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> ClockText, compactLayout: Boolean? = null) {
+private fun PrototypeTopBar(
+    state: ContentUiState,
+    clockText: @Composable () -> ClockText,
+    compactLayout: Boolean? = null,
+    showCruiseSignals: Boolean = false,
+    cruiseSignals: @Composable () -> CruiseSignalState = { CruiseSignalState() },
+) {
     val clock = clockText()
+    val signals = if (showCruiseSignals) cruiseSignals() else CruiseSignalState()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
         val measurer = rememberTextMeasurer()
@@ -392,7 +430,20 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
         val style = MaterialTheme.typography.titleLarge.copy(fontSize = TopBarMetrics.textSize(maxWidth < 360.dp))
         val gap = if (compact) 4.dp else 8.dp
         val batterySize = if (!state.showBattery) 0.dp else TopBarMetrics.batterySize(compact)
-        val availablePx = with(density) { (maxWidth - 24.dp - batterySize).toPx() }
+        val signalCompact = maxWidth < 360.dp
+        val signalStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontSize = CruiseSignalMetrics.textSize(signalCompact), fontWeight = FontWeight.SemiBold)
+        val uniqueSignals = signals.lights.distinctBy { it.direction }
+        val signalWidthPx = uniqueSignals.sumOf { light ->
+            val number = light.seconds?.takeIf { it >= 0 }
+            (with(density) { CruiseSignalMetrics.lampSize(signalCompact).toPx() } +
+                if (number == null) 0f else with(density) { CruiseSignalMetrics.numberGap(signalCompact).toPx() } +
+                    measurer.measure(AnnotatedString(number.toString()), signalStyle, softWrap = false, maxLines = 1).size.width
+            ).toDouble()
+        }.toFloat() + with(density) { CruiseSignalMetrics.itemGap(signalCompact).toPx() } *
+            (uniqueSignals.size - 1).coerceAtLeast(0)
+        val availablePx = with(density) { (maxWidth - 24.dp - batterySize).toPx() } -
+            if (uniqueSignals.isEmpty()) 0f else signalWidthPx + with(density) { gap.toPx() }
         val gapPx = with(density) { gap.toPx() }
         fun width(text: String) = measurer.measure(AnnotatedString(text), style, softWrap = false, maxLines = 1).size.width.toFloat()
         val temperature = state.temperature.replace("°C", "°").replace("°", "°C")
@@ -428,16 +479,18 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
             return texts.sumOf { width(it).toDouble() }.toFloat() + gapPx * (texts.size + 1) + if (fullStatus != null && showTemperature) with(density) { 4.dp.toPx() } else 0f
         }
         // Optional temperature yields first, then seconds; weekday and primary values survive.
-        val times = listOf(fullTime, minuteTime, shortWeekdayTime).distinct()
+        val times = (listOf(fullTime, minuteTime, shortWeekdayTime) +
+            if (uniqueSignals.isEmpty()) emptyList() else listOf(clock.time.take(5))).distinct()
         val choices = listOf(Triple(fullTime, statuses.first(), state.showIndoorTemperature)) +
             times.map { Triple(it, statuses.first(), false) } +
             statuses.drop(1).flatMap { status -> times.map { Triple(it, status, false) } } +
             statuses.asReversed().map { Triple(shortWeekdayTime, it, false) }
         val choice = choices.firstOrNull { required(it.first, it.second, it.third) <= availablePx }
-            ?: Triple(shortWeekdayTime, statuses.last(), false)
+            ?: Triple(if (uniqueSignals.isEmpty()) shortWeekdayTime else clock.time.take(5), statuses.last(), false)
         val time = choice.first
         val status = choice.second
         val showTemperature = choice.third
+        val showRange = state.showRange && (uniqueSignals.isEmpty() || required(time, status, showTemperature) <= availablePx)
         val battery = when {
             state.charging -> R.drawable.content_oem_ico_battery_charging
             state.previewMode -> R.drawable.content_oem_ico_battery_4
@@ -450,13 +503,14 @@ private fun PrototypeTopBar(state: ContentUiState, clockText: @Composable () -> 
             .testTag("top-bar").semantics { this[TemperatureVisible] = showTemperature },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) {
             TopBarText(time, "top-time", style, width(time), description = fullTime)
+            if (signals.lights.isNotEmpty()) CruiseSignalBar(signals, compact = signalCompact, textSize = style.fontSize)
             if (fullStatus != null && showTemperature) Row(Modifier.padding(start = temperatureGap - gap)) {
                 TopBarText(temperature, "top-temperature", style, width(temperature))
             }
             Spacer(Modifier.weight(1f))
             if (fullStatus == null && showTemperature) TopBarText(temperature, "top-temperature", style, width(temperature))
             if (fullStatus != null) TopBarText(status, "charge-status", style, width(status), description = fullStatus)
-            if (state.showRange) TopBarText(range, "top-range", style, width(range))
+            if (showRange) TopBarText(range, "top-range", style, width(range))
             val base = MaterialTheme.colorScheme.primary
             val green = Color(0xFF76E65B)
             val colors = when {

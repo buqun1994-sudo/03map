@@ -212,12 +212,16 @@ open class ContentImmersiveHostTest {
 
             val presentation = host.javaClass.getDeclaredField("presentation").apply { isAccessible = true }
                 .get(host) as ContentPresentation
-            presentation.updateModalActive(true)
+            val binding = hostBinding(host)
+            binding.dispatch(ContentEvent.SettingsTapped)
             advanceHostFrames(root)
+            assertTrue(binding.state.value.settingsOpen)
+            assertTrue(presentation.modalActive)
             assertFalse(port.calls.last().enabled)
             assertTrue(port.calls.all { !it.remind })
-            presentation.updateModalActive(false)
+            binding.dispatch(ContentEvent.SettingsDismissed)
             advanceHostFrames(root)
+            assertFalse(presentation.modalActive)
             assertTrue(port.calls.last().enabled)
             assertTrue(port.calls.all { !it.remind })
 

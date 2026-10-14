@@ -3,6 +3,7 @@ package com.icar03.content.preview
 import com.icar03.content.ui.*
 import com.icar03.content.model.LyricPreferenceRules
 import com.icar03.content.model.ContentMediaControlPolicy
+import com.icar03.content.model.GesturePreferences
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -10,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Preview only. All calls are serialized on the UI dispatcher; no real adapters exist. */
 class PreviewController(private val scope: CoroutineScope, initial: ContentUiState = previewState()) {
-    private val mutableState = MutableStateFlow(initial)
+    private val mutableState = MutableStateFlow(initial.copy(gestureActions = GesturePreferences.normalize(initial.gestureActions)))
     val state: StateFlow<ContentUiState> = mutableState.asStateFlow()
     private val jobs = mutableMapOf<String, Job>()
     private var generation = 0L
@@ -18,6 +19,9 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
     private fun update(transform: (ContentUiState) -> ContentUiState) { mutableState.value = transform(mutableState.value) }
 
     fun dispatch(event: ContentEvent) {
+        if (event is ContentEvent.GestureActionChanged && (!active || !state.value.settingsOpen ||
+                state.value.settingsSection != SettingsSection.Gestures || state.value.settingsCollapsed ||
+                state.value.lyricsProviderSettings.appleLoginOpen)) return
         if (!state.value.settingsOpen && event.isSettingsInteraction() && event !in setOf(
                 ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings,
                 ContentEvent.SettingsBack, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet)) return
@@ -29,7 +33,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.ScenarioSelected -> {
                 cancelPending()
                 val old = state.value
-                mutableState.value = previewState(event.scenario).copy(dark = old.dark, page = old.page)
+                mutableState.value = previewState(event.scenario).copy(dark = old.dark, page = old.page, gestureActions = old.gestureActions)
             }
             ContentEvent.ToggleTheme -> update { it.copy(dark = !it.dark) }
             is ContentEvent.PageSelected -> update { it.copy(page = event.page) }
@@ -51,6 +55,10 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             }
             ContentEvent.OpenLyricsSettings -> update { it.copy(settingsOpen = true, settingsCollapsed = false, settingsSection = SettingsSection.Lyrics, sourcesOpen = false, scenariosOpen = false, message = null) }
             ContentEvent.EnterLyricsImmersive, ContentEvent.ExitLyricsImmersive -> Unit
+            is ContentEvent.GesturePerformed -> Unit
+            is ContentEvent.GestureActionChanged -> update {
+                it.copy(gestureActions = GesturePreferences.withAction(it.gestureActions, event.command, event.action))
+            }
             is ContentEvent.ImmersiveShowTopBarChanged -> update { it.copy(immersiveShowTopBar = event.value) }
             is ContentEvent.ImmersiveTopBarKeepSplitChanged -> update { it.copy(immersiveTopBarKeepSplit = event.value) }
             is ContentEvent.ImmersiveShowDockChanged -> update { it.copy(immersiveShowDock = event.value) }
@@ -62,6 +70,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             is ContentEvent.SettingsSectionSelected -> update { if (it.settingsOpen) it.copy(settingsSection = event.section) else it }
             is ContentEvent.ShowWeekdayChanged -> update { it.copy(showWeekday = event.value) }
             is ContentEvent.ShowSecondsChanged -> update { it.copy(showSeconds = event.value) }
+             is ContentEvent.ShowCruiseSignalsChanged -> update { it.copy(showCruiseSignals = event.value) }
             is ContentEvent.ShowIndoorTemperatureChanged -> update { it.copy(showIndoorTemperature = event.value) }
             is ContentEvent.ShowBatteryChanged -> update { it.copy(showBattery = event.value) }
             is ContentEvent.ShowRangeChanged -> update { it.copy(showRange = event.value) }
@@ -145,6 +154,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
             }
             is ContentEvent.LyricsSpeakerLayoutChanged -> update { it.copy(lyricsSpeakerLayout = event.value) }
             is ContentEvent.LyricsShowTranslationChanged -> update { it.copy(lyricsShowTranslation = event.value) }
+            is ContentEvent.LyricsShowRomanizationChanged -> update { it.copy(lyricsShowRomanization = event.value) }
             is ContentEvent.LyricsHighlightChanged -> update { it.copy(lyricsHighlight = event.value) }
             ContentEvent.LyricsDefaultsRequested -> update {
                 val defaults = ContentUiState()
@@ -164,6 +174,7 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                     lyricsImmersiveLineGapDp = defaults.lyricsImmersiveLineGapDp,
                     lyricsSpeakerLayout = defaults.lyricsSpeakerLayout,
                     lyricsShowTranslation = defaults.lyricsShowTranslation,
+                    lyricsShowRomanization = defaults.lyricsShowRomanization,
                     lyricsHighlight = defaults.lyricsHighlight,
                     lyricsProviderSettings = it.lyricsProviderSettings.copy(preferredPlatform = "auto"),
                 )

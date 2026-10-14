@@ -1,6 +1,9 @@
 package com.icar03.content.ui
 
 import com.icar03.content.model.LyricPreferenceRules
+import com.icar03.content.model.GestureAction
+import com.icar03.content.model.GestureCommand
+import com.icar03.content.model.GesturePreferences
 import com.icar03.content.model.VehicleFeature
 
 /** Pure presentation contract: no Android, vendor IDs, permissions or business ports. */
@@ -96,7 +99,8 @@ enum class SettingsSection(val label: String, val description: String) {
     Lyrics("歌词", "字号、行距和声部呈现"),
     Artwork("背景", "歌曲封面背景的显示方式"),
     Media("媒体", "媒体卡的附加入口"),
-    Interaction("交互", "操作结果提示")
+    Interaction("交互", "操作结果提示"),
+    Gestures("手势操作", "二指、三指和四指方向操作")
 }
 enum class PreviewScenario(val label: String) {
     Ready("日常预览"), NoData("无数据"), Unavailable("能力不可用"), Failure("失败回弹"), Pending("待确认"), Playing("正在播放"), SourceMenu("来源菜单")
@@ -173,6 +177,7 @@ data class ContentUiState(
     val settingsCollapsed: Boolean = false,
     val autoCloseSettingsOnDrive: Boolean = true,
     val showWeekday: Boolean = true, val showSeconds: Boolean = false,
+     val showCruiseSignals: Boolean = true,
     val showIndoorTemperature: Boolean = true, val showBattery: Boolean = true,
     val showRange: Boolean = true,
     val showChargingStatus: Boolean = true,
@@ -191,6 +196,7 @@ data class ContentUiState(
     val lyricsImmersiveCurrentFontSizeSp: Float = LyricPreferenceRules.DEFAULT_IMMERSIVE_CURRENT_SP,
     val lyricsImmersiveLineGapDp: Float = LyricPreferenceRules.DEFAULT_IMMERSIVE_GAP_DP,
     val lyricsShowTranslation: Boolean = true,
+    val lyricsShowRomanization: Boolean = true,
     val lyricsSystemAccentColor: Int = LyricPreferenceRules.DEFAULT_SYSTEM_ACCENT_COLOR,
     val lyricsProviderSettings: LyricsProviderUiState = LyricsProviderUiState(),
     val lyricsSpeakerLayout: Boolean = true,
@@ -200,6 +206,7 @@ data class ContentUiState(
     val showAmbientArtwork: Boolean = true,
     val showMediaSourceSwitcher: Boolean = true, val dockButtonCount: Int = 5,
     val showActionFeedback: Boolean = true, val gestureBarReminder: Boolean = true, val uiOpacity: Float = 1.0f,
+    val gestureActions: Map<GestureCommand, GestureAction> = GesturePreferences.defaultActions(),
     val previewMode: Boolean = true, val weekday: String = "星期三", val rangeUnit: String = "km",
     val chargeStatus: String? = null, val batteryDescription: String = "电量未知", val batteryPercent: Int? = null, val charging: Boolean = false,
     val placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap(),
@@ -245,10 +252,13 @@ sealed interface ContentEvent {
     // The map host consumes these intents through its existing presentation port.
     data object EnterLyricsImmersive : ContentEvent
     data object ExitLyricsImmersive : ContentEvent
+    data class GesturePerformed(val command: GestureCommand) : ContentEvent
+    data class GestureActionChanged(val command: GestureCommand, val action: GestureAction) : ContentEvent
     data class SettingsSectionSelected(val section: SettingsSection) : ContentEvent
     data object SettingsDismissed : ContentEvent
     data class ShowWeekdayChanged(val value: Boolean) : ContentEvent
     data class ShowSecondsChanged(val value: Boolean) : ContentEvent
+     data class ShowCruiseSignalsChanged(val value: Boolean) : ContentEvent
     data class ShowIndoorTemperatureChanged(val value: Boolean) : ContentEvent
     data class ShowBatteryChanged(val value: Boolean) : ContentEvent
     data class ShowRangeChanged(val value: Boolean) : ContentEvent
@@ -272,6 +282,7 @@ sealed interface ContentEvent {
     data class LyricsLineSpacingChanged(val value: Int) : ContentEvent
     data class LyricsSpeakerLayoutChanged(val value: Boolean) : ContentEvent
     data class LyricsShowTranslationChanged(val value: Boolean) : ContentEvent
+     data class LyricsShowRomanizationChanged(val value: Boolean) : ContentEvent
     data class LyricsHighlightChanged(val value: Boolean) : ContentEvent
     data object LyricsDefaultsRequested : ContentEvent
     data class ImmersiveShowTopBarChanged(val value: Boolean) : ContentEvent
@@ -293,6 +304,7 @@ fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
     ContentEvent.SettingsDismissed, ContentEvent.SettingsCollapseTapped, ContentEvent.SettingsRestored, ContentEvent.DismissSheet,
     is LyricsPlatformSelected, AppleMusicConnectRequested, AppleMusicLoginDismissed, AppleMusicDisconnectRequested,
     is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged,
+     is ContentEvent.ShowCruiseSignalsChanged,
     is ContentEvent.ShowRangeChanged, is ContentEvent.ShowIndoorTemperatureChanged, is ContentEvent.ShowBatteryChanged,
     is ContentEvent.ShowChargingStatusChanged,
      is ContentEvent.ShowPluggedStatusChanged,
@@ -305,13 +317,13 @@ fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
     is ContentEvent.LyricsCurrentColorModeChanged, is ContentEvent.LyricsCurrentCustomColorChanged,
     is ContentEvent.LyricsImmersiveFontSizeChanged, is ContentEvent.LyricsImmersiveCurrentFontSizeChanged, is ContentEvent.LyricsImmersiveLineGapChanged,
     is ContentEvent.LyricsLineSpacingChanged, is ContentEvent.LyricsSpeakerLayoutChanged,
-     is ContentEvent.LyricsShowTranslationChanged,
+     is ContentEvent.LyricsShowTranslationChanged, is ContentEvent.LyricsShowRomanizationChanged,
     is ContentEvent.LyricsHighlightChanged, ContentEvent.LyricsDefaultsRequested, is ContentEvent.ImmersiveShowTopBarChanged,
      is ContentEvent.ImmersiveTopBarKeepSplitChanged,
     is ContentEvent.ImmersiveShowDockChanged, is ContentEvent.ShowAmbientArtworkChanged,
     is ContentEvent.ShowMediaSourceSwitcherChanged, is ContentEvent.DockButtonCountChanged,
     is ContentEvent.ShowActionFeedbackChanged, is ContentEvent.AutoCloseSettingsOnDriveChanged,
-    is ContentEvent.GestureBarReminderChanged, is ContentEvent.UiOpacityChanged -> true
+    is ContentEvent.GestureBarReminderChanged, is ContentEvent.GestureActionChanged, is ContentEvent.UiOpacityChanged -> true
     else -> false
 }
 

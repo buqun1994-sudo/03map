@@ -104,6 +104,32 @@
           "symbol": "map_mute_select_style"
         }
       ]
+    },
+    {
+      "name": "libGbl.so",
+      "baseSha256": "89c624e3bdc24ddfdede61fa6458236eb09fa25f7085d1c1ea16d830b3a26547",
+      "assembly": "cruise-map.S",
+      "sourceSha256": "b711582daf577a411da0f3a38c0b1ce112f315cbd8a43f726310b5f68676fe55",
+      "payloadSha256": "edbf1a9f2b30cffc8d9f3af60fc4dd844132ccef7b051a6402af07849e3123bf",
+      "payloadSize": 768,
+      "symbols": {
+        "map_mute_cruise_capture": 0,
+        "map_mute_cruise_lock": 560,
+        "map_mute_cruise_output": 697,
+        "map_mute_cruise_temp": 629
+      },
+      "externals": {
+        "cruise_converter_resume": "0x19820c8"
+      },
+      "patches": [
+        {
+          "va": "0x19820c4",
+          "expected": "ffc303d1",
+          "kind": "b",
+          "symbol": "map_mute_cruise_capture"
+        }
+      ],
+      "outputSha256": "83e4b972336ddbada9050306ebd4f1c3253621af303880eaef80f67654dd51b4"
     }
   ]
 }

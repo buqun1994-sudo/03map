@@ -4,7 +4,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 val formalClasses = listOf("ContentState", "ContentRegistry", "ContentPreferenceStore", "ContentPorts",
-    "ContentStore", "ContentVehicleAdapter", "ContentVehicleProtocol", "ContentMediaAdapter", "ContentMediaListener")
+    "ContentStore", "ContentVehicleAdapter", "ContentVehicleProtocol", "ContentMediaAdapter", "ContentMediaListener",
+    "ContentCruiseMapBridge")
 android {
     namespace = "com.icar03.content.runtime"
     compileSdk = 35

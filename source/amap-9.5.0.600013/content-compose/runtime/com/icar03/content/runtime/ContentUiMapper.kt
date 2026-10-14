@@ -76,6 +76,23 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private fun metadataReady(state: ContentState) = song(state) && state.pendingSource.isEmpty() &&
         state.mediaRecordingKey.isNotBlank() && state.mediaTitle.isNotBlank() && state.mediaTitle != "暂无媒体"
 
+    fun cruiseSignals(state: ContentState): CruiseSignalState = if (!state.showCruiseSignals) CruiseSignalState() else
+        CruiseSignalState(state.cruiseSignals.lights.mapNotNull { light ->
+            val direction = when (light.direction) {
+                1 -> CruiseSignalDirection.Left
+                2 -> CruiseSignalDirection.Straight
+                3 -> CruiseSignalDirection.Right
+                else -> return@mapNotNull null
+            }
+            val color = when (light.color) {
+                0 -> CruiseSignalColor.Red
+                1 -> CruiseSignalColor.Green
+                2 -> CruiseSignalColor.Yellow
+                else -> return@mapNotNull null
+            }
+            CruiseSignalItem(direction, color, light.seconds.takeIf { it > 0 })
+        })
+
     fun clock(state: ContentState, nowMillis: Long = state.nowMillis): ClockText =
         clockPresenter.project(nowMillis, state.showSeconds, state.showWeekday)
 
@@ -179,6 +196,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
             page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
             showWeekday = state.showWeekday, showSeconds = state.showSeconds,
+            showCruiseSignals = state.showCruiseSignals,
             showIndoorTemperature = state.showIndoorTemperature, showBattery = state.showBattery,
             showRange = state.showRange,
              showChargingStatus = state.showChargingStatus,
@@ -198,6 +216,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                   state.lyricsImmersiveCurrentFontSizeSp, state.lyricsImmersiveFontSizeSp),
              lyricsImmersiveLineGapDp = LyricPreferenceRules.immersiveLineGap(state.lyricsImmersiveLineGapDp),
               lyricsShowTranslation = state.lyricsShowTranslation,
+              lyricsShowRomanization = state.lyricsShowRomanization,
              lyricsSystemAccentColor = LyricPreferenceRules.opaqueColor(lyricsSystemAccentColor),
              lyricsSpeakerLayout = state.lyricsSpeakerLayout,
             lyricsHighlight = state.lyricsHighlight,
@@ -209,6 +228,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             showActionFeedback = state.showActionFeedback,
             autoCloseSettingsOnDrive = state.autoCloseSettingsOnDrive,
             gestureBarReminder = state.gestureBarReminder,
+            gestureActions = state.gestureActions,
              uiOpacity = state.uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1.0f) ?: 1.0f,
             temperature = if (realVehicle && state.temperatureC.isFinite()) "${format(state.temperatureC)}°C" else "--",
             time = "--:--", weekday = "",
@@ -297,6 +317,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
     private fun sameShellFacts(a: ContentState, b: ContentState): Boolean =
         a.themeMode == b.themeMode && a.pageIndex == b.pageIndex &&
             a.showWeekday == b.showWeekday && a.showSeconds == b.showSeconds &&
+            a.showCruiseSignals == b.showCruiseSignals &&
             a.showIndoorTemperature == b.showIndoorTemperature && a.showBattery == b.showBattery &&
             a.showRange == b.showRange && a.showChargingStatus == b.showChargingStatus &&
              a.showPluggedStatus == b.showPluggedStatus && a.showScheduledCharging == b.showScheduledCharging &&
@@ -312,13 +333,14 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
              a.lyricsImmersiveCurrentFontSizeSp.toBits() == b.lyricsImmersiveCurrentFontSizeSp.toBits() &&
              a.lyricsImmersiveLineGapDp.toBits() == b.lyricsImmersiveLineGapDp.toBits() &&
              a.lyricsShowTranslation == b.lyricsShowTranslation &&
+              a.lyricsShowRomanization == b.lyricsShowRomanization &&
              a.lyricsSpeakerLayout == b.lyricsSpeakerLayout &&
             a.lyricsHighlight == b.lyricsHighlight &&
             a.immersiveShowTopBar == b.immersiveShowTopBar && a.immersiveTopBarKeepSplit == b.immersiveTopBarKeepSplit && a.immersiveShowDock == b.immersiveShowDock &&
             a.showAmbientArtwork == b.showAmbientArtwork &&
             a.showMediaSourceSwitcher == b.showMediaSourceSwitcher && a.dockButtonCount == b.dockButtonCount &&
             a.showActionFeedback == b.showActionFeedback && a.autoCloseSettingsOnDrive == b.autoCloseSettingsOnDrive &&
-            a.gestureBarReminder == b.gestureBarReminder && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
+            a.gestureBarReminder == b.gestureBarReminder && a.gestureActions == b.gestureActions && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
             a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
             a.chargeState == b.chargeState && a.chargeConnectionRaw == b.chargeConnectionRaw &&

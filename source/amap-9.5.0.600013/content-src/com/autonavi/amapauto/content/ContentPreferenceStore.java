@@ -2,16 +2,20 @@ package com.autonavi.amapauto.content;
 
 import com.icar03.content.model.VehicleControl;
 import com.icar03.content.model.LyricPreferenceRules;
+import com.icar03.content.model.GestureAction;
+import com.icar03.content.model.GestureCommand;
+import com.icar03.content.model.GesturePreferences;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 
 public final class ContentPreferenceStore {
     private static final String PREFERENCES_NAME = "content_preferences_v1";
-    private static final int PREFERENCES_VERSION = 8;
+    private static final int PREFERENCES_VERSION = 10;
     private static final String KEY_PREFERENCES_VERSION = "preferences_version";
     private static final String KEY_SHOW_WEEKDAY = "top_bar_show_weekday";
     private static final String KEY_SHOW_SECONDS = "top_bar_show_seconds";
+    private static final String KEY_SHOW_CRUISE_SIGNALS = "top_bar_show_cruise_signals";
     private static final String KEY_SHOW_INDOOR_TEMPERATURE = "top_bar_show_indoor_temperature";
     private static final String KEY_SHOW_BATTERY = "top_bar_show_battery";
     private static final String KEY_SHOW_RANGE = "top_bar_show_range";
@@ -34,6 +38,7 @@ public final class ContentPreferenceStore {
     private static final String KEY_LYRICS_IMMERSIVE_CURRENT_FONT_SIZE_SP = "lyrics_immersive_current_font_size_sp";
     private static final String KEY_LYRICS_IMMERSIVE_LINE_GAP_DP = "lyrics_immersive_line_gap_dp";
     private static final String KEY_LYRICS_SHOW_TRANSLATION = "lyrics_show_translation";
+    private static final String KEY_LYRICS_SHOW_ROMANIZATION = "lyrics_show_romanization";
     private static final String KEY_LYRICS_SPEAKER_LAYOUT = "lyrics_speaker_layout";
     private static final String KEY_LYRICS_HIGHLIGHT = "lyrics_highlight";
     private static final String KEY_IMMERSIVE_SHOW_TOP_BAR = "lyrics_immersive_show_top_bar";
@@ -45,6 +50,7 @@ public final class ContentPreferenceStore {
     private static final String KEY_SHOW_ACTION_FEEDBACK = "interaction_show_action_feedback";
     private static final String KEY_AUTO_CLOSE_SETTINGS_ON_DRIVE = "interaction_auto_close_settings_on_drive";
     private static final String KEY_GESTURE_BAR_REMINDER = "interaction_gesture_bar_reminder";
+    private static final String KEY_GESTURE_ACTION_PREFIX = "gesture_action_";
     private static final String KEY_UI_OPACITY = "ui_opacity";
     private static final String KEY_PAGE_ID = "current_page_id";
     private static final String KEY_CONTROL_ID = "current_control_id";
@@ -61,6 +67,7 @@ public final class ContentPreferenceStore {
         int version = readSchemaVersion();
         state.showWeekday = readBoolean(KEY_SHOW_WEEKDAY, true);
         state.showSeconds = readBoolean(KEY_SHOW_SECONDS, false);
+        state.showCruiseSignals = readBoolean(KEY_SHOW_CRUISE_SIGNALS, true);
         state.showIndoorTemperature = readBoolean(KEY_SHOW_INDOOR_TEMPERATURE, true);
         state.showBattery = readBoolean(KEY_SHOW_BATTERY, true);
         state.showRange = readBoolean(KEY_SHOW_RANGE, true);
@@ -142,6 +149,7 @@ public final class ContentPreferenceStore {
                             LyricPreferenceRules.DEFAULT_IMMERSIVE_CURRENT_SP), immersiveNormal);
         }
         state.lyricsShowTranslation = readBoolean(KEY_LYRICS_SHOW_TRANSLATION, true);
+        state.lyricsShowRomanization = readBoolean(KEY_LYRICS_SHOW_ROMANIZATION, true);
         state.lyricsSpeakerLayout = readBoolean(KEY_LYRICS_SPEAKER_LAYOUT, true);
         state.lyricsHighlight = readBoolean(KEY_LYRICS_HIGHLIGHT, LyricPreferenceRules.DEFAULT_HIGHLIGHT);
         state.immersiveShowTopBar = readBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, true);
@@ -154,6 +162,12 @@ public final class ContentPreferenceStore {
         state.autoCloseSettingsOnDrive = readBoolean(KEY_AUTO_CLOSE_SETTINGS_ON_DRIVE, true);
         // Versions 1..4 predate this preference; migrate them to the default-on behavior without rewriting old entries.
         state.gestureBarReminder = version <= 4 ? true : readBoolean(KEY_GESTURE_BAR_REMINDER, true);
+        java.util.Map<GestureCommand, GestureAction> gestureActions = new java.util.EnumMap<>(GestureCommand.class);
+        for (GestureCommand command : GestureCommand.values()) {
+            GestureAction saved = GestureAction.fromValue(readString(KEY_GESTURE_ACTION_PREFIX + command.getKey(), null));
+            gestureActions.put(command, saved == null ? GesturePreferences.defaultAction(command) : saved);
+        }
+        state.setGestureActions(gestureActions);
         state.uiOpacity = clampUiOpacity(readFloat(KEY_UI_OPACITY, 1.0f));
         // Version 1 only knew the weekday/seconds fields; all new fields have safe defaults.
         // Writing the version on the next preference change completes the migration lazily.
@@ -179,6 +193,7 @@ public final class ContentPreferenceStore {
         editor.putInt(KEY_PREFERENCES_VERSION, PREFERENCES_VERSION);
         editor.putBoolean(KEY_SHOW_WEEKDAY, state.showWeekday);
         editor.putBoolean(KEY_SHOW_SECONDS, state.showSeconds);
+        editor.putBoolean(KEY_SHOW_CRUISE_SIGNALS, state.showCruiseSignals);
         editor.putBoolean(KEY_SHOW_INDOOR_TEMPERATURE, state.showIndoorTemperature);
         editor.putBoolean(KEY_SHOW_BATTERY, state.showBattery);
         editor.putBoolean(KEY_SHOW_RANGE, state.showRange);
@@ -210,6 +225,7 @@ public final class ContentPreferenceStore {
         editor.putFloat(KEY_LYRICS_IMMERSIVE_LINE_GAP_DP,
                 LyricPreferenceRules.immersiveLineGap(state.lyricsImmersiveLineGapDp));
         editor.putBoolean(KEY_LYRICS_SHOW_TRANSLATION, state.lyricsShowTranslation);
+        editor.putBoolean(KEY_LYRICS_SHOW_ROMANIZATION, state.lyricsShowRomanization);
         editor.putBoolean(KEY_LYRICS_SPEAKER_LAYOUT, state.lyricsSpeakerLayout);
         editor.putBoolean(KEY_LYRICS_HIGHLIGHT, state.lyricsHighlight);
         editor.putBoolean(KEY_IMMERSIVE_SHOW_TOP_BAR, state.immersiveShowTopBar);
@@ -221,6 +237,9 @@ public final class ContentPreferenceStore {
         editor.putBoolean(KEY_SHOW_ACTION_FEEDBACK, state.showActionFeedback);
         editor.putBoolean(KEY_AUTO_CLOSE_SETTINGS_ON_DRIVE, state.autoCloseSettingsOnDrive);
         editor.putBoolean(KEY_GESTURE_BAR_REMINDER, state.gestureBarReminder);
+        for (GestureCommand command : GestureCommand.values()) {
+            editor.putString(KEY_GESTURE_ACTION_PREFIX + command.getKey(), state.getGestureActions().get(command).getValue());
+        }
         editor.putFloat(KEY_UI_OPACITY, clampUiOpacity(state.uiOpacity));
         String[] pageIds = ContentRegistry.visiblePageIds();
         if (state.pageIndex >= 0 && state.pageIndex < pageIds.length) {

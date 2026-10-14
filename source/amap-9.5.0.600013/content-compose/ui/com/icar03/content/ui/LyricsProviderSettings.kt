@@ -23,7 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -87,6 +86,9 @@ data class LyricsProviderUiState(
     val appleLoginOpen: Boolean = false,
     val applePreparing: Boolean = false,
     val available: Boolean = false,
+    val appleAccountName: String = "",
+    val appleRegionName: String = "",
+    val appleConnectionMessage: String = "",
 )
 
 /** Provider selection intents are leaves so the existing ContentBinding remains the owner. */
@@ -208,34 +210,61 @@ private fun AppleMusicStatusSection(state: LyricsProviderUiState, enabled: Boole
     val design = LocalSettingsDesign.current
     val status = state.appleStatus.trim().lowercase(Locale.ROOT)
     val connected = status == "connected"
+    val verifying = status == "verifying"
     val opening = state.appleLoginOpen || state.applePreparing || status == "connecting"
+    val message = state.appleConnectionMessage.trim()
+    val region = remember(state.appleRegionName, state.appleStorefront) {
+        state.appleRegionName.trim().ifBlank {
+            val country = state.appleStorefront.trim().uppercase(Locale.ROOT)
+            when {
+                country == "CN" -> "中国大陆"
+                country in Locale.getISOCountries() -> Locale("", country).getDisplayCountry(Locale.SIMPLIFIED_CHINESE)
+                else -> ""
+            }
+        }
+    }
     val statusLabel = when {
         !state.available -> "暂不可用"
-        state.applePreparing -> "正在准备登录页面…"
-        state.appleLoginOpen -> "登录页面已打开"
-        connected -> "已连接"
+        verifying -> message.ifBlank { "正在验证登录…" }
+        state.applePreparing -> "正在准备登录…"
+        opening -> "请在03浏览器完成登录"
+        connected -> if (region.isBlank()) "已登录" else "已登录 · $region"
         status == "expired" -> "登录已过期"
         status == "rejected" -> "登录已失效"
         else -> "未连接"
     }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
+    val actionLabel = when {
+        verifying -> "验证中"
+        opening -> "取消"
+        connected -> "断开"
+        else -> "登录"
+    }
+    Column(Modifier.fillMaxWidth().testTag("settings-apple-account"), verticalArrangement = Arrangement.spacedBy(design.itemGap)) {
         Text("Apple Music", style = design.labelStyle, color = design.text)
-        Text(if (state.appleStorefront.isBlank()) statusLabel else "$statusLabel · ${state.appleStorefront.uppercase(Locale.ROOT)}",
-            style = design.supportingStyle, color = design.secondaryText)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(design.smallGap), verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.weight(1f))
-            Button(
-                onClick = { onEvent(if (opening) AppleMusicLoginDismissed else AppleMusicConnectRequested) }, enabled = enabled,
-                modifier = Modifier.width(150.dp).heightIn(min = 56.dp).testTag("settings-apple-login"),
-                shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = interfaceSurfaceColor(design.track, design.surfaceOpacity), contentColor = design.text),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            ) {
-                Text("登录", style = design.optionStyle, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(design.smallGap)) {
+            Text(statusLabel, style = design.supportingStyle, color = design.secondaryText,
+                modifier = Modifier.testTag("settings-apple-status"))
+            if (message.isNotBlank() && message != statusLabel) {
+                Text(message, style = design.supportingStyle, color = design.secondaryText,
+                    modifier = Modifier.testTag("settings-apple-message"))
             }
         }
-        if (connected) OutlinedButton(onClick = { onEvent(AppleMusicDisconnectRequested) }, enabled = enabled,
-            modifier = Modifier.align(Alignment.End).heightIn(min = design.minimumTouchHeight).testTag("settings-apple-disconnect"),
-            shape = RoundedCornerShape(4.dp)) { Text("断开", style = design.optionStyle) }
+        Button(
+            onClick = {
+                if (enabled && !verifying) onEvent(when {
+                    opening -> AppleMusicLoginDismissed
+                    connected -> AppleMusicDisconnectRequested
+                    else -> AppleMusicConnectRequested
+                })
+            },
+            enabled = enabled && !verifying,
+            modifier = Modifier.align(Alignment.End).width(150.dp).heightIn(min = design.segmentHeight).testTag("settings-apple-login"),
+            shape = design.segmentShape,
+            colors = ButtonDefaults.buttonColors(containerColor = interfaceSurfaceColor(design.track, design.surfaceOpacity), contentColor = design.text),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(design.smallGap),
+        ) {
+            Text(actionLabel, style = design.optionStyle, maxLines = 1, softWrap = false)
+        }
     }
 }
 

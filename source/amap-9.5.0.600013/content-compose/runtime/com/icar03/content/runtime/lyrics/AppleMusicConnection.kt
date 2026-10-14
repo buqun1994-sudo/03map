@@ -29,11 +29,13 @@ class AppleMusicConnection internal constructor(internal val account: AppleMusic
         val expiresAtMs: Long = 0L,
         val rejectedAtMs: Long = 0L,
         val needsRenewal: Boolean = false,
-        val isConnecting: Boolean = false
+        val isConnecting: Boolean = false,
+        val loginMessage: String = ""
     )
 
     /** Opaque generation ties asynchronous callbacks to one particular login attempt. */
-    class LoginAttempt internal constructor(internal val id: String, internal val previousToken: String) {
+    class LoginAttempt internal constructor(internal val id: String, internal val previousToken: String,
+        internal val external: Boolean = false) {
         val loginUrl: String get() = LOGIN_URL
         override fun toString(): String = "AppleMusicLoginAttempt"
     }
@@ -155,6 +157,7 @@ internal class AppleMusicAccount(
     private var preparationCallback: ((AppleMusicConnection.PreparationResult) -> Unit)? = null
     private var observedToken = ""
     private var tokenFirstSeenAtMs = 0L
+    private var loginMessage = ""
     private val mutableState = MutableStateFlow(describe())
     val state: StateFlow<AppleMusicConnection.State> = mutableState.asStateFlow()
 
@@ -202,6 +205,43 @@ internal class AppleMusicAccount(
         val updated = value.rejected(clock.nowMs().coerceAtLeast(1L))
         runCatching { credentialStore.save(updated) }
         credential = updated
+        refresh()
+    }
+
+    /** External browser sessions do not clear either browser's cookie store. */
+    fun prepareExternalLoginAttempt(id: String): AppleMusicConnection.LoginAttempt? = synchronized(lock) {
+        loginAttempt?.let { return if (it.external && it.id == id) it else null }
+        AppleMusicConnection.LoginAttempt(id, credential?.token.orEmpty(), external = true).also {
+            loginAttempt = it
+            loginReady = true
+            loginMessage = "正在03浏览器中登录 Apple Music"
+            refresh()
+        }
+    }
+
+    fun completeExternalLogin(attempt: AppleMusicConnection.LoginAttempt, token: String, storefront: String):
+        AppleMusicConnection.CookieAcceptance = synchronized(lock) {
+        if (!attempt.external || appleMusicStorefront(storefront).isEmpty())
+            return AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN
+        val now = clock.nowMs()
+        saveLoginCredential(attempt, token, storefront, now, now + AppleMusicConnection.TOKEN_LIFETIME_MS).also {
+            if (it == AppleMusicConnection.CookieAcceptance.ACCEPTED) {
+                loginMessage = "Apple Music 已连接"
+                refresh()
+            }
+        }
+    }
+
+    fun updateExternalLoginMessage(attempt: AppleMusicConnection.LoginAttempt, message: String): Unit = synchronized(lock) {
+        if (loginAttempt !== attempt || !attempt.external) return
+        loginMessage = message
+        refresh()
+    }
+
+    fun finishExternalLogin(attempt: AppleMusicConnection.LoginAttempt, message: String): Unit = synchronized(lock) {
+        if (loginAttempt !== attempt || !attempt.external) return
+        clearLoginAttempt()
+        loginMessage = message
         refresh()
     }
 
@@ -268,7 +308,7 @@ internal class AppleMusicAccount(
         if (!validAppleMusicUserToken(tokenCookie.value) || !validAppleMusicUserToken(token)) {
             return AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN
         }
-        if (token == attempt.previousToken) return AppleMusicConnection.CookieAcceptance.STALE_COOKIE
+        if (!attempt.external && token == attempt.previousToken) return AppleMusicConnection.CookieAcceptance.STALE_COOKIE
         if (tokenCookie.expiresAtMs > 0L && tokenCookie.expiresAtMs <= now) {
             return AppleMusicConnection.CookieAcceptance.EXPIRED_COOKIE
         }
@@ -305,7 +345,7 @@ internal class AppleMusicAccount(
     ): AppleMusicConnection.CookieAcceptance {
         if (loginAttempt !== attempt || !loginReady) return AppleMusicConnection.CookieAcceptance.STALE_ATTEMPT
         if (!validAppleMusicUserToken(token)) return AppleMusicConnection.CookieAcceptance.INVALID_ORIGIN
-        if (token == attempt.previousToken) return AppleMusicConnection.CookieAcceptance.STALE_COOKIE
+        if (!attempt.external && token == attempt.previousToken) return AppleMusicConnection.CookieAcceptance.STALE_COOKIE
         if (expiry <= now) return AppleMusicConnection.CookieAcceptance.EXPIRED_COOKIE
         val updated = AppleMusicCredential(token, storefront, now,
             minOf(expiry, now + AppleMusicConnection.TOKEN_LIFETIME_MS))
@@ -336,6 +376,7 @@ internal class AppleMusicAccount(
         val removed = synchronized(lock) {
             try { credentialStore.clear() } catch (_: Exception) { return@synchronized false }
             credential = null
+            loginMessage = ""
             loginAttempt?.let { attempt -> preparationCallback?.let { cancelled = attempt to it } }
             clearLoginAttempt()
             refresh()
@@ -349,15 +390,14 @@ internal class AppleMusicAccount(
     }
 
     private fun describe(): AppleMusicConnection.State {
-        val value = credential ?: return AppleMusicConnection.State(isConnecting = loginAttempt != null)
+        val value = credential ?: return AppleMusicConnection.State(isConnecting = loginAttempt != null, loginMessage = loginMessage)
         val now = clock.nowMs()
         return AppleMusicConnection.State(
             status = value.status(now), storefront = value.storefront, savedAtMs = value.savedAtMs,
             expiresAtMs = value.expiresAtMs, rejectedAtMs = value.rejectedAtMs,
             needsRenewal = value.status(now) != AppleMusicConnection.Status.CONNECTED ||
                 value.expiresAtMs - now < AppleMusicConnection.RENEW_NOTICE_MS,
-            isConnecting = loginAttempt != null
-        )
+            isConnecting = loginAttempt != null, loginMessage = loginMessage        )
     }
 
 }

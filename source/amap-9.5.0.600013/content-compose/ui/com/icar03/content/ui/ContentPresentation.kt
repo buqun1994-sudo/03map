@@ -28,15 +28,20 @@ class ContentPresentation {
         private set
     var modalActive by mutableStateOf(false)
         private set
+    var inputGeneration by mutableLongStateOf(0L)
+        private set
+    fun invalidateInput() { inputGeneration++ }
     fun updateGestureWidth(width: Int) { reservedGestureWidthPx = width.coerceAtLeast(0) }
     fun updatePagerMotion(moving: Boolean) {
         if (pagerMotion == moving) return
         pagerMotion = moving
+        if (moving) invalidateInput()
         onGestureStateChanged?.invoke()
     }
     fun updateModalActive(active: Boolean) {
         if (modalActive == active) return
         modalActive = active
+        if (active) invalidateInput()
         onGestureStateChanged?.invoke()
     }
     private var requestGeneration = 0L
@@ -63,6 +68,7 @@ class ContentPresentation {
     fun updatePhase(value: Int) {
         val next = value.coerceIn(0, 6)
         if (next in 3..5 && phase !in 3..5 && sessionGeneration == 0L) sessionGeneration = ++sessionCounter
+        if (next in 2..5 && next != phase) invalidateInput()
         phase = next
         if (buttonTransitionActive && next == 1) buttonTransitionActive = false
         if (next !in 3..5 && pendingEnter == 0L && (progress <= .001f || progress >= .999f)) sessionGeneration = 0L
@@ -88,7 +94,7 @@ class ContentPresentation {
         if (phase < 2) sessionGeneration = 0L
         onGestureStateChanged?.invoke()
     }
-    fun stop() { cancelEntry(); sessionGeneration = 0L; onEntryReady = null; onGestureStateChanged = null }
+    fun stop() { invalidateInput(); cancelEntry(); sessionGeneration = 0L; onEntryReady = null; onGestureStateChanged = null }
 }
 
 internal fun presentationSmoothStep(value: Float): Float {

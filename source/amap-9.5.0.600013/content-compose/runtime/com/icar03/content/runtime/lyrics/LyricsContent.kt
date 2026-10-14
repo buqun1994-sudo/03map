@@ -8,13 +8,36 @@ internal fun LyricsResult.timedLines(): List<ParsedLyricLine> {
         val structured = runCatching { TtmlLyricsParser.parse(ttmlLyrics) }.getOrNull()
         if (structured != null && structured.lines.isNotEmpty()) {
             val sides = TtmlSpeakerLayout.sides(structured)
+            val requiresWordFallback = wordLyrics.isNotBlank() && structured.lines.any { line ->
+                line.words.isEmpty() || line.words.joinToString("") { it.text }.filterNot(Char::isWhitespace) !=
+                    line.text.filterNot(Char::isWhitespace)
+            }
+            val requiresAuxiliaryFallback = requiresWordFallback ||
+                (translatedLyrics.isNotBlank() && structured.lines.any { it.translation.isBlank() }) ||
+                (romanizedLyrics.isNotBlank() && structured.lines.any { it.romanization.isBlank() })
+            val auxiliaryByTime = if (requiresAuxiliaryFallback) {
+                val fallbackAxis = structured.lines.joinToString("\n") { line ->
+                    PublicWordLyricsFormats.lrcTimestamp(line.timeMs) + line.text.replace('\n', ' ').replace('\r', ' ')
+                }
+                // Keep the TTML axis authoritative; only auxiliary rows use the existing LRC tolerances.
+                LrcParser.align(fallbackAxis, translatedLyrics, wordRaw = wordLyrics, romanizedRaw = romanizedLyrics,
+                    artist = candidateArtist, track = candidateTrack).groupBy(ParsedLyricLine::timeMs)
+            } else emptyMap()
+            fun fallbackFor(line: TtmlLyricLine): ParsedLyricLine? =
+                auxiliaryByTime[line.timeMs]?.let { matches ->
+                    matches.firstOrNull { compactLyric(it.text) == compactLyric(line.text) }
+                        ?: matches.singleOrNull()
+                }
             return structured.lines.mapIndexed { index, line ->
-                ParsedLyricLine(line.timeMs, line.text, line.translation,
-                    words = line.words.takeIf { words ->
-                        words.joinToString("") { it.text }.filterNot(Char::isWhitespace) ==
-                            line.text.filterNot(Char::isWhitespace)
-                    }.orEmpty().map { ParsedLyricWord(it.startTimeMs, it.endTimeMs, it.text) },
-                    romanization = line.romanization, endTimeMs = line.endTimeMs,
+                val fallback = fallbackFor(line)
+                val structuredWords = line.words.takeIf { words ->
+                    words.joinToString("") { it.text }.filterNot(Char::isWhitespace) ==
+                        line.text.filterNot(Char::isWhitespace)
+                }.orEmpty().map { ParsedLyricWord(it.startTimeMs, it.endTimeMs, it.text) }
+                ParsedLyricLine(line.timeMs, line.text,
+                    line.translation.ifBlank { fallback?.translation.orEmpty() },
+                    words = structuredWords.ifEmpty { fallback?.words.orEmpty() },
+                    romanization = line.romanization.ifBlank { fallback?.romanization.orEmpty() }, endTimeMs = line.endTimeMs,
                     backgroundWords = line.backgroundWords.map { ParsedLyricWord(it.startTimeMs, it.endTimeMs, it.text) },
                     speaker = line.agent, speakerSide = sides[index])
             }
@@ -23,6 +46,8 @@ internal fun LyricsResult.timedLines(): List<ParsedLyricLine> {
     return LrcSpeakerLayout.project(LrcParser.align(lyrics, translatedLyrics, wordRaw = wordLyrics,
         romanizedRaw = romanizedLyrics, durationMs = durationMs, artist = candidateArtist, track = candidateTrack), candidateArtist, candidateTrack)
 }
+
+private fun compactLyric(text: String): String = text.filterNot(Char::isWhitespace)
 
 internal fun LyricsResult.plainText(): String = if (isInstrumentalContent()) "" else cleanLyrics(plainLyrics).ifBlank {
     cleanLyrics(lyrics).takeIf { classifyLyrics(it) == LyricsKind.PLAIN }.orEmpty()

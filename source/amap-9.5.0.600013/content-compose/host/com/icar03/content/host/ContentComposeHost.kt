@@ -27,6 +27,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.autonavi.amapauto.content.ContentStore
 import com.icar03.content.runtime.BoundBindingPanel
 import com.icar03.content.ui.PanelPage
+import com.icar03.content.ui.supportsImmersive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -111,48 +112,58 @@ class ContentComposeHost @JvmOverloads constructor(
         val previous = mapPresentation
         if (previous !== port) {
             previous?.updateGestureState(false, binding.state.value.dark, false, false)
+            presentation.invalidateInput()
             presentation.cancelEntry()
         }
         mapPresentation = port
         presentation.updateGestureWidth(port?.reservedGestureWidthPx() ?: 0)
         presentation.onEntryReady = {
-            if (!destroyed && owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
-                binding.state.value.page == PanelPage.Lyrics) {
+            if (canPresentPage()) {
                 refreshGestureState()
                 mapPresentation?.settleToCollapsed()
-            }
+            } else presentation.cancelEntry()
         }
         refreshGestureState()
     }
 
-    /** Called by the map controller on its UI-thread touch path. */
-    fun isMapGestureAllowed(): Boolean {
-        if (destroyed || !view.isAttachedToWindow || !owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return false
-        val current = binding.state.value
-        return current.page == PanelPage.Lyrics && !current.sourcesOpen && !current.scenariosOpen &&
-            !current.settingsOpen && !presentation.modalActive &&
-            !presentation.pagerMotion && !presentation.buttonTransitionActive &&
-            presentation.pendingEnter == 0L
+    private fun canPresentPage(current: com.icar03.content.ui.ContentUiState? = binding.currentPresentationState()): Boolean {
+        if (current == null || destroyed || !view.isAttachedToWindow ||
+            !owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return false
+        return current.page.supportsImmersive && !current.sourcesOpen && !current.scenariosOpen &&
+            !current.settingsOpen && !current.lyricsProviderSettings.appleLoginOpen &&
+            !presentation.modalActive && !presentation.pagerMotion
     }
+
+    private fun isMapGestureAllowed(current: com.icar03.content.ui.ContentUiState?): Boolean = canPresentPage(current) &&
+        !presentation.buttonTransitionActive && presentation.pendingEnter == 0L
+
+    /** Called by the map controller on its UI-thread touch path. */
+    fun isMapGestureAllowed(): Boolean = isMapGestureAllowed(binding.currentPresentationState())
 
     private fun refreshGestureState() {
         if (destroyed) return
         val port = mapPresentation ?: return
-        val current = binding.state.value
-        val allowed = isMapGestureAllowed()
-        port.updateGestureState(allowed, current.dark, false, false)
+        val current = binding.currentPresentationState()
+        port.updateGestureState(isMapGestureAllowed(current), current?.dark ?: binding.state.value.dark, false, false)
         port.ensureGestureOnTop()
     }
 
     private fun dispatchPresentation(event: com.icar03.content.ui.ContentEvent) {
         if (destroyed) return
         when (event) {
+            is com.icar03.content.ui.ContentEvent.GesturePerformed -> {
+                val current = binding.currentPresentationState() ?: return
+                val intent = com.icar03.content.ui.MultiFingerGestureRouting.resolve(
+                    event.command, current, presentation, interactive = canPresentPage(current)) ?: return
+                dispatchPresentation(intent)
+            }
             com.icar03.content.ui.ContentEvent.EnterLyricsImmersive -> {
-                if (binding.state.value.page != com.icar03.content.ui.PanelPage.Lyrics || mapPresentation == null) return
+                if (!canPresentPage() || !presentation.geometryReady || presentation.moving || mapPresentation == null) return
                 binding.dispatch(com.icar03.content.ui.ContentEvent.DismissSheet)
                 presentation.requestEnter()
             }
             com.icar03.content.ui.ContentEvent.ExitLyricsImmersive -> {
+                presentation.invalidateInput()
                 presentation.cancelEntry()
                 mapPresentation?.settleToExpanded()
             }
@@ -163,7 +174,10 @@ class ContentComposeHost @JvmOverloads constructor(
     fun updatePanelPhase(phase: Int) {
         if (destroyed) return
         presentation.updatePhase(phase)
-        if (phase == 1 && binding.state.value.page != com.icar03.content.ui.PanelPage.Lyrics) mapPresentation?.settleToExpanded()
+        if (phase == 1) {
+            val current = binding.currentPresentationState()
+            if (current != null && !current.page.supportsImmersive) mapPresentation?.settleToExpanded()
+        }
     }
 
     fun updateDivider(dividerX: Float, expandedDivider: Float, mapWidth: Float) {
@@ -207,6 +221,7 @@ class ContentComposeHost @JvmOverloads constructor(
     }
     fun pause() {
         if (!destroyed) {
+            presentation.invalidateInput()
             presentation.cancelEntry()
             mapPresentation?.updateGestureState(false, binding.state.value.dark, false, false)
             owners.pause()

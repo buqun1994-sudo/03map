@@ -26,10 +26,15 @@ public final class ContentRuntime {
     private static WeakReference<ViewGroup> presentationRoot = new WeakReference<>(null);
     private static WeakReference<com.icar03.content.model.MapPresentationPort> presentationPort = new WeakReference<>(null);
     private static ContentRuntime activeRuntime;
+    private static final Object CRUISE_DIAGNOSTIC_LOCK = new Object();
+    private static String lastCruiseDiagnosticKey;
+    private static long lastCruiseDiagnosticAt = -1L;
 
     private final WeakReference<Activity> ownerActivity;
     private final ViewGroup host;
     private final ContentStore store;
+    private final ContentCruiseMapBridge cruiseMapBridge;
+    private long lastMapDiagnosticAt = -1L;
     private long consumedBackDownTime = -1L;
     private final com.icar03.content.host.ContentComposeHost renderer;
 
@@ -37,6 +42,12 @@ public final class ContentRuntime {
         ownerActivity = new WeakReference<>(activity);
         this.host = host;
         store = new ContentStore(host.getContext());
+        cruiseMapBridge = new ContentCruiseMapBridge(host.getContext(), new ContentCruiseMapBridge.Sink() {
+            @Override public void onBatch(int[] raw, int lightCount, boolean sdType,
+                    long receivedAtElapsedMs, long generation) {
+                acceptCruiseMapBatch(ContentRuntime.this, raw, lightCount, sdType, receivedAtElapsedMs, generation);
+            }
+        });
         store.setThemeMode(lastAmapThemeMode);
         renderer = new com.icar03.content.host.ContentComposeHost(host.getContext(), host, store, activity);
     }
@@ -109,6 +120,7 @@ public final class ContentRuntime {
                 activeRuntime.renderer.bindMapPresentation(presentationPort.get());
                 activeRuntime.renderer.updatePanelPhase(lastPanelPhase);
             }
+            activeRuntime.cruiseMapBridge.start();
             if (!Float.isNaN(lastDividerX)) {
                 activeRuntime.renderer.updateDivider(
                         lastDividerX, lastExpandedDividerX, lastMapWidth);
@@ -180,6 +192,8 @@ public final class ContentRuntime {
             }
             if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
                 activeRuntime.consumedBackDownTime = -1L;
+                activeRuntime.cruiseMapBridge.stop();
+                activeRuntime.store.invalidateCruiseSignals();
                 activeRuntime.renderer.pause();
             }
         }
@@ -201,6 +215,7 @@ public final class ContentRuntime {
             if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
                 activeRuntime.store.setThemeMode(lastAmapThemeMode);
                 activeRuntime.renderer.resume();
+                activeRuntime.cruiseMapBridge.start();
             }
         }
     }
@@ -303,6 +318,138 @@ public final class ContentRuntime {
         }
     }
 
+    /** Called before the original HMI consumers can mutate the shared wrapper. */
+    public static void onCruiseSignalBatch(Object wrapper) {
+        final long receivedAt = android.os.SystemClock.elapsedRealtime();
+        int[] raw = null;
+        int[] diagnosticRaw = null;
+        boolean inCruise = false;
+        String diagnosticStage = "copy";
+        String diagnosticFailure = "none";
+        try {
+            if (wrapper != null) {
+                Object value = wrapper.getClass().getField("a").get(wrapper);
+                if (value instanceof java.util.List) {
+                    java.util.List<?> lights = (java.util.List<?>) value;
+                    if (lights.size() <= 32) {
+                        raw = new int[lights.size() * 5];
+                        for (int i = 0; i < lights.size(); i++) {
+                            Object light = lights.get(i);
+                            if (light == null) continue;
+                            for (int field = 0; field < 5; field++) {
+                                raw[i * 5 + field] = light.getClass()
+                                        .getField(String.valueOf((char) ('a' + field))).getInt(light);
+                            }
+                        }
+                    }
+                }
+            }
+            diagnosticRaw = raw;
+            diagnosticStage = "isInCruise";
+            inCruise = Boolean.TRUE.equals(Class.forName(
+                    "com.autonavi.amapauto.widget.jni.AndroidWidgetNavi")
+                    .getMethod("isInCruise").invoke(null));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+            Throwable cause = unavailable instanceof java.lang.reflect.InvocationTargetException
+                    ? ((java.lang.reflect.InvocationTargetException) unavailable).getTargetException()
+                    : unavailable;
+            diagnosticFailure = cause.getClass().getSimpleName();
+            raw = null;
+        }
+        boolean hostActive;
+        synchronized (LOCK) {
+            hostActive = activeRuntime != null;
+        }
+        // Legacy voice/float HMI facts are diagnostic only; map receipts own visible signals.
+        logCruiseSignalDiagnostic(diagnosticRaw, inCruise, hostActive,
+                diagnosticStage, diagnosticFailure, receivedAt);
+    }
+
+    /** Map display facts and qualification from the same native DTO receipt. */
+    private static void acceptCruiseMapBatch(ContentRuntime owner, int[] raw, int lightCount,
+            boolean sdType, long receivedAtElapsedMs, long generation) {
+        if (raw == null || raw.length % 4 != 0 || raw.length > 16 * 4) return;
+        int[] copied = raw.clone();
+        boolean inCruise = false;
+        String failure = "none";
+        try {
+            inCruise = Boolean.TRUE.equals(Class.forName(
+                    "com.autonavi.amapauto.widget.jni.AndroidWidgetNavi")
+                    .getMethod("isInCruise").invoke(null));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+            Throwable cause = unavailable instanceof java.lang.reflect.InvocationTargetException
+                    ? ((java.lang.reflect.InvocationTargetException) unavailable).getTargetException()
+                    : unavailable;
+            failure = cause.getClass().getSimpleName();
+        }
+        synchronized (LOCK) {
+            if (activeRuntime != owner || !owner.cruiseMapBridge.accepts(generation)) return;
+            owner.store.acceptCruiseMapSignals(copied, lightCount, sdType, inCruise, receivedAtElapsedMs);
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (owner.lastMapDiagnosticAt < 0 || now - owner.lastMapDiagnosticAt >= 2_000L) {
+                owner.lastMapDiagnosticAt = now;
+                StringBuilder facts = new StringBuilder();
+                for (int i = 0; i < copied.length; i += 4) {
+                    facts.append(" [showType=").append(copied[i])
+                            .append(" maneuver=").append(copied[i + 1])
+                            .append(" seconds=").append(copied[i + 2])
+                            .append(" status=").append(copied[i + 3]).append(']');
+                }
+                android.util.Log.i("ContentCruiseMap", "nativeInCruise=" + inCruise
+                        + " count=" + copied.length / 4 + " lightCount=" + lightCount + " sdType=" + sdType
+                        + " ageMs=" + (now - receivedAtElapsedMs) + " failureType=" + failure + facts);
+            }
+        }
+    }
+
+    /** Only primitive signal facts; never serialize the native wrapper or exception message. */
+    private static void logCruiseSignalDiagnostic(int[] raw, boolean inCruise, boolean hostActive,
+            String stage, String failureType, long now) {
+        StringBuilder key = new StringBuilder().append(inCruise).append('/').append(hostActive)
+                .append('/').append(stage).append('/').append(failureType);
+        StringBuilder facts = new StringBuilder();
+        int count = raw == null ? -1 : raw.length / 5;
+        key.append('/').append(count);
+        if (raw != null) {
+            for (int i = 0; i < count; i++) {
+                int offset = i * 5;
+                int direction = raw[offset + 1];
+                int color = raw[offset + 2];
+                int seconds = raw[offset + 3];
+                int showType = raw[offset + 4];
+                // Seconds change every native tick; deduplicate by display qualification,
+                // but periodically include the actual value to show whether it advances.
+                key.append(';').append(direction).append(',').append(color).append(',')
+                        .append(showType).append(',').append(seconds > 0);
+                facts.append(" [dir=").append(direction).append(" color=").append(color)
+                        .append(" seconds=").append(seconds).append(" showType=")
+                        .append(showType).append(']');
+            }
+        }
+        String currentKey = key.toString();
+        synchronized (CRUISE_DIAGNOSTIC_LOCK) {
+            long elapsed = lastCruiseDiagnosticAt < 0 ? Long.MAX_VALUE : now - lastCruiseDiagnosticAt;
+            if (elapsed < 2_000L || (currentKey.equals(lastCruiseDiagnosticKey) && elapsed < 10_000L)) {
+                return;
+            }
+            lastCruiseDiagnosticAt = now;
+            lastCruiseDiagnosticKey = currentKey;
+        }
+        android.util.Log.i("ContentCruiseSignals", "nativeInCruise=" + inCruise
+                + " hostActive=" + hostActive + " count=" + count
+                + " stage=" + stage + " failureType=" + failureType + facts);
+    }
+
+    /** All navigation mode transitions invalidate the previous intersection until a new cruise batch. */
+    public static void onAmapNavigationChanged() {
+        synchronized (LOCK) {
+            if (activeRuntime != null) {
+                activeRuntime.cruiseMapBridge.invalidate();
+                activeRuntime.store.invalidateCruiseSignals();
+            }
+        }
+    }
+
     public static void onVehicleSnapshot(ContentPorts.VehicleSnapshot snapshot) {
         synchronized (LOCK) {
             if (activeRuntime != null) {
@@ -336,6 +483,8 @@ public final class ContentRuntime {
     }
 
     private void destroy() {
+        cruiseMapBridge.destroy();
+        store.invalidateCruiseSignals();
         renderer.destroy();
         store.destroy();
     }

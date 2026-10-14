@@ -36,9 +36,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.icar03.content.model.LyricPreferenceRules
+import com.icar03.content.model.GestureAction
+import com.icar03.content.model.GestureCommand
+import com.icar03.content.model.GesturePreferences
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -131,6 +135,7 @@ internal fun SettingsSheet(
                             val title = when (state.settingsSection) {
                                 SettingsSection.Home -> "设置"
                                 SettingsSection.Lyrics -> "歌词设置"
+                                SettingsSection.Gestures -> "手势操作"
                                 else -> "${state.settingsSection.label}设置"
                             }
                             SettingsLineText(title,
@@ -175,6 +180,9 @@ internal fun SettingsSheet(
                             when (section) {
                                 SettingsSection.Home -> SettingsHome(settingsEvent, controlsEnabled, Modifier.fillMaxSize())
                                 SettingsSection.Lyrics -> LyricsSettings(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
+                                SettingsSection.Gestures -> GestureSettings(state, settingsEvent,
+                                    controlsEnabled && state.settingsSection == SettingsSection.Gestures && !state.settingsCollapsed,
+                                    Modifier.fillMaxSize())
                                 else -> SettingsDetail(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
                             }
                         }
@@ -201,7 +209,7 @@ private fun SettingsHome(onEvent: (ContentEvent) -> Unit, enabled: Boolean, modi
         val groups = listOf(
             "布局" to listOf(SettingsSection.TopBar, SettingsSection.Layout),
             "音乐" to listOf(SettingsSection.Lyrics, SettingsSection.Artwork),
-            "其它" to listOf(SettingsSection.Interaction),
+            "其它" to listOf(SettingsSection.Interaction, SettingsSection.Gestures),
         )
         groups.forEach { (title, sections) ->
             SettingsSection(title, contentPadding = PaddingValues(0.dp)) {
@@ -342,6 +350,9 @@ private fun LyricsSettings(
         SettingsItemSection("歌词翻译") {
             SettingsSwitchRow("显示歌词翻译", state.lyricsShowTranslation, { onEvent(ContentEvent.LyricsShowTranslationChanged(it)) },
                 enabled = controlsEnabled, tag = "settings-switch-显示歌词翻译")
+            SettingsItemDivider()
+            SettingsSwitchRow("显示歌词注音", state.lyricsShowRomanization, { onEvent(ContentEvent.LyricsShowRomanizationChanged(it)) },
+                enabled = controlsEnabled, tag = "settings-switch-显示歌词注音")
         }
         SettingsActionButton(
             label = "恢复默认值",
@@ -349,6 +360,38 @@ private fun LyricsSettings(
             enabled = controlsEnabled,
             tag = "settings-lyrics-reset",
         )
+    }
+}
+
+@Composable
+private fun GestureSettings(
+    state: ContentUiState, onEvent: (ContentEvent) -> Unit, enabled: Boolean, modifier: Modifier,
+) {
+    val design = LocalSettingsDesign.current
+    val options = GestureAction.entries.map { it.value to it.label }
+    SettingsPageList(modifier, "settings-gestures-scroll") {
+        listOf(2 to "二指", 3 to "三指", 4 to "四指").forEach { (fingers, title) ->
+            SettingsItemSection(title) {
+                val commands = GestureCommand.entries.filter { it.fingers == fingers }
+                commands.forEachIndexed { index, command ->
+                    val label = command.label
+                    Row(Modifier.fillMaxWidth().padding(design.pagePadding)
+                        .testTag("settings-gesture-row-${command.key}"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(design.smallGap)) {
+                        SettingsLineText(label, Modifier.weight(.28f)
+                            .testTag("settings-gesture-label-${command.key}"),
+                            design.labelStyle, design.text, maxLines = Int.MAX_VALUE)
+                        val action = state.gestureActions[command] ?: GesturePreferences.defaultAction(command)
+                        SettingsDropdown(options, action.value, onSelected = { value ->
+                            GestureAction.fromValue(value)?.let { onEvent(ContentEvent.GestureActionChanged(command, it)) }
+                        }, modifier = Modifier.weight(.72f).semantics { contentDescription = command.label },
+                            enabled = enabled, tag = "settings-gesture-${command.key}")
+                    }
+                    if (index != commands.lastIndex) SettingsItemDivider()
+                }
+            }
+        }
     }
 }
 
@@ -382,6 +425,9 @@ private fun SettingsDetail(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                 SettingsItemSection("沉浸式全屏") {
                     flag("显示状态栏", state.immersiveShowTopBar, "settings-switch-全屏时显示状态栏") { onEvent(ContentEvent.ImmersiveShowTopBarChanged(it)) }
                     SettingsItemDivider()
+                    SettingsSwitchRow("下个路口红绿灯", state.showCruiseSignals, { onEvent(ContentEvent.ShowCruiseSignalsChanged(it)) },
+                        enabled = enabled && state.immersiveShowTopBar, tag = "settings-switch-下个路口红绿灯")
+                    SettingsItemDivider()
                     flag("状态栏保持分屏", state.immersiveTopBarKeepSplit) { onEvent(ContentEvent.ImmersiveTopBarKeepSplitChanged(it)) }
                 }
             }
@@ -412,7 +458,7 @@ private fun SettingsDetail(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                     }
                 }
             }
-            SettingsSection.Home, SettingsSection.Lyrics -> Unit
+            SettingsSection.Home, SettingsSection.Lyrics, SettingsSection.Gestures -> Unit
         }
     }
 }

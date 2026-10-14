@@ -12,6 +12,7 @@ internal data class LyricRenderStyle(
     val currentColor: Int,
     val immersive: Boolean = false,
     val showTranslation: Boolean = true,
+    val showRomanization: Boolean = true,
 )
 
 internal fun lyricRenderStyle(state: ContentUiState, immersive: Boolean = false): LyricRenderStyle {
@@ -35,5 +36,6 @@ internal fun lyricRenderStyle(state: ContentUiState, immersive: Boolean = false)
         LyricPreferenceRules.alignment(state.lyricsAlignment),
         color(state.lyricsColorMode, state.lyricsCustomColor),
         color(state.lyricsCurrentColorMode, state.lyricsCurrentCustomColor), immersive, state.lyricsShowTranslation,
+        state.lyricsShowRomanization,
     )
 }

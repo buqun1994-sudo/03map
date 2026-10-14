@@ -51,6 +51,7 @@ class ContentBindingDomainsTest {
             ContentEvent.ShowChargingPowerChanged(false),
             ContentEvent.ImmersiveTopBarKeepSplitChanged(false),
             ContentEvent.LyricsShowTranslationChanged(false),
+             ContentEvent.LyricsShowRomanizationChanged(false),
             ContentEvent.LyricsImmersiveCurrentFontSizeChanged(180f),
         ).forEach { event -> assertTrue("$event must be settings-gated", event.isSettingsInteraction()) }
     }

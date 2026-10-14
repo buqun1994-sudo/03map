@@ -36,6 +36,8 @@
 .method public static notifyCameraLightInfosImpl(Lcom/autonavi/amapauto/CameraLightInfo/CameraLightInfoWrapper;)V
     .locals 1
 
+    invoke-static {p0}, Lcom/autonavi/amapauto/content/ContentRuntime;->onCruiseSignalBatch(Ljava/lang/Object;)V
+
     invoke-static {p0}, Lfloatapp/trafficlight/CruiseTrafficLightVoice;->setCameraLightInfoWrapper(Lcom/autonavi/amapauto/CameraLightInfo/CameraLightInfoWrapper;)V
 
     invoke-static {}, Lnm;->e()Lnm;

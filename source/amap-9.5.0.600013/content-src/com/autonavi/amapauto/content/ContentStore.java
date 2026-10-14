@@ -3,6 +3,9 @@ package com.autonavi.amapauto.content;
 import com.icar03.content.model.VehicleControl;
 import com.icar03.content.model.VehicleGear;
 import com.icar03.content.model.LyricPreferenceRules;
+import com.icar03.content.model.GestureAction;
+import com.icar03.content.model.GestureCommand;
+import com.icar03.content.model.GesturePreferences;
 
 import android.content.Context;
 import android.os.Handler;
@@ -57,6 +60,12 @@ public final class ContentStore {
     private long pendingSourceRequestId;
     private Runnable sourceTimeout;
     private boolean destroyed;
+    // Three missed native 1s publications hide the batch; this is a local freshness policy.
+    public static final long CRUISE_SIGNAL_MAX_AGE_MS = 3000L;
+    private int cruiseSignalConsumers;
+    private long cruiseSignalEpoch;
+    private long lastCruiseSignalElapsedMs = -1L;
+    private Runnable cruiseSignalExpiry;
     private final ContentPorts.LyricsPort lyricsPort;
     private final com.icar03.content.runtime.lyrics.ContentLyricsTimeline lyricsTimeline =
             new com.icar03.content.runtime.lyrics.ContentLyricsTimeline();
@@ -185,6 +194,8 @@ public final class ContentStore {
         Runnable mediaTimeout;
         synchronized (this) {
             destroyed = true;
+            cruiseSignalConsumers = 0;
+            clearCruiseSignalsLocked();
             clearNextTrackPendingLocked();
             mediaTimeout = mediaFeedbackTimeout;
             mediaFeedbackTimeout = null;
@@ -438,6 +449,7 @@ public final class ContentStore {
             state.lyricsSpeakerLayout = true;
             state.lyricsHighlight = LyricPreferenceRules.DEFAULT_HIGHLIGHT;
             state.lyricsShowTranslation = true;
+            state.lyricsShowRomanization = true;
             preferenceStore.save(state);
         }
         publish();
@@ -462,6 +474,10 @@ public final class ContentStore {
 
     public void setLyricsShowTranslation(boolean value) {
         setBooleanPreference(PreferenceField.LYRICS_SHOW_TRANSLATION, value);
+    }
+
+    public void setLyricsShowRomanization(boolean value) {
+        setBooleanPreference(PreferenceField.LYRICS_SHOW_ROMANIZATION, value);
     }
 
     public void setImmersiveShowTopBar(boolean value) {
@@ -504,6 +520,16 @@ public final class ContentStore {
         setBooleanPreference(PreferenceField.GESTURE_BAR_REMINDER, value);
     }
 
+    public void setGestureAction(GestureCommand command, GestureAction action) {
+        if (command == null || action == null) return;
+        synchronized (this) {
+            if (destroyed || state.getGestureActions().get(command) == action) return;
+            state.setGestureActions(GesturePreferences.withAction(state.getGestureActions(), command, action));
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
     public void setUiOpacity(float value) {
         synchronized (this) {
             state.uiOpacity = Float.isFinite(value) ? Math.max(0.20f, Math.min(1.0f, value)) : 1.0f;
@@ -515,7 +541,7 @@ public final class ContentStore {
     private enum PreferenceField {
         SHOW_INDOOR_TEMPERATURE, SHOW_BATTERY, SHOW_RANGE, SHOW_CHARGING_STATUS,
         SHOW_PLUGGED_STATUS, SHOW_SCHEDULED_CHARGING, SHOW_CHARGING_REMAINING_TIME, SHOW_CHARGING_POWER,
-        LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, LYRICS_SHOW_TRANSLATION,
+        LYRICS_SPEAKER_LAYOUT, LYRICS_HIGHLIGHT, LYRICS_SHOW_TRANSLATION, LYRICS_SHOW_ROMANIZATION,
         IMMERSIVE_SHOW_TOP_BAR, IMMERSIVE_TOP_BAR_KEEP_SPLIT, IMMERSIVE_SHOW_DOCK,
         SHOW_AMBIENT_ARTWORK, SHOW_MEDIA_SOURCE_SWITCHER, SHOW_ACTION_FEEDBACK, AUTO_CLOSE_SETTINGS_ON_DRIVE, GESTURE_BAR_REMINDER
     }
@@ -541,6 +567,7 @@ public final class ContentStore {
                 case LYRICS_SPEAKER_LAYOUT: state.lyricsSpeakerLayout = value; break;
                 case LYRICS_HIGHLIGHT: state.lyricsHighlight = value; break;
                 case LYRICS_SHOW_TRANSLATION: state.lyricsShowTranslation = value; break;
+                case LYRICS_SHOW_ROMANIZATION: state.lyricsShowRomanization = value; break;
                 case IMMERSIVE_SHOW_TOP_BAR: state.immersiveShowTopBar = value; break;
                 case IMMERSIVE_TOP_BAR_KEEP_SPLIT: state.immersiveTopBarKeepSplit = value; break;
                 case IMMERSIVE_SHOW_DOCK: state.immersiveShowDock = value; break;
@@ -553,6 +580,101 @@ public final class ContentStore {
             preferenceStore.save(state);
         }
         publish();
+    }
+
+    public void startCruiseSignals() {
+        synchronized (this) {
+            if (destroyed) return;
+            if (cruiseSignalConsumers++ == 0) {
+                lastCruiseSignalElapsedMs = android.os.SystemClock.elapsedRealtime();
+                clearCruiseSignalsLocked();
+            }
+        }
+    }
+
+    public void stopCruiseSignals() {
+        boolean changed;
+        synchronized (this) {
+            if (cruiseSignalConsumers == 0) return;
+            if (--cruiseSignalConsumers > 0) return;
+            changed = clearCruiseSignalsLocked();
+        }
+        if (changed) publish();
+    }
+
+    public void setShowCruiseSignals(boolean value) {
+        synchronized (this) {
+            if (state.showCruiseSignals == value) return;
+            state.showCruiseSignals = value;
+            lastCruiseSignalElapsedMs = android.os.SystemClock.elapsedRealtime();
+            clearCruiseSignalsLocked();
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    /** Accepts only synchronous copies of the cruise callback, never HMI/voice objects. */
+    public void acceptCruiseSignals(int[] raw, boolean inCruise, long receivedAtElapsedMs) {
+        acceptCruiseSnapshot(ContentPorts.CruiseSignalSnapshot.fromRaw(raw, receivedAtElapsedMs), inCruise, receivedAtElapsedMs);
+    }
+
+    /** Map display DTOs are independent of the legacy HMI enum and qualification. */
+    public void acceptCruiseMapSignals(int[] raw, int lightCount, boolean sdType,
+            boolean inCruise, long receivedAtElapsedMs) {
+        acceptCruiseSnapshot(ContentPorts.CruiseSignalSnapshot.fromMapRaw(raw, lightCount, sdType,
+                receivedAtElapsedMs), inCruise, receivedAtElapsedMs);
+    }
+
+    private void acceptCruiseSnapshot(ContentPorts.CruiseSignalSnapshot snapshot, boolean inCruise, long receivedAtElapsedMs) {
+        synchronized (this) {
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (destroyed || cruiseSignalConsumers == 0 || !state.showCruiseSignals ||
+                    receivedAtElapsedMs < lastCruiseSignalElapsedMs || receivedAtElapsedMs > now) return;
+            lastCruiseSignalElapsedMs = receivedAtElapsedMs;
+            clearCruiseSignalsLocked();
+            if (inCruise && now - receivedAtElapsedMs < CRUISE_SIGNAL_MAX_AGE_MS) {
+                state.cruiseSignals = snapshot;
+            }
+            if (!state.cruiseSignals.lights.isEmpty()) {
+                final long epoch = cruiseSignalEpoch;
+                cruiseSignalExpiry = new Runnable() {
+                    @Override public void run() {
+                        synchronized (ContentStore.this) {
+                            if (destroyed || cruiseSignalConsumers == 0 || cruiseSignalEpoch != epoch) return;
+                            long remaining = CRUISE_SIGNAL_MAX_AGE_MS -
+                                    (android.os.SystemClock.elapsedRealtime() - lastCruiseSignalElapsedMs);
+                            if (remaining > 0L) {
+                                commandHandler.postDelayed(this, remaining);
+                                return;
+                            }
+                            clearCruiseSignalsLocked();
+                        }
+                        publish();
+                    }
+                };
+                commandHandler.postDelayed(cruiseSignalExpiry,
+                        CRUISE_SIGNAL_MAX_AGE_MS - (now - receivedAtElapsedMs));
+            }
+        }
+        publish();
+    }
+
+    public void invalidateCruiseSignals() {
+        boolean changed;
+        synchronized (this) {
+            lastCruiseSignalElapsedMs = android.os.SystemClock.elapsedRealtime();
+            changed = clearCruiseSignalsLocked();
+        }
+        if (changed) publish();
+    }
+
+    private boolean clearCruiseSignalsLocked() {
+        cruiseSignalEpoch++;
+        if (cruiseSignalExpiry != null) commandHandler.removeCallbacks(cruiseSignalExpiry);
+        cruiseSignalExpiry = null;
+        boolean changed = !state.cruiseSignals.lights.isEmpty();
+        state.cruiseSignals = ContentPorts.CruiseSignalSnapshot.EMPTY;
+        return changed;
     }
 
     public void acceptVehicleSnapshot(ContentPorts.VehicleSnapshot snapshot) {

@@ -439,7 +439,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test
     fun lyricsPreferencesReachTheLivePageThroughItsBodyTransition() {
-        val lines = listOf(LyricLine(0, "默认歌词不会再提前换行", translation = "This is the translation", side = LyricSide.Trailing),
+        val lines = listOf(LyricLine(0, "默认歌词不会再提前换行", translation = "This is the translation", romanization = "This is the romanization", side = LyricSide.Trailing),
             LyricLine(4_000, "合成下一句", side = LyricSide.Leading))
         val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
             previewMode = false, page = PanelPage.Lyrics,
@@ -500,6 +500,16 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.waitForIdle()
         body.assert(SemanticsMatcher.expectValue(LyricTranslationVisible, true))
         assertEquals(translatedHeights, body.fetchSemanticsNode().config[LyricRowHeights])
+        val romanizedHeights = body.fetchSemanticsNode().config[LyricRowHeights]
+        compose.runOnIdle { state.value = state.value.copy(lyricsShowRomanization = false) }
+        compose.waitForIdle()
+        body.assert(SemanticsMatcher.expectValue(LyricRomanizationVisible, false))
+        assertTrue(body.fetchSemanticsNode().config[LyricRowHeights][0] < romanizedHeights[0])
+        assertEquals("This is the romanization", state.value.lyrics.lines[0].romanization)
+        compose.runOnIdle { state.value = state.value.copy(lyricsShowRomanization = true) }
+        compose.waitForIdle()
+        body.assert(SemanticsMatcher.expectValue(LyricRomanizationVisible, true))
+        assertEquals(romanizedHeights, body.fetchSemanticsNode().config[LyricRowHeights])
     }
 
     private fun iconEntrances(id: ControlId): List<String> = if (DockShortcuts.items.any { it.control == id })
@@ -1727,7 +1737,9 @@ open class ContentPanelLightPrototypeRenderTest {
             icon.assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_media_play_f))
             val held = captureHost("oem-cold-media-waiting")
             val bounds = icon.fetchSemanticsNode().boundsInRoot
-            assertTrue("must keep old filled play glyph until new zero frame is ready", held.getPixel(bounds.center.x.toInt(), bounds.center.y.toInt()) != held.getPixel(bounds.left.toInt()+1, bounds.top.toInt()+1))
+            // The glyph bounds now fit the visible ink. Their upper-left pixel can be
+            // filled by the play triangle, so compare the established shape regions instead.
+            assertFilledMediaTail(held, bounds, playing = false)
             while (queued.isNotEmpty()) queued.removeFirst().run()
             compose.waitForIdle()
             compose.mainClock.advanceTimeUntil(512) { icon.fetchSemanticsNode().config[IconAnimationPlaying] }

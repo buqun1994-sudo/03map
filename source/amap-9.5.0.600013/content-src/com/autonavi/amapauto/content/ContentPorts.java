@@ -23,6 +23,104 @@ public final class ContentPorts {
     private ContentPorts() {
     }
 
+    /** A copied batch for the next intersection selected by Amap's cruise engine. */
+    public static final class CruiseSignalSnapshot {
+        public static final CruiseSignalSnapshot EMPTY = new CruiseSignalSnapshot(
+                java.util.Collections.<CruiseSignal>emptyList(), -1L);
+        public final java.util.List<CruiseSignal> lights;
+        public final long receivedAtElapsedMs;
+
+        private CruiseSignalSnapshot(java.util.List<CruiseSignal> lights, long receivedAtElapsedMs) {
+            this.lights = java.util.Collections.unmodifiableList(new java.util.ArrayList<>(lights));
+            this.receivedAtElapsedMs = receivedAtElapsedMs;
+        }
+
+        /** Flat waitNum/direction/status/countDown/showType values, copied before HMI mutation. */
+        public static CruiseSignalSnapshot fromRaw(int[] raw, long receivedAtElapsedMs) {
+            if (raw == null || raw.length == 0 || raw.length % 5 != 0 || receivedAtElapsedMs < 0L) return EMPTY;
+            java.util.Map<Integer, CruiseSignal> byDirection = new java.util.TreeMap<>();
+            java.util.Set<Integer> ambiguous = new java.util.HashSet<>();
+            for (int i = 0; i < raw.length; i += 5) {
+                int direction = raw[i + 1], color = raw[i + 2], seconds = raw[i + 3], showType = raw[i + 4];
+                if (direction < 1 || direction > 3 || color < 0 || color > 1 || showType < 0) continue;
+                if (showType > 0 && seconds < 0) continue;
+                if (byDirection.containsKey(direction)) ambiguous.add(direction);
+                byDirection.put(direction, new CruiseSignal(direction, color,
+                        showType > 0 && seconds > 0 ? seconds : -1, raw[i]));
+            }
+            for (Integer direction : ambiguous) byDirection.remove(direction);
+            return byDirection.isEmpty() ? EMPTY : new CruiseSignalSnapshot(
+                    new java.util.ArrayList<>(byDirection.values()), receivedAtElapsedMs);
+        }
+
+        /**
+         * Map display DTO values: showType/crossManeuverID/lightCountdown/status.
+         *
+         * This is a different contract from CameraLightInfoWrapper. The native
+         * cruise layer emits showType 2/3, maneuver 1/2/8 and status 2/3/4/5/6/8.
+         * The status values are raw map-layer states: 2/3 red, 4/5/6 green, 8
+         * yellow. Unknown values are discarded instead of being guessed.
+         */
+        public static CruiseSignalSnapshot fromMapRaw(int[] raw, int lightCount, boolean sdType,
+                long receivedAtElapsedMs) {
+            if (raw == null || raw.length == 0 || raw.length % 4 != 0 || raw.length > 16 * 4
+                    || lightCount < 1 || lightCount > 16 || receivedAtElapsedMs < 0L) return EMPTY;
+            java.util.Map<Integer, CruiseSignal> byDirection = new java.util.TreeMap<>();
+            java.util.Set<Integer> ambiguous = new java.util.HashSet<>();
+            for (int i = 0; i < raw.length; i += 4) {
+                int showType = raw[i], crossManeuver = raw[i + 1], seconds = raw[i + 2], status = raw[i + 3];
+                int direction;
+                if (crossManeuver == 1) {
+                    direction = 1; // map layer: turn_left
+                } else if (crossManeuver == 2) {
+                    direction = 3; // map layer: turn_right
+                } else if (crossManeuver == 8) {
+                    direction = 2; // map layer: go_straight
+                } else {
+                    continue;
+                }
+                if (showType != 2 && showType != 3) continue;
+                // Group markers only render main lights, never a secondary from another row.
+                if (lightCount >= 2 && showType != 3) continue;
+                // Native cruise only emits the secondary-light form for straight.
+                if (showType == 2 && crossManeuver != 8) continue;
+                int color;
+                if (status == 2 || status == 3) {
+                    color = 0; // raw map status: red
+                } else if (status == 4 || status == 5 || status == 6) {
+                    color = 1; // raw map status: green
+                } else if (status == 8) {
+                    color = 2; // raw map status: yellow
+                } else {
+                    continue;
+                }
+                int displaySeconds = seconds > 0 ? seconds : -1;
+                // Main-light yellow is rendered as “注意” by the map and has no number.
+                if (showType == 3 && (status == 8 || status == 6 && !sdType)) displaySeconds = -1;
+                if (byDirection.containsKey(direction)) ambiguous.add(direction);
+                byDirection.put(direction, new CruiseSignal(direction, color, displaySeconds, 0));
+            }
+            for (Integer direction : ambiguous) byDirection.remove(direction);
+            return byDirection.isEmpty() ? EMPTY : new CruiseSignalSnapshot(
+                    new java.util.ArrayList<>(byDirection.values()), receivedAtElapsedMs);
+        }
+    }
+
+
+    public static final class CruiseSignal {
+        public final int direction;
+        public final int color;
+        /** -1 means no qualified numeric countdown; zero never synthesizes a light transition. */
+        public final int seconds;
+        public final int waitNum;
+        private CruiseSignal(int direction, int color, int seconds, int waitNum) {
+            this.direction = direction;
+            this.color = color;
+            this.seconds = seconds;
+            this.waitNum = waitNum;
+        }
+    }
+
     /** Classification shared by media presentation, lyrics and artwork policy. */
     public enum MediaSongIdentity {
         UNKNOWN,

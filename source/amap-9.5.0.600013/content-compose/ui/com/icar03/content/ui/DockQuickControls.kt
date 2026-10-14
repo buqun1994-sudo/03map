@@ -104,6 +104,7 @@ internal fun dockLevelGesture(control: ControlId, state: ControlState, overlay: 
     val gate = rememberQuickControlGestureGate(enabled, onLifecycleCancel = { overlay.cancel() }) {
         if (overlay.visible) overlay.cancel()
     }
+    val arbitration = LocalMultiFingerGestureArbitration.current
     val current by rememberUpdatedState(state)
     val commit by rememberUpdatedState(onCommit)
     val scale = remember(control.maxManualLevel) { SteppedControlScale(control.maxManualLevel) }
@@ -128,7 +129,7 @@ internal fun dockLevelGesture(control: ControlId, state: ControlState, overlay: 
                     val event = awaitPointerEvent(PointerEventPass.Main)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     val anotherPointerPressed = event.changes.any { it.id != down.id && it.pressed }
-                    if (overlay.coordinateRevision != coordinateRevision || !gate.enabled ||
+                    if (arbitration?.owned == true || overlay.coordinateRevision != coordinateRevision || !gate.enabled ||
                         gate.revision != revision || anotherPointerPressed) break
                     if (!change.pressed) {
                         if (accepted && !change.isConsumed) {
@@ -150,6 +151,7 @@ internal fun dockLevelGesture(control: ControlId, state: ControlState, overlay: 
                             abs(movement.x) > viewConfiguration.touchSlop && abs(movement.x) >= abs(movement.y) ||
                             movement.y > viewConfiguration.touchSlop) break
                         if (movement.y < -viewConfiguration.touchSlop && abs(movement.y) > abs(movement.x)) {
+                            if (arbitration?.claimSingle() == false) break
                             val opening = if (control.isManualLevel(current.displayed)) current.displayed
                                 else if (current.displayed == 0) 0 else control.rememberedManualLevel(current.rememberedLevel)
                             accepted = overlay.open(control, slot, opening, current.actual, scale)

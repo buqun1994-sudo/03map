@@ -197,6 +197,55 @@ class LyricParagraphLayoutTest {
         }
     }
 
+    @Test fun romanizationVisibilityRemovesOnlyItsMeasuredTrackAndPreservesTranslationAndWords() {
+        val line = LyricLine(1_000L, "合成第一句", translation = "Synthetic translation", romanization = "he cheng di yi ju",
+            words = listOf(LyricWord(1_000L, 2_000L, "合成第一句")),
+            backgroundWords = listOf(LyricWord(1_500L, 2_500L, "背景歌词")))
+        for (scale in listOf(1f, 3f)) {
+            val sized = metrics.copy(main = metrics.main * scale, activeMain = metrics.activeMain * scale,
+                translation = metrics.translation * scale, romanization = metrics.romanization * scale)
+            val full = prepareLyricRow(line, 1_200, sized, face, cjk)
+            val hidden = prepareLyricRow(line, 1_200, sized.copy(showRomanization = false), face, cjk)
+            assertEquals(4, full.tracks.size)
+            assertEquals(listOf(line.text, line.translation, "背景歌词"), hidden.tracks.map { it.layout.text.toString() })
+            assertTrue("ordinary/full-screen row releases the romanization slot", hidden.height < full.height)
+            assertSame(line.words, hidden.tracks.first().words)
+            val originalOnly = prepareLyricRow(line, 1_200, sized.copy(showRomanization = false, showTranslation = false), face, cjk)
+            assertEquals(listOf(line.text, "背景歌词"), originalOnly.tracks.map { it.layout.text.toString() })
+            assertTrue(originalOnly.height < hidden.height)
+            val romanizedOnly = prepareLyricRow(line, 1_200, sized.copy(showTranslation = false), face, cjk)
+            assertEquals(listOf(line.text, line.romanization, "背景歌词"), romanizedOnly.tracks.map { it.layout.text.toString() })
+            assertEquals(full.height, prepareLyricRow(line, 1_200, sized, face, cjk).height)
+            saveRomanizationComparison(line, full, hidden, sized, scale)
+        }
+        assertEquals("he cheng di yi ju", line.romanization)
+        assertEquals("Synthetic translation", line.translation)
+    }
+
+    private fun saveRomanizationComparison(line: LyricLine, shown: NativeLyricRow, hidden: NativeLyricRow,
+        sized: LyricMetrics, scale: Float) {
+        val frame = Bitmap.createBitmap(2_400, maxOf(shown.height, hidden.height) + 170, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(frame).apply { drawColor(Color.WHITE) }
+        val labels = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(39, 48, 59); textSize = 28f; typeface = cjk
+        }
+        for ((index, row) in listOf(shown, hidden).withIndex()) {
+            val currentMetrics = if (index == 0) sized else sized.copy(showRomanization = false)
+            val cache = LyricInkCache(listOf(row), currentMetrics, frame.height.toFloat())
+            val slices = cache.prepare(addresses(row), setOf(0), 0)
+            canvas.save()
+            canvas.translate(index * 1_200f + 24f, 0f)
+            canvas.drawText(if (index == 0) "注音开启" else "注音关闭", 0f, 44f, labels)
+            LyricInkPainter(currentMetrics).draw(canvas, slices, listOf(row), floatArrayOf(0f), cache, 100f,
+                setOf(0), 0, LyricsState(lines = listOf(line), timelineReady = true, positionMs = 1_750L), 10_000L, false)
+            canvas.restore()
+        }
+        val directory = java.io.File("build/frames").apply { mkdirs() }
+        java.io.File(directory, "lyrics-romanization-sdk${android.os.Build.VERSION.SDK_INT}-${scale.toInt()}x.png").outputStream().use {
+            assertTrue(frame.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+    }
+
     private fun starts(layout: StaticLayout) = (0 until layout.lineCount).map(layout::getLineStart)
 
     private fun nativeLayout(source: StaticLayout): StaticLayout =

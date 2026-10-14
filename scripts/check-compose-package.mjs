@@ -32,4 +32,4 @@ const services=new Map([
   ['META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler','kotlinx.coroutines.android.AndroidExceptionPreHandler'],
 ]);
 for(const [entry,provider] of services)if(!files.includes(entry)||unzip(['-p',apk,entry]).toString('utf8').trim()!==provider)throw new Error(`Runtime service provider mismatch: ${entry}`);
-console.log(`Compose APK verified: 61 original native hashes preserved, 2 exact rebuildable mute patches, ${lock.native.length} locked arm64 addition, ${dex.length} contiguous DEX, dispatcher metadata retained`);
+console.log(`Compose APK verified: 60 original native hashes preserved, 3 exact rebuildable native patches, ${lock.native.length} locked arm64 addition, ${dex.length} contiguous DEX, dispatcher metadata retained`);

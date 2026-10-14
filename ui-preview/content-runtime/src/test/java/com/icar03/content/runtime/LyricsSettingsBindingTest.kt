@@ -171,7 +171,7 @@ class LyricsSettingsBindingTest {
         } finally { binding.close(); store.destroy() }
     }
 
-    @Test fun officialLoginIsExplicitAndBackCancelsOnlyItsCurrentSession() {
+    @Test fun productionLoginWithoutBrowserLeavesSettingsAvailableWithoutEmbeddedWindow() {
         val context = RuntimeEnvironment.getApplication()
         val store = ContentStore(context)
         val binding = ContentBinding(store)
@@ -182,9 +182,8 @@ class LyricsSettingsBindingTest {
             binding.dispatch(ContentEvent.OpenLyricsSettings)
             binding.dispatch(AppleMusicConnectRequested)
             shadowOf(Looper.getMainLooper()).idle()
-            assertTrue(binding.state.value.lyricsProviderSettings.appleLoginOpen)
-            binding.dispatch(ContentEvent.SettingsBack)
             assertFalse(binding.state.value.lyricsProviderSettings.appleLoginOpen)
+            assertNull(field(settingsOwner(binding), "loginWebView"))
             assertTrue(binding.state.value.settingsOpen)
             assertEquals(SettingsSection.Lyrics, binding.state.value.settingsSection)
         } finally { binding.close(); store.destroy() }

@@ -3855,6 +3855,8 @@
 .method public static onNaviStatusChange(I)V
     .locals 2
 
+    invoke-static {}, Lcom/autonavi/amapauto/content/ContentRuntime;->onAmapNavigationChanged()V
+
     .line 1
     invoke-static {}, Lhm0;->g()Lhm0;
 

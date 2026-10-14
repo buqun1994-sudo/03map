@@ -632,6 +632,112 @@ class LyricsResolutionSessionTest {
         }
     }
 
+    @Test fun selectedCjkStageOpensOtherSourcesAfterEnrichmentAndAdoptsRomanizationUpgrade() {
+        val preferredEnrichmentStarted = CountDownLatch(1)
+        val preferredStageFinished = AtomicInteger()
+        val releasePreferredStage = CountDownLatch(1)
+        val fallbackSearchStarted = CountDownLatch(1)
+        val fallbackBodyStarted = CountDownLatch(1)
+        val releaseFallbackBody = CountDownLatch(1)
+        val firstPublished = CountDownLatch(1)
+        val callbacks = AtomicInteger(0)
+        val updates = ConcurrentLinkedQueue<LyricsResolutionOutcome.Found>()
+        val cjkLines = "[00:01]あいうえお\n[01:20]かきくけこ\n[03:10]さしすせそ"
+        val cjkWords = "[1000,1000](1000,900,0)あいうえお\n" +
+            "[80000,1000](80000,900,0)かきくけこ\n" +
+            "[190000,1000](190000,900,0)さしすせそ"
+        val romanization = "[00:01]a i u e o\n[01:20]ka ki ku ke ko\n[03:10]sa shi su se so"
+        val preferredBody = candidate(SOURCE_APPLE_MUSIC).copy(
+            lyrics = cjkLines,
+            wordLyrics = cjkWords,
+            translatedLyrics = TRANSLATION
+        )
+        val preferred = staged(SOURCE_APPLE_MUSIC, preferredBody) { base, signal ->
+            preferredEnrichmentStarted.countDown()
+            awaitGate(releasePreferredStage, signal)
+            preferredStageFinished.incrementAndGet()
+            base
+        }
+        val fallback = FakeCatalog(
+            SOURCE_QQ,
+            searcher = { _, _ ->
+                assertEquals(1, preferredStageFinished.get())
+                fallbackSearchStarted.countDown()
+                listOf(candidate(SOURCE_QQ))
+            },
+            loader = { item, signal ->
+                fallbackBodyStarted.countDown()
+                awaitGate(releaseFallbackBody, signal)
+                item.copy(
+                    lyrics = cjkLines,
+                    wordLyrics = cjkWords,
+                    translatedLyrics = TRANSLATION,
+                    romanizedLyrics = romanization
+                )
+            }
+        )
+        Harness(catalogs = listOf(preferred, fallback), preferred = listOf(SOURCE_APPLE_MUSIC)).use { harness ->
+            val pending = harness.start { update ->
+                updates += update
+                if (callbacks.getAndIncrement() == 0) firstPublished.countDown()
+            }
+            try {
+                assertTrue(firstPublished.await(2L, TimeUnit.SECONDS))
+                assertTrue(preferredEnrichmentStarted.await(2L, TimeUnit.SECONDS))
+                val baseline = updates.single()
+                assertEquals(SOURCE_APPLE_MUSIC, baseline.resolved.result.source)
+                assertEquals(cjkLines, baseline.resolved.result.lyrics)
+                assertEquals(cjkWords, baseline.resolved.result.wordLyrics)
+                assertEquals(TRANSLATION, baseline.resolved.result.translatedLyrics)
+                assertEquals("", baseline.resolved.result.romanizedLyrics)
+                val baselineQuality = LyricsContentRanker.inspect(QUERY, baseline.resolved.result)
+                assertEquals(1.0, baselineQuality.wordCoverage, 0.0)
+                assertEquals(1.0, baselineQuality.translationCoverage, 0.0)
+                assertEquals(0.0, baselineQuality.romanizationCoverage, 0.0)
+                assertTrue(LyricsContentRanker.needsCrossPlatformUpgrade(QUERY, baseline.resolved.result))
+                assertTrue(LyricsCandidateSelector.isProofValid(QUERY, baseline.resolved.result, baseline.resolved.proof))
+                assertFalse(fallbackSearchStarted.await(100L, TimeUnit.MILLISECONDS))
+                assertEquals(0, fallback.searchCalls.get())
+                assertFalse(pending.isDone)
+
+                releasePreferredStage.countDown()
+                assertTrue(fallbackSearchStarted.await(2L, TimeUnit.SECONDS))
+                assertTrue(fallbackBodyStarted.await(2L, TimeUnit.SECONDS))
+                assertEquals(1, fallback.searchCalls.get())
+                assertFalse(pending.isDone)
+                releaseFallbackBody.countDown()
+
+                val final = found(pending).resolved
+                assertEquals(SOURCE_QQ, final.result.source)
+                assertEquals(cjkLines, final.result.lyrics)
+                assertEquals(cjkWords, final.result.wordLyrics)
+                assertEquals(TRANSLATION, final.result.translatedLyrics)
+                assertEquals(romanization, final.result.romanizedLyrics)
+                assertEquals(QUERY.durationMs, final.result.durationMs)
+                assertEquals(QUERY.track, final.result.candidateTrack)
+                assertEquals(QUERY.artist, final.result.candidateArtist)
+                assertEquals(QUERY.album, final.result.candidateAlbum)
+                val finalQuality = LyricsContentRanker.inspect(QUERY, final.result)
+                assertEquals(1.0, finalQuality.wordCoverage, 0.0)
+                assertEquals(1.0, finalQuality.translationCoverage, 0.0)
+                assertEquals(1.0, finalQuality.romanizationCoverage, 0.0)
+                assertFalse(LyricsContentRanker.needsCrossPlatformUpgrade(QUERY, final.result))
+                assertTrue(LyricsContentRanker.retainsCapabilities(QUERY, baseline.resolved.result, final.result))
+                assertTrue(LyricsContentRanker.isMaterialUpgrade(QUERY,
+                     LyricsCandidateSelection(baseline.resolved.result, baseline.resolved.proof),
+                     LyricsCandidateSelection(final.result, final.proof)))
+
+                assertTrue(LyricsCandidateSelector.isProofValid(QUERY, final.result, final.proof))
+                assertEquals(2, callbacks.get())
+                assertEquals(listOf(SOURCE_APPLE_MUSIC, SOURCE_QQ), updates.map { it.resolved.result.source })
+                assertEquals(1, fallback.loadCalls.get())
+            } finally {
+                releasePreferredStage.countDown()
+                releaseFallbackBody.countDown()
+            }
+        }
+    }
+
     @Test fun translatedLineLyricsStillStartParallelWordUpgradeAfterOwnEnrichment() {
         val enhancementFinished = AtomicInteger()
         val shown = ConcurrentLinkedQueue<String>()

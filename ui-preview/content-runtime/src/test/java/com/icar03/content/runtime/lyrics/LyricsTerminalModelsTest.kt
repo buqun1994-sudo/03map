@@ -46,6 +46,23 @@ class LyricsTerminalModelsTest {
         assertEquals(plain, LyricsResult.fromJson(plain.toJson()))
     }
 
+    @Test fun structuredTtmlKeepsASeparateRomanizationTrackWhenTheTtmlTrackIsPartial() {
+        val result = LyricsResult(
+            lyrics = "[00:01]第一句\n[00:03]第二句",
+            romanizedLyrics = "[00:01.300]di yi ju\n[00:03.300]di er ju",
+            ttmlLyrics = """
+                <tt xmlns="http://www.w3.org/ns/ttml">
+                  <body><div>
+                    <p begin="1s" end="2s">第一句</p>
+                    <p begin="3s" end="4s">第二句</p>
+                  </div></body>
+                </tt>
+            """.trimIndent(),
+            durationMs = 200_000L,
+        )
+        assertEquals(listOf("di yi ju", "di er ju"), result.timedLines().map { it.romanization })
+    }
+
     @Test fun soleRealMarkerIsEvidenceButMixedLyricsEmptyBodiesTitlesAndLongGapsAreNot() {
         for (marker in listOf("纯音乐，请欣赏", "[99:00.00]纯音乐，请欣赏",
             "[ti:合成曲名]\n[ar:合成歌手]\n[00:00.0]纯音乐，请您欣赏\n[03:00.0]")) {

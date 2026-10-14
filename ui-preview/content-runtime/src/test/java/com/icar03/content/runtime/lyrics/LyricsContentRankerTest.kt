@@ -160,16 +160,27 @@ class LyricsContentRankerTest {
     }
 
     @Test
-    fun sameLanguageHanRewritesAndOrdinaryPinyinDoNotAddQualityPoints() {
-        val original = "[00:01]\\u4eca\\u5929\\u770b\\u89c1\\u4f60\\u7684\\u7b11\\u5bb9"
-        val result = candidate(SOURCE_QQ).copy(lyrics = original,
-            translatedLyrics = "[00:01]\\u4eca\\u5929\\u53c8\\u770b\\u5230\\u4f60\\u7684\\u5fae\\u7b11",
+    fun sameLanguageHanRewritesDoNotAddQualityPointsButPinyinDoes() {
+        val original = "[00:01]今天看见你的笑容"
+        val pinyin = candidate(SOURCE_QQ).copy(lyrics = original,
+            translatedLyrics = "[00:01]今天又看到你的微笑",
             romanizedLyrics = "[00:01]jin tian kan jian ni de xiao rong")
-        val quality = LyricsContentRanker.inspect(query, result)
+        val quality = LyricsContentRanker.inspect(query, pinyin)
         assertEquals(0.0, quality.translationCoverage, 0.0)
-        assertEquals(0.0, quality.romanizationCoverage, 0.0)
-        assertEquals(LyricsContentRanker.inspect(query, result.copy(translatedLyrics = "", romanizedLyrics = "")).score,
-            quality.score)
+        assertEquals(1.0, quality.romanizationCoverage, 0.0)
+        assertTrue(quality.score > LyricsContentRanker.inspect(query, pinyin.copy(romanizedLyrics = "")).score)
+
+        val hanRewrite = pinyin.copy(romanizedLyrics = "[00:01]今天又看到你的微笑")
+        assertEquals(0.0, LyricsContentRanker.inspect(query, hanRewrite).romanizationCoverage, 0.0)
+    }
+
+    @Test
+    fun bopomofoAndCyrillicRomanizationAreAcceptedAcrossNonLatinScripts() {
+        val body = "[00:01]今天\n[00:20]안녕"
+        val romanized = "[00:01]ㄐㄧㄣ ㄊㄧㄢ\n[00:20]привет"
+        val quality = LyricsContentRanker.inspect(query, candidate(SOURCE_QQ).copy(
+            lyrics = body, romanizedLyrics = romanized))
+        assertEquals(1.0, quality.romanizationCoverage, 0.0)
     }
 
     @Test
@@ -289,11 +300,31 @@ class LyricsContentRankerTest {
         assertTrue(LyricsContentRanker.needsCrossPlatformUpgrade(query, declaredWords))
     }
 
+    @Test fun cjkWordsNeedRomanizationButLatinWordsWithTranslationDoNot() {
+        val chinese = candidate(SOURCE_QQ).copy(lyrics = CHINESE_LINES, wordLyrics = CHINESE_WORDS)
+        assertTrue(LyricsContentRanker.needsCrossPlatformUpgrade(query, chinese))
+        assertFalse(LyricsContentRanker.needsCrossPlatformUpgrade(query, chinese.copy(romanizedLyrics = ROMANIZATION)))
+        val latin = candidate(SOURCE_QQ).copy(wordLyrics = WORDS, translatedLyrics = TRANSLATION)
+        assertFalse(LyricsContentRanker.needsCrossPlatformUpgrade(query, latin))
+    }
+
+    @Test fun koreanKanjiAndPhoneticLettersReceiveCoverageButPartialTracksAreNotAnUpgrade() {
+        val body = candidate(SOURCE_QQ).copy(lyrics = "[00:01]안녕\n[01:20]世界\n[03:10]你好")
+        val full = body.copy(romanizedLyrics = "[00:01]annyeong\n[01:20]sekai\n[03:10]niː xɑʊ")
+        assertEquals(1.0, LyricsContentRanker.inspect(query, full).romanizationCoverage, 0.0)
+        assertTrue(LyricsContentRanker.isMaterialUpgrade(query, selection(body), selection(full)))
+        val partial = full.copy(romanizedLyrics = "[00:01]annyeong")
+        assertEquals(1.0 / 3.0, LyricsContentRanker.inspect(query, partial).romanizationCoverage, 0.0001)
+        assertFalse(LyricsContentRanker.isMaterialUpgrade(query, selection(body), selection(partial)))
+    }
+
     @Test fun eightyPercentRealWordCoverageIsEnoughForChineseButLowerCoverageIsNot() {
         val chinese = candidate(SOURCE_QQ).copy(
             lyrics = "[00:01]今天好晴天\n[00:20]今天好晴天\n[00:40]今天好晴天\n[01:20]今天好晴天\n[03:10]今天好晴天",
             wordLyrics = "[1000,1000](1000,900,0)今天好晴天\n[20000,1000](20000,900,0)今天好晴天\n" +
-                "[40000,1000](40000,900,0)今天好晴天\n[80000,1000](80000,900,0)今天好晴天"
+                "[40000,1000](40000,900,0)今天好晴天\n[80000,1000](80000,900,0)今天好晴天",
+             romanizedLyrics = "[00:01]jin tian hao qing tian\n[00:20]jin tian hao qing tian\n" +
+                 "[00:40]jin tian hao qing tian\n[01:20]jin tian hao qing tian\n[03:10]jin tian hao qing tian"
         )
         assertEquals(0.8, LyricsContentRanker.inspect(query, chinese).wordCoverage, 0.0)
         assertFalse(LyricsContentRanker.needsCrossPlatformUpgrade(query, chinese))
@@ -303,7 +334,7 @@ class LyricsContentRankerTest {
     }
 
     @Test fun chineseLineAxisWithoutRealWordsStillNeedsFallback() {
-        val chinese = candidate(SOURCE_QQ).copy(lyrics = CHINESE_LINES)
+        val chinese = candidate(SOURCE_QQ).copy(lyrics = CHINESE_LINES, romanizedLyrics = ROMANIZATION)
         assertEquals(LyricsKind.SYNCHRONIZED, LyricsContentRanker.inspect(query, chinese).kind)
         assertTrue(LyricsContentRanker.needsCrossPlatformUpgrade(query, chinese))
         val wordSynced = chinese.copy(wordLyrics = CHINESE_WORDS)
@@ -315,7 +346,7 @@ class LyricsContentRankerTest {
 
     @Test fun foreignWordAxisFallsBackUntilItsChineseTranslationIsUseful() {
         val english = candidate(SOURCE_QQ).copy(wordLyrics = WORDS)
-        val japanese = candidate(SOURCE_NETEASE).copy(lyrics = JAPANESE_LINES, wordLyrics = JAPANESE_WORDS)
+        val japanese = candidate(SOURCE_NETEASE).copy(lyrics = JAPANESE_LINES, wordLyrics = JAPANESE_WORDS, romanizedLyrics = ROMANIZATION)
         for (body in listOf(english, japanese)) {
             assertTrue(LyricsContentRanker.needsCrossPlatformUpgrade(query, body))
             assertTrue(LyricsContentRanker.needsCrossPlatformUpgrade(query,
@@ -330,8 +361,8 @@ class LyricsContentRankerTest {
     @Test fun kanaPreventsHanMajorityJapaneseFromBeingTreatedAsAlreadyChinese() {
         val japanese = candidate(SOURCE_QQ).copy(
             lyrics = "[00:01]明日の世界\n[03:10]世界の未来",
-            wordLyrics = "[1000,1000](1000,900,0)明日の世界\n[190000,1000](190000,900,0)世界の未来"
-        )
+            wordLyrics = "[1000,1000](1000,900,0)明日の世界\n[190000,1000](190000,900,0)世界の未来",
+             romanizedLyrics = "[00:01]ashita no sekai\n[03:10]sekai no mirai"        )
         assertTrue(LyricsContentRanker.needsCrossPlatformUpgrade(query, japanese))
         val withChinese = japanese.copy(translatedLyrics = "[00:01]明天的世界\n[03:10]世界的未来")
         assertEquals(1.0, LyricsContentRanker.inspect(query, withChinese).translationCoverage, 0.0)
@@ -339,7 +370,7 @@ class LyricsContentRankerTest {
     }
 
     @Test fun sameScriptRewritesAndKanaAuxiliaryAreNotChineseTranslationRepairs() {
-        val chinese = candidate(SOURCE_QQ).copy(lyrics = CHINESE_LINES, wordLyrics = CHINESE_WORDS, translatedLyrics = TRANSLATION)
+        val chinese = candidate(SOURCE_QQ).copy(lyrics = CHINESE_LINES, wordLyrics = CHINESE_WORDS, translatedLyrics = TRANSLATION, romanizedLyrics = ROMANIZATION)
         assertEquals(0.0, LyricsContentRanker.inspect(query, chinese).translationCoverage, 0.0)
         assertFalse(LyricsContentRanker.needsCrossPlatformUpgrade(query, chinese))
         val foreign = candidate(SOURCE_NETEASE).copy(
@@ -370,6 +401,14 @@ class LyricsContentRankerTest {
         assertTrue(LyricsContentRanker.retainsCapabilities(query, baseline, complete))
         assertTrue(LyricsContentRanker.isMaterialUpgrade(query, selection(baseline), selection(complete)))
     }
+
+    @Test fun romanizationOnlyGainIsAStableMaterialUpgrade() {
+        val baseline = candidate(SOURCE_QQ).copy(lyrics = JAPANESE_LINES)
+        val enriched = baseline.copy(romanizedLyrics = ROMANIZATION)
+        assertTrue(LyricsContentRanker.retainsCapabilities(query, baseline, enriched))
+        assertTrue(LyricsContentRanker.isMaterialUpgrade(query, selection(baseline), selection(enriched)))
+    }
+
 
     @Test fun sameCandidateTranslationGainMustRetainItsExistingWords() {
         val baseline = candidate(SOURCE_QQ).copy(wordLyrics = WORDS)

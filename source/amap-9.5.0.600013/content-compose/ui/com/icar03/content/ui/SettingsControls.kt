@@ -34,6 +34,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -229,6 +232,90 @@ fun SettingsFieldBlock(
         SettingsLineText(title, Modifier.fillMaxWidth().settingsTag(settingsChildTag(tag, "label")),
             design.labelStyle, design.text)
         content()
+    }
+}
+
+/** Material3 owns popup placement, dismissal, focus and menu input; only accepted choices leave the control. */
+@Composable
+internal fun SettingsDropdown(
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tag: String = "",
+) {
+    val design = LocalSettingsDesign.current
+    val currentSelected by rememberUpdatedState(selected)
+    val currentEnabled by rememberUpdatedState(enabled)
+    val currentOnSelected by rememberUpdatedState(onSelected)
+    val currentClickSound by rememberUpdatedState(LocalContentClickSound.current)
+    val view = LocalView.current
+    var expanded by remember { mutableStateOf(false) }
+    var mounted by remember { mutableStateOf(true) }
+    LaunchedEffect(enabled, selected) { expanded = false }
+    DisposableEffect(Unit) {
+        onDispose { mounted = false; expanded = false }
+    }
+    val interactions = remember { MutableInteractionSource() }
+    val base = interfaceSurfaceColor(design.track.copy(alpha = if (enabled) 1f else .38f), design.surfaceOpacity)
+    val feedback = rememberBoundaryPressFeedback(interactions, enabled, base,
+        interfaceSurfaceColor(design.pressed, design.surfaceOpacity))
+    val label = options.firstOrNull { it.first == selected }?.second.orEmpty()
+    BoxWithConstraints(modifier) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = design.minimumTouchHeight).settingsTag(tag)
+                .then(feedback.touchCoordinates).then(feedback.pointerDownLatch)
+                .clip(design.cardShape).then(feedback.area(base))
+                .clickable(interactionSource = interactions, indication = null, enabled = enabled,
+                    role = Role.Button, onClick = {
+                        if (mounted && currentEnabled && !expanded) {
+                            expanded = true
+                            // Opening is a local accepted click; selections use the parent's dispatch sound owner.
+                            currentClickSound(view)
+                        }
+                    })
+                .excludeDisabledActionTap(enabled)
+                .semantics { stateDescription = label }
+                .padding(design.smallGap),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(design.smallGap),
+        ) {
+            SettingsLineText(label, Modifier.weight(1f).settingsTag(settingsChildTag(tag, "value")),
+                design.labelStyle, design.text.copy(alpha = if (enabled) 1f else .38f), maxLines = Int.MAX_VALUE)
+            Icon(Icons.Filled.KeyboardArrowDown, null, Modifier.size(24.dp),
+                tint = design.text.copy(alpha = if (enabled) 1f else .38f))
+        }
+        DropdownMenu(
+            expanded = expanded && enabled && mounted,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(maxWidth.coerceAtLeast(240.dp))
+                .downwardSoftShadow(design.card, design.dark, design.cardCornerRadius, opacity = design.surfaceOpacity)
+                .settingsTag(settingsChildTag(tag, "menu")),
+            shape = design.cardShape,
+            containerColor = interfaceSurfaceColor(design.card, design.surfaceOpacity),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+        ) {
+            options.forEach { (id, title) ->
+                DropdownMenuItem(
+                    text = { SettingsLineText(title, style = design.labelStyle, color = design.text,
+                        maxLines = Int.MAX_VALUE) },
+                    enabled = enabled,
+                    modifier = Modifier.settingsTag(settingsChildTag(tag, "option-$id"))
+                        .background(if (id == selected) interfaceSurfaceColor(design.track, design.surfaceOpacity)
+                            else Color.Transparent)
+                        .semantics { this.selected = id == selected },
+                    contentPadding = PaddingValues(horizontal = design.smallGap, vertical = design.smallGap),
+                    onClick = {
+                        if (mounted && currentEnabled && expanded) {
+                            expanded = false
+                            if (id != currentSelected) currentOnSelected(id)
+                        }
+                    },
+                )
+            }
+        }
     }
 }
 

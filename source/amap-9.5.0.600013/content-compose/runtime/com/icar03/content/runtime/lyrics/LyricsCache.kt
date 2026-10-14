@@ -1010,7 +1010,7 @@ internal class LyricsCache(
 internal object LyricsCachePolicy {
     const val MAX_BYTES = ContentCacheBudget.MAX_BYTES
     const val TRIM_TARGET_BYTES = MAX_BYTES * 9L / 10L
-    const val QUALITY_VERSION = 4 // Single-provider acquisition; real word timing before translation and line lyrics.
+    const val QUALITY_VERSION = 5 // Cross-provider pronunciation acquisition and structured auxiliary-track preservation.
     const val REFRESH_AFTER_MS = 6L * 60L * 60L * 1000L
     const val MAX_REFRESH_ATTEMPTS = 3
     private const val MAX_USE_COUNT = 30

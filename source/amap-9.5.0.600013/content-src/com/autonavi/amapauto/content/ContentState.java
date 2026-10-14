@@ -3,6 +3,9 @@ package com.autonavi.amapauto.content;
 import com.icar03.content.model.VehicleControl;
 import com.icar03.content.model.VehicleGear;
 import com.icar03.content.model.LyricPreferenceRules;
+import com.icar03.content.model.GestureAction;
+import com.icar03.content.model.GestureCommand;
+import com.icar03.content.model.GesturePreferences;
 
 import android.graphics.Bitmap;
 
@@ -19,10 +22,12 @@ public final class ContentState {
     public static final int COMMAND_FAILED = 1;
     public static final int COMMAND_PENDING = 2;
 
+    public ContentPorts.CruiseSignalSnapshot cruiseSignals = ContentPorts.CruiseSignalSnapshot.EMPTY;
     public int themeMode = THEME_LIGHT;
     public boolean showWeekday = true;
     public boolean showSeconds;
     public boolean showIndoorTemperature = true;
+    public boolean showCruiseSignals = true;
     public boolean showBattery = true;
     public boolean showRange = true;
     public boolean showChargingStatus = true;
@@ -45,6 +50,7 @@ public final class ContentState {
     public float lyricsImmersiveCurrentFontSizeSp = 144.0f;
     public float lyricsImmersiveLineGapDp = 84.0f;
     public boolean lyricsShowTranslation = true;
+    public boolean lyricsShowRomanization = true;
     public boolean lyricsSpeakerLayout = true;
     public boolean lyricsHighlight = LyricPreferenceRules.DEFAULT_HIGHLIGHT;
     public boolean immersiveShowTopBar = true;
@@ -174,6 +180,17 @@ public final class ContentState {
     public boolean screenGearKnown;
     public int pendingFeatureTarget = -1;
     private java.util.Map<String, Integer> rememberedControlLevels = java.util.Collections.emptyMap();
+    private java.util.Map<GestureCommand, GestureAction> gestureActions = GesturePreferences.defaultActions();
+
+    public java.util.Map<GestureCommand, GestureAction> getGestureActions() {
+        return gestureActions;
+    }
+
+    /** Freeze on assignment; copies and UI projections share this immutable preference value. */
+    public void setGestureActions(java.util.Map<GestureCommand, GestureAction> actions) {
+        java.util.Map<GestureCommand, GestureAction> normalized = GesturePreferences.normalize(actions);
+        if (!gestureActions.equals(normalized)) gestureActions = normalized;
+    }
 
     public java.util.Map<String, Integer> getRememberedControlLevels() {
         return rememberedControlLevels;
@@ -236,10 +253,12 @@ public final class ContentState {
 
     public ContentState copy() {
         ContentState copy = new ContentState();
+        copy.cruiseSignals = cruiseSignals;
         copy.themeMode = themeMode;
         copy.showWeekday = showWeekday;
         copy.showSeconds = showSeconds;
         copy.showIndoorTemperature = showIndoorTemperature;
+        copy.showCruiseSignals = showCruiseSignals;
         copy.showBattery = showBattery;
         copy.showRange = showRange;
         copy.showChargingStatus = showChargingStatus;
@@ -261,6 +280,7 @@ public final class ContentState {
         copy.lyricsImmersiveCurrentFontSizeSp = lyricsImmersiveCurrentFontSizeSp;
         copy.lyricsImmersiveLineGapDp = lyricsImmersiveLineGapDp;
         copy.lyricsShowTranslation = lyricsShowTranslation;
+        copy.lyricsShowRomanization = lyricsShowRomanization;
         copy.lyricsSpeakerLayout = lyricsSpeakerLayout;
         copy.lyricsHighlight = lyricsHighlight;
         copy.immersiveShowTopBar = immersiveShowTopBar;
@@ -387,6 +407,7 @@ public final class ContentState {
          copy.screenGearKnown = screenGearKnown;
          copy.pendingFeatureTarget = pendingFeatureTarget;
          copy.rememberedControlLevels = rememberedControlLevels;
+         copy.gestureActions = gestureActions;
 
         return copy;
     }

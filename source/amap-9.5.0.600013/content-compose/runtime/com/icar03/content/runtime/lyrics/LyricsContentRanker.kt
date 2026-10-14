@@ -123,13 +123,14 @@ internal object LyricsContentRanker {
     fun inspect(query: LyricsLookup, result: LyricsResult): ContentQuality =
         inspectBody(query, result).quality
 
-    /** Cross-provider fallback repairs missing real word timing or a needed Chinese translation;
-     * missing romanization or speaker metadata alone never starts it. */
+    /** Cross-provider fallback repairs missing real word timing, needed Chinese translation, or
+     * pronunciation tracks for CJK lyrics; speaker metadata alone never starts it. */
     fun needsCrossPlatformUpgrade(query: LyricsLookup, result: LyricsResult): Boolean {
         val body = inspectBody(query, result)
         return body.quality.kind != LyricsKind.SYNCHRONIZED ||
             body.quality.wordCoverage < MINIMUM_WORD_COVERAGE ||
-            (body.needsChineseTranslation && body.quality.translationCoverage < MINIMUM_TRANSLATION_COVERAGE)
+            (body.needsChineseTranslation && body.quality.translationCoverage < MINIMUM_TRANSLATION_COVERAGE) ||
+            (body.needsRomanization && body.quality.romanizationCoverage < MINIMUM_ROMANIZATION_COVERAGE)
     }
 
     /** Shared with same-candidate enrichment admission; identity/proof is checked by its caller. */
@@ -259,7 +260,7 @@ internal object LyricsContentRanker {
                 scriptRatio(line.translation, Character.UnicodeScript.HAN) >= 0.5 &&
                 !hasKana(line.translation) && needsChineseTranslation(line.text)
             ) translatedCharacters += lineCharacters[index]
-            if (hasKana(line.text) && hasDistinctText(line.text, line.romanization) && hasLatinLetters(line.romanization)) {
+            if (hasDistinctText(line.text, line.romanization) && hasRomanizationLetters(line.romanization)) {
                 romanizedCharacters += lineCharacters[index]
             }
             if (line.speakerSide != LyricSpeakerLayout.UNSPECIFIED) speakerCharacters += lineCharacters[index]
@@ -280,7 +281,8 @@ internal object LyricsContentRanker {
                 grams(normalizedBody)
             } else emptySet(),
             normalizedText = normalizedBody,
-            needsChineseTranslation = needsChineseTranslation(lines.joinToString("\n") { it.text })
+            needsChineseTranslation = needsChineseTranslation(lines.joinToString("\n") { it.text }),
+            needsRomanization = lines.any { hasRomanizableScript(it.text) }
         )
     }
 
@@ -325,8 +327,27 @@ internal object LyricsContentRanker {
         hasKana(text) || (text.codePoints().anyMatch(Character::isLetter) &&
             scriptRatio(text, Character.UnicodeScript.HAN) < 0.5)
 
-    private fun hasLatinLetters(text: String): Boolean = text.codePoints().anyMatch { character ->
-        Character.isLetter(character) && Character.UnicodeScript.of(character) == Character.UnicodeScript.LATIN
+    private fun hasRomanizableScript(text: String): Boolean = text.codePoints().anyMatch { character ->
+        when (Character.UnicodeScript.of(character)) {
+            Character.UnicodeScript.HAN,
+            Character.UnicodeScript.HANGUL,
+            Character.UnicodeScript.HIRAGANA,
+            Character.UnicodeScript.KATAKANA -> Character.isLetter(character)
+            else -> false
+        }
+    }
+
+
+    private fun hasRomanizationLetters(text: String): Boolean = text.codePoints().anyMatch { character ->
+        if (character in 0x3100..0x312F || character in 0x31A0..0x31BF) return@anyMatch true
+        if (!Character.isLetter(character)) return@anyMatch false
+        when (Character.UnicodeScript.of(character)) {
+            Character.UnicodeScript.HAN,
+            Character.UnicodeScript.HANGUL,
+            Character.UnicodeScript.HIRAGANA,
+            Character.UnicodeScript.KATAKANA -> false
+            else -> true
+        }
     }
 
     private fun hasKana(text: String): Boolean = text.codePoints().anyMatch { character ->
@@ -366,7 +387,8 @@ internal object LyricsContentRanker {
         val quality: ContentQuality,
         val grams: Set<String> = emptySet(),
         val normalizedText: String = "",
-        val needsChineseTranslation: Boolean = false
+        val needsChineseTranslation: Boolean = false,
+        val needsRomanization: Boolean = false
     )
     private data class WordCoverage(val characters: Int = 0, val lastEndMs: Long = 0L)
 }

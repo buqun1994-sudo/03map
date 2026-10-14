@@ -58,6 +58,7 @@ internal class BoundaryPressFeedback {
 
     internal val pulses = mutableStateListOf<Pulse>()
     internal var acceptsPress = false
+    internal var arbitration: MultiFingerGestureArbitration? = null
     private var currentEligible = false
     private var currentBase = Color.Transparent
     private var currentColor = Color.Transparent
@@ -87,17 +88,21 @@ internal class BoundaryPressFeedback {
             coroutineScope {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    val press = if (acceptsPress && currentEligible) {
+                    val press = if (acceptsPress && currentEligible && arbitration?.owned != true) {
                         PressInteraction.Press(down.position).also {
                             launchPulse(it, currentBase, currentColor, this@coroutineScope)
                         }
                     } else null
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull { it.id == down.id }
-                        if (change == null || !change.pressed) break
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            if (arbitration?.owned == true) { clear(); break }
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                            if (change == null || !change.pressed) break
+                        }
+                    } finally {
+                        if (arbitration?.owned == true) clear() else press?.let(::release)
                     }
-                    press?.let(::release)
                 }
             }
         }
@@ -158,8 +163,10 @@ internal fun rememberBoundaryPressFeedback(source: InteractionSource, eligible: 
     var started by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
     val iconVisible by rememberUpdatedState(LocalIconVisible.current)
-    val visible = started && focused && iconVisible
+    val arbitration = LocalMultiFingerGestureArbitration.current
+    val visible = started && focused && iconVisible && arbitration?.owned != true
     SideEffect {
+        feedback.arbitration = arbitration
         feedback.updateCurrent(eligible, baseColor, rippleColor)
         feedback.acceptsPress = visible
         if (!visible) feedback.clear()

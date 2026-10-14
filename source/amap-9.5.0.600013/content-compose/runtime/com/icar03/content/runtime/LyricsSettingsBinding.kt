@@ -93,6 +93,8 @@ class LyricsSettingsBinding internal constructor(
     private val preferences = ContentLyricsPreferences(appContext)
     private val appleConnection by lazy(LazyThreadSafetyMode.NONE) { connection ?: AppleMusicConnection(appContext) }
 
+    private val embeddedLoginForFixture = connection != null || authorizationConfiguration != null || authorizationBuilder != null
+    private var externalMessageShown = ""
     private var currentState = LyricsProviderUiState()
     private var started = false
     private var closed = false
@@ -297,6 +299,21 @@ class LyricsSettingsBinding internal constructor(
             feedback("歌词设置当前不可用")
             return
         }
+        if (!embeddedLoginForFixture) {
+            if (runCatching { appleConnection.state.value.isConnecting }.getOrDefault(false)) return
+            val component = com.icar03.content.runtime.lyrics.AppleMusicBrowserLoginContract.component
+            val installed = runCatching { appContext.packageManager.getActivityInfo(component, 0) }
+                .getOrNull()?.let { it.enabled && it.exported && it.applicationInfo.enabled } == true
+            if (!installed) {
+                feedback("请先安装03浏览器，再登录Apple Music")
+                return
+            }
+            runCatching {
+                com.icar03.content.runtime.lyrics.AppleMusicBrowserLogin.begin(appContext)
+            }.onFailure { feedback("无法打开03浏览器登录，请重试") }
+            refreshState()
+            return
+        }
         if (preparing || activeAttempt != null) return
         val ownerLifecycle = lifecycleEpoch
         val ownerLogin = ++loginEpoch
@@ -422,6 +439,11 @@ class LyricsSettingsBinding internal constructor(
     }
 
     private fun cancelAppleLogin() {
+        if (!embeddedLoginForFixture && activeAttempt == null && loginWebView == null && !preparing && pageError == null) {
+            com.icar03.content.runtime.lyrics.AppleMusicBrowserLogin.cancel(appContext)
+            refreshState()
+            return
+        }
         loginEpoch++
         pollJob?.cancel()
         pollJob = null
@@ -457,11 +479,21 @@ class LyricsSettingsBinding internal constructor(
     private fun refreshState(force: Boolean = false) {
         val appleState = runCatching { appleConnection.state.value }
             .getOrElse { AppleMusicConnection.State() }
+        if (!embeddedLoginForFixture && started && !appleState.isConnecting && appleState.loginMessage.isNotEmpty() &&
+            externalMessageShown != appleState.loginMessage) {
+            externalMessageShown = appleState.loginMessage
+            feedback(appleState.loginMessage)
+        }
         val preferred = runCatching { preferences.getPreferredPlatform() }
             .getOrDefault(ContentLyricsPreferences.Platform.AUTO)
         val next = LyricsProviderUiState(
             preferredPlatform = platformId(preferred),
-            appleStatus = appleUiStatus(appleState),
+            appleStatus = if (appleState.isConnecting && appleState.loginMessage.startsWith("正在验证")) "verifying" else appleUiStatus(appleState),
+            appleRegionName = appleRegionName(appleState.storefront),
+            appleConnectionMessage = appleState.loginMessage.takeIf {
+                it.startsWith("正在验证") || !appleState.isConnecting &&
+                    it.isNotBlank() && it != "Apple Music 已连接"
+            }.orEmpty(),
             appleNeedsRenewal = appleState.needsRenewal,
             appleStorefront = appleState.storefront,
             appleLoginOpen = preparing || activeAttempt != null || pageError != null,
@@ -927,6 +959,12 @@ class LyricsSettingsBinding internal constructor(
             ContentLyricsPreferences.Platform.MIGU -> "migu"
             ContentLyricsPreferences.Platform.SODA -> "soda"
             ContentLyricsPreferences.Platform.APPLE_MUSIC -> "applemusic"
+        }
+
+        fun appleRegionName(storefront: String): String = when (storefront.lowercase(java.util.Locale.ROOT)) {
+            "cn" -> "中国大陆"
+            "" -> ""
+            else -> java.util.Locale("", storefront.uppercase(java.util.Locale.ROOT)).getDisplayCountry(java.util.Locale.SIMPLIFIED_CHINESE)
         }
 
         fun appleUiStatus(state: AppleMusicConnection.State): String = when {

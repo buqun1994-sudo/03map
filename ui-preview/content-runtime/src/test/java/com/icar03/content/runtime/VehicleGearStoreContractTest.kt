@@ -189,7 +189,7 @@ class VehicleGearPreferenceContractTest {
             assertEquals(3, state.dockButtonCount)
             assertEquals(schema, preferences.getInt("preferences_version", -1))
             ContentPreferenceStore(app).save(state)
-            assertEquals(8, preferences.getInt("preferences_version", -1))
+            assertEquals(10, preferences.getInt("preferences_version", -1))
             assertTrue(preferences.getBoolean(KEY, false))
         }
     }
@@ -209,7 +209,7 @@ class VehicleGearPreferenceContractTest {
         assertTrue(loaded.showSeconds)
         assertEquals(VehicleGear.Unknown, loaded.gear)
         assertEquals(0L, loaded.settingsAutoCloseSequence)
-        assertEquals(8, preferences.getInt("preferences_version", -1))
+        assertEquals(10, preferences.getInt("preferences_version", -1))
     }
 
     @Test fun malformedOrMissingFlagFallsBackIndividuallyWithoutResettingOtherPreferences() {

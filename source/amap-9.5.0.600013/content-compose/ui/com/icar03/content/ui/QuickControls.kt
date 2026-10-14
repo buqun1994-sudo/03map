@@ -196,8 +196,8 @@ internal fun verticalFraction(y: Float, height: Float): Float =
 /** Vertical ownership wins only after vertical slop; horizontal parents keep their gesture. */
 private fun Modifier.verticalControlGesture(gate: QuickControlGestureGate, tap: ((Offset) -> Unit)?,
     onStart: () -> Unit, onDrag: (Offset) -> Unit, onCommit: () -> Unit, onCancel: () -> Unit,
-    geometryKey: Any? = null): Modifier =
-    pointerInput(gate, geometryKey) {
+    geometryKey: Any? = null, arbitration: MultiFingerGestureArbitration? = null): Modifier =
+    pointerInput(gate, geometryKey, arbitration) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             val revision = gate.revision
@@ -208,7 +208,7 @@ private fun Modifier.verticalControlGesture(gate: QuickControlGestureGate, tap: 
                 while (!rejected) {
                     val event = awaitPointerEvent(PointerEventPass.Main)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if (!gate.enabled || gate.revision != revision || event.changes.count { it.pressed } > 1) break
+                    if (arbitration?.owned == true || !gate.enabled || gate.revision != revision || event.changes.count { it.pressed } > 1) break
                     if (!change.pressed) {
                         if (!change.isConsumed) {
                             if (dragging) onCommit() else tap?.invoke(change.position)
@@ -221,6 +221,7 @@ private fun Modifier.verticalControlGesture(gate: QuickControlGestureGate, tap: 
                     if (!dragging) {
                         if (abs(distance.x) > viewConfiguration.touchSlop && abs(distance.x) >= abs(distance.y)) rejected = true
                         else if (abs(distance.y) > viewConfiguration.touchSlop && abs(distance.y) > abs(distance.x)) {
+                            if (arbitration?.claimSingle() == false) break
                             dragging = true; onStart()
                         }
                     }
@@ -238,6 +239,7 @@ internal fun ContinuousVerticalControl(label: String, icon: Int, level: LevelSta
     val commit by rememberUpdatedState(onCommit)
     val enabled = level.available && level.target == null
     val gate = rememberQuickControlGestureGate(enabled) { draft = null }
+    val arbitration = LocalMultiFingerGestureArbitration.current
     var trackSize by remember { mutableStateOf(IntSize.Zero) }
     val view = LocalView.current
     val sliderTick = LocalContentSliderTickSound.current
@@ -274,7 +276,8 @@ internal fun ContinuousVerticalControl(label: String, icon: Int, level: LevelSta
                 val next = verticalFraction(it.y, trackSize.height.toFloat())
                 emitTick(next)
                 draft = next
-            }, onCommit = { draft?.let(commit); draft = null }, onCancel = { draft = null }, geometryKey = trackSize),
+            }, onCommit = { draft?.let(commit); draft = null }, onCancel = { draft = null },
+                geometryKey = trackSize, arbitration = arbitration),
         icon = { OemIcon(icon, it.testTag("$tag-icon"), motionKey = shown) })
 }
 
@@ -288,6 +291,7 @@ internal fun SteppedVerticalControl(label: String, levelCount: Int, level: Int?,
     val commit by rememberUpdatedState(onCommit)
     val power by rememberUpdatedState(onPower)
     val gate = rememberQuickControlGestureGate(enabled) { draft = null }
+    val arbitration = LocalMultiFingerGestureArbitration.current
     var trackSize by remember { mutableStateOf(IntSize.Zero) }
     val view = LocalView.current
     val sliderTick = LocalContentSliderTickSound.current
@@ -335,7 +339,7 @@ internal fun SteppedVerticalControl(label: String, levelCount: Int, level: Int?,
                 draft = next
             },
             onCommit = { draft?.let(commit); draft = null }, onCancel = { draft = null },
-            geometryKey = trackSize to levelCount),
+            geometryKey = trackSize to levelCount, arbitration = arbitration),
         scale = scale, icon = { icon(displayed, it) })
 }
 

@@ -29,8 +29,8 @@ export function nativeToolchain(sdk) {
 function readLock(repository = root) {
   const lock = JSON.parse(fs.readFileSync(path.join(repository, lockFile), 'utf8'));
   if (lock.schema !== 1 || lock.version !== '9.5.0.600013' || lock.alignment !== 0x4000 || lock.payloadOffset !== 0x400) fail('Unexpected native patch schema/layout');
-  if (lock.targets.length !== 2 || new Set(lock.targets.map(t => t.name)).size !== 2) fail('Expected exactly two declared map mute targets');
-  for (const t of lock.targets) if (!['libhsl.so', 'libautonavi.so'].includes(t.name)) fail('Unexpected native patch target');
+  if (lock.targets.length !== 3 || new Set(lock.targets.map(t => t.name)).size !== 3) fail('Expected exactly three declared native patch targets');
+  for (const t of lock.targets) if (!['libhsl.so', 'libautonavi.so', 'libGbl.so'].includes(t.name)) fail('Unexpected native patch target');
   return lock;
 }
 

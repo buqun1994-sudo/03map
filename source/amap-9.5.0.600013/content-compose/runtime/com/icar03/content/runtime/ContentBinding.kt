@@ -16,6 +16,7 @@ import com.autonavi.amapauto.content.ContentState
 import com.autonavi.amapauto.content.ContentStore
 import com.icar03.content.ui.*
 import com.icar03.content.model.VehicleFeature
+import com.icar03.content.model.GestureAction
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -91,6 +92,10 @@ class ContentBinding(
     val lyrics: StateFlow<LyricsState> = mutableLyrics.asStateFlow()
     private val mutableClock = MutableStateFlow(mapper.clock(latestSnapshot))
     val clock: StateFlow<ClockText> = mutableClock.asStateFlow()
+    private val mutableCruiseSignals = MutableStateFlow(CruiseSignalState())
+    val cruiseSignals: StateFlow<CruiseSignalState> = mutableCruiseSignals.asStateFlow()
+    private val mutableCruiseSignalsVisible = MutableStateFlow(false)
+    val cruiseSignalsVisible: StateFlow<Boolean> = mutableCruiseSignalsVisible.asStateFlow()
     private val mutableArtwork = MutableStateFlow<Bitmap?>(null)
     val artwork: StateFlow<Bitmap?> = mutableArtwork.asStateFlow()
     private val mutableActive = MutableStateFlow(false)
@@ -163,6 +168,7 @@ class ContentBinding(
         val epoch = ++generation
         workerEpoch.set(epoch)
         store.startLyrics()
+        store.startCruiseSignals()
         listener = ContentStore.Listener { snapshot ->
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 if (running && generation == epoch) project(snapshot)
@@ -180,6 +186,12 @@ class ContentBinding(
         }.also(store::addListener)
         lyricsSettings?.start()
         controlCenterAvailable = readControlCenterAvailability()
+        val returnToLyrics = com.icar03.content.runtime.lyrics.AppleMusicBrowserLogin.consumeReturnToLyrics(environment)
+        if (returnToLyrics && !settingsOpen) {
+            settingsOpen = true
+            settingsCollapsed = false
+            settingsSection = SettingsSection.Lyrics
+        }
         attachObservers()
         projectClock(System.currentTimeMillis())
         publishShell()
@@ -189,10 +201,15 @@ class ContentBinding(
     fun stop() {
         checkMain()
         if (!running) return
+        val preserveSettings = settingsOpen && settingsSection == SettingsSection.Lyrics &&
+            com.icar03.content.runtime.lyrics.AppleMusicBrowserLogin.shouldPreserveSettings(environment)
         running = false
         lyricsSettings?.stop()
         mutableActive.value = false
         store.stopLyrics()
+        store.stopCruiseSignals()
+        mutableCruiseSignals.value = CruiseSignalState()
+        mutableCruiseSignalsVisible.value = false
         generation++
         workerEpoch.set(generation)
         ambientSequence++
@@ -213,20 +230,25 @@ class ContentBinding(
         handler.removeCallbacksAndMessages(null)
         synchronized(handler) { queuedProjectionEpoch = null }
         sourcesOpen = false
-        settingsOpen = false
-        settingsCollapsed = false
-        settingsSection = SettingsSection.Home
+        if (!preserveSettings) {
+            settingsOpen = false
+            settingsCollapsed = false
+            settingsSection = SettingsSection.Home
+        }
         replaceFeedback(null)
         mutableArtwork.value = null
         mutableAmbient.value = null
         retainedAmbient = null
         ambientRecording = ""
         ambientSource = null
-        mutableState.value = inactive(mutableState.value)
+        mutableState.value = inactive(mutableState.value, preserveSettings)
     }
 
-    private fun inactive(state: ContentUiState) = state.copy(
-        sourcesOpen = false, settingsOpen = false, settingsCollapsed = false, settingsSection = SettingsSection.Home,
+    private fun inactive(state: ContentUiState, preserveSettings: Boolean = false) = state.copy(
+        sourcesOpen = false,
+        settingsOpen = preserveSettings && state.settingsOpen,
+        settingsCollapsed = preserveSettings && state.settingsCollapsed,
+        settingsSection = if (preserveSettings) state.settingsSection else SettingsSection.Home,
         lyricsSystemAccentColor = IcarThemeAccent.DEFAULT_ACCENT, message = null,
         lyricsProviderSettings = (lyricsSettings?.state ?: state.lyricsProviderSettings).copy(
             available = false, appleLoginOpen = false, applePreparing = false),
@@ -272,6 +294,20 @@ class ContentBinding(
         lyricsSettings?.dispatch(AppleMusicLoginDismissed)
     }
 
+    /** Intent-time projection; queued UI publication never decides the accepted gesture action. */
+    fun currentPresentationState(): ContentUiState? {
+        checkMain()
+        if (!running || closed) return null
+        return shell(store.snapshot()).copy(
+            sourcesOpen = sourcesOpen,
+            settingsOpen = settingsOpen,
+            settingsCollapsed = settingsCollapsed,
+            settingsSection = settingsSection,
+            scenariosOpen = mutableState.value.scenariosOpen,
+            lyricsProviderSettings = lyricsSettings?.state ?: LyricsProviderUiState(),
+        )
+    }
+
     internal fun canDispatch(event: ContentEvent): Boolean {
         if (!running || closed) return false
         if (!settingsOpen && event.isSettingsInteraction() && event !in setOf(
@@ -287,6 +323,16 @@ class ContentBinding(
                 ContentEvent.SettingsBack, AppleMusicLoginDismissed, ContentEvent.SettingsDismissed,
                 ContentEvent.SettingsTapped, ContentEvent.DismissSheet)) return false
         return when (event) {
+            is ContentEvent.GestureActionChanged -> settingsOpen && settingsSection == SettingsSection.Gestures &&
+                !settingsCollapsed && lyricsSettings?.state?.appleLoginOpen != true &&
+                store.snapshot().let { fresh -> fresh.settingsAutoCloseSequence == latestSnapshot.settingsAutoCloseSequence &&
+                    fresh.gestureActions[event.command] != event.action }
+            is ContentEvent.GesturePerformed -> currentPresentationState()?.let { current ->
+                current.page.supportsImmersive && !current.settingsOpen && !current.settingsCollapsed &&
+                    !current.sourcesOpen && !current.scenariosOpen && !current.lyricsProviderSettings.appleLoginOpen &&
+                    (current.gestureActions[event.command] ?: GestureAction.None) != GestureAction.None
+            } == true
+            is ContentEvent.ShowCruiseSignalsChanged -> store.snapshot().immersiveShowTopBar
             is ContentEvent.ControlTapped -> shell(store.snapshot()).controls[event.id]?.available == true
             is ContentEvent.ControlPowerTapped -> shell(store.snapshot()).controls[event.id]?.available == true
             is ContentEvent.ControlAutomaticTapped -> shell(store.snapshot()).controls[event.id]?.available == true
@@ -418,6 +464,8 @@ class ContentBinding(
             }
             // Geometry and immersion requests are consumed by the map host, never a second Binding animator.
             ContentEvent.EnterLyricsImmersive, ContentEvent.ExitLyricsImmersive -> Unit
+            is ContentEvent.GesturePerformed -> Unit
+            is ContentEvent.GestureActionChanged -> store.setGestureAction(event.command, event.action)
             is ContentEvent.SettingsSectionSelected -> {
                 if (settingsOpen) {
                     settingsSection = event.section
@@ -431,6 +479,7 @@ class ContentBinding(
             is ContentEvent.ShowWeekdayChanged -> store.setShowWeekday(event.value)
             is ContentEvent.ShowSecondsChanged -> store.setShowSeconds(event.value)
             is ContentEvent.ShowIndoorTemperatureChanged -> store.setShowIndoorTemperature(event.value)
+            is ContentEvent.ShowCruiseSignalsChanged -> if (latestSnapshot.immersiveShowTopBar) store.setShowCruiseSignals(event.value)
             is ContentEvent.ShowBatteryChanged -> store.setShowBattery(event.value)
             is ContentEvent.ShowRangeChanged -> store.setShowRange(event.value)
             is ContentEvent.ShowChargingStatusChanged -> store.setShowChargingStatus(event.value)
@@ -453,6 +502,7 @@ class ContentBinding(
             is ContentEvent.LyricsLineSpacingChanged -> store.setLyricsLineSpacing(event.value)
             is ContentEvent.LyricsSpeakerLayoutChanged -> store.setLyricsSpeakerLayout(event.value)
             is ContentEvent.LyricsShowTranslationChanged -> store.setLyricsShowTranslation(event.value)
+             is ContentEvent.LyricsShowRomanizationChanged -> store.setLyricsShowRomanization(event.value)
             is ContentEvent.LyricsHighlightChanged -> store.setLyricsHighlight(event.value)
             ContentEvent.LyricsDefaultsRequested -> {
                 store.resetLyricsPreferences()
@@ -709,6 +759,9 @@ class ContentBinding(
             }
         }
         publishShell()
+        val signals = mapper.cruiseSignals(snapshot)
+        mutableCruiseSignals.value = signals
+        mutableCruiseSignalsVisible.value = signals.lights.isNotEmpty()
         mutableLyrics.value = mapper.mapLyrics(snapshot)
         if (snapshot.nowMillis != previous.nowMillis) {
             projectClock(snapshot.nowMillis.takeIf { it > 0L } ?: System.currentTimeMillis())
