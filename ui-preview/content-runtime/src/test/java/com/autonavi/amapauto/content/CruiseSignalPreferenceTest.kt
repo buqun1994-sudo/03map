@@ -32,7 +32,7 @@ class CruiseSignalPreferenceTest {
 
         state.showCruiseSignals = false
         ContentPreferenceStore(app).save(state)
-        assertEquals(10, preferences.getInt("preferences_version", -1))
+        assertEquals(11, preferences.getInt("preferences_version", -1))
         assertFalse(preferences.getBoolean("top_bar_show_cruise_signals", true))
         assertFalse(ContentState().also { ContentPreferenceStore(app).load(it) }.showCruiseSignals)
     }

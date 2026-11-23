@@ -38,7 +38,7 @@
     <string name="adapter_unsupport_alongsearch_type">暂不支持的沿途搜类型</string>
     <string name="adapter_unsupport_route_refresh">当前页面不支持路线刷新</string>
     <string name="add_oil">加油站</string>
-    <string name="app_name">高德地图</string>
+    <string name="app_name">03地图</string>
     <string name="authorize_descrption">操作系统授权高德地图访问如下权限为您提供服务，请确认是否继续使用高德地图；若您选择同意，高德地图会在您使用期间通过下述权限收集您的相应个人信息，若您选择退出，则高德地图不会收集您的个人信息。</string>
     <string name="auto_destination_traffic_info">%1$s的路况</string>
     <string name="ca_hour">小时</string>

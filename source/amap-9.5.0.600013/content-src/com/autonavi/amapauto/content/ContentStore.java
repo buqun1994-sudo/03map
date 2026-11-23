@@ -31,6 +31,7 @@ public final class ContentStore {
 
     private final ContentState state = new ContentState();
     private final ContentPreferenceStore preferenceStore;
+    private final ContentVehicleConfig vehicleConfig;
     private final ContentPorts.VehiclePort vehiclePort;
     private final ContentPorts.MediaPort mediaPort;
     private final ContentPorts.SystemPort systemPort;
@@ -105,6 +106,10 @@ public final class ContentStore {
             throw new IllegalArgumentException("Content ports must not be null");
         }
         preferenceStore = new ContentPreferenceStore(context);
+        vehicleConfig = ContentVehicleConfig.mappingProfile(context);
+        vehiclePort.configure(vehicleConfig);
+        systemPort.configure(vehicleConfig);
+        applyVehicleConfigToStateLocked();
         this.vehiclePort = vehiclePort;
         this.mediaPort = mediaPort;
         this.systemPort = systemPort;
@@ -140,11 +145,60 @@ public final class ContentStore {
         return snapshotLocked();
     }
 
+    private void applyVehicleConfigToStateLocked() {
+        state.vehicleProfileId = vehicleConfig.profileId();
+        state.vehicleConfigFileName = vehicleConfig.fileName() == null ? "" : vehicleConfig.fileName();
+        state.vehicleProfileDisplayName = vehicleConfig.displayName();
+        state.vehicleProfileHash = vehicleConfig.hash();
+        state.vehicleConfigValid = vehicleConfig.isValid();
+        state.vehicleConfigSelfCheckRan = vehicleConfig.selfCheckRan();
+        state.vehicleConfigMessage = vehicleConfig.message();
+        state.configuredControlCenterIds = vehicleConfig.controlCenterItems();
+        state.configuredControlCardIds = vehicleConfig.controlCardItems();
+        state.configuredDockIds = vehicleConfig.dockItems();
+        state.configuredGestureIds = vehicleConfig.gestureItems();
+        state.availableControlCenterIds = vehicleConfig.availableControlCenterItems();
+        state.availableControlCardIds = vehicleConfig.availableControlCardItems();
+        state.availableDockIds = vehicleConfig.availableDockItems();
+        state.availableGestureIds = vehicleConfig.availableGestureItems();
+        java.util.Set<String> enabledControl = new java.util.LinkedHashSet<>();
+        for (VehicleControl control : VehicleControl.values()) {
+            if (vehicleConfig.allowsControl(control.getId())) enabledControl.add(control.getId());
+        }
+        if (vehicleConfig.allowsControl("auto_wiper")) enabledControl.add("auto_wiper");
+        state.enabledControlIds = java.util.Collections.unmodifiableSet(enabledControl);
+        java.util.Set<String> enabledFeature = new java.util.LinkedHashSet<>();
+        for (String id : new String[]{"rear_fog", "passenger_window_lock", "wiper_maintenance", "glove_box",
+                "left_child_lock", "right_child_lock", "wireless_charging", "window_vent", "external_discharge",
+                "passenger_seat_adjust"}) {
+            if (vehicleConfig.allowsFeature(id)) enabledFeature.add(id);
+        }
+        state.enabledFeatureIds = java.util.Collections.unmodifiableSet(enabledFeature);
+        java.util.Set<String> enabledSystem = new java.util.LinkedHashSet<>();
+        for (String id : new String[]{"brightness", "volume", "call_volume", "navigation_volume", "voice_volume", "screen_clean", "system_control_center"}) {
+            if (vehicleConfig.allowsSystem(id)) enabledSystem.add(id);
+        }
+        state.enabledSystemIds = java.util.Collections.unmodifiableSet(enabledSystem);
+        java.util.Set<String> enabledContent = new java.util.LinkedHashSet<>();
+        for (String id : new String[]{"media", "settings", "control_center_page"}) {
+            if (vehicleConfig.allowsContent(id)) enabledContent.add(id);
+        }
+        state.enabledContentIds = java.util.Collections.unmodifiableSet(enabledContent);
+        state.vehicleConfigSelfCheckCacheHit = vehicleConfig.selfCheckCacheHit();
+        state.vehicleCapabilities = vehicleConfig.capabilities();
+    }
+
     private ContentState snapshotLocked() {
         ContentState snapshot = state.copy();
-        snapshot.mediaSourceWriteAvailable = !destroyed && mediaPort.isSourceAvailable();
+        snapshot.vehicleCapabilities = vehicleConfig.capabilities();
+        snapshot.mediaSourceWriteAvailable = !destroyed && vehicleConfig.allowsContent("media") && mediaPort.isSourceAvailable();
+        snapshot.centerBrightnessWriteAvailable = !destroyed && vehicleConfig.allowsSystem("brightness")
+                && state.pendingVehicleCommand.isEmpty() && state.vehicleDataAvailable && !state.vehiclePreview
+                && state.centerBrightnessKnown && vehiclePort.isAvailable()
+                && vehiclePort.isCenterBrightnessAvailable(state.centerBrightnessLevel);
         snapshot.vehicleWriteAvailable = !destroyed && vehiclePort.isAvailable();
-        snapshot.lockWriteAvailable = !destroyed && vehiclePort.isLockAvailable();
+        snapshot.lockWriteAvailable = !destroyed && vehicleConfig.allowsControl(VehicleControl.Lock.getId())
+                && vehiclePort.isLockAvailable();
         java.util.Set<String> writable = new java.util.HashSet<>();
         for (VehicleControl control : VehicleControl.values()) {
             if (control != VehicleControl.Lock && isControlAvailable(control.getId())) {
@@ -164,11 +218,32 @@ public final class ContentStore {
     }
 
     public synchronized boolean isLockControlAvailable() {
-        return !destroyed && vehiclePort.isLockAvailable();
+        return !destroyed && vehicleConfig.allowsControl(VehicleControl.Lock.getId())
+                && vehiclePort.isLockAvailable();
+    }
+
+    /** Automatic wiper is a separate catalog declaration from the front-wiper level control. */
+    public synchronized boolean isControlAutomaticAvailable(String controlId) {
+        VehicleControl control = VehicleControl.fromId(controlId);
+        if (control == null || control.getAutomaticLevel() < 0) return false;
+        String declarationId = control == VehicleControl.Wiper ? "auto_wiper" : controlId;
+        if (!vehicleConfig.allowsControl(declarationId)) return false;
+        int target = control.automaticToggleLevel(state.controlLevel(control));
+        return canSetControlLevelLocked(controlId, target, LevelIntent.Automatic);
+    }
+
+    /** Configuration gate; callers also validate the latest capability of their concrete port. */
+    public synchronized boolean isContentAvailable(String id) {
+        return !destroyed && vehicleConfig.allowsContent(id);
+    }
+
+    /** Configuration gate for OEM system actions and volume groups. */
+    public synchronized boolean isSystemAvailable(String id) {
+        return !destroyed && vehicleConfig.allowsSystem(id);
     }
 
     public synchronized boolean isMediaSourceAvailable() {
-        return !destroyed && mediaPort.isSourceAvailable();
+        return !destroyed && vehicleConfig.allowsContent("media") && mediaPort.isSourceAvailable();
     }
 
     public void addListener(Listener listener) {
@@ -245,13 +320,18 @@ public final class ContentStore {
         publish();
     }
 
+    /** Formal card selection is indexed only within the saved semantic layout. */
     public void setControlIndex(int controlIndex) {
-        int boundedControl = Math.max(0, Math.min(ContentRegistry.controlIds().length - 1, controlIndex));
         synchronized (this) {
-            if (state.controlIndex == boundedControl) {
-                return;
+            int size = state.vehicleConfigValid ? state.controlCardLayoutIds.size() : ContentRegistry.controlIds().length;
+            int bounded = size == 0 ? 0 : Math.max(0, Math.min(size - 1, controlIndex));
+            if (state.vehicleConfigValid) {
+                if (state.controlCardLayoutIndex == bounded) return;
+                state.controlCardLayoutIndex = bounded;
+            } else {
+                if (state.controlIndex == bounded) return;
+                state.controlIndex = bounded;
             }
-            state.controlIndex = boundedControl;
             preferenceStore.save(state);
         }
         publish();
@@ -502,10 +582,40 @@ public final class ContentStore {
 
     public void setDockButtonCount(int value) {
         synchronized (this) {
+            if (state.vehicleConfigValid) return; // Legacy counts never change the formal semantic layout.
             state.dockButtonCount = Math.max(3, Math.min(6, value));
             preferenceStore.save(state);
         }
         publish();
+    }
+
+    public void setDockShowNames(boolean value) {
+        synchronized (this) {
+            if (state.dockShowNames == value) return;
+            state.dockShowNames = value;
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+    public void setLayoutPreferences(java.util.List<String> controlCenter, java.util.List<String> cards,
+            java.util.List<String> dock, int cardIndex) {
+        synchronized (this) {
+            state.controlCenterLayoutIds = copyDeclaredOrder(controlCenter, state.availableControlCenterIds);
+            state.controlCardLayoutIds = copyDeclaredOrder(cards, state.availableControlCardIds);
+            state.dockLayoutIds = copyDeclaredOrder(dock, state.availableDockIds);
+            state.controlCardLayoutIndex = state.controlCardLayoutIds.isEmpty() ? 0
+                    : Math.max(0, Math.min(state.controlCardLayoutIds.size() - 1, cardIndex));
+            preferenceStore.save(state);
+        }
+        publish();
+    }
+
+    private java.util.List<String> copyDeclaredOrder(java.util.List<String> values, java.util.Set<String> declared) {
+        java.util.List<String> result = new java.util.ArrayList<>();
+        if (values != null) for (String id : values) {
+            if (id != null && declared.contains(id) && !result.contains(id)) result.add(id);
+        }
+        return result;
     }
 
     public void setShowActionFeedback(boolean value) {
@@ -755,6 +865,7 @@ public final class ContentStore {
              state.externalConnectionRaw = features.externalConnectionRaw;
              state.screenGearRaw = features.screenGearRaw;
              state.screenGearKnown = features.screenGearKnown;
+            state.vehicleCapabilities = vehicleConfig.acceptReadbackSupport(state);
             rememberManualReadbackLocked();
             if (state.pendingVehicleCommand.length() != 0) {
                 if (!snapshot.dataAvailable || snapshot.preview || !vehiclePort.isAvailable()) {
@@ -775,7 +886,7 @@ public final class ContentStore {
         synchronized (this) {
             if (destroyed || snapshot.dataAvailable && snapshot.generation < state.mediaGeneration) return;
             ContentState previous = state.copy();
-            state.mediaSourceWriteAvailable = !destroyed && mediaPort.isSourceAvailable();
+            state.mediaSourceWriteAvailable = !destroyed && vehicleConfig.allowsContent("media") && mediaPort.isSourceAvailable();
             boolean newRecording = !snapshot.recordingKey().equals(state.mediaRecordingKey);
             if (newRecording) {
                 clearLateMediaPlaybackLocked();
@@ -1054,19 +1165,31 @@ public final class ContentStore {
     /** Seat click availability retains its existing cycle policy. Wiper has explicit intents. */
     public synchronized boolean isControlAvailable(String controlId) {
         VehicleControl control = VehicleControl.fromId(controlId);
+        if (control == null) return false;
+        if (control != VehicleControl.Wiper && !vehicleConfig.allowsControl(controlId)) return false;
         if (control == VehicleControl.RearWash) return canTriggerRearWashLocked();
         if (control != VehicleControl.Wiper) return isControlCycleAvailable(controlId);
         if (canSetControlLevelLocked(controlId,
-                control.powerToggleLevel(state.controlLevel(control), state.rememberedLevel(control)))
-                || canSetControlLevelLocked(controlId, control.automaticToggleLevel(state.controlLevel(control)))) return true;
+                control.powerToggleLevel(state.controlLevel(control), state.rememberedLevel(control)), LevelIntent.Power)
+                || canSetControlLevelLocked(controlId, control.automaticToggleLevel(state.controlLevel(control)), LevelIntent.Automatic)) return true;
         for (int manual = 0; manual <= control.getMaxManualLevel(); manual++) {
-            if (canSetControlLevelLocked(controlId, manual)) return true;
+            if (canSetControlLevelLocked(controlId, manual, LevelIntent.Select)) return true;
         }
         return false;
     }
 
+    public synchronized boolean isControlLevelAvailable(String controlId, int targetLevel) {
+        LevelIntent intent = VehicleControl.Wiper.getId().equals(controlId)
+                && targetLevel == VehicleControl.Wiper.getAutomaticLevel()
+                ? LevelIntent.Automatic : LevelIntent.Select;
+        return canSetControlLevelLocked(controlId, targetLevel, intent);
+    }
+
     public synchronized boolean isControlCycleAvailable(String controlId) {
-        return canSetControlLevelLocked(controlId, nextControlLevelLocked(controlId));
+        VehicleControl control = VehicleControl.fromId(controlId);
+        if (control == null) return false;
+        if (control != VehicleControl.Wiper && !vehicleConfig.allowsControl(controlId)) return false;
+        return canSetControlLevelLocked(controlId, nextControlLevelLocked(controlId), LevelIntent.Select);
     }
 
     public boolean isSeatCycleControlAvailable(String seatId) {
@@ -1096,11 +1219,30 @@ public final class ContentStore {
                 && state.massageSwitchKnown && state.massageActive ? 0 : -1;
     }
 
+    private String controlDeclarationId(String controlId, int targetLevel, LevelIntent intent) {
+        return VehicleControl.Wiper.getId().equals(controlId)
+                && (intent == LevelIntent.Automatic || targetLevel == VehicleControl.Wiper.getAutomaticLevel())
+                ? "auto_wiper" : controlId;
+    }
+
+    private boolean allowsControlTargetLocked(String controlId, int targetLevel, LevelIntent intent) {
+        return vehicleConfig.allowsControlMode(controlDeclarationId(controlId, targetLevel, intent), targetLevel);
+    }
+
     private boolean canSetControlLevelLocked(String controlId, int targetLevel) {
+        return canSetControlLevelLocked(controlId, targetLevel, LevelIntent.Select);
+    }
+
+    private boolean canSetControlLevelLocked(String controlId, int targetLevel, LevelIntent intent) {
+        return state.pendingVehicleCommand.isEmpty() && canIssueControlLevelLocked(controlId, targetLevel, intent);
+    }
+
+    /** Same gate immediately before transport dispatch, after the pending slot is reserved. */
+    private boolean canIssueControlLevelLocked(String controlId, int targetLevel, LevelIntent intent) {
         VehicleControl control = VehicleControl.fromId(controlId);
         if (control == null || control == VehicleControl.Lock || control == VehicleControl.RearWash
-                || destroyed || state.pendingVehicleCommand.length() != 0
-                || !control.isLevel(targetLevel)
+                || destroyed || !control.isLevel(targetLevel)
+                || !allowsControlTargetLocked(controlId, targetLevel, intent)
                 || !state.vehicleDataAvailable || state.vehiclePreview || !controlReadbackKnownLocked(control)
                 || !vehiclePort.isAvailable() || !vehiclePort.isControlAvailable(controlId)
                 || control.isRearWindow() && !vehiclePort.isRearWindowControlAvailable(controlId)) return false;
@@ -1117,24 +1259,32 @@ public final class ContentStore {
         setControlLevel(seatId, targetLevel);
     }
 
-        public void setControlLevel(String controlId, int targetLevel) {
+    public void setControlLevel(String controlId, int targetLevel) {
         dispatchControlLevel(controlId, targetLevel, LevelIntent.Select);
     }
 
-    public boolean isFeatureAvailable(String featureId, int target) {
-        if (featureId == null || target < 0 || target > 1) return false;
-        synchronized (this) {
-            return !destroyed && state.vehicleDataAvailable && !state.vehiclePreview
-                    && vehiclePort.isFeatureAvailable(featureId, target);
-        }
+    private boolean featureReadbackKnownLocked(String featureId) {
+        return "glove_box".equals(featureId) || state.featureLevel(featureId) >= 0;
     }
 
+    public synchronized boolean isFeatureAvailable(String featureId, int target) {
+        return state.pendingVehicleCommand.isEmpty() && canIssueFeatureLocked(featureId, target, 0L);
+    }
+
+
+    private boolean canIssueFeatureLocked(String featureId, int target, long requestId) {
+        return !destroyed && pendingVehicleRequestId == requestId
+                && vehicleConfig.allowsFeatureMode(featureId, target) && featureReadbackKnownLocked(featureId)
+                && state.vehicleDataAvailable && !state.vehiclePreview
+                && vehiclePort.isAvailable() && vehiclePort.isFeatureAvailable(featureId, target);
+    }
 
     public void requestFeature(String featureId, int target) {
         if (featureId == null || target < 0 || target > 1) return;
         final long requestId;
         synchronized (this) {
             if (destroyed || state.pendingVehicleCommand.length() != 0
+                    || !vehicleConfig.allowsFeatureMode(featureId, target) || !featureReadbackKnownLocked(featureId)
                     || !state.vehicleDataAvailable || state.vehiclePreview
                     || !vehiclePort.isAvailable()
                     || !vehiclePort.isFeatureAvailable(featureId, target)) return;
@@ -1142,6 +1292,17 @@ public final class ContentStore {
             beginFeatureCommandLocked(featureId, target, requestId);
         }
         publish();
+        final boolean canIssue;
+        synchronized (this) {
+            canIssue = canIssueFeatureLocked(featureId, target, requestId);
+            if (!canIssue && pendingVehicleRequestId == requestId) {
+                finishVehicleCommandLocked(false, "车控状态在发送前发生变化，请检查车机状态");
+            }
+        }
+        if (!canIssue) {
+            publish();
+            return;
+        }
         boolean accepted;
         try {
             accepted = vehiclePort.requestFeature(featureId, target, requestId,
@@ -1163,16 +1324,35 @@ public final class ContentStore {
         requestFeature(featureId, target);
     }
 
+    private boolean canIssueCenterBrightnessLocked(int level, long requestId) {
+        return !destroyed && pendingVehicleRequestId == requestId
+                && vehicleConfig.allowsSystem("brightness")
+                && state.vehicleDataAvailable && !state.vehiclePreview && state.centerBrightnessKnown
+                && vehiclePort.isAvailable() && vehiclePort.isCenterBrightnessAvailable(level);
+    }
+
     public void setCenterBrightness(final int level) {
         final long requestId;
         synchronized (this) {
             if (destroyed || level < 1 || level > 10 || state.pendingVehicleCommand.length() != 0
+                    || !vehicleConfig.allowsSystem("brightness")
                     || !state.vehicleDataAvailable || state.vehiclePreview || !state.centerBrightnessKnown
                     || !vehiclePort.isAvailable() || !vehiclePort.isCenterBrightnessAvailable(level)) return;
             requestId = ++nextVehicleRequestId;
             beginFeatureCommandLocked("center_brightness", level, requestId);
         }
         publish();
+        final boolean canIssue;
+        synchronized (this) {
+            canIssue = canIssueCenterBrightnessLocked(level, requestId);
+            if (!canIssue && pendingVehicleRequestId == requestId) {
+                finishVehicleCommandLocked(false, "车控状态在发送前发生变化，请检查车机状态");
+            }
+        }
+        if (!canIssue) {
+            publish();
+            return;
+        }
         boolean accepted;
         try {
             accepted = vehiclePort.requestCenterBrightness(level, requestId,
@@ -1210,13 +1390,20 @@ public final class ContentStore {
         synchronized (this) {
             // Resolve the intent and reserve the sole request in one state transaction.
             targetLevel = controlTargetLocked(controlId, explicitTarget, intent);
-            if (!canSetControlLevelLocked(controlId, targetLevel)) return;
+            if (!canSetControlLevelLocked(controlId, targetLevel, intent)) return;
             requestId = ++nextVehicleRequestId;
             beginVehicleCommandLocked(controlId, targetLevel, false, requestId);
         }
         publish();
+        final boolean canIssue;
         synchronized (this) {
             if (destroyed || pendingVehicleRequestId != requestId) return;
+            canIssue = canIssueControlLevelLocked(controlId, targetLevel, intent);
+            if (!canIssue) finishVehicleCommandLocked(false, "车控状态在发送前发生变化，请检查车机状态");
+        }
+        if (!canIssue) {
+            publish();
+            return;
         }
         boolean accepted;
         try {
@@ -1246,7 +1433,11 @@ public final class ContentStore {
     }
 
     private boolean canTriggerRearWashLocked() {
-        return !destroyed && state.pendingVehicleCommand.length() == 0
+        return state.pendingVehicleCommand.isEmpty() && canIssueRearWashLocked();
+    }
+
+    private boolean canIssueRearWashLocked() {
+        return vehicleConfig.allowsControlMode(VehicleControl.RearWash.getId(), 1) && !destroyed
                 && state.vehicleDataAvailable && !state.vehiclePreview && state.rearWashKnown
                 && state.rearWashLevel == 0 && vehiclePort.isAvailable()
                 && vehiclePort.isRearWindowControlAvailable(VehicleControl.RearWash.getId());
@@ -1264,8 +1455,15 @@ public final class ContentStore {
             deadline = pendingRearDeadlineUptimeMs;
         }
         publish();
+        final boolean canIssue;
         synchronized (this) {
             if (destroyed || pendingVehicleRequestId != requestId) return;
+            canIssue = canIssueRearWashLocked();
+            if (!canIssue) finishVehicleCommandLocked(false, "车控状态在发送前发生变化，请检查车机状态");
+        }
+        if (!canIssue) {
+            publish();
+            return;
         }
         boolean accepted;
         try {
@@ -1282,22 +1480,31 @@ public final class ContentStore {
         }
     }
 
+    private boolean canIssueLockLocked(boolean target) {
+        return !destroyed && vehicleConfig.allowsControlMode(VehicleControl.Lock.getId(), target ? 1 : 0)
+                && state.lockKnown && state.vehicleDataAvailable && !state.vehiclePreview
+                && state.locked != target && vehiclePort.isAvailable() && vehiclePort.isLockAvailable();
+    }
+
     public void toggleLock() {
         boolean nextLocked;
         long requestId;
         synchronized (this) {
-            if (destroyed || state.pendingVehicleCommand.length() != 0
-                    || !state.lockKnown || !state.vehicleDataAvailable || state.vehiclePreview
-                    || !vehiclePort.isLockAvailable()) {
-                return;
-            }
             nextLocked = !state.locked;
+            if (state.pendingVehicleCommand.length() != 0 || !canIssueLockLocked(nextLocked)) return;
             requestId = ++nextVehicleRequestId;
             beginVehicleCommandLocked(ContentRegistry.Shortcuts.LOCK, -1, nextLocked, requestId);
         }
         publish();
+        final boolean canIssue;
         synchronized (this) {
             if (destroyed || pendingVehicleRequestId != requestId) return;
+            canIssue = canIssueLockLocked(nextLocked);
+            if (!canIssue) finishVehicleCommandLocked(false, "车锁状态在发送前发生变化，请检查车机状态");
+        }
+        if (!canIssue) {
+            publish();
+            return;
         }
         boolean accepted;
         try {
@@ -1321,7 +1528,7 @@ public final class ContentStore {
         final long requestId;
         final Runnable timeout;
         synchronized (this) {
-            if (destroyed || !state.mediaPlaybackAvailable) {
+            if (destroyed || !vehicleConfig.allowsContent("media") || !state.mediaPlaybackAvailable) {
                 return;
             }
             nextPlaying = state.mediaPlaybackTarget < 0
@@ -1358,7 +1565,8 @@ public final class ContentStore {
                     }
                     boolean accepted;
                     try {
-                        accepted = mediaPort.requestPlayback(nextPlaying);
+                        accepted = isContentAvailable("media") && mediaPort.isAvailable()
+                                && mediaPort.requestPlayback(nextPlaying);
                     } catch (RuntimeException error) {
                         accepted = false;
                     }
@@ -1392,7 +1600,7 @@ public final class ContentStore {
     public void nextMediaTrack() {
         final long requestId;
         synchronized (this) {
-            if (destroyed || !state.mediaNextAvailable) {
+            if (destroyed || !vehicleConfig.allowsContent("media") || !state.mediaNextAvailable) {
                 return;
             }
             requestId = ++nextTrackRequestId;
@@ -1417,7 +1625,7 @@ public final class ContentStore {
         queueMediaCommand(new Callable<Boolean>() {
             @Override
             public Boolean call() {
-                return mediaPort.requestNext();
+                return isContentAvailable("media") && mediaPort.isAvailable() && mediaPort.requestNext();
             }
         }, "下一首命令未发送，请检查媒体会话", requestId);
     }
@@ -1434,7 +1642,7 @@ public final class ContentStore {
         final String selectedSource = ContentRegistry.normalizeMediaSource(source);
         final long requestId;
         synchronized (this) {
-            if (destroyed || selectedSource == null || !mediaPort.isSourceAvailable()
+            if (destroyed || !vehicleConfig.allowsContent("media") || selectedSource == null || !mediaPort.isSourceAvailable()
                     || selectedSource.equals(state.pendingSource)) return;
             requestId = ++nextSourceRequestId;
             pendingSourceRequestId = requestId;
@@ -1462,7 +1670,7 @@ public final class ContentStore {
                     if (destroyed || pendingSourceRequestId != requestId) return;
                 }
                 boolean accepted;
-                try { accepted = mediaPort.requestSource(selectedSource); }
+                try { accepted = isMediaSourceAvailable() && mediaPort.requestSource(selectedSource); }
                 catch (RuntimeException error) { accepted = false; }
                 if (accepted) return;
                 commandHandler.post(new Runnable() {
@@ -1487,6 +1695,7 @@ public final class ContentStore {
     }
 
     public void replaceDockItem(int slot, String itemId) {
+        if (state.vehicleConfigValid) return; // Legacy slots are fixture compatibility only.
         if (slot < 0 || slot >= state.dockItems.length || !preferenceStore.isValidDockItem(itemId)) {
             return;
         }

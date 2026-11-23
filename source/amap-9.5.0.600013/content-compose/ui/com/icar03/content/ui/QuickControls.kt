@@ -157,15 +157,17 @@ internal class QuickControlGestureGate {
     fun update(value: Boolean) { if (enabled != value) { enabled = value; revision++ } }
 }
 
+/** Layout editors own availability independently of the business controls on their surface. */
 @Composable
 internal fun rememberQuickControlGestureGate(available: Boolean, onLifecycleCancel: (() -> Unit)? = null,
-    onCancel: () -> Unit): QuickControlGestureGate {
+    businessInteractionRequired: Boolean = true, onCancel: () -> Unit): QuickControlGestureGate {
     val gate = remember { QuickControlGestureGate() }
     val owner = LocalLifecycleOwner.current
     val view = LocalView.current
     val cancel by rememberUpdatedState(onCancel)
     val lifecycleCancel by rememberUpdatedState(onLifecycleCancel ?: onCancel)
-    val availableNow by rememberUpdatedState(available && LocalQuickControlInteractionEnabled.current)
+    val availableNow by rememberUpdatedState(available &&
+        (!businessInteractionRequired || LocalQuickControlInteractionEnabled.current))
     val pageVisible by rememberUpdatedState(LocalIconVisible.current)
     var resumed by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
@@ -237,7 +239,7 @@ internal fun ContinuousVerticalControl(label: String, icon: Int, level: LevelSta
     var draft by remember { mutableStateOf<Float?>(null) }
     val current by rememberUpdatedState(level)
     val commit by rememberUpdatedState(onCommit)
-    val enabled = level.available && level.target == null
+    val enabled = level.available && level.target == null && LocalQuickControlInteractionEnabled.current
     val gate = rememberQuickControlGestureGate(enabled) { draft = null }
     val arbitration = LocalMultiFingerGestureArbitration.current
     var trackSize by remember { mutableStateOf(IntSize.Zero) }
@@ -290,7 +292,8 @@ internal fun SteppedVerticalControl(label: String, levelCount: Int, level: Int?,
     val current by rememberUpdatedState(level)
     val commit by rememberUpdatedState(onCommit)
     val power by rememberUpdatedState(onPower)
-    val gate = rememberQuickControlGestureGate(enabled) { draft = null }
+    val interactive = enabled && LocalQuickControlInteractionEnabled.current
+    val gate = rememberQuickControlGestureGate(interactive) { draft = null }
     val arbitration = LocalMultiFingerGestureArbitration.current
     var trackSize by remember { mutableStateOf(IntSize.Zero) }
     val view = LocalView.current
@@ -317,7 +320,7 @@ internal fun SteppedVerticalControl(label: String, levelCount: Int, level: Int?,
             progressBarRangeInfo = displayed?.let {
                 ProgressBarRangeInfo(it.toFloat(), 0f..levelCount.toFloat(), levelCount - 1)
             } ?: ProgressBarRangeInfo.Indeterminate
-            if (enabled) {
+            if (interactive) {
                 onClick { if (gate.enabled) { power(); true } else false }
                 setProgress { value ->
                     if (gate.enabled && value.isFinite()) {

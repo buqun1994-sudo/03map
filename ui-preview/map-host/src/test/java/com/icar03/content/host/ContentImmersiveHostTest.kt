@@ -201,7 +201,7 @@ open class ContentImmersiveHostTest {
             host.bindMapPresentation(port)
             host.updateDivider(640f, 640f, 1280f)
             advanceHostFrames(root)
-            assertFalse(port.calls.last().enabled)
+            assertFalse("control-center commands never enable map dragging on VehicleInfo", port.calls.last().enabled)
             assertTrue(port.calls.all { !it.remind })
 
             store.setPageIndex(1)
@@ -237,7 +237,11 @@ open class ContentImmersiveHostTest {
 
             store.setPageIndex(0)
             advanceHostFrames(root)
-            assertFalse(port.calls.last().enabled)
+            assertFalse("returning to VehicleInfo closes the map-drag gate", port.calls.last().enabled)
+            store.setGestureAction(com.icar03.content.model.GestureCommand.TwoDown, com.icar03.content.model.GestureAction.None)
+            store.setGestureAction(com.icar03.content.model.GestureCommand.TwoUp, com.icar03.content.model.GestureAction.None)
+            advanceHostFrames(root)
+            assertFalse("without center gestures VehicleInfo has no map gesture action", port.calls.last().enabled)
             store.setPageIndex(1)
             advanceHostFrames(root)
             assertTrue(port.calls.last().enabled)
@@ -275,7 +279,14 @@ open class ContentImmersiveHostTest {
             store.setPageIndex(0)
             host.resume()
             advanceHostFrames(root)
-            assertFalse(port.calls.last().enabled)
+            assertFalse("resume never gives VehicleInfo the lyrics map-drag capability", port.calls.last().enabled)
+            assertTrue(port.calls.all { !it.remind })
+            host.pause()
+            store.setGestureAction(com.icar03.content.model.GestureCommand.TwoDown, com.icar03.content.model.GestureAction.None)
+            store.setGestureAction(com.icar03.content.model.GestureCommand.TwoUp, com.icar03.content.model.GestureAction.None)
+            host.resume()
+            advanceHostFrames(root)
+            assertFalse("resume samples disabled center actions on a non-lyrics page", port.calls.last().enabled)
             assertTrue(port.calls.all { !it.remind })
         } finally { host.destroy(); store.destroy(); controller.pause().stop().destroy() }
     }

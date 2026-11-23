@@ -56,7 +56,11 @@ open class QuickControlsNativeTest {
     protected open val dark = false
     @get:Rule val compose = createComposeRule()
     private val events = mutableListOf<ContentEvent>()
-    private val state = mutableStateOf(ContentUiState(previewMode = false))
+    private val state = mutableStateOf(ContentUiState(
+        previewMode = false,
+        page = PanelPage.Shortcuts,
+        layoutPreferencesLoaded = false,
+    ))
     private val washAction = mutableIntStateOf(0)
     private val panelWidth = mutableStateOf(640.dp)
     private val owner = object : LifecycleOwner {
@@ -258,8 +262,12 @@ open class QuickControlsNativeTest {
         events.clear()
         bar.performTouchInput { down(center); moveTo(Offset(center.x, height * .8f)); cancel() }
         assertTrue(events.isEmpty())
-        compose.onNodeWithTag("runtime-pages").performTouchInput { swipeLeft() }
-        assertTrue(events.contains(ContentEvent.PageSelected(PanelPage.Lyrics)))
+        compose.runOnIdle { state.value = state.value.copy(page = PanelPage.VehicleInfo, layoutPreferencesLoaded = true) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("runtime-pages").assertDoesNotExist()
+        compose.onNodeWithTag("lyrics-empty").assertIsDisplayed()
+        compose.onNodeWithText("暂无歌词").assertIsDisplayed()
+        assertTrue(events.none { it is ContentEvent.PageSelected })
     }
 
     @Test fun ordinaryToggleRetainsSelectionAfterRippleWhileDynamicReturnsToBase() {
@@ -681,12 +689,14 @@ open class QuickControlsNativeTest {
             (ControlId.Wiper to ControlState(actual = 2, rememberedLevel = 2))) }
         mountPanel()
         val bar = compose.onNodeWithTag("control-Wiper")
+        val measuredBounds = bar.getUnclippedBoundsInRoot()
+        val actualHeight = (measuredBounds.bottom - measuredBounds.top).value
         val samples = listOf(.125f to 4, .375f to 3, .625f to 2, .875f to 1, .99f to 1, 1f to 0, 1.08f to 0)
         for ((touchFraction, expected) in samples) {
             events.clear()
             bar.performTouchInput {
-                down(Offset(center.x, height * if (touchFraction < .5f) .9f else .1f))
-                moveTo(Offset(center.x, height * touchFraction))
+                down(Offset(center.x, actualHeight * if (touchFraction < .5f) .9f else .1f))
+                moveTo(Offset(center.x, actualHeight * touchFraction))
             }
             assertTrue("band selection remains a local draft", events.isEmpty())
             bar.assert(SemanticsMatcher.expectValue(ControlDraft, listOf(0f, .25f, .5f, .75f, 1f)[expected]))
@@ -697,7 +707,7 @@ open class QuickControlsNativeTest {
             assertEquals("UI must preserve confirmed manual memory", 2, state.value.controls.getValue(ControlId.Wiper).rememberedLevel)
         }
         events.clear()
-        bar.performTouchInput { click(Offset(center.x, height * .99f)) }
+        bar.performTouchInput { click(Offset(center.x, actualHeight * .875f)) }
         assertEquals("a tap remains a power toggle even in the bottom manual band",
             listOf(ContentEvent.ControlPowerTapped(ControlId.Wiper)), events)
     }

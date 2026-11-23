@@ -10,10 +10,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import com.autonavi.amapauto.content.ContentStore
 import com.autonavi.amapauto.content.ContentPorts
 import com.autonavi.amapauto.content.ContentRegistry
 import com.autonavi.amapauto.content.ContentState
-import com.autonavi.amapauto.content.ContentStore
 import com.icar03.content.ui.*
 import com.icar03.content.model.VehicleFeature
 import com.icar03.content.model.GestureAction
@@ -63,6 +63,16 @@ class ContentBinding(
     private var settingsOpen = false
     private var settingsCollapsed = false
     private var settingsSection = SettingsSection.Home
+    private var layoutSession = LayoutSession.Closed
+    private val controlCenterOpen get() = layoutSession in setOf(LayoutSession.Center, LayoutSession.CenterEditing, LayoutSession.CenterAdding)
+    private val controlCenterEditing get() = layoutSession == LayoutSession.CenterEditing || layoutSession == LayoutSession.CenterAdding
+    private val controlCenterAddPanelOpen get() = layoutSession == LayoutSession.CenterAdding
+    private val controlCardListOpen get() = layoutSession in setOf(LayoutSession.Cards, LayoutSession.CardsEditing, LayoutSession.CardsAdding)
+    private val controlCardEditing get() = layoutSession == LayoutSession.CardsEditing || layoutSession == LayoutSession.CardsAdding
+    private val controlCardAddPanelOpen get() = layoutSession == LayoutSession.CardsAdding
+    private val dockEditing get() = layoutSession == LayoutSession.Dock
+    private var latestSnapshot = store.snapshot()
+    private val dockShowNames get() = latestSnapshot.dockShowNames
     private var lyricsSettings: LyricsSettingsBinding? = null
     private var placeholderSwitches: Map<ShortcutId, Boolean> = emptyMap()
     private var themeKey: Int? = null
@@ -83,7 +93,6 @@ class ContentBinding(
         feedbackRevision++
         if (feedback != null && running) handler.postDelayed(feedbackTimeout, FEEDBACK_DURATION_MS)
     }
-    private var latestSnapshot = store.snapshot()
     private var commandSequence = latestSnapshot.commandSequence
     private val mutableState = MutableStateFlow(inactive(shell(latestSnapshot)))
     /** Shell only. Lyrics and wall clock are independently projected and collected at their leaves. */
@@ -109,7 +118,11 @@ class ContentBinding(
     private var ambientSequence = 0L
     private var ambientJob: Future<*>? = null
     private val artworkWorker = Executors.newSingleThreadExecutor()
+    private var configSession: VehicleConfigImportSession? = null
+    private var configSubscription: AutoCloseable? = null
+    private var configObserverGeneration = 0L
     private var environment: Context? = null
+    private var hostContext: Context? = null
     private var observersRegistered = false
     private val brightnessObserver = object : ContentObserver(handler) {
         override fun onChange(selfChange: Boolean) { requestSystemRead() }
@@ -140,35 +153,44 @@ class ContentBinding(
     internal fun observeEnvironment(context: Context) {
         checkMain()
         val app = context.applicationContext
-        if (environment === app) return
+        hostContext = context
+        if (environment === app) {
+            if (running) observeConfigImportSession()
+            return
+        }
         detachObservers()
+        detachConfigImportSession()
         lyricsSettings?.close()
         environment = app
+        configSession = VehicleConfigImportSession.get(app)
         lyricsSettings = LyricsSettingsBinding(app,
             onChanged = { if (running && !closed) publishShell() },
             onFeedback = { message ->
                 if (running && !closed) { replaceFeedback(message); publishShell() }
             })
-        if (running) { lyricsSettings?.start(); attachObservers() }
+        if (running) { lyricsSettings?.start(); attachObservers(); observeConfigImportSession() }
     }
 
     internal fun clearEnvironment() {
         checkMain()
         detachObservers()
+        detachConfigImportSession()
+        configSession = null
         lyricsSettings?.close()
         lyricsSettings = null
         environment = null
+        hostContext = null
     }
 
     fun start() {
         checkMain()
         if (closed || running) return
         running = true
+        layoutSession = LayoutSession.Closed
         mutableActive.value = true
         val epoch = ++generation
         workerEpoch.set(epoch)
         store.startLyrics()
-        store.startCruiseSignals()
         listener = ContentStore.Listener { snapshot ->
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 if (running && generation == epoch) project(snapshot)
@@ -192,6 +214,7 @@ class ContentBinding(
             settingsCollapsed = false
             settingsSection = SettingsSection.Lyrics
         }
+        observeConfigImportSession()
         attachObservers()
         projectClock(System.currentTimeMillis())
         publishShell()
@@ -201,15 +224,17 @@ class ContentBinding(
     fun stop() {
         checkMain()
         if (!running) return
-        val preserveSettings = settingsOpen && settingsSection == SettingsSection.Lyrics &&
-            com.icar03.content.runtime.lyrics.AppleMusicBrowserLogin.shouldPreserveSettings(environment)
+        layoutSession = LayoutSession.Closed
+        val preserveSettings = settingsOpen && (
+            settingsSection == SettingsSection.Lyrics &&
+                com.icar03.content.runtime.lyrics.AppleMusicBrowserLogin.shouldPreserveSettings(environment) ||
+            settingsSection == SettingsSection.VehicleConfig &&
+                configSession?.snapshot?.let { it.busy || it.returnPending || it.completionPending } == true)
         running = false
+        detachConfigImportSession()
         lyricsSettings?.stop()
         mutableActive.value = false
         store.stopLyrics()
-        store.stopCruiseSignals()
-        mutableCruiseSignals.value = CruiseSignalState()
-        mutableCruiseSignalsVisible.value = false
         generation++
         workerEpoch.set(generation)
         ambientSequence++
@@ -259,6 +284,13 @@ class ContentBinding(
         systemLevels = state.systemLevels.mapValues { it.value.copy(available = false, target = null) },
         screenCleanAvailable = false,
          controlCenterAvailable = false,
+         controlCenterOpen = false,
+         controlCenterEditing = false,
+         controlCenterAddPanelOpen = false,
+         controlCardListOpen = false,
+         controlCardEditing = false,
+          controlCardAddPanelOpen = false,
+         dockEditing = false,
             )
 
     override fun close() {
@@ -268,7 +300,10 @@ class ContentBinding(
         closed = true
         lyricsSettings?.close()
         lyricsSettings = null
+        detachConfigImportSession()
+        configSession = null
         environment = null
+        hostContext = null
         artworkWorker.shutdownNow()
         systemWorker.shutdownNow()
         if (ownership == StoreOwnership.Owned) store.destroy()
@@ -304,22 +339,45 @@ class ContentBinding(
             settingsCollapsed = settingsCollapsed,
             settingsSection = settingsSection,
             scenariosOpen = mutableState.value.scenariosOpen,
+            controlCenterOpen = controlCenterOpen,
+            controlCenterEditing = controlCenterEditing,
+            controlCenterAddPanelOpen = controlCenterAddPanelOpen,
+            controlCenterItems = store.snapshot().controlCenterLayoutIds.toList(),
+            controlCenterAvailableItems = mutableState.value.controlCenterAvailableItems,
+            controlCardListOpen = controlCardListOpen,
+            controlCardEditing = controlCardEditing,
+            controlCardAddPanelOpen = controlCardAddPanelOpen,
+            controlCardIds = store.snapshot().controlCardLayoutIds.toList(),
+            controlCardIndex = store.snapshot().controlCardLayoutIndex,
+            dockEditing = dockEditing,
+            dockItems = store.snapshot().dockLayoutIds.toList(),
+            dockShowNames = dockShowNames,
             lyricsProviderSettings = lyricsSettings?.state ?: LyricsProviderUiState(),
         )
     }
 
+    private fun canApplyLayoutAction(event: LayoutAction): Boolean {
+        val current = currentPresentationState() ?: return false
+        if (event.action == ControlCenterEditAction.ImportVehicleConfig &&
+            configSession?.canLaunchPicker(hostContext?.let(::findContentWindowActivity)) != true) return false
+        return LayoutEditor.accepts(current, event)
+    }
+
     internal fun canDispatch(event: ContentEvent): Boolean {
         if (!running || closed) return false
-        if (!settingsOpen && event.isSettingsInteraction() && event !in setOf(
-                ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings, ContentEvent.SettingsBack,
+        if (event is LayoutAction) return canApplyLayoutAction(event)
+        if ((controlCenterEditing || controlCardEditing || controlCardAddPanelOpen || dockEditing) && event !is ContentEvent.GesturePerformed) return false
+        if (controlCenterOpen && event is ContentEvent.PageSelected) return false
+        if (!settingsOpen && event.isSettingsInteraction() && !event.isLayoutEditorInteraction() && event !in setOf(
+                ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings, ContentEvent.OpenVehicleConfigSettings, ContentEvent.SettingsBack,
                 ContentEvent.SettingsDismissed, ContentEvent.DismissSheet)) return false
-        if (settingsOpen && !event.isSettingsInteraction()) return false
+        if (settingsOpen && !event.isSettingsInteraction() && !event.isLayoutEditorInteraction()) return false
         if (event == ContentEvent.SettingsCollapseTapped && (!settingsOpen || settingsSection != SettingsSection.Lyrics)) return false
         if (event == ContentEvent.SettingsRestored && (!settingsOpen || !settingsCollapsed)) return false
-        if (settingsCollapsed && event !in setOf(ContentEvent.SettingsCollapseTapped, ContentEvent.SettingsRestored,
+        if (settingsCollapsed && !event.isLayoutEditorInteraction() && event !in setOf(ContentEvent.SettingsCollapseTapped, ContentEvent.SettingsRestored,
                 ContentEvent.SettingsTapped, ContentEvent.SettingsBack, ContentEvent.SettingsDismissed,
-                ContentEvent.OpenLyricsSettings, ContentEvent.DismissSheet)) return false
-        if (lyricsSettings?.state?.appleLoginOpen == true && event !in setOf(
+                ContentEvent.OpenLyricsSettings, ContentEvent.OpenVehicleConfigSettings, ContentEvent.DismissSheet)) return false
+        if (lyricsSettings?.state?.appleLoginOpen == true && !event.isLayoutEditorInteraction() && event !in setOf(
                 ContentEvent.SettingsBack, AppleMusicLoginDismissed, ContentEvent.SettingsDismissed,
                 ContentEvent.SettingsTapped, ContentEvent.DismissSheet)) return false
         return when (event) {
@@ -327,20 +385,40 @@ class ContentBinding(
                 !settingsCollapsed && lyricsSettings?.state?.appleLoginOpen != true &&
                 store.snapshot().let { fresh -> fresh.settingsAutoCloseSequence == latestSnapshot.settingsAutoCloseSequence &&
                     fresh.gestureActions[event.command] != event.action }
+                        is LayoutAction -> true
             is ContentEvent.GesturePerformed -> currentPresentationState()?.let { current ->
-                current.page.supportsImmersive && !current.settingsOpen && !current.settingsCollapsed &&
+                 val action = current.gestureActions[event.command] ?: GestureAction.None
+                 val centerAction = action == GestureAction.OpenControlCenter || action == GestureAction.CloseControlCenter
+
+                (current.page.supportsImmersive || centerAction) && !current.settingsOpen && !current.settingsCollapsed &&
                     !current.sourcesOpen && !current.scenariosOpen && !current.lyricsProviderSettings.appleLoginOpen &&
                     (current.gestureActions[event.command] ?: GestureAction.None) != GestureAction.None
             } == true
             is ContentEvent.ShowCruiseSignalsChanged -> store.snapshot().immersiveShowTopBar
-            is ContentEvent.ControlTapped -> shell(store.snapshot()).controls[event.id]?.available == true
-            is ContentEvent.ControlPowerTapped -> shell(store.snapshot()).controls[event.id]?.available == true
-            is ContentEvent.ControlAutomaticTapped -> shell(store.snapshot()).controls[event.id]?.available == true
-            is ContentEvent.ControlLevelChanged -> shell(store.snapshot()).controls[event.id]?.available == true
+            is ContentEvent.ControlTapped -> (if (event.id == ControlId.Lock) store.isLockControlAvailable else store.isControlAvailable(event.id.id)) && shell(store.snapshot()).controls[event.id]?.available == true
+            is ContentEvent.ControlPowerTapped -> store.isControlAvailable(event.id.id) && shell(store.snapshot()).controls[event.id]?.available == true
+            is ContentEvent.ControlAutomaticTapped -> store.isControlAutomaticAvailable(event.id.id)
+            is ContentEvent.ControlLevelChanged -> event.id.isLevel(event.level) &&
+                store.isControlLevelAvailable(event.id.id, event.level) && shell(store.snapshot()).controls[event.id]?.available == true
             is ContentEvent.FeatureTapped -> event.id.feature?.let { shell(store.snapshot()).features[it]?.available } == true
             ContentEvent.RearWashTapped -> shell(store.snapshot()).controls[ControlId.RearWash]?.available == true
             ContentEvent.ScreenCleanTapped -> screenCleaningAvailable && state.value.screenCleanAvailable
-            ContentEvent.ControlCenterTapped -> !sourcesOpen && controlCenterAvailable && state.value.controlCenterAvailable
+            is ContentEvent.BrightnessChanged -> event.value.isFinite() && shell(store.snapshot()).brightness.available
+            is ContentEvent.VolumeChanged -> event.value.isFinite() && shell(store.snapshot()).volume.available
+            is ContentEvent.SystemVolumeChanged -> event.value.isFinite() &&
+                shell(store.snapshot()).systemLevels[event.id]?.available == true
+            ContentEvent.PlayPause -> shell(store.snapshot()).media.let { it.available && it.playbackAvailable && !it.pending }
+            ContentEvent.NextTrack -> shell(store.snapshot()).media.let { it.available && it.nextAvailable && !it.pending }
+            ContentEvent.OpenSources -> shell(store.snapshot()).media.let { it.sourceAvailable && !it.pending }
+            is ContentEvent.SourceSelected -> shell(store.snapshot()).media.let {
+                it.sourceAvailable && event.source != it.targetSource
+            }
+            ContentEvent.SettingsTapped -> settingsOpen || store.isContentAvailable("settings")
+            ContentEvent.OpenLyricsSettings -> store.isContentAvailable("settings")
+            ContentEvent.OpenVehicleConfigSettings -> layoutSession == LayoutSession.Closed &&
+                shell(store.snapshot()).page == PanelPage.VehicleInfo && !sourcesOpen
+            is ContentEvent.PageSelected -> event.page in listOf(PanelPage.VehicleInfo, PanelPage.Lyrics, PanelPage.Projection) && layoutSession == LayoutSession.Closed
+            ContentEvent.ControlCenterTapped -> !sourcesOpen && controlCenterAvailable && shell(store.snapshot()).controlCenterAvailable
             else -> true
         }
     }
@@ -353,6 +431,10 @@ class ContentBinding(
         if (!canDispatch(event)) return
         if (lyricsSettings?.state?.appleLoginOpen == true && event == ContentEvent.SettingsBack) {
             lyricsSettings?.dispatch(AppleMusicLoginDismissed)
+            return
+        }
+        if (event is LayoutAction) {
+            applyLayoutAction(event)
             return
         }
         if (lyricsSettings?.dispatch(event) == true) { publishShell(); return }
@@ -374,7 +456,7 @@ class ContentBinding(
                 if (state.value.controls[event.id]?.available == true) store.toggleControlPower(event.id.id)
             }
             is ContentEvent.ControlAutomaticTapped -> {
-                if (state.value.controls[event.id]?.available == true) store.toggleControlAutomatic(event.id.id)
+                if (store.isControlAutomaticAvailable(event.id.id)) store.toggleControlAutomatic(event.id.id)
             }
             is ContentEvent.ControlLevelChanged -> {
                 if (state.value.controls[event.id]?.available == true) store.setControlLevel(event.id.id, event.level)
@@ -398,7 +480,10 @@ class ContentBinding(
                 }
             }
             ContentEvent.ControlCenterTapped -> {
-                val sent = try { store.systemPort().openControlCenter() } catch (_: RuntimeException) { false }
+                val sent = try {
+                    store.isSystemAvailable("system_control_center") && store.systemPort().controlCenterAvailable() &&
+                        store.systemPort().openControlCenter()
+                } catch (_: RuntimeException) { false }
                 if (!sent) {
                     controlCenterAvailable = readControlCenterAvailability()
                     replaceFeedback("控制中心打开失败，请稍后重试")
@@ -418,8 +503,22 @@ class ContentBinding(
                 store.selectMediaSource(event.source.label)
                 project(store.snapshot())
             }
-            is ContentEvent.PageSelected -> store.setPageIndex(if (event.page == PanelPage.Lyrics) 1 else 0)
-            ContentEvent.OpenSources -> { if (state.value.media.sourceAvailable) sourcesOpen = true; publishShell() }
+            is ContentEvent.PageSelected -> {
+                val pageId = when (event.page) {
+                    PanelPage.Lyrics -> ContentRegistry.Pages.LYRICS
+                    PanelPage.VehicleInfo -> ContentRegistry.Pages.VEHICLE_INFO
+                    PanelPage.Projection -> ContentRegistry.Pages.PROJECTION
+                    else -> ContentRegistry.Pages.VEHICLE_INFO
+                }
+                store.setPageIndex(ContentRegistry.visiblePageIds().indexOf(pageId).coerceAtLeast(0))
+            }
+            ContentEvent.OpenSources -> {
+                if (state.value.media.sourceAvailable) {
+                    if (layoutSession == LayoutSession.Cards) layoutSession = LayoutSession.Closed
+                    sourcesOpen = true
+                }
+                publishShell()
+            }
             ContentEvent.DismissSheet -> {
                 sourcesOpen = false
                 closeSettings()
@@ -454,10 +553,10 @@ class ContentBinding(
                 settingsCollapsed = false
                 publishShell()
             }
-            ContentEvent.OpenLyricsSettings -> {
+            ContentEvent.OpenLyricsSettings, ContentEvent.OpenVehicleConfigSettings -> {
                 sourcesOpen = false
                 settingsCollapsed = false
-                settingsSection = SettingsSection.Lyrics
+                settingsSection = if (event == ContentEvent.OpenLyricsSettings) SettingsSection.Lyrics else SettingsSection.VehicleConfig
                 settingsOpen = true
                 replaceFeedback(null)
                 publishShell()
@@ -523,6 +622,70 @@ class ContentBinding(
         }
     }
 
+    private fun observeConfigImportSession() {
+        if (!running || closed || configSubscription != null) return
+        val session = configSession ?: return
+        val observerGeneration = ++configObserverGeneration
+        var initial = true
+        configSubscription = session.observe { snapshot ->
+            if (closed || !running || configSession !== session || configObserverGeneration != observerGeneration) return@observe
+            val first = initial
+            initial = false
+            val restoreSettings = snapshot.returnPending || first && (snapshot.busy || snapshot.completionPending)
+            if (restoreSettings) {
+                settingsOpen = true
+                settingsCollapsed = false
+                settingsSection = SettingsSection.VehicleConfig
+            }
+            if (snapshot.completionPending) replaceFeedback(snapshot.message)
+            publishShell()
+            session.acknowledge(snapshot.requestId,
+                returnedToSettings = restoreSettings && snapshot.phase != VehicleConfigImportSession.Phase.Picking,
+                completion = snapshot.completionPending)
+        }
+    }
+
+    private fun detachConfigImportSession() {
+        configObserverGeneration++
+        configSubscription?.close()
+        configSubscription = null
+    }
+
+    private fun openVehicleConfigPicker() {
+        val activity = hostContext?.let(::findContentWindowActivity) ?: run {
+            replaceFeedback("文件选择器不可用")
+            publishShell()
+            return
+        }
+        val session = configSession ?: return
+        replaceFeedback(null)
+        if (!session.launchPicker(activity)) replaceFeedback("无法打开配置文件选择器")
+        publishShell()
+    }
+
+    fun onVehicleConfigResult(resultCode: Int, data: Intent?): Boolean {
+        checkMain()
+        if (closed) return false
+        return configSession?.acceptResult(resultCode, data) ?: false
+    }
+    private fun applyLayoutAction(event: LayoutAction) {
+        val current = currentPresentationState() ?: return
+        if (event.action == ControlCenterEditAction.ImportVehicleConfig) {
+            openVehicleConfigPicker()
+            return
+        }
+        val next = LayoutEditor.reduce(current, event)
+        layoutSession = LayoutSession.from(next)
+        if (event.action == ControlCenterEditAction.DockShowNamesChanged) store.setDockShowNames(next.dockShowNames)
+        // Drag previews never become business facts. An accepted mutation is committed once,
+        // then projected from Store; lifecycle and reopening observe the same ordered lists.
+        if (next.controlCenterItems != current.controlCenterItems || next.controlCardIds != current.controlCardIds ||
+            next.dockItems != current.dockItems || next.controlCardIndex != current.controlCardIndex) {
+            store.setLayoutPreferences(next.controlCenterItems, next.controlCardIds, next.dockItems, next.controlCardIndex)
+            latestSnapshot = store.snapshot()
+        }
+        publishShell()
+    }
     private fun read(kind: Int): ContentPorts.SystemSnapshot = try {
         store.systemPort().read(kind) ?: ContentPorts.SystemSnapshot(false, 0)
     } catch (_: RuntimeException) { ContentPorts.SystemSnapshot(false, 0) }
@@ -618,7 +781,13 @@ class ContentBinding(
             if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence ||
                 android.os.SystemClock.uptimeMillis() >= deadline) return@submit
             // A fresh matching read is already confirmation; otherwise submit exactly once and only poll reads afterwards.
-            if (!before.matches(target)) {
+            if (!before.matches(target) && before.available && store.isSystemAvailable(when (kind) {
+                    0 -> "brightness"
+                    1 -> "volume"
+                    2 -> "call_volume"
+                    3 -> "navigation_volume"
+                    else -> "voice_volume"
+                })) {
                 try { store.systemPort().write(kind, target) } catch (_: RuntimeException) { }
             }
             if (workerEpoch.get() != epoch || latestSystemRequest.get(kind) != requestSequence) return@submit
@@ -722,14 +891,24 @@ class ContentBinding(
         val system = projected.systemLevels.mapValues { (id, level) ->
             systemTargets[id.systemKind()]?.let { level.copy(target = it) } ?: level
         }
-        val result = if (projected.sourcesOpen == sourcesOpen && projected.settingsOpen == settingsOpen &&
-            projected.settingsCollapsed == settingsCollapsed && projected.settingsSection == settingsSection && projected.message == message && projected.messageRevision == messageRevision &&
-            light === projected.brightness && sound === projected.volume && system == projected.systemLevels &&
-            projected.placeholderSwitches == placeholderSwitches) projected
-            else projected.copy(sourcesOpen = sourcesOpen, settingsOpen = settingsOpen, settingsCollapsed = settingsCollapsed,
-                settingsSection = settingsSection,
-                message = message, messageRevision = messageRevision, brightness = light, volume = sound,
-                systemLevels = system, placeholderSwitches = placeholderSwitches)
+        val result = projected.copy(
+            sourcesOpen = sourcesOpen, settingsOpen = settingsOpen, settingsCollapsed = settingsCollapsed,
+            settingsSection = settingsSection, message = message, messageRevision = messageRevision,
+            brightness = light, volume = sound, systemLevels = system, placeholderSwitches = placeholderSwitches,
+            controlCenterOpen = controlCenterOpen,
+            controlCenterEditing = controlCenterEditing,
+            controlCenterAddPanelOpen = controlCenterAddPanelOpen,
+            controlCenterItems = projected.controlCenterItems,
+            controlCenterAvailableItems = projected.controlCenterAvailableItems,
+            controlCardListOpen = controlCardListOpen,
+            controlCardEditing = controlCardEditing,
+            controlCardAddPanelOpen = controlCardAddPanelOpen,
+            controlCardIds = projected.controlCardIds,
+            controlCardIndex = projected.controlCardIndex,
+            dockEditing = dockEditing,
+            dockItems = projected.dockItems,
+            dockShowNames = dockShowNames,
+        )
         if (mutableState.value != result) mutableState.value = result
     }
 
@@ -759,9 +938,6 @@ class ContentBinding(
             }
         }
         publishShell()
-        val signals = mapper.cruiseSignals(snapshot)
-        mutableCruiseSignals.value = signals
-        mutableCruiseSignalsVisible.value = signals.lights.isNotEmpty()
         mutableLyrics.value = mapper.mapLyrics(snapshot)
         if (snapshot.nowMillis != previous.nowMillis) {
             projectClock(snapshot.nowMillis.takeIf { it > 0L } ?: System.currentTimeMillis())

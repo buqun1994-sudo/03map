@@ -15,16 +15,20 @@ class MultiFingerGestureRoutingTest {
     }
     private val lyrics = previewState().copy(previewMode = false, page = PanelPage.Lyrics)
 
-    @Test fun defaultsHaveExactlyTwoActionsAndOnlyRunAtTheirActualEndpoints() {
+    @Test fun defaultsHaveFourActionsAndOnlyRunAtTheirActualEndpoints() {
         assertEquals(12, lyrics.gestureActions.size)
-        assertEquals(2, lyrics.gestureActions.values.count { it != GestureAction.None })
+        assertEquals(4, lyrics.gestureActions.values.count { it != GestureAction.None })
         assertEquals(ContentEvent.EnterLyricsImmersive,
             MultiFingerGestureRouting.resolve(GestureCommand.TwoRight, lyrics, split()))
         assertEquals(ContentEvent.ExitLyricsImmersive,
             MultiFingerGestureRouting.resolve(GestureCommand.TwoLeft, lyrics, full()))
-        assertNull(MultiFingerGestureRouting.resolve(GestureCommand.TwoLeft, lyrics, split()))
         assertNull(MultiFingerGestureRouting.resolve(GestureCommand.TwoRight, lyrics, full()))
-        GestureCommand.entries.filter { it !in listOf(GestureCommand.TwoLeft, GestureCommand.TwoRight) }.forEach {
+        assertNull(MultiFingerGestureRouting.resolve(GestureCommand.TwoLeft, lyrics, split()))
+        assertEquals(LayoutAction(ControlCenterEditAction.Open, input = LayoutInput.Gesture),
+            MultiFingerGestureRouting.resolve(GestureCommand.TwoDown, lyrics, split()))
+        assertEquals(LayoutAction(ControlCenterEditAction.Close, input = LayoutInput.Gesture),
+            MultiFingerGestureRouting.resolve(GestureCommand.TwoUp, lyrics.copy(controlCenterOpen = true), split()))
+        GestureCommand.entries.filter { it !in listOf(GestureCommand.TwoUp, GestureCommand.TwoDown, GestureCommand.TwoLeft, GestureCommand.TwoRight) }.forEach {
             assertNull(MultiFingerGestureRouting.resolve(it, lyrics, split()))
             assertNull(MultiFingerGestureRouting.resolve(it, lyrics, full()))
         }

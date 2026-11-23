@@ -119,6 +119,10 @@ class OemGlyphCalibrationNativeTest {
             }
         }
         add(Spec("settings", R.drawable.content_oem_ic_settings))
+        add(Spec("dock/system-control-center", R.drawable.content_oem_ico_home_applist, "ico_home_applist.json"))
+        add(Spec("dock/glove-box", R.drawable.content_oem_ico_glove_box, "ico_glove_box.json", 0..29))
+        add(Spec("dock/window-close", R.drawable.content_oem_ico_window_close, "ico_window_close.json", 0..29))
+        add(Spec("dock/window-half", R.drawable.content_oem_ico_window_half, "ico_window_half.json", 0..29))
         add(Spec("page/fullscreen", R.drawable.content_ic_fullscreen))
         add(Spec("page/fullscreen-exit", R.drawable.content_ic_fullscreen_exit))
         // OEM command names are reversed at their tail: pause_02 ends as the play glyph.
@@ -130,6 +134,7 @@ class OemGlyphCalibrationNativeTest {
         add(Spec("source/neteasy", R.drawable.content_oem_ico_media_neteasy, "ico_media_neteasy.json"))
         add(Spec("source/usb", R.drawable.content_oem_ico_devices_usb, "ico_devices_usb.json"))
         add(Spec("source/local", R.drawable.content_oem_ico_media_local, "ico_media_local.json"))
+
     }
 
     private fun calibrateVector(spec: Spec): JSONObject {

@@ -129,6 +129,13 @@ public final class ContentPorts {
     }
 
     public interface SystemPort {
+        /** Pure configuration; concrete adapters may map semantic channels onto supported transports. */
+        default void configure(ContentVehicleConfig config) { }
+        default String capabilityContract() { return "system-port-v1"; }
+        default CapabilityCheck inspectCapability(String semanticId, ContentVehicleProtocol.Mapping mapping) {
+            return CapabilityCheck.unknown("尚无系统硬件支持证据");
+        }
+
         SystemSnapshot read(int kind);
 
         boolean write(int kind, int percent);
@@ -241,6 +248,44 @@ public final class ContentPorts {
         private boolean audioBound;
         private boolean closed;
         private long nextAudioBindUptimeMs;
+        private volatile ContentVehicleConfig config;
+
+        @Override public void configure(ContentVehicleConfig config) { this.config = config; }
+
+        @Override public String capabilityContract() { return "s56-system-port-v2"; }
+        @Override public CapabilityCheck inspectCapability(String id, ContentVehicleProtocol.Mapping mapping) {
+            if (mapping == null || !"system_port".equals(mapping.adapter)) return new CapabilityCheck(Capability.MISSING, "系统适配器未实现该映射");
+            if ("screen_clean".equals(mapping.kind)) {
+                try {
+                    ActivityInfo activity = context.getPackageManager().getActivityInfo(SCREEN_CLEAN_COMPONENT, PackageManager.MATCH_DISABLED_COMPONENTS);
+                    if (!activity.exported) return new CapabilityCheck(Capability.MISSING, "清洁屏幕入口不允许外部启动");
+                    if (!activity.enabled || activity.applicationInfo == null || !activity.applicationInfo.enabled
+                            || activity.permission != null && !activity.permission.isEmpty()
+                            && context.checkSelfPermission(activity.permission) != PackageManager.PERMISSION_GRANTED)
+                        return CapabilityCheck.unknown("清洁屏幕入口暂不可用");
+                    return new CapabilityCheck(Capability.SUPPORTED, "已确认清洁屏幕组件合同");
+                } catch (PackageManager.NameNotFoundException missing) {
+                    return new CapabilityCheck(Capability.MISSING, "设备未安装清洁屏幕入口");
+                } catch (RuntimeException unknown) { return CapabilityCheck.unknown("清洁屏幕组件身份暂不可读"); }
+            }
+            if (!"volume".equals(mapping.kind)) return CapabilityCheck.unknown("系统入口接收方尚未确认");
+            try {
+                context.getPackageManager().getPackageInfo(AUDIO_PACKAGE, 0);
+                return CapabilityCheck.unknown("音量适配器合同有效，硬件分组支持待真实回读");
+            } catch (PackageManager.NameNotFoundException absent) {
+                return new CapabilityCheck(Capability.MISSING, "设备未安装所需音频服务");
+            } catch (RuntimeException unknown) {
+                return CapabilityCheck.unknown("音频服务身份暂不可读");
+            }
+        }
+
+        private int mappedSystemKind(int kind) {
+            if (config == null || kind == 0) return kind;
+            String[] ids = {"volume", "call_volume", "navigation_volume", "voice_volume"};
+            if (kind < 1 || kind > ids.length || !config.allowsSystem(ids[kind - 1])) return -1;
+            ContentVehicleProtocol.Mapping mapping = config.mapping(ids[kind - 1]);
+            return mapping == null || !"system_port".equals(mapping.adapter) ? -1 : mapping.channel;
+        }
 
         public AndroidSystemPort(Context context) {
             this.context = context.getApplicationContext();
@@ -297,6 +342,8 @@ public final class ContentPorts {
         }
 
         @Override public SystemSnapshot read(int kind) {
+            final int semanticKind = kind;
+            kind = mappedSystemKind(kind);
             if (kind == 0) return readScreenBrightness();
             if (kind < 1 || kind > AUDIO_GROUPS.length) return new SystemSnapshot(false, 0);
             VolumeRange range = ensureAudioRange(kind);
@@ -305,6 +352,9 @@ public final class ContentPorts {
                 int raw = transactInt(audioBinder, AUDIO_DESCRIPTOR,
                         AUDIO_GET_GROUP_VOLUME_TRANSACTION, range.group);
                 if (raw < range.min || raw > range.max) return new SystemSnapshot(false, 0);
+                ContentVehicleConfig currentConfig = config;
+                if (currentConfig != null && semanticKind >= 1 && semanticKind <= 4)
+                    currentConfig.acceptSystemReadback(new String[] {"volume", "call_volume", "navigation_volume", "voice_volume"}[semanticKind - 1]);
                 return new SystemSnapshot(true, volumePercent(raw, range.min, range.max),
                         volumeTolerance(range.min, range.max));
             } catch (RemoteException | RuntimeException exception) {
@@ -314,6 +364,7 @@ public final class ContentPorts {
         }
 
         @Override public boolean write(int kind, int percent) {
+            kind = mappedSystemKind(kind);
             if (kind == 0) return writeScreenBrightness(percent);
             if (kind < 1 || kind > AUDIO_GROUPS.length) return false;
             VolumeRange range = ensureAudioRange(kind);
@@ -571,7 +622,31 @@ public final class ContentPorts {
         }
     }
 
+    /** Persistent support evidence is separate from a temporary transport connection. */
+    public enum Capability { SUPPORTED, MISSING, UNKNOWN }
+
+    public static final class CapabilityCheck {
+        public final Capability status;
+        public final String reason;
+        public CapabilityCheck(Capability status, String reason) {
+            this.status = status == null ? Capability.UNKNOWN : status;
+            this.reason = reason == null ? "" : reason;
+        }
+        public static CapabilityCheck unknown(String reason) { return new CapabilityCheck(Capability.UNKNOWN, reason); }
+    }
+
     public interface VehiclePort {
+        /** Installs validated addresses/codecs before start; never performs a vehicle action. */
+        default void configure(ContentVehicleConfig config) { }
+
+        /** Stable implemented contract, independent of class name, app version and connection. */
+        default String capabilityContract() { return "vehicle-port-v1"; }
+
+        /** Bounded read-only support inspection. An offline transport must report UNKNOWN. */
+        default CapabilityCheck inspectCapability(String semanticId, ContentVehicleProtocol.Mapping mapping) {
+            return CapabilityCheck.unknown("尚无该功能的硬件支持证据");
+        }
+
         /** Transport only; a valid readback and an executable target remain separate. */
         boolean isAvailable();
 

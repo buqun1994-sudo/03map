@@ -113,7 +113,10 @@ open class ContentComposeHostTest {
             val target = File("build/frames/640x1080-${if (dark) "dark" else "light"}-$platform-plain-map-host.png")
             target.parentFile.mkdirs()
             target.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
-            assertNotEquals(bitmap.getPixel(0, 0), bitmap.getPixel(100, 100))
+            val mediaCard = checkNotNull(hostTag(host, "media-card")) { "VehicleInfo must keep the media control card" }
+            val cardCenter = mediaCard.boundsInRoot.center
+            assertNotEquals("the media card must draw visible content", bitmap.getPixel(0, 0),
+                bitmap.getPixel(cardCenter.x.toInt(), cardCenter.y.toInt()))
             bitmap.recycle()
             projection.updateDivider(1920f, 640f, 1280f)
             advanceHostFrames(root)

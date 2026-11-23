@@ -50,13 +50,11 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier,
     val artwork by binding.artwork.collectAsState()
     val ambient by binding.ambientArtwork.collectAsState()
     val active by binding.active.collectAsState()
-    val cruiseSignalsAvailable by binding.cruiseSignalsVisible.collectAsState()
     val bitmap = artwork?.takeUnless { it.isRecycled }?.asImageBitmap()
     ContentTheme(dark = state.dark) {
         ContentPanel(state, { event ->
             if (event == com.icar03.content.ui.ContentEvent.EnterLyricsImmersive ||
-                event == com.icar03.content.ui.ContentEvent.ExitLyricsImmersive ||
-                event is com.icar03.content.ui.ContentEvent.GesturePerformed)
+                event == com.icar03.content.ui.ContentEvent.ExitLyricsImmersive)
                 onPresentationEvent?.invoke(event) else binding.dispatch(event)
         }, modifier, presentation = presentation,
             artwork = bitmap?.let { image -> { Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } },
@@ -66,8 +64,6 @@ fun BoundBindingPanel(binding: ContentBinding, modifier: Modifier = Modifier,
             },
             clockText = { val text by binding.clock.collectAsState(); text },
             lyricsState = { val lyrics by binding.lyrics.collectAsState(); lyrics },
-            cruiseSignalsAvailable = cruiseSignalsAvailable,
-            cruiseSignals = { val signals by binding.cruiseSignals.collectAsState(); signals },
             appleMusicLogin = { dispatch -> binding.AppleMusicLoginContent(dispatch) },
             canDispatch = binding::canDispatch)
     }

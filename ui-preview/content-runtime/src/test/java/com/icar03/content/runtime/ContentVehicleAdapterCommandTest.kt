@@ -1,5 +1,8 @@
 package com.icar03.content.runtime
 
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
@@ -517,6 +520,28 @@ internal fun expectedHeatPacket(control: VehicleControl, target: Int) = VehicleP
  * Only connection and worker scheduling are installed by the fixture. The real
  * Adapter implements every capability, request, packet and normalization method.
  */
+internal fun ensureVehicleServiceInstalled() {
+    val application = RuntimeEnvironment.getApplication()
+    val packageName = ContentVehicleProtocol.VEHICLE_SERVICE_PACKAGE
+    val applicationInfo = ApplicationInfo().apply {
+        this.packageName = packageName
+        enabled = true
+    }
+    shadowOf(application.packageManager).installPackage(PackageInfo().apply {
+        this.packageName = packageName
+        this.applicationInfo = applicationInfo
+        versionName = "fixture"
+        setLongVersionCode(1L)
+        services = arrayOf(ServiceInfo().apply {
+            this.packageName = packageName
+            name = ContentVehicleProtocol.VEHICLE_SERVICE_CLASS
+            this.applicationInfo = applicationInfo
+            enabled = true
+            exported = true
+        })
+    })
+}
+
 internal fun attachedVehicleCommandAdapter(service: VehicleCommandBinder): ContentVehicleAdapter =
     ContentVehicleAdapter(RuntimeEnvironment.getApplication()).also {
         setVehicleAdapterField(it, "running", true)

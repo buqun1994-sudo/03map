@@ -107,13 +107,46 @@ class ContentMultiFingerHostTest {
         assertEquals(1, port.enters)
     }
 
-    @Test fun queuedUnsupportedPageRejectsMapAndContentCommandsBeforeUiPublication() = withHost { host, store, actual, port, _ ->
+    @Test fun queuedVehicleInfoPageAllowsControlCenterGesturesButRejectsImmersiveBeforeUiPublication() = withHost { host, store, actual, port, _ ->
         val binding = hostBinding(host)
         updateOnWorker { store.setPageIndex(0) }
         assertEquals(com.icar03.content.ui.PanelPage.Lyrics, binding.state.value.page)
-        assertFalse(host.isMapGestureAllowed())
+        assertEquals(com.icar03.content.ui.PanelPage.VehicleInfo, checkNotNull(binding.currentPresentationState()).page)
+        assertFalse("control-center commands do not grant VehicleInfo map dragging", host.isMapGestureAllowed())
         dispatch(host, GestureCommand.TwoRight)
         assertEquals(0L, actual.pendingEnter); assertEquals(0, port.enters)
+        host.javaClass.getDeclaredMethod("dispatchPresentation", ContentEvent::class.java).apply { isAccessible = true }
+            .invoke(host, ContentEvent.EnterLyricsImmersive)
+        assertEquals("direct immersive entry also requires a lyrics page", 0L, actual.pendingEnter)
+        assertEquals(0, port.enters)
+        updateOnWorker {
+            store.setGestureAction(GestureCommand.TwoDown, GestureAction.None)
+            store.setGestureAction(GestureCommand.TwoUp, GestureAction.None)
+        }
+        assertFalse("a non-lyrics page without control-center actions rejects map gestures", host.isMapGestureAllowed())
+        assertEquals(com.icar03.content.ui.PanelPage.Lyrics, binding.state.value.page)
+    }
+
+    @Test fun ordinaryPagesRouteControlCenterCommandsWithoutMovingTheMap() = withHost { host, store, actual, port, root ->
+        val binding = hostBinding(host)
+        for (pageIndex in listOf(0, 2)) {
+            store.setPageIndex(pageIndex)
+            advanceHostFrames(root)
+            val before = binding.state.value
+            assertFalse(host.isMapGestureAllowed())
+            dispatch(host, GestureCommand.TwoDown)
+            advanceHostFrames(root)
+            assertTrue("the content command still opens its overlay", binding.state.value.controlCenterOpen)
+            assertEquals(before.page, binding.state.value.page)
+            assertEquals(0f, actual.progress, 0f)
+            assertEquals(0L, actual.pendingEnter)
+            assertEquals(0, port.enters)
+            assertEquals(0, port.exits)
+            dispatch(host, GestureCommand.TwoUp)
+            advanceHostFrames(root)
+            assertFalse(binding.state.value.controlCenterOpen)
+            assertFalse(host.isMapGestureAllowed())
+        }
     }
 
     @Test fun unsupportedPageModalAndPauseRejectGestureAndLatePreparation() = withHost { host, store, actual, port, root ->

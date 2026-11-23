@@ -54,6 +54,7 @@ class GestureIntentBindingTest {
         })
         val binding = ContentBinding(store)
         fun start() {
+            store.setPageIndex(1)
             binding.start()
             val worker = ContentBinding::class.java.getDeclaredField("systemWorker")
                 .apply { isAccessible = true }.get(binding) as ExecutorService
@@ -97,12 +98,12 @@ class GestureIntentBindingTest {
     @Test fun queuedNoneToEnterAcceptsTheGestureBeforeTheNewPreferenceReachesThePublishedFrame() {
         Fixture(app).use { fixture ->
             fixture.start()
-            val event = ContentEvent.GesturePerformed(GestureCommand.TwoUp)
+            val event = ContentEvent.GesturePerformed(GestureCommand.FourUp)
             assertFalse(fixture.binding.canDispatch(event))
-            val displayed = fixture.queuedWrite { it.setGestureAction(GestureCommand.TwoUp, GestureAction.EnterImmersive) }
-            assertSame(GestureAction.None, displayed.gestureActions[GestureCommand.TwoUp])
+            val displayed = fixture.queuedWrite { it.setGestureAction(GestureCommand.FourUp, GestureAction.EnterImmersive) }
+            assertSame(GestureAction.None, displayed.gestureActions[GestureCommand.FourUp])
             val fresh = fixture.store.snapshot()
-            assertSame(GestureAction.EnterImmersive, fresh.gestureActions[GestureCommand.TwoUp])
+            assertSame(GestureAction.EnterImmersive, fresh.gestureActions[GestureCommand.FourUp])
             val current = checkNotNull(fixture.binding.currentPresentationState())
             assertSame(fresh.gestureActions, current.gestureActions)
             assertTrue(fixture.binding.canDispatch(event))
@@ -121,12 +122,12 @@ class GestureIntentBindingTest {
             assertEquals(0, fixture.store.snapshot().pageIndex)
             assertEquals(PanelPage.Lyrics, displayed.page)
             val current = checkNotNull(fixture.binding.currentPresentationState())
-            assertEquals(PanelPage.Shortcuts, current.page)
+            assertEquals(PanelPage.VehicleInfo, current.page)
             assertFalse(current.page.supportsImmersive)
             assertFalse(fixture.binding.canDispatch(event))
             assertSame(displayed, fixture.binding.state.value)
             shadowOf(Looper.getMainLooper()).idle()
-            assertEquals(PanelPage.Shortcuts, fixture.binding.state.value.page)
+            assertEquals(PanelPage.VehicleInfo, fixture.binding.state.value.page)
         }
     }
 
@@ -139,7 +140,7 @@ class GestureIntentBindingTest {
             }
             val saved = preferences.all.toMap()
             val current = checkNotNull(fixture.binding.currentPresentationState())
-            assertEquals(PanelPage.Shortcuts, current.page)
+            assertEquals(PanelPage.VehicleInfo, current.page)
             assertSame(GestureAction.ExitImmersive, current.gestureActions[GestureCommand.ThreeRight])
             assertSame(fixture.store.snapshot().gestureActions, current.gestureActions)
             assertSame(displayed, fixture.binding.state.value)

@@ -215,13 +215,10 @@ open class LyricsImmersivePanelTest {
         assertEquals(compactBounds.height, restored.height, 1f)
         compose.onNodeWithTag("media-card").assertIsDisplayed()
 
-        // Horizontal navigation must still receive gestures that start on the lyric view.
+        compose.onNodeWithTag("runtime-pages").assertDoesNotExist()
         compose.onNodeWithTag("wallpaper-lyrics").performTouchInput { swipeRight() }
         compose.waitForIdle()
-        assertEquals(ContentEvent.PageSelected(PanelPage.Shortcuts), events.last())
-        compose.onNodeWithTag("runtime-pages").performTouchInput { swipeLeft() }
-        compose.waitForIdle()
-        assertEquals(ContentEvent.PageSelected(PanelPage.Lyrics), events.last())
+        assertTrue(events.none { it is ContentEvent.PageSelected })
         compose.onAllNodesWithTag("wallpaper-lyrics", useUnmergedTree = true).assertCountEquals(1)
     }
 
@@ -237,26 +234,21 @@ open class LyricsImmersivePanelTest {
         capture("lyrics-immersive-actions-$platform-${if (dark) "dark" else "light"}")
     }
 
-    @Test fun pageActionsAreDisposedWithLyricsAndDoNotReplayAfterReturning() {
+    @Test fun legacyPageValuesNeverRemoveTheLyricsPageOrFullscreenAction() {
         presentation.updateGeometry(640f, 640f, 1280f, 1080)
         presentation.updatePhase(0)
+        state = state.copy(page = PanelPage.VehicleInfo)
         mount()
+        compose.onNodeWithTag("runtime-pages").assertDoesNotExist()
+        compose.onNodeWithTag("wallpaper-lyrics").assertIsDisplayed()
         compose.onNodeWithTag("immersive-panel").performTouchInput { click(androidx.compose.ui.geometry.Offset(600f, 100f)) }
         compose.waitForIdle()
         compose.onNodeWithTag("page-action-enter").assertIsDisplayed()
-
-        compose.onNodeWithTag("runtime-pages").performTouchInput { swipeRight() }
+        compose.runOnIdle { state = state.copy(page = PanelPage.Projection) }
         compose.waitForIdle()
-        assertEquals(ContentEvent.PageSelected(PanelPage.Shortcuts), events.last())
-        compose.onNodeWithTag("page-actions-overlay").assertDoesNotExist()
-
-        compose.runOnIdle { state = state.copy(page = PanelPage.Lyrics) }
-        compose.waitForIdle()
-        compose.onNodeWithTag("page-actions-overlay").assertDoesNotExist()
-
-        compose.onNodeWithTag("immersive-panel").performTouchInput { click(androidx.compose.ui.geometry.Offset(600f, 100f)) }
-        compose.waitForIdle()
+        compose.onNodeWithTag("wallpaper-lyrics").assertIsDisplayed()
         compose.onNodeWithTag("page-action-enter").assertIsDisplayed()
+        assertTrue(events.none { it is ContentEvent.PageSelected })
     }
 
     @Test fun hiddenChromeIsUnmeasuredAndEmptyTapAlwaysExposesExit() {

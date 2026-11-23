@@ -28,6 +28,10 @@ class ContentRuntimeTest {
     private fun binding(store: ContentStore, ownership: StoreOwnership = StoreOwnership.Shared) =
         ContentBinding(store, ownership).also(bindings::add)
     @After fun cleanup() { bindings.forEach { it.close() }; stores.forEach { it.destroy() } }
+    private fun configuredState(vararg controls: String): ContentState = ContentState().apply {
+        vehicleConfigValid = true
+        enabledControlIds = controls.toSet()
+    }
 
     @Test fun mapperNeverUsesPreviewDefaultsForMissingData() {
         val ui = ContentUiMapper().map(ContentState())
@@ -97,7 +101,10 @@ class ContentRuntimeTest {
     }
 
     @Test fun mapperUsesPerFieldValidityAndStorePendingOnly() {
-        val state = ContentState().apply {
+        val state = configuredState(ContentRegistry.Shortcuts.SEAT_VENTILATION, ContentRegistry.Shortcuts.SEAT_HEATING,
+            ContentRegistry.Shortcuts.SEAT_MASSAGE, ContentRegistry.Shortcuts.LOCK).apply {
+            enabledContentIds = setOf("media")
+            availableControlCardIds = setOf("media")
             vehicleDataAvailable = true; seatControlsKnown = true; lockKnown = true
             temperatureC = Float.POSITIVE_INFINITY; batteryPercent = 150; rangeRaw = -1
             ventilationLevel = 2; heatingLevel = -1; massageSwitchKnown = true; massageActive = false
@@ -132,7 +139,7 @@ class ContentRuntimeTest {
     }
 
     @Test fun mapperProjectsHeatingAutoAndSteeringAutoAsDistinctKnownStates() {
-        val state = ContentState().apply {
+        val state = configuredState(ContentRegistry.Shortcuts.SEAT_HEATING, ContentRegistry.Shortcuts.STEERING_HEATING).apply {
             vehicleDataAvailable = true
             seatControlsKnown = true
             heatingLevel = 4
@@ -404,7 +411,7 @@ class ContentRuntimeTest {
     }
 
     @Test fun unknownActiveMassageCanBeTurnedOffWithoutClaimingKnownLevel() {
-        val state = ContentState().apply {
+        val state = configuredState(ContentRegistry.Shortcuts.SEAT_MASSAGE).apply {
             vehicleDataAvailable = true; seatControlsKnown = true; massageSwitchKnown = true
             massageActive = true; massageLevel = -1
         }

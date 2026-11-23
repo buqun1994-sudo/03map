@@ -111,89 +111,44 @@ open class CruiseSignalImmersiveTest {
         compose.onNodeWithTag("top-battery").assertIsDisplayed()
     }
 
-    @Test fun signalsAppearOnlyInImmersiveAndRespectBothIndependentVisibilityGates() {
+    @Test fun trafficSignalReminderNeverRendersOnTheTopBar() {
         mount()
         statusRowPresent()
         compose.onNodeWithTag("cruise-signal-bar").assertDoesNotExist()
         wide(true)
         statusRowPresent()
-        compose.onNodeWithContentDescription("左转红灯，28秒").assertIsDisplayed()
-        compose.onNodeWithContentDescription("直行绿灯，12秒").assertIsDisplayed()
-        val bar = bounds("top-bar")
-        val lamps = bounds("cruise-signal-bar")
-        val time = bounds("top-time")
-        assertTrue("lamps inside existing top bar", lamps.top >= bar.top && lamps.bottom <= bar.bottom)
-        assertEquals(bar.center.y, lamps.center.y, 1f)
-        assertTrue("lamps follow time tightly", lamps.left >= time.right && lamps.left - time.right <= 12f)
-        assertTrue("compact natural width", lamps.width < bar.width * .6f)
-        capture("immersive-inline-oem")
-        compose.runOnIdle { state = state.copy(showCruiseSignals = false) }
         compose.onNodeWithTag("cruise-signal-bar").assertDoesNotExist()
-        statusRowPresent()
-        compose.runOnIdle { state = state.copy(showCruiseSignals = true, immersiveShowTopBar = false) }
+        compose.onNodeWithContentDescription("左转红灯，28秒").assertDoesNotExist()
+        compose.onNodeWithContentDescription("直行绿灯，12秒").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(showCruiseSignals = true) }
         compose.onNodeWithTag("cruise-signal-bar").assertDoesNotExist()
-        compose.onNodeWithTag("top-bar").assertDoesNotExist()
-        compose.runOnIdle { state = state.copy(immersiveShowTopBar = true) }
-        compose.onNodeWithContentDescription("左转红灯，28秒").assertIsDisplayed()
         wide(false)
-        compose.onNodeWithTag("cruise-signal-bar").assertDoesNotExist()
         statusRowPresent()
-        assertTrue(state.showCruiseSignals)
     }
 
-    @Test fun topBarSplitAndFullWidthPreserveStatusAndEmptyBatchRemovesSignalRow() {
+    @Test fun immersiveTopBarWidthAndDockAreUnaffectedBySignalData() {
         mount()
         wide(true)
         val inset = 24f * density
-        assertEquals(640f - inset, bounds("top-bar").width, 1f)
-        val lamps = bounds("cruise-signal-bar")
-        assertTrue(lamps.width < bounds("top-bar").width)
         val dock = bounds("floating-dock")
-        val time = bounds("top-time")
+        compose.onNodeWithTag("cruise-signal-bar").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(immersiveTopBarKeepSplit = false) }
         settle()
         statusRowPresent()
         assertEquals(1920f - inset, bounds("top-bar").width, 1f)
-        assertEquals(lamps.width, bounds("cruise-signal-bar").width, 1f)
-        assertEquals(lamps.left, bounds("cruise-signal-bar").left, 1f)
         assertEquals(dock, bounds("floating-dock"))
-        assertEquals(time.left, bounds("top-time").left, 1f)
-        capture("immersive-full-width-inline-oem")
         compose.runOnIdle { signals = CruiseSignalState(); available = false }
         compose.onNodeWithTag("cruise-signal-bar").assertDoesNotExist()
-        statusRowPresent()
         compose.onNodeWithContentDescription("左转红灯，28秒").assertDoesNotExist()
-        assertEquals(1920f - inset, bounds("top-bar").width, 1f)
     }
 
-    @Test fun settingsSwitchFollowsShowStatusBarAndPreservesItsCheckedPreference() {
+    @Test fun settingsNoLongerExposeTrafficSignalReminder() {
         state = state.copy(settingsOpen = true, settingsSection = SettingsSection.TopBar,
             showCruiseSignals = true, immersiveShowTopBar = true)
         mount()
-        val signal = compose.onNodeWithTag("settings-switch-下个路口红绿灯")
-        signal.performScrollTo().assertIsEnabled().assertIsOn()
-        val before = compose.onNodeWithTag("settings-switch-全屏时显示状态栏").fetchSemanticsNode()
-        val middle = signal.fetchSemanticsNode()
-        val after = compose.onNodeWithTag("settings-switch-状态栏保持分屏").fetchSemanticsNode()
-        assertTrue(before.positionInRoot.y + before.size.height <= middle.positionInRoot.y)
-        assertTrue(middle.positionInRoot.y + middle.size.height <= after.positionInRoot.y)
-        capture("settings-enabled")
-        signal.performClick()
-        assertFalse(state.showCruiseSignals)
-        assertEquals(1, events.count { it is ContentEvent.ShowCruiseSignalsChanged })
-        signal.performClick()
-        assertTrue(state.showCruiseSignals)
-        val toggles = events.count { it is ContentEvent.ShowCruiseSignalsChanged }
-        val acceptedSounds = sounds
-        compose.runOnIdle { state = state.copy(immersiveShowTopBar = false) }
-        signal.assertIsNotEnabled().assertIsOn()
-        signal.performClick()
-        assertEquals(toggles, events.count { it is ContentEvent.ShowCruiseSignalsChanged })
-        assertEquals(acceptedSounds, sounds)
-        assertTrue(state.showCruiseSignals)
-        capture("settings-disabled")
-        compose.runOnIdle { state = state.copy(immersiveShowTopBar = true) }
-        signal.assertIsEnabled().assertIsOn()
+        compose.onNodeWithTag("settings-switch-下个路口红绿灯").assertDoesNotExist()
+        compose.onNodeWithTag("settings-switch-全屏时显示状态栏").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("settings-switch-状态栏保持分屏").performScrollTo().assertIsDisplayed()
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

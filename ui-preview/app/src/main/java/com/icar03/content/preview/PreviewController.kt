@@ -3,6 +3,7 @@ package com.icar03.content.preview
 import com.icar03.content.ui.*
 import com.icar03.content.model.LyricPreferenceRules
 import com.icar03.content.model.ContentMediaControlPolicy
+import com.icar03.content.model.ControlGridLayout
 import com.icar03.content.model.GesturePreferences
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,26 +19,38 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
     private var active = true
     private fun update(transform: (ContentUiState) -> ContentUiState) { mutableState.value = transform(mutableState.value) }
 
+
     fun dispatch(event: ContentEvent) {
+        if (!active) return
+        val current = state.value
+        if ((current.controlCenterEditing || current.controlCardListOpen || current.dockEditing) &&
+            event !is LayoutAction && event !is ContentEvent.GesturePerformed) return
+        if (current.controlCenterOpen && event is ContentEvent.PageSelected) return
         if (event is ContentEvent.GestureActionChanged && (!active || !state.value.settingsOpen ||
                 state.value.settingsSection != SettingsSection.Gestures || state.value.settingsCollapsed ||
                 state.value.lyricsProviderSettings.appleLoginOpen)) return
-        if (!state.value.settingsOpen && event.isSettingsInteraction() && event !in setOf(
-                ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings,
+        if (!state.value.settingsOpen && event.isSettingsInteraction() && !event.isLayoutEditorInteraction() && event !in setOf(
+                ContentEvent.SettingsTapped, ContentEvent.OpenLyricsSettings, ContentEvent.OpenVehicleConfigSettings,
                 ContentEvent.SettingsBack, ContentEvent.SettingsDismissed, ContentEvent.DismissSheet)) return
-        if (state.value.settingsOpen && !event.isSettingsInteraction()) return
-        if (state.value.settingsCollapsed && event !in setOf(ContentEvent.SettingsCollapseTapped,
+        if (state.value.settingsOpen && !event.isSettingsInteraction() && !event.isLayoutEditorInteraction()) return
+        if (state.value.settingsCollapsed && !event.isLayoutEditorInteraction() && event !in setOf(ContentEvent.SettingsCollapseTapped,
                 ContentEvent.SettingsRestored, ContentEvent.SettingsTapped, ContentEvent.SettingsBack,
-                ContentEvent.SettingsDismissed, ContentEvent.OpenLyricsSettings, ContentEvent.DismissSheet)) return
+                ContentEvent.SettingsDismissed, ContentEvent.OpenLyricsSettings, ContentEvent.OpenVehicleConfigSettings, ContentEvent.DismissSheet)) return
+        if (event is LayoutAction && !LayoutEditor.accepts(state.value, event)) return
         when (event) {
+            is LayoutAction -> update { current -> LayoutEditor.reduce(current, event) }
             is ContentEvent.ScenarioSelected -> {
                 cancelPending()
                 val old = state.value
                 mutableState.value = previewState(event.scenario).copy(dark = old.dark, page = old.page, gestureActions = old.gestureActions)
             }
             ContentEvent.ToggleTheme -> update { it.copy(dark = !it.dark) }
-            is ContentEvent.PageSelected -> update { it.copy(page = event.page) }
-            ContentEvent.OpenSources -> update { it.copy(sourcesOpen = true, scenariosOpen = false) }
+            is ContentEvent.PageSelected -> if (event.page in listOf(PanelPage.VehicleInfo, PanelPage.Lyrics, PanelPage.Projection))
+                update { it.copy(page = event.page) }
+            ContentEvent.OpenSources -> update {
+                val current = if (LayoutSession.from(it) == LayoutSession.Cards) LayoutSession.Closed.project(it) else it
+                current.copy(sourcesOpen = true, scenariosOpen = false)
+            }
             ContentEvent.SettingsTapped -> update {
                 it.copy(
                     settingsOpen = !it.settingsOpen,
@@ -53,7 +66,11 @@ class PreviewController(private val scope: CoroutineScope, initial: ContentUiSta
                 else if (it.settingsSection == SettingsSection.Home) it.copy(settingsOpen = false, settingsCollapsed = false, message = null)
                 else it.copy(settingsSection = SettingsSection.Home, settingsCollapsed = false, message = null)
             }
-            ContentEvent.OpenLyricsSettings -> update { it.copy(settingsOpen = true, settingsCollapsed = false, settingsSection = SettingsSection.Lyrics, sourcesOpen = false, scenariosOpen = false, message = null) }
+            ContentEvent.OpenLyricsSettings, ContentEvent.OpenVehicleConfigSettings -> update {
+                it.copy(settingsOpen = true, settingsCollapsed = false,
+                    settingsSection = if (event == ContentEvent.OpenLyricsSettings) SettingsSection.Lyrics else SettingsSection.VehicleConfig,
+                    sourcesOpen = false, scenariosOpen = false, message = null)
+            }
             ContentEvent.EnterLyricsImmersive, ContentEvent.ExitLyricsImmersive -> Unit
             is ContentEvent.GesturePerformed -> Unit
             is ContentEvent.GestureActionChanged -> update {

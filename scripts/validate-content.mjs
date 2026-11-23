@@ -228,6 +228,10 @@ export async function executeValidation({
         report.testEvidence = plan.modules.map((name) => executed.tests.find(({ task }) => task === `:${name}:testDebugUnitTest`) || {
           task: `:${name}:testDebugUnitTest`, outcome: 'UNREPORTED', evidence: 'not-observed',
         });
+        const incomplete = report.testEvidence.filter(({ outcome }) => !['EXECUTED', 'UP-TO-DATE', 'FROM-CACHE'].includes(outcome));
+        if (incomplete.length) {
+          throw new Error(`Selected test tasks did not complete successfully: ${incomplete.map(({ task, outcome }) => `${task} ${outcome}`).join(', ')}`);
+        }
       } else report.testEvidence = [];
     };
     if (plan.modules.length) await workflow.withBuildLock(root, run);

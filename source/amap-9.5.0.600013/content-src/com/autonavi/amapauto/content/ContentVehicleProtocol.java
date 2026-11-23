@@ -78,6 +78,118 @@ public final class ContentVehicleProtocol {
     private static final int WRITE_SEAT_AUTO = 8;
     private static final int WRITE_STEERING_AUTO = 4;
 
+    /** A transport property address supplied by a validated profile. */
+    public static final class Property {
+        public final int functionId;
+        public final int area;
+        public Property(int functionId, int area) { this.functionId = functionId; this.area = area; }
+    }
+
+    /** A finite raw tuple; null cells are explicit don't-care inputs, never executable code. */
+    public static final class ReadMode {
+        public final int mode;
+        private final Integer[] raw;
+        public ReadMode(int mode, Integer[] raw) { this.mode = mode; this.raw = raw.clone(); }
+        public Integer[] raw() { return raw.clone(); }
+        boolean matches(int[] values) {
+            if (values.length != raw.length) return false;
+            for (int i = 0; i < raw.length; i++) if (raw[i] != null && raw[i] != values[i]) return false;
+            return true;
+        }
+    }
+
+    /** The existing massage initialization sequence, with profile-owned addresses and encodings. */
+    public static final class MassagePreparation {
+        public final Property switchProperty, modeProperty, strengthProperty;
+        public final int off, on, modeMin, modeMax, strengthMin, strengthMax;
+        public MassagePreparation(Property switchProperty, Property modeProperty, Property strengthProperty,
+                int off, int on, int modeMin, int modeMax, int strengthMin, int strengthMax) {
+            this.switchProperty = switchProperty; this.modeProperty = modeProperty; this.strengthProperty = strengthProperty;
+            this.off = off; this.on = on; this.modeMin = modeMin; this.modeMax = modeMax;
+            this.strengthMin = strengthMin; this.strengthMax = strengthMax;
+        }
+    }
+
+    /**
+     * Validated declarative mapping. The adapter/kind select code already implemented in this APK;
+     * profiles can change addresses and finite codecs, but cannot add transactions or scripts.
+     */
+    public static final class Mapping {
+        public final String adapter, kind;
+        public final int channel, arrayPrefix;
+        public final java.util.List<Property> reads;
+        public final java.util.List<ReadMode> readModes;
+        public final java.util.Map<Integer, Write> writes;
+        public final MassagePreparation preparation;
+        public Mapping(String adapter, String kind, int channel, int arrayPrefix, java.util.List<Property> reads,
+                java.util.List<ReadMode> readModes, java.util.Map<Integer, Write> writes, MassagePreparation preparation) {
+            this.adapter = adapter; this.kind = kind; this.channel = channel; this.arrayPrefix = arrayPrefix;
+            this.reads = java.util.Collections.unmodifiableList(new java.util.ArrayList<>(reads));
+            this.readModes = java.util.Collections.unmodifiableList(new java.util.ArrayList<>(readModes));
+            this.writes = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(writes));
+            this.preparation = preparation;
+        }
+        public int normalize(int... raw) {
+            for (ReadMode row : readModes) if (row.matches(raw)) return row.mode;
+            return -1;
+        }
+        /** Derive independent AUTO evidence from a codec column that separates both semantic classes. */
+        public int automaticCompanionState(int[] raw, int automaticMode) {
+            if (raw == null) return -1;
+            int state = -1;
+            for (int column = 0; column < raw.length; column++) {
+                java.util.Map<Integer, Integer> classes = new java.util.HashMap<>();
+                boolean valid = true, automatic = false, manual = false;
+                for (ReadMode row : readModes) {
+                    Integer[] inputs = row.raw();
+                    if (inputs.length != raw.length || inputs[column] == null) { valid = false; break; }
+                    int candidate = row.mode == automaticMode ? 1 : 0;
+                    Integer previous = classes.put(inputs[column], candidate);
+                    if (previous != null && previous != candidate) { valid = false; break; }
+                    automatic |= candidate == 1;
+                    manual |= candidate == 0;
+                }
+                if (!valid || !automatic || !manual) continue;
+                Integer candidate = classes.get(raw[column]);
+                if (candidate == null) continue;
+                if (state >= 0 && state != candidate) return -1;
+                state = candidate;
+            }
+            if (state >= 0) return state;
+            int mode = normalize(raw);
+            return mode < 0 ? -1 : mode == automaticMode ? 1 : 0;
+        }
+        public Write write(int semanticMode) { return writes.get(semanticMode); }
+        public boolean isVehicle() { return "s56_binder".equals(adapter); }
+    }
+
+    /** Fixed numeric/array codecs for existing read-only vehicle facts. */
+    public static final class Signal {
+        public final Property property;
+        public final String kind;
+        public final double scale, offset;
+        public final int length;
+        public final java.util.Map<Integer, Integer> values;
+        public Signal(Property property, String kind, double scale, double offset, int length, java.util.Map<Integer, Integer> values) {
+            this.property = property; this.kind = kind; this.scale = scale; this.offset = offset; this.length = length;
+            this.values = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(values));
+        }
+        public int normalize(int raw) {
+            if (raw < 0) return -1;
+            Integer result = values.get(raw);
+            return values.isEmpty() ? raw : result == null ? -1 : result;
+        }
+        public float normalize(float raw) {
+            if (Float.isNaN(raw) || Float.isInfinite(raw) || raw == -1000f) return Float.NaN;
+            double result = raw * scale + offset;
+            return Double.isNaN(result) || Double.isInfinite(result) || Math.abs(result) > Float.MAX_VALUE ? Float.NaN : (float) result;
+        }
+    }
+
+    public static Write mappedWrite(int functionId, int area, int value, boolean ensureMassageOn) {
+        return new Write(functionId, area, value, ensureMassageOn);
+    }
+
     private ContentVehicleProtocol() {
     }
 

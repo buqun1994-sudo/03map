@@ -79,18 +79,15 @@ class ContentModelsTest {
         }
     }
 
-    @Test fun dockAndShortcutCatalogKeepFixedEndsAndExcludeSteeringHeat() {
-        assertEquals(5, ContentUiState().dockButtonCount)
+    @Test fun dockCatalogIsFixedToSixRequestedActions() {
         assertEquals(6, DockShortcuts.MAX_BUTTONS)
-        assertEquals(listOf("Lock", "Wiper", "Ventilation", "Heating", "Massage", "Settings"), DockShortcuts.items.map { it.name })
-        assertNotSame(ShortcutId.entries, DockShortcuts.items)
-        assertTrue(ShortcutId.entries.containsAll(DockShortcuts.items))
-        assertEquals(listOf(ControlId.Lock, ControlId.Wiper, ControlId.Ventilation, ControlId.Heating,
-            ControlId.Massage), DockShortcuts.items.mapNotNull { it.control })
+        assertEquals(listOf(ShortcutId.Lock, ShortcutId.AutoWiper, ShortcutId.WindowVent,
+            ShortcutId.GloveBox, ShortcutId.ControlCenter, ShortcutId.Settings), DockShortcuts.items)
+        assertEquals(6, DockShortcuts.items.toSet().size)
         assertTrue(ShortcutGrid.buttons.contains(ShortcutId.ControlCenter))
-        assertFalse(DockShortcuts.items.contains(ShortcutId.ControlCenter))
         assertTrue(ContentUiState().controlCenterAvailable)
-        assertEquals(ControlId.SteeringHeat, ShortcutId.SteeringHeat.control)
+        assertTrue(ShortcutId.GloveBox.feature!!.action)
+        assertEquals("车窗透气开关", ShortcutId.WindowVent.label)
         assertFalse(DockShortcuts.items.contains(ShortcutId.SteeringHeat))
         assertFalse(DockShortcuts.items.contains(ShortcutId.PassengerHeating))
         assertNull(ShortcutId.Settings.control)
@@ -112,9 +109,13 @@ class ContentModelsTest {
             assertEquals("every slot is unique at count $count", actual.size, actual.toSet().size)
             assertEquals(1, actual.count { it.control == ControlId.Lock })
             assertEquals(1, actual.count { it == ShortcutId.Settings })
-            assertTrue("only the declared Dock catalog can supply slots", DockShortcuts.items.containsAll(actual))
+            assertTrue("legacy preview fixture remains limited to its old controls",
+                actual.all { it in listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation,
+                    ShortcutId.Heating, ShortcutId.Massage, ShortcutId.Settings) })
         }
-        assertEquals("shrinking does not remove anything from the shared catalog", expected.getValue(6), DockShortcuts.items)
+        assertEquals("runtime Dock is separate from the preview fixture", listOf(ShortcutId.Lock, ShortcutId.AutoWiper,
+            ShortcutId.WindowVent, ShortcutId.GloveBox, ShortcutId.ControlCenter, ShortcutId.Settings), DockShortcuts.items)
+        assertEquals(expected.getValue(6), dockItemsForCount(6))
     }
 
     @Test fun outOfRangeDockCountsClampWithoutOverflowOrLosingEitherFixedEnd() {
@@ -123,7 +124,8 @@ class ContentModelsTest {
             assertEquals("lower bound $count", smallest, dockItemsForCount(count))
         }
         for (count in listOf(7, 100, Int.MAX_VALUE)) {
-            assertEquals("upper bound $count", DockShortcuts.items, dockItemsForCount(count))
+            assertEquals("upper bound $count", listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation,
+                ShortcutId.Heating, ShortcutId.Massage, ShortcutId.Settings), dockItemsForCount(count))
         }
         assertEquals("repeated normalization never mutates the next projection", smallest, dockItemsForCount(3))
     }

@@ -239,8 +239,11 @@ open class DownwardSoftShadowTest {
         image.recycle()
     }
     @Test fun realDockMediaAndShortcutShadowsRemainCenteredAndProjectDownward() {
+        // These pixels cover the legacy shortcut grid and fixed Dock renderer.
+        val state = previewState().copy(dark = dark, page = PanelPage.Shortcuts,
+            layoutPreferencesLoaded = false, controlCardIds = listOf("media", "climate"))
         compose.setContent {
-                ContentPanel(previewState().copy(dark = dark), {}, modifier = Modifier.testTag(rootTag))
+                ContentPanel(state, {}, modifier = Modifier.testTag(rootTag))
             }
         compose.waitForIdle()
         val image = capture()

@@ -120,7 +120,6 @@ public final class ContentRuntime {
                 activeRuntime.renderer.bindMapPresentation(presentationPort.get());
                 activeRuntime.renderer.updatePanelPhase(lastPanelPhase);
             }
-            activeRuntime.cruiseMapBridge.start();
             if (!Float.isNaN(lastDividerX)) {
                 activeRuntime.renderer.updateDivider(
                         lastDividerX, lastExpandedDividerX, lastMapWidth);
@@ -155,6 +154,10 @@ public final class ContentRuntime {
         }
     }
 
+    public static boolean onActivityResult(Activity activity, int requestCode, int resultCode, android.content.Intent data) {
+        return activity != null && com.icar03.content.runtime.VehicleConfigImportSession.onActivityResult(
+                activity.getApplicationContext(), requestCode, resultCode, data);
+    }
     public static boolean onBackPressed(Activity activity) {
         synchronized (LOCK) {
             return activeRuntime != null && activeRuntime.ownerActivity.get() == activity
@@ -215,8 +218,7 @@ public final class ContentRuntime {
             if (activeRuntime != null && activeRuntime.ownerActivity.get() == activity) {
                 activeRuntime.store.setThemeMode(lastAmapThemeMode);
                 activeRuntime.renderer.resume();
-                activeRuntime.cruiseMapBridge.start();
-            }
+                }
         }
     }
 

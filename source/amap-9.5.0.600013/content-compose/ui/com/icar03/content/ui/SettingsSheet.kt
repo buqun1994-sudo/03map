@@ -4,8 +4,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
@@ -24,6 +22,7 @@ import androidx.compose.material.icons.outlined.VerticalAlignBottom
 import androidx.compose.material.icons.outlined.VerticalAlignTop
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -165,25 +164,16 @@ internal fun SettingsSheet(
                             targetState = state.settingsSection,
                             modifier = Modifier.weight(1f),
                             transitionSpec = {
-                                val direction = if (targetState == SettingsSection.Home) -1 else 1
-                                (slideInHorizontally(
-                                    animationSpec = tween(320, easing = CubicBezierEasing(.16f, .84f, .24f, 1f)),
-                                    initialOffsetX = { it * direction },
-                                ) + fadeIn(tween(220))) togetherWith
-                                    (slideOutHorizontally(
-                                        animationSpec = tween(320, easing = CubicBezierEasing(.32f, .72f, 0f, 1f)),
-                                        targetOffsetX = { -it * direction },
-                                    ) + fadeOut(tween(180))) using SizeTransform(clip = true)
+                                (fadeIn(tween(240)) togetherWith fadeOut(tween(180))) using SizeTransform(clip = true)
                             },
                             label = "settings-page-transition",
                         ) { section ->
+                            val pageEnabled = controlsEnabled && section == state.settingsSection
                             when (section) {
-                                SettingsSection.Home -> SettingsHome(settingsEvent, controlsEnabled, Modifier.fillMaxSize())
-                                SettingsSection.Lyrics -> LyricsSettings(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
-                                SettingsSection.Gestures -> GestureSettings(state, settingsEvent,
-                                    controlsEnabled && state.settingsSection == SettingsSection.Gestures && !state.settingsCollapsed,
-                                    Modifier.fillMaxSize())
-                                else -> SettingsDetail(state, settingsEvent, controlsEnabled, Modifier.fillMaxSize())
+                                SettingsSection.Home -> SettingsHome(settingsEvent, pageEnabled, Modifier.fillMaxSize())
+                                SettingsSection.Lyrics -> LyricsSettings(state.copy(settingsSection = section), settingsEvent, pageEnabled, Modifier.fillMaxSize())
+                                SettingsSection.Gestures -> Unit
+                                else -> SettingsDetail(state.copy(settingsSection = section), settingsEvent, pageEnabled, Modifier.fillMaxSize())
                             }
                         }
                     }
@@ -209,7 +199,7 @@ private fun SettingsHome(onEvent: (ContentEvent) -> Unit, enabled: Boolean, modi
         val groups = listOf(
             "布局" to listOf(SettingsSection.TopBar, SettingsSection.Layout),
             "音乐" to listOf(SettingsSection.Lyrics, SettingsSection.Artwork),
-            "其它" to listOf(SettingsSection.Interaction, SettingsSection.Gestures),
+            "其它" to listOf(SettingsSection.Interaction),
         )
         groups.forEach { (title, sections) ->
             SettingsSection(title, contentPadding = PaddingValues(0.dp)) {
@@ -392,6 +382,19 @@ private fun GestureSettings(
                 }
             }
         }
+        if (state.gestureAvailableItems.isNotEmpty()) {
+            SettingsItemSection("车型手势组件") {
+                val gestureDefinitions = state.gestureAvailableItems.distinct().mapNotNull { com.icar03.content.model.ControlCatalog.find(it) }
+                gestureDefinitions.forEachIndexed { index, definition ->
+                    Row(Modifier.fillMaxWidth().padding(design.pagePadding), verticalAlignment = Alignment.CenterVertically) {
+                        SettingsLineText(definition.label, Modifier.weight(1f), design.labelStyle, design.text, maxLines = Int.MAX_VALUE)
+                        SettingsLineText(if (definition.implemented) "已登记" else "未配置 · 不可用",
+                            style = design.supportingStyle, color = design.text.copy(alpha = .68f), maxLines = Int.MAX_VALUE)
+                    }
+                    if (index != gestureDefinitions.lastIndex) SettingsItemDivider()
+                }
+            }
+        }
     }
 }
 
@@ -425,22 +428,16 @@ private fun SettingsDetail(state: ContentUiState, onEvent: (ContentEvent) -> Uni
                 SettingsItemSection("沉浸式全屏") {
                     flag("显示状态栏", state.immersiveShowTopBar, "settings-switch-全屏时显示状态栏") { onEvent(ContentEvent.ImmersiveShowTopBarChanged(it)) }
                     SettingsItemDivider()
-                    SettingsSwitchRow("下个路口红绿灯", state.showCruiseSignals, { onEvent(ContentEvent.ShowCruiseSignalsChanged(it)) },
-                        enabled = enabled && state.immersiveShowTopBar, tag = "settings-switch-下个路口红绿灯")
-                    SettingsItemDivider()
                     flag("状态栏保持分屏", state.immersiveTopBarKeepSplit) { onEvent(ContentEvent.ImmersiveTopBarKeepSplitChanged(it)) }
                 }
             }
-            SettingsSection.Layout -> {
-                SettingsSection("底栏") {
-                    SettingsFieldBlock("按钮数量") {
-                        SettingsSegmented((3..6).map { it.toString() to it.toString() }, state.dockButtonCount.toString(),
-                            { onEvent(ContentEvent.DockButtonCountChanged(it.toInt())) }, enabled = enabled, tagPrefix = "settings-dock-count")
-                    }
+            SettingsSection.Layout -> SettingsItemSection("沉浸式全屏") {
+                flag("显示底栏", state.immersiveShowDock, "settings-switch-全屏时显示底栏") {
+                    onEvent(ContentEvent.ImmersiveShowDockChanged(it))
                 }
-                SettingsItemSection("沉浸式全屏") { flag("显示底栏", state.immersiveShowDock, "settings-switch-全屏时显示底栏") { onEvent(ContentEvent.ImmersiveShowDockChanged(it)) } }
             }
-            SettingsSection.Artwork -> SettingsItemSection("背景") { flag("模糊封面背景", state.showAmbientArtwork) { onEvent(ContentEvent.ShowAmbientArtworkChanged(it)) } }
+            SettingsSection.VehicleConfig -> Unit
+             SettingsSection.Artwork -> SettingsItemSection("背景") { flag("模糊封面背景", state.showAmbientArtwork) { onEvent(ContentEvent.ShowAmbientArtworkChanged(it)) } }
             SettingsSection.Media -> Unit
             SettingsSection.Interaction -> {
                 SettingsSection("界面") {

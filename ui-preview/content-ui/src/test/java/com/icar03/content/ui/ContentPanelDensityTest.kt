@@ -42,7 +42,15 @@ open class ContentPanelSystem141Test {
     @get:Rule val compose = createComposeRule()
     private val events = mutableListOf<ContentEvent>()
     private var panelWidthPx by mutableFloatStateOf(640f)
-    private val state = mutableStateOf(ContentUiState(
+
+    /** Legacy grid/fixed-Dock renderer coverage; Shortcuts is not an ordinary runtime page. */
+    private fun controlsFixture(scenario: PreviewScenario = PreviewScenario.Ready) = previewState(scenario).copy(
+        page = PanelPage.Shortcuts,
+        layoutPreferencesLoaded = false,
+        controlCardIds = listOf("media", "climate"),
+    )
+
+    private val state = mutableStateOf(controlsFixture().copy(
         previewMode = false, weekday = "星期三", rangeUnit = "km", time = "12:24", range = "366",
         temperature = "25°", batteryPercent = 70,
         media = MediaState(title = null, artist = null, available = true),
@@ -138,62 +146,56 @@ open class ContentPanelSystem141Test {
         MediaSource.entries.forEach { touch("source-${it.name}") }
         capture("sources")
         compose.onNodeWithTag("sources-dismiss").performTouchInput { click(androidx.compose.ui.geometry.Offset(4f, 4f)) }
-        compose.onNodeWithTag("runtime-pages").performTouchInput { swipeLeft() }
+        compose.runOnIdle { state.value = state.value.copy(page = PanelPage.VehicleInfo, layoutPreferencesLoaded = true) }
         compose.waitForIdle()
+        compose.onNodeWithTag("runtime-pages").assertDoesNotExist()
+        compose.onNodeWithTag("lyrics-empty").assertIsDisplayed()
         compose.onNodeWithText("暂无歌词").assertIsDisplayed()
         compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
-        compose.onNodeWithText("选择媒体来源").assertDoesNotExist()
         capture("lyrics-empty")
         touch("source-button")
         compose.onNodeWithTag("source-button").performClick()
         assertEquals(ContentEvent.OpenSources, events.last())
     }
 
-    @Test fun everyConfiguredDockCountUsesDistinctFullSlotsAndKeepsBothEndsFixed() {
+    @Test fun dockAlwaysUsesSixFixedActionsAndGloveBoxHasNoSelectedState() {
+        state.value = state.value.copy(page = PanelPage.Lyrics, layoutPreferencesLoaded = true, previewMode = false,
+            features = com.icar03.content.model.VehicleFeature.entries.associateWith {
+            if (it == com.icar03.content.model.VehicleFeature.GloveBox) FeatureState(available = true)
+            else FeatureState(actual = 0, known = true, available = true)
+        })
         mount()
-        for (count in 3..6) {
-            compose.runOnIdle { state.value = state.value.copy(dockButtonCount = count) }
-            compose.waitForIdle()
-            val ids = dockItemsForCount(count)
-            compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(count)
-            val dock = compose.onNodeWithTag("floating-dock").fetchSemanticsNode().boundsInRoot
-            val lock = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
-            val settings = compose.onNodeWithTag("dock-Settings").fetchSemanticsNode().boundsInRoot
-            assertEquals("fixed lock width", 136f, lock.width, 1f)
-            assertEquals(dock.left, lock.left, 1f)
-            assertEquals(dock.right, settings.right, 1f)
-            for (id in ids) {
-                val node = compose.onNodeWithTag("dock-${id.name}")
-                if (id != ShortcutId.Lock && id != ShortcutId.Settings) node.performScrollTo()
-                touch("dock-${id.name}")
-                val b = node.fetchSemanticsNode().boundsInRoot
-                if (id != ShortcutId.Lock) assertEquals("right lane divides by configured count", 480f / (count - 1), b.width, 1f)
-                val before = events.size
-                node.performTouchInput { click(androidx.compose.ui.geometry.Offset(1f, height / 2f)) }
-                assertEquals("one slot-edge tap dispatches exactly one event", before + 1, events.size)
-            }
+        compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(6)
+        val dock = compose.onNodeWithTag("floating-dock").fetchSemanticsNode().boundsInRoot
+        val slots = DockShortcuts.items.map { id ->
+            val node = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed().assertHasClickAction()
+            touch("dock-${id.name}")
+            node.fetchSemanticsNode().boundsInRoot
         }
+        assertTrue(slots.all { it.width + 1 >= 48 * density && it.height + 1 >= 48 * density })
+        assertTrue(slots.first().left >= dock.left - 1 && slots.last().right <= dock.right + 1)
+        val gloveBox = compose.onNodeWithTag("dock-GloveBox")
+        gloveBox.assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.Selected, false))
+        val before = events.size
+        gloveBox.performClick()
+        assertEquals(listOf(ContentEvent.FeatureTapped(ShortcutId.GloveBox)), events.drop(before))
     }
 
-    @Test fun narrowSixSlotDockScrollsOnlyTheMiddleWithoutReducingTouchWidths() {
-        state.value = state.value.copy(dockButtonCount = 6)
+    @Test fun narrowDockKeepsAllSixFixedActionsReachable() {
+        state.value = state.value.copy(page = PanelPage.Lyrics, layoutPreferencesLoaded = true, previewMode = false,
+            features = com.icar03.content.model.VehicleFeature.entries.associateWith {
+            if (it == com.icar03.content.model.VehicleFeature.GloveBox) FeatureState(available = true)
+            else FeatureState(actual = 0, known = true, available = true)
+        })
         panelWidthPx = 400f
         mount()
-        val lock = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
-        val settings = compose.onNodeWithTag("dock-Settings").fetchSemanticsNode().boundsInRoot
-        val dock = compose.onNodeWithTag("floating-dock").fetchSemanticsNode().boundsInRoot
-        val middle = compose.onNodeWithTag("dock-middle-scroll").fetchSemanticsNode().boundsInRoot
-        for (id in dockItemsForCount(6).drop(1).dropLast(1)) {
+        compose.onAllNodes(hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(6)
+        DockShortcuts.items.forEach { id ->
             val node = compose.onNodeWithTag("dock-${id.name}").performScrollTo().assertIsDisplayed()
-            val b = node.fetchSemanticsNode().boundsInRoot
-            assertTrue("middle touch slot keeps at least 48 system dp", b.width + 1 >= 48 * density && b.height + 1 >= 48 * density)
-            assertTrue("scrolled slot is fully visible", b.left >= middle.left - 1 && b.right <= middle.right + 1)
-            assertEquals("horizontal scrolling never moves lock", lock, compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot)
-            assertEquals("horizontal scrolling never moves settings", settings, compose.onNodeWithTag("dock-Settings").fetchSemanticsNode().boundsInRoot)
+            val bounds = node.fetchSemanticsNode().boundsInRoot
+            assertTrue("${id.name} keeps its 48dp target", bounds.width + 1 >= 48 * density && bounds.height + 1 >= 48 * density)
+            assertTrue("slot stays inside viewport", bounds.left >= -1 && bounds.right <= 401)
         }
-        assertEquals(dock.left, lock.left, 1f)
-        assertEquals(dock.right, settings.right, 1f)
-        assertTrue(lock.right <= middle.left && middle.right <= settings.left)
     }
 
     private fun assertTopBar() {

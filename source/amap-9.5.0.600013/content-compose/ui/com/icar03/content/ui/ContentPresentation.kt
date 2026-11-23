@@ -20,6 +20,13 @@ class ContentPresentation {
         private set
     var phase by mutableIntStateOf(0)
         private set
+    /** Temporary editor geometry follows the map; playback/content presentation stays at its prior endpoint. */
+    var editorFullscreenActive by mutableStateOf(false)
+        private set
+    var editorProgress by mutableFloatStateOf(0f)
+        private set
+    private var mapPhase = 0
+    private var mapProgress = 0f
     var pendingEnter by mutableLongStateOf(0L)
         private set
     var reservedGestureWidthPx by mutableIntStateOf(0)
@@ -62,11 +69,38 @@ class ContentPresentation {
         val width = (expandedDivider + mapWidth).toInt().coerceAtLeast(1)
         splitWidthPx = expandedDivider.toInt().coerceIn(1, width)
         fullSize = IntSize(width, height.coerceAtLeast(0))
-        progress = ((dividerX - expandedDivider) / mapWidth).coerceIn(0f, 1f)
+        mapProgress = ((dividerX - expandedDivider) / mapWidth).coerceIn(0f, 1f)
+        editorProgress = mapProgress
+        if (!editorFullscreenActive) progress = mapProgress
+    }
+
+    fun beginEditorFullscreen(): Boolean {
+        if (editorFullscreenActive || !geometryReady || moving) return false
+        editorFullscreenActive = true
+        editorProgress = mapProgress
+        invalidateInput()
+        onGestureStateChanged?.invoke()
+        return true
+    }
+
+    fun editorAtEndpoint(collapsed: Boolean): Boolean =
+        if (collapsed) mapPhase == 1 && mapProgress >= .999f else mapPhase == 0 && mapProgress <= .001f
+
+    fun finishEditorFullscreen() {
+        if (!editorFullscreenActive) return
+        editorFullscreenActive = false
+        progress = mapProgress
+        invalidateInput()
+        updatePhase(mapPhase)
     }
 
     fun updatePhase(value: Int) {
         val next = value.coerceIn(0, 6)
+        mapPhase = next
+        if (editorFullscreenActive) {
+            onGestureStateChanged?.invoke()
+            return
+        }
         if (next in 3..5 && phase !in 3..5 && sessionGeneration == 0L) sessionGeneration = ++sessionCounter
         if (next in 2..5 && next != phase) invalidateInput()
         phase = next
@@ -94,7 +128,11 @@ class ContentPresentation {
         if (phase < 2) sessionGeneration = 0L
         onGestureStateChanged?.invoke()
     }
-    fun stop() { invalidateInput(); cancelEntry(); sessionGeneration = 0L; onEntryReady = null; onGestureStateChanged = null }
+    fun stop() {
+        invalidateInput(); cancelEntry(); sessionGeneration = 0L
+        editorFullscreenActive = false
+        onEntryReady = null; onGestureStateChanged = null
+    }
 }
 
 internal fun presentationSmoothStep(value: Float): Float {

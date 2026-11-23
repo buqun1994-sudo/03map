@@ -423,6 +423,10 @@
     .line 1
     invoke-super {p0, p1, p2, p3}, Landroid/app/Activity;->onActivityResult(IILandroid/content/Intent;)V
 
+    invoke-static {p0, p1, p2, p3}, Lcom/autonavi/amapauto/content/ContentRuntime;->onActivityResult(Landroid/app/Activity;IILandroid/content/Intent;)Z
+
+    move-result v0
+
     .line 4
     const/4 v0, 0x3
 

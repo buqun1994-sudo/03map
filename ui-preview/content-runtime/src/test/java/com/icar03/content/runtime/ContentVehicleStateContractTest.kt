@@ -560,15 +560,17 @@ class ContentVehicleStateContractTest {
         assertTrue(pending.writableSeatControls.isEmpty())
     }
 
-    @Test fun registryRetainsFiveRightSlotPreferenceContractWithoutDuplicatingFixedLock() {
-        val expected = arrayOf(ContentRegistry.Pages.SHORTCUTS, VENT, HEAT, MASSAGE, ContentRegistry.Shortcuts.SETTINGS)
+    @Test fun registryReturnsTheFixedSixDockIds() {
+        val expected = arrayOf("lock", "auto_wiper", "window_vent", "glove_box", "system_control_center", "settings")
         assertArrayEquals(expected, ContentRegistry.defaultDockItems())
         assertArrayEquals(expected, ContentRegistry.dockChoices())
-        assertFalse(ContentRegistry.isDockItem(LOCK))
+        assertTrue(ContentRegistry.isDockItem("lock"))
+        assertTrue(ContentRegistry.isDockItem("glove_box"))
+        assertTrue(ContentRegistry.isDockItem("system_control_center"))
+        assertFalse(ContentRegistry.isDockItem(ContentRegistry.Pages.SHORTCUTS))
         assertFalse(ContentRegistry.isDockItem(STEER))
         assertFalse(ContentRegistry.isDockItem(PASSENGER_HEAT))
         assertEquals(PASSENGER_HEAT, ContentRegistry.Shortcuts.PASSENGER_SEAT_HEATING)
-        assertTrue(ContentRegistry.isDockItem(ContentRegistry.Pages.SHORTCUTS))
         val preferences = app.getSharedPreferences("content_preferences_v1", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
         val saved = arrayOf(HEAT, ContentRegistry.Shortcuts.SETTINGS, VENT, ContentRegistry.Pages.SHORTCUTS, MASSAGE)
@@ -576,14 +578,13 @@ class ContentVehicleStateContractTest {
         saved.forEachIndexed { index, id -> editor.putString("dock_slot_$index", id) }
         editor.commit()
         val store = store()
-        assertArrayEquals(saved, store.snapshot().dockItems)
+        assertArrayEquals("valid schema2 config keeps the compatibility field at its fixed default", expected,
+            store.snapshot().dockItems)
         store.replaceDockItem(0, LOCK)
         store.replaceDockItem(1, STEER)
-        assertArrayEquals(saved, store.snapshot().dockItems)
+        assertArrayEquals(expected, store.snapshot().dockItems)
         store.replaceDockItem(0, MASSAGE)
-        val swapped = arrayOf(MASSAGE, ContentRegistry.Shortcuts.SETTINGS, VENT, ContentRegistry.Pages.SHORTCUTS, HEAT)
-        assertArrayEquals(swapped, store.snapshot().dockItems)
-        assertArrayEquals(swapped, this.store().snapshot().dockItems)
+        assertArrayEquals(expected, store.snapshot().dockItems)
         assertFalse(preferences.contains("dock_slot_5"))
     }
 
@@ -610,9 +611,11 @@ class ContentVehicleStateContractTest {
         assertEquals(1, mapped.features.getValue(VehicleFeature.WirelessCharging).actual)
         assertFalse(mapped.screenCleanAvailable)
         val nativeCapabilities = RuntimeCapabilities(vehicle = true, screenClean = true)
-        assertTrue(ContentUiMapper().map(state, capabilities = nativeCapabilities).screenCleanAvailable)
+        assertFalse("native capability cannot add an undeclared screen-clean control",
+            ContentUiMapper().map(state, capabilities = nativeCapabilities).screenCleanAvailable)
         val gearUnknown = state.copy().apply { screenGearKnown = false; screenGearRaw = -1 }
-        assertTrue(ContentUiMapper().map(gearUnknown, capabilities = nativeCapabilities).screenCleanAvailable)
+        assertFalse("unknown clean-screen gear cannot add an undeclared control",
+            ContentUiMapper().map(gearUnknown, capabilities = nativeCapabilities).screenCleanAvailable)
         assertEquals(5, mapped.systemLevels.size)
     }
 

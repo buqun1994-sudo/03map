@@ -46,7 +46,7 @@ class GesturePreferenceContractTest {
         for (command in GestureCommand.entries) for (action in GestureAction.entries) {
             val state = ContentState().apply { gestureActions = customActions() + (command to action) }
             ContentPreferenceStore(app).save(state)
-            assertEquals(10, preferences.getInt("preferences_version", -1))
+            assertEquals(11, preferences.getInt("preferences_version", -1))
             GestureCommand.entries.forEach { savedCommand ->
                 assertEquals(state.gestureActions.getValue(savedCommand).value,
                     preferences.getString(key(savedCommand), null))
@@ -56,7 +56,7 @@ class GesturePreferenceContractTest {
     }
 
     @Test fun everyPriorSchemaAndUnversionedPreferencesMigrateLazilyAndPreserveUnrelatedChoices() {
-        for (schema in listOf<Int?>(null) + (1..9).toList()) {
+        for (schema in listOf<Int?>(null) + (1..10).toList()) {
             val editor = preferences.edit().clear().putBoolean("top_bar_show_weekday", false)
                 .putFloat("ui_opacity", .6f).putString("current_page_id", ContentRegistry.Pages.SHORTCUTS)
             if (schema != null) editor.putInt("preferences_version", schema)
@@ -66,10 +66,10 @@ class GesturePreferenceContractTest {
             assertEquals(GesturePreferences.defaultActions(), state.gestureActions)
             assertFalse(state.showWeekday)
             assertEquals(.6f, state.uiOpacity, 0f)
-            assertEquals(0, state.pageIndex)
+            assertEquals("removed shortcuts page falls back to vehicle info", 0, state.pageIndex)
             assertEquals(before, preferences.all)
             ContentPreferenceStore(app).save(state)
-            assertEquals(10, preferences.getInt("preferences_version", -1))
+            assertEquals(11, preferences.getInt("preferences_version", -1))
             assertEquals(state.gestureActions, freshLoad().gestureActions)
             assertFalse(freshLoad().showWeekday)
         }

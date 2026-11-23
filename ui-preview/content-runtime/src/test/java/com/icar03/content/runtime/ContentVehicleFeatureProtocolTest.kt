@@ -17,6 +17,7 @@ class ContentVehicleFeatureProtocolTest {
             "right_child_lock" to Triple(0x412, 0x40, 3),
             "wireless_charging" to Triple(0x238, 0, 2),
             "window_vent" to Triple(0x217, 0x550, 1),
+            "glove_box" to Triple(0x416, 0, 2),
             "external_discharge" to Triple(0x25a, 0, 2),
         )
         for ((id, packet) in expected) {

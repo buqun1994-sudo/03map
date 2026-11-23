@@ -46,7 +46,7 @@ class LyricsRomanizationPreferenceTest {
             val original = ContentState().apply { lyricsShowRomanization = false }
             ContentPreferenceStore(app).save(original)
             val restored = ContentState().also { ContentPreferenceStore(app).load(it) }
-            assertEquals(10, preferences.getInt("preferences_version", 0))
+            assertEquals(11, preferences.getInt("preferences_version", 0))
             assertFalse(restored.lyricsShowRomanization)
             assertTrue(restored.lyricsShowTranslation)
             val copy = restored.copy()

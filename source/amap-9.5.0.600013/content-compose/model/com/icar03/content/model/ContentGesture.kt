@@ -30,7 +30,9 @@ enum class GestureCommand(val fingers: Int, val direction: GestureDirection, val
 enum class GestureAction(val value: String, val label: String) {
     None("none", "无"),
     EnterImmersive("enter_immersive", "进入沉浸式全屏"),
-    ExitImmersive("exit_immersive", "退出沉浸式全屏");
+    ExitImmersive("exit_immersive", "退出沉浸式全屏"),
+    OpenControlCenter("open_control_center", "打开控制中心"),
+    CloseControlCenter("close_control_center", "关闭控制中心");
 
     companion object {
         @JvmStatic
@@ -50,6 +52,8 @@ object GesturePreferences {
     fun defaultAction(command: GestureCommand): GestureAction = when (command) {
         GestureCommand.TwoRight -> GestureAction.EnterImmersive
         GestureCommand.TwoLeft -> GestureAction.ExitImmersive
+        GestureCommand.TwoDown -> GestureAction.OpenControlCenter
+        GestureCommand.TwoUp -> GestureAction.CloseControlCenter
         else -> GestureAction.None
     }
 

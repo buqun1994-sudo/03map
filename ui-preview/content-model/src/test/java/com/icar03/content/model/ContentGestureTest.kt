@@ -24,8 +24,8 @@ class ContentGestureTest {
     }
 
     @Test fun actionsUseStableStringsAndExactChineseLabels() {
-        assertEquals(listOf("none", "enter_immersive", "exit_immersive"), GestureAction.entries.map { it.value })
-        assertEquals(listOf("无", "进入沉浸式全屏", "退出沉浸式全屏"), GestureAction.entries.map { it.label })
+        assertEquals(listOf("none", "enter_immersive", "exit_immersive", "open_control_center", "close_control_center"), GestureAction.entries.map { it.value })
+        assertEquals(listOf("无", "进入沉浸式全屏", "退出沉浸式全屏", "打开控制中心", "关闭控制中心"), GestureAction.entries.map { it.label })
         GestureAction.entries.forEach { assertSame(it, GestureAction.fromValue(it.value)) }
         listOf(null, "", "EnterImmersive", "0", "unknown").forEach { assertNull(GestureAction.fromValue(it)) }
     }
@@ -35,6 +35,8 @@ class ContentGestureTest {
         assertEquals(GestureCommand.entries.toSet(), defaults.keys)
         GestureCommand.entries.forEach { command ->
             val expected = when (command) {
+                GestureCommand.TwoDown -> GestureAction.OpenControlCenter
+                GestureCommand.TwoUp -> GestureAction.CloseControlCenter
                 GestureCommand.TwoRight -> GestureAction.EnterImmersive
                 GestureCommand.TwoLeft -> GestureAction.ExitImmersive
                 else -> GestureAction.None

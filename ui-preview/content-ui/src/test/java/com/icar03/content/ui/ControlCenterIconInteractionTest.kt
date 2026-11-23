@@ -40,6 +40,8 @@ open class ControlCenterIconInteractionTest {
     private val state = mutableStateOf(ContentUiState(
         previewMode = false,
         dark = false,
+        page = PanelPage.Shortcuts,
+        layoutPreferencesLoaded = false,
         shortcutButtons = listOf(ShortcutId.ControlCenter),
         systemControls = emptyList(),
         controlCenterAvailable = true,
@@ -131,7 +133,7 @@ open class ControlCenterIconInteractionTest {
     fun acceptedControlCenterTapPlaysTheOemBlueActionThenRestoresBaseState() {
         mount()
         button().assertIsDisplayed().assertIsEnabled()
-            .assertContentDescriptionEquals("控制中心")
+            .assertContentDescriptionEquals("系统控制中心")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "打开"))
         waitForIconReady()
         assertIdleIcon()

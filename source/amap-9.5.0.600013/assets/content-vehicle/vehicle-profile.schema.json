@@ -1,0 +1,8065 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icar03.local/schemas/vehicle-profile.schema.json",
+  "title": "Semantic vehicle profile with implemented transport mappings",
+  "description": "Strict UTF-8 JSON, maximum 131072 bytes. No scripts or new transports. Raw tuple ambiguity, semantic write coverage, massage preparation coherence and declaration/surface references are additionally checked by the runtime validator. Missing/unimplemented items are hidden, temporary offline is disabled.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "profileId",
+    "profileRevision",
+    "displayName",
+    "backend",
+    "compatibility",
+    "controls",
+    "features",
+    "system",
+    "content",
+    "presentation",
+    "selfCheck",
+    "signals"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 2
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "profileRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "\\S"
+    },
+    "backend": {
+      "const": {
+        "id": "chery_virtualcarservice_s56",
+        "contractRevision": 2
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "modelHints",
+        "requiredServices"
+      ],
+      "properties": {
+        "modelHints": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "\\S"
+          }
+        },
+        "requiredServices": {
+          "const": [
+            {
+              "package": "com.chery.virtualcarservice",
+              "descriptor": "com.chery.canmanager.interfaces.IVirturalCarProperty"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "controls": {
+      "type": "object",
+      "properties": {
+        "lock": {
+          "$ref": "#/$defs/entries/lock"
+        },
+        "steering_heating": {
+          "$ref": "#/$defs/entries/steering_heating"
+        },
+        "seat_ventilation": {
+          "$ref": "#/$defs/entries/seat_ventilation"
+        },
+        "seat_heating": {
+          "$ref": "#/$defs/entries/seat_heating"
+        },
+        "passenger_seat_heating": {
+          "$ref": "#/$defs/entries/passenger_seat_heating"
+        },
+        "seat_massage": {
+          "$ref": "#/$defs/entries/seat_massage"
+        },
+        "front_wiper": {
+          "$ref": "#/$defs/entries/front_wiper"
+        },
+        "auto_wiper": {
+          "$ref": "#/$defs/entries/auto_wiper"
+        },
+        "rear_wiper": {
+          "$ref": "#/$defs/entries/rear_wiper"
+        },
+        "rear_wash": {
+          "$ref": "#/$defs/entries/rear_wash"
+        },
+        "climate": {
+          "$ref": "#/$defs/entries/climate"
+        }
+      },
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "rear_fog": {
+          "$ref": "#/$defs/entries/rear_fog"
+        },
+        "passenger_window_lock": {
+          "$ref": "#/$defs/entries/passenger_window_lock"
+        },
+        "wiper_maintenance": {
+          "$ref": "#/$defs/entries/wiper_maintenance"
+        },
+        "glove_box": {
+          "$ref": "#/$defs/entries/glove_box"
+        },
+        "left_child_lock": {
+          "$ref": "#/$defs/entries/left_child_lock"
+        },
+        "right_child_lock": {
+          "$ref": "#/$defs/entries/right_child_lock"
+        },
+        "wireless_charging": {
+          "$ref": "#/$defs/entries/wireless_charging"
+        },
+        "window_vent": {
+          "$ref": "#/$defs/entries/window_vent"
+        },
+        "external_discharge": {
+          "$ref": "#/$defs/entries/external_discharge"
+        },
+        "passenger_seat_adjust": {
+          "$ref": "#/$defs/entries/passenger_seat_adjust"
+        }
+      },
+      "additionalProperties": false
+    },
+    "system": {
+      "type": "object",
+      "properties": {
+        "brightness": {
+          "$ref": "#/$defs/entries/brightness"
+        },
+        "volume": {
+          "$ref": "#/$defs/entries/volume"
+        },
+        "call_volume": {
+          "$ref": "#/$defs/entries/call_volume"
+        },
+        "navigation_volume": {
+          "$ref": "#/$defs/entries/navigation_volume"
+        },
+        "voice_volume": {
+          "$ref": "#/$defs/entries/voice_volume"
+        },
+        "system_control_center": {
+          "$ref": "#/$defs/entries/system_control_center"
+        },
+        "screen_clean": {
+          "$ref": "#/$defs/entries/screen_clean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "content": {
+      "type": "object",
+      "properties": {
+        "media": {
+          "$ref": "#/$defs/entries/media"
+        },
+        "settings": {
+          "$ref": "#/$defs/entries/settings"
+        },
+        "control_center_page": {
+          "$ref": "#/$defs/entries/control_center_page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "presentation": {
+      "type": "object",
+      "required": [
+        "controlCenter",
+        "controlCards",
+        "dock",
+        "gestures"
+      ],
+      "properties": {
+        "controlCenter": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 28,
+          "items": {
+            "enum": [
+              "lock",
+              "steering_heating",
+              "seat_ventilation",
+              "seat_heating",
+              "passenger_seat_heating",
+              "seat_massage",
+              "front_wiper",
+              "auto_wiper",
+              "rear_wiper",
+              "rear_wash",
+              "rear_fog",
+              "passenger_window_lock",
+              "wiper_maintenance",
+              "glove_box",
+              "left_child_lock",
+              "right_child_lock",
+              "wireless_charging",
+              "window_vent",
+              "external_discharge",
+              "passenger_seat_adjust",
+              "brightness",
+              "volume",
+              "call_volume",
+              "navigation_volume",
+              "voice_volume",
+              "system_control_center",
+              "media",
+              "screen_clean"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "controlCards": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "items": {
+            "enum": [
+              "front_wiper",
+              "climate",
+              "brightness",
+              "volume",
+              "call_volume",
+              "navigation_volume",
+              "voice_volume",
+              "media"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "dock": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 6,
+          "items": {
+            "enum": [
+              "lock",
+              "auto_wiper",
+              "window_vent",
+              "glove_box",
+              "system_control_center",
+              "settings"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "gestures": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 2,
+          "items": {
+            "enum": [
+              "climate",
+              "control_center_page"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "selfCheck": {
+      "const": {
+        "mode": "read_only",
+        "reuse": "config_adapter_hardware"
+      }
+    },
+    "signals": {
+      "type": "object",
+      "properties": {
+        "cabin_temperature": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "float"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "offset": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "values": {
+              "const": {}
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "battery_soc": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "float"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "offset": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "values": {
+              "const": {}
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "range_remaining": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "int"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "const": 1
+            },
+            "offset": {
+              "const": 0
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "charge_connection": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "int"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "const": 1
+            },
+            "offset": {
+              "const": 0
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "charge_bms": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "int"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "const": 1
+            },
+            "offset": {
+              "const": 0
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "charge_schedule": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "int"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "const": 1
+            },
+            "offset": {
+              "const": 0
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "charge_hv_voltage": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "int"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "const": 1
+            },
+            "offset": {
+              "const": 0
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "charge_hv_current": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "float"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "offset": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "values": {
+              "const": {}
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "charge_remaining_time": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "int"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "const": 1
+            },
+            "offset": {
+              "const": 0
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "wireless_charging_actual": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "int"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "const": 1
+            },
+            "offset": {
+              "const": 0
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "external_discharge_status": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "float_array"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "offset": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "values": {
+              "const": {}
+            },
+            "length": {
+              "const": 7
+            }
+          },
+          "additionalProperties": false
+        },
+        "screen_gear": {
+          "type": "object",
+          "required": [
+            "adapter",
+            "kind",
+            "functionId",
+            "area",
+            "scale",
+            "offset",
+            "values",
+            "length"
+          ],
+          "properties": {
+            "adapter": {
+              "const": "s56_binder"
+            },
+            "kind": {
+              "const": "int"
+            },
+            "functionId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "area": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "scale": {
+              "const": 1
+            },
+            "offset": {
+              "const": 0
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "length": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entries": {
+      "lock": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/lock"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/lock"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "steering_heating": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/steering_heating"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "enum": [
+                0,
+                1,
+                2,
+                3
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/steering_heating"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "seat_ventilation": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/seat_ventilation"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "enum": [
+                0,
+                1,
+                2,
+                3
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/seat_ventilation"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "seat_heating": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/seat_heating"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "items": {
+              "enum": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/seat_heating"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "passenger_seat_heating": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/passenger_seat_heating"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "items": {
+              "enum": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/passenger_seat_heating"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "seat_massage": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/seat_massage"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "enum": [
+                0,
+                1,
+                2,
+                3
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/seat_massage"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "front_wiper": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/front_wiper"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "stepped"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock",
+                "control_card"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 2
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 6,
+            "maxItems": 6,
+            "items": {
+              "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/front_wiper"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "auto_wiper": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/auto_wiper"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                5
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/auto_wiper"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "rear_wiper": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/rear_wiper"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/rear_wiper"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "rear_wash": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/rear_wash"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "action"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/rear_wash"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "climate": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "const": false
+          },
+          "mapping": {
+            "const": null
+          },
+          "renderer": {
+            "const": "climate"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_card",
+                "gesture"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 2,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "rear_fog": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/rear_fog"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/rear_fog"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "passenger_window_lock": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/passenger_window_lock"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/passenger_window_lock"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "wiper_maintenance": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/wiper_maintenance"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "action"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/wiper_maintenance"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "glove_box": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "const": true
+          },
+          "mapping": {
+            "$ref": "#/$defs/mappings/glove_box"
+          },
+          "renderer": {
+            "const": "action"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/glove_box"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "left_child_lock": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/left_child_lock"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/left_child_lock"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "right_child_lock": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/right_child_lock"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/right_child_lock"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "wireless_charging": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/wireless_charging"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/wireless_charging"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "window_vent": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/window_vent"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/window_vent"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "external_discharge": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/external_discharge"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "toggle"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/external_discharge"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "passenger_seat_adjust": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "const": false
+          },
+          "mapping": {
+            "const": null
+          },
+          "renderer": {
+            "const": "action"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "brightness": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/brightness"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "continuous"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "control_card"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 2
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/brightness"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "volume": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/volume"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "continuous"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "control_card"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 2
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/volume"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "call_volume": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/call_volume"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "continuous"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "control_card"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 2
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/call_volume"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "navigation_volume": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/navigation_volume"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "continuous"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "control_card"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 2
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/navigation_volume"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "voice_volume": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/voice_volume"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "continuous"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "control_card"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 2
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/voice_volume"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "system_control_center": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/system_control_center"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "system_action"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_center",
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/system_control_center"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "media": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/media"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "media"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "enum": [
+                "control_card",
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/media"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "settings": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/settings"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "settings"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "dock"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/settings"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "control_center_page": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/control_center_page"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "system_action"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "gesture"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/control_center_page"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "screen_clean": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mapping",
+          "renderer",
+          "surfaces",
+          "span",
+          "allowedModes"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "const": null
+              },
+              {
+                "$ref": "#/$defs/mappings/screen_clean"
+              }
+            ]
+          },
+          "renderer": {
+            "const": "system_action"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "enum": [
+                "control_center"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "span": {
+            "const": {
+              "columns": 1,
+              "rows": 1
+            }
+          },
+          "allowedModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "enabled": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mapping": {
+                  "$ref": "#/$defs/mappings/screen_clean"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "mappings": {
+      "lock": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "steering_heating": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "seat_ventilation": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "seat_heating": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "passenger_seat_heating": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "seat_massage": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes",
+          "prepare"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "massage"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "prepare": {
+            "type": "object",
+            "required": [
+              "switch",
+              "mode",
+              "strength",
+              "off",
+              "on",
+              "modeMin",
+              "modeMax",
+              "strengthMin",
+              "strengthMax"
+            ],
+            "properties": {
+              "switch": {
+                "type": "object",
+                "required": [
+                  "functionId",
+                  "area"
+                ],
+                "properties": {
+                  "functionId": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
+                  },
+                  "area": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "additionalProperties": false
+              },
+              "mode": {
+                "type": "object",
+                "required": [
+                  "functionId",
+                  "area"
+                ],
+                "properties": {
+                  "functionId": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
+                  },
+                  "area": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "additionalProperties": false
+              },
+              "strength": {
+                "type": "object",
+                "required": [
+                  "functionId",
+                  "area"
+                ],
+                "properties": {
+                  "functionId": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
+                  },
+                  "area": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "additionalProperties": false
+              },
+              "off": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "on": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "modeMin": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "modeMax": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "strengthMin": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "strengthMax": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "front_wiper": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 6,
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "auto_wiper": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    5
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "rear_wiper": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "rear_toggle"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "rear_wash": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "rear_pulse"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "rear_fog": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "fresh_toggle"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "passenger_window_lock": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "wiper_maintenance": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "fresh_set"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "left_child_lock": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "right_child_lock": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "wireless_charging": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "window_vent": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "window_group"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "external_discharge": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "modes"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "brightness": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes",
+          "arrayPrefix"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "brightness_array"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "functionId",
+                "area"
+              ],
+              "properties": {
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "required": [
+                "raw",
+                "mode"
+              ],
+              "properties": {
+                "raw": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "mode": {
+                  "enum": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9,
+                    10
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9,
+                    10
+                  ]
+                },
+                "functionId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "area": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "arrayPrefix": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "additionalProperties": false
+      },
+      "volume": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "channel"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "system_port"
+          },
+          "kind": {
+            "const": "volume"
+          },
+          "channel": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "additionalProperties": false
+      },
+      "call_volume": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "channel"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "system_port"
+          },
+          "kind": {
+            "const": "volume"
+          },
+          "channel": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "additionalProperties": false
+      },
+      "navigation_volume": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "channel"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "system_port"
+          },
+          "kind": {
+            "const": "volume"
+          },
+          "channel": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "additionalProperties": false
+      },
+      "voice_volume": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "channel"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "system_port"
+          },
+          "kind": {
+            "const": "volume"
+          },
+          "channel": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "additionalProperties": false
+      },
+      "system_control_center": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "system_port"
+          },
+          "kind": {
+            "const": "control_center"
+          }
+        },
+        "additionalProperties": false
+      },
+      "media": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "content"
+          },
+          "kind": {
+            "const": "media"
+          }
+        },
+        "additionalProperties": false
+      },
+      "settings": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "content"
+          },
+          "kind": {
+            "const": "settings"
+          }
+        },
+        "additionalProperties": false
+      },
+      "control_center_page": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "content"
+          },
+          "kind": {
+            "const": "control_center_overlay"
+          }
+        },
+        "additionalProperties": false
+      },
+      "screen_clean": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "system_port"
+          },
+          "kind": {
+            "const": "screen_clean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "glove_box": {
+        "type": "object",
+        "required": [
+          "adapter",
+          "kind",
+          "reads",
+          "readModes",
+          "writes"
+        ],
+        "properties": {
+          "adapter": {
+            "const": "s56_binder"
+          },
+          "kind": {
+            "const": "delivery"
+          },
+          "reads": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false
+          },
+          "readModes": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 0,
+            "items": false
+          },
+          "writes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "functionId",
+                "area",
+                "value"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    1
+                  ]
+                },
+                "functionId": {
+                  "const": 1046
+                },
+                "area": {
+                  "const": 0
+                },
+                "value": {
+                  "const": 2
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "lock"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "lock"
+            ],
+            "properties": {
+              "lock": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "lock"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "lock"
+            ],
+            "properties": {
+              "lock": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "steering_heating"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "steering_heating"
+            ],
+            "properties": {
+              "steering_heating": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "seat_ventilation"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "seat_ventilation"
+            ],
+            "properties": {
+              "seat_ventilation": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "seat_ventilation"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "seat_ventilation"
+            ],
+            "properties": {
+              "seat_ventilation": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "seat_heating"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "seat_heating"
+            ],
+            "properties": {
+              "seat_heating": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "seat_heating"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "seat_heating"
+            ],
+            "properties": {
+              "seat_heating": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "passenger_seat_heating"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "passenger_seat_heating"
+            ],
+            "properties": {
+              "passenger_seat_heating": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "seat_massage"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "seat_massage"
+            ],
+            "properties": {
+              "seat_massage": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "seat_massage"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "seat_massage"
+            ],
+            "properties": {
+              "seat_massage": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "front_wiper"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "front_wiper"
+            ],
+            "properties": {
+              "front_wiper": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCards": {
+                "contains": {
+                  "const": "front_wiper"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCards"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "front_wiper"
+            ],
+            "properties": {
+              "front_wiper": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_card"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "front_wiper"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "front_wiper"
+            ],
+            "properties": {
+              "front_wiper": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "auto_wiper"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "auto_wiper"
+            ],
+            "properties": {
+              "auto_wiper": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "rear_wiper"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "rear_wiper"
+            ],
+            "properties": {
+              "rear_wiper": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "rear_wash"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "rear_wash"
+            ],
+            "properties": {
+              "rear_wash": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCards": {
+                "contains": {
+                  "const": "climate"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCards"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "climate"
+            ],
+            "properties": {
+              "climate": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_card"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "gestures": {
+                "contains": {
+                  "const": "climate"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "gestures"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "climate"
+            ],
+            "properties": {
+              "climate": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "gesture"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "rear_fog"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "rear_fog"
+            ],
+            "properties": {
+              "rear_fog": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "passenger_window_lock"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "passenger_window_lock"
+            ],
+            "properties": {
+              "passenger_window_lock": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "wiper_maintenance"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "wiper_maintenance"
+            ],
+            "properties": {
+              "wiper_maintenance": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "glove_box"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "glove_box"
+            ],
+            "properties": {
+              "glove_box": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "left_child_lock"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "left_child_lock"
+            ],
+            "properties": {
+              "left_child_lock": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "right_child_lock"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "right_child_lock"
+            ],
+            "properties": {
+              "right_child_lock": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "wireless_charging"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "wireless_charging"
+            ],
+            "properties": {
+              "wireless_charging": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "window_vent"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "window_vent"
+            ],
+            "properties": {
+              "window_vent": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "external_discharge"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "external_discharge"
+            ],
+            "properties": {
+              "external_discharge": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "passenger_seat_adjust"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "passenger_seat_adjust"
+            ],
+            "properties": {
+              "passenger_seat_adjust": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "brightness"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "brightness"
+            ],
+            "properties": {
+              "brightness": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCards": {
+                "contains": {
+                  "const": "brightness"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCards"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "brightness"
+            ],
+            "properties": {
+              "brightness": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_card"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "volume"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "volume"
+            ],
+            "properties": {
+              "volume": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCards": {
+                "contains": {
+                  "const": "volume"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCards"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "volume"
+            ],
+            "properties": {
+              "volume": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_card"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "call_volume"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "call_volume"
+            ],
+            "properties": {
+              "call_volume": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCards": {
+                "contains": {
+                  "const": "call_volume"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCards"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "call_volume"
+            ],
+            "properties": {
+              "call_volume": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_card"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "navigation_volume"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "navigation_volume"
+            ],
+            "properties": {
+              "navigation_volume": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCards": {
+                "contains": {
+                  "const": "navigation_volume"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCards"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "navigation_volume"
+            ],
+            "properties": {
+              "navigation_volume": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_card"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "voice_volume"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "voice_volume"
+            ],
+            "properties": {
+              "voice_volume": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCards": {
+                "contains": {
+                  "const": "voice_volume"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCards"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "voice_volume"
+            ],
+            "properties": {
+              "voice_volume": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_card"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "system_control_center"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "system_control_center"
+            ],
+            "properties": {
+              "system_control_center": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "media"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "content": {
+            "required": [
+              "media"
+            ],
+            "properties": {
+              "media": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCards": {
+                "contains": {
+                  "const": "media"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCards"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "content": {
+            "required": [
+              "media"
+            ],
+            "properties": {
+              "media": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_card"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "settings"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "content": {
+            "required": [
+              "settings"
+            ],
+            "properties": {
+              "settings": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "gestures": {
+                "contains": {
+                  "const": "control_center_page"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "gestures"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "content": {
+            "required": [
+              "control_center_page"
+            ],
+            "properties": {
+              "control_center_page": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "gesture"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "controlCenter": {
+                "contains": {
+                  "const": "screen_clean"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "controlCenter"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "screen_clean"
+            ],
+            "properties": {
+              "screen_clean": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "control_center"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "auto_wiper"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "auto_wiper"
+            ],
+            "properties": {
+              "auto_wiper": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "window_vent"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "window_vent"
+            ],
+            "properties": {
+              "window_vent": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "glove_box"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "glove_box"
+            ],
+            "properties": {
+              "glove_box": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "system_control_center"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "system_control_center"
+            ],
+            "properties": {
+              "system_control_center": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "auto_wiper"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "controls": {
+            "required": [
+              "auto_wiper"
+            ],
+            "properties": {
+              "auto_wiper": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "window_vent"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "window_vent"
+            ],
+            "properties": {
+              "window_vent": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "glove_box"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "features": {
+            "required": [
+              "glove_box"
+            ],
+            "properties": {
+              "glove_box": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "properties": {
+              "dock": {
+                "contains": {
+                  "const": "system_control_center"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "dock"
+            ]
+          }
+        },
+        "required": [
+          "presentation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "system": {
+            "required": [
+              "system_control_center"
+            ],
+            "properties": {
+              "system_control_center": {
+                "properties": {
+                  "surfaces": {
+                    "contains": {
+                      "const": "dock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

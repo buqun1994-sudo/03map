@@ -15,17 +15,22 @@ object MultiFingerGestureRouting {
 
     fun resolve(command: GestureCommand, state: ContentUiState, presentation: ContentPresentation?,
         interactive: Boolean = true): ContentEvent? {
-        if (!interactive || !state.page.supportsImmersive || state.settingsOpen || state.settingsCollapsed ||
+        if (!interactive || state.settingsOpen || state.settingsCollapsed ||
             state.sourcesOpen || state.scenariosOpen || state.lyricsProviderSettings.appleLoginOpen) return null
         val actual = presentation ?: return null
-        if (!actual.geometryReady || actual.moving || actual.modalActive || actual.pagerMotion ||
-            actual.buttonTransitionActive) return null
-        return when (state.gestureActions[command] ?: GestureAction.None) {
+        val action = state.gestureActions[command] ?: GestureAction.None
+        if (!actual.geometryReady || actual.moving || actual.pagerMotion || actual.buttonTransitionActive ||
+            (actual.modalActive && action != GestureAction.CloseControlCenter)) return null
+        if ((state.controlCenterOpen || state.controlCenterEditing || state.controlCardListOpen || state.dockEditing) &&
+            action != GestureAction.CloseControlCenter) return null
+        return when (action) {
             GestureAction.None -> null
+            GestureAction.OpenControlCenter -> LayoutAction(ControlCenterEditAction.Open, input = LayoutInput.Gesture).takeIf { LayoutEditor.accepts(state, it) }
+            GestureAction.CloseControlCenter -> LayoutAction(ControlCenterEditAction.Close, input = LayoutInput.Gesture).takeIf { state.controlCenterOpen || state.controlCenterEditing }
             GestureAction.EnterImmersive -> ContentEvent.EnterLyricsImmersive.takeIf {
-                actual.phase == 0 && actual.progress <= .001f
+                state.page.supportsImmersive && actual.phase == 0 && actual.progress <= .001f
             }
-            GestureAction.ExitImmersive -> ContentEvent.ExitLyricsImmersive.takeIf { actual.collapsed }
+            GestureAction.ExitImmersive -> ContentEvent.ExitLyricsImmersive.takeIf { state.page.supportsImmersive && actual.collapsed }
         }
     }
 }

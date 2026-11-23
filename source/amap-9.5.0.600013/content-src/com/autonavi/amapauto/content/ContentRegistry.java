@@ -11,6 +11,7 @@ public final class ContentRegistry {
         public static final String VEHICLE_INFO = "vehicle_info";
         public static final String LYRICS = "lyrics";
         public static final String PROJECTION = "projection";
+        public static final String CONTROL_CENTER = "control_center_page";
 
         private Pages() {
         }
@@ -38,20 +39,15 @@ public final class ContentRegistry {
     }
 
     public static String[] registeredPageIds() {
-        return new String[]{
-                Pages.SHORTCUTS,
-                Pages.VEHICLE_INFO,
-                Pages.LYRICS,
-                Pages.PROJECTION
-        };
+        return visiblePageIds();
     }
 
     public static String[] visiblePageIds() {
-        return new String[]{Pages.SHORTCUTS, Pages.LYRICS};
+        return new String[]{Pages.LYRICS};
     }
 
     public static String[] controlIds() {
-        return new String[]{Controls.MEDIA, Controls.CLIMATE};
+        return new String[]{Controls.MEDIA, "brightness", "volume", "call_volume", "navigation_volume", "voice_volume", "front_wiper"};
     }
 
     public static String[] mediaSources() {
@@ -96,18 +92,9 @@ public final class ContentRegistry {
         return "source_local";
     }
 
-    /**
-     * Historical preference contract: five replaceable RIGHT slots, excluding the fixed lock.
-     * Keep the saved shortcuts ID and slot indices intact. The current Compose six-entry Dock
-     * is a fixed presentation catalog, not a migration to six persisted/customizable slots.
-     */
     public static String[] defaultDockItems() {
         return new String[]{
-                Pages.SHORTCUTS,
-                Shortcuts.SEAT_VENTILATION,
-                Shortcuts.SEAT_HEATING,
-                Shortcuts.SEAT_MASSAGE,
-                Shortcuts.SETTINGS
+                "lock", "auto_wiper", "window_vent", "glove_box", "system_control_center", "settings"
         };
     }
 

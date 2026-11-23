@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 val formalClasses = listOf("ContentState", "ContentRegistry", "ContentPreferenceStore", "ContentPorts",
-    "ContentStore", "ContentVehicleAdapter", "ContentVehicleProtocol", "ContentMediaAdapter", "ContentMediaListener",
+    "ContentStore", "ContentVehicleAdapter", "ContentVehicleProtocol", "ContentVehicleConfig", "ContentMediaAdapter", "ContentMediaListener",
     "ContentCruiseMapBridge")
 android {
     namespace = "com.icar03.content.runtime"
@@ -24,7 +24,9 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
 val exportFormalAppleAuthorizeAssets by tasks.registering(Sync::class) {
-    from("../../source/amap-9.5.0.600013/assets") { include("content-apple-authorize/**") }
+    from("../../source/amap-9.5.0.600013/assets") {
+        include("content-apple-authorize/**", "content-vehicle/**")
+    }
     into(layout.buildDirectory.dir("formal-apple-authorize-assets"))
 }
 tasks.named("preBuild") { dependsOn(exportFormalAppleAuthorizeAssets) }

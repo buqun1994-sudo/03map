@@ -24,7 +24,11 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [34], qualifiers = "w640dp-h1080dp-mdpi")
 class QuickControlAcceptanceTest {
     @get:Rule val compose = createComposeRule()
-    private val state = mutableStateOf(ContentUiState(previewMode = false))
+    private val state = mutableStateOf(ContentUiState(
+        previewMode = false,
+        page = PanelPage.Shortcuts,
+        layoutPreferencesLoaded = false,
+    ))
     private val events = mutableListOf<ContentEvent>()
     private var sounds = 0
     private var allowed = true

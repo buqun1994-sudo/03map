@@ -67,16 +67,16 @@ open class BoundContentPanelLightTest {
             compose.onNodeWithText("25°C").assertIsDisplayed()
             compose.onNodeWithText("123km").assertIsDisplayed()
             compose.onNodeWithText("端口替身音轨").assertIsDisplayed()
-            compose.onNodeWithTag("control-Ventilation").assertIsEnabled().performClick()
+            compose.onNodeWithTag("dock-Ventilation").assertIsEnabled().performClick()
             compose.runOnIdle {
                 assertEquals(ContentRegistry.Shortcuts.SEAT_VENTILATION, vehicle.command)
                 assertEquals(0, store.snapshot().ventilationLevel)
                 assertEquals(3, store.snapshot().pendingSeatLevel)
             }
-            compose.onNodeWithTag("control-Ventilation").assertIsNotEnabled()
-            compose.onNodeWithTag("control-Ventilation").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "待确认"))
+            compose.onNodeWithTag("dock-Ventilation").assertIsNotEnabled()
+            compose.onNodeWithTag("dock-Ventilation").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "待确认"))
             compose.runOnIdle { store.acceptVehicleSnapshot(vehicleSnapshot(3)) }
-            compose.onNodeWithTag("control-Ventilation").assertIsEnabled()
+            compose.onNodeWithTag("dock-Ventilation").assertIsEnabled()
             compose.runOnIdle { assertEquals("", store.snapshot().pendingVehicleCommand) }
             capture("closed")
             compose.onNodeWithTag("source-button").performClick()

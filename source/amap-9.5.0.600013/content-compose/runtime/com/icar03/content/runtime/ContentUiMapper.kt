@@ -3,6 +3,7 @@ package com.icar03.content.runtime
 import com.autonavi.amapauto.content.ContentPorts
 import com.autonavi.amapauto.content.ContentRegistry
 import com.autonavi.amapauto.content.ContentState
+import com.icar03.content.model.ControlCatalog
 import com.icar03.content.model.LyricPreferenceRules
 import com.icar03.content.model.VehicleFeature
 import com.icar03.content.runtime.lyrics.ContentLyricsCursor
@@ -135,6 +136,10 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
         shellSystemLevels = systemLevels.toMap()
         shellLyricsSystemAccentColor = lyricsSystemAccentColor
         shellProjectionCount++
+        val configurationValid = state.vehicleConfigValid
+        val mediaEnabled = configurationValid && ControlCatalog.MEDIA in state.enabledContentIds
+        val mediaSurfaceDeclared = "media" in state.availableControlCardIds ||
+            "media" in state.availableControlCenterIds
         val realVehicle = state.vehicleDataAvailable && !state.vehiclePreview
         val vehicleIdle = state.pendingVehicleCommand.isEmpty()
         val realMedia = state.mediaDataAvailable && !state.mediaPreview
@@ -151,10 +156,12 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
                 if (id == ControlId.Lock) if (state.pendingLocked) 1 else 0
                 else state.pendingSeatLevel.takeIf(id::isLevel)
             }
+            val declaredControl = configurationValid && (id.id in state.enabledControlIds ||
+                id == ControlId.Wiper && "auto_wiper" in state.enabledControlIds)
             ControlState(
                 actual = if (realVehicle) actual else -1,
                 target = target,
-                available = vehicleIdle && realVehicle && if (id == ControlId.Lock) {
+                available = vehicleIdle && realVehicle && declaredControl && capabilities.vehicle && if (id == ControlId.Lock) {
                     state.lockKnown && capabilities.lock
                 } else readbackKnown && id.id in capabilities.writableSeatControls &&
                     (id.isLevel(actual) || id == ControlId.Massage && state.massageSwitchKnown && state.massageActive),
@@ -168,7 +175,8 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             val actual = state.featureLevel(feature.id)
             val target = state.pendingFeatureTarget.takeIf { state.pendingVehicleCommand == feature.id }
             val known = realVehicle && actual >= 0
-            val available = realVehicle && vehicleIdle && feature.id in capabilities.writableFeatures &&
+            val available = configurationValid && realVehicle && vehicleIdle && capabilities.vehicle &&
+                feature.id in state.enabledFeatureIds && feature.id in capabilities.writableFeatures &&
                 (feature.action || known)
             FeatureState(
                 actual = if (realVehicle) actual else -1,
@@ -185,16 +193,29 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             )
         }
         val centerBrightness = if (realVehicle && state.centerBrightnessKnown) {
-            LevelState(((state.centerBrightnessLevel - 1).coerceIn(0, 9)) / 9f, available = vehicleIdle)
+            LevelState(((state.centerBrightnessLevel - 1).coerceIn(0, 9)) / 9f,
+                available = configurationValid && vehicleIdle && capabilities.vehicle && state.centerBrightnessWriteAvailable && state.enabledSystemIds.contains("brightness"))
         } else LevelState(0f, available = false)
         val projectedSystemLevels = SystemQuickControl.entries.associateWith { id ->
             val snapshot = systemLevels[id] ?: if (id == SystemQuickControl.Volume) volume else ContentPorts.SystemSnapshot(false, 0)
-            LevelState(snapshot.percent / 100f, available = snapshot.available)
+            LevelState(snapshot.percent / 100f,
+                available = configurationValid && snapshot.available && state.enabledSystemIds.contains(when (id) {
+                    SystemQuickControl.Brightness -> "brightness"
+                    SystemQuickControl.Volume -> "volume"
+                    SystemQuickControl.CallVolume -> "call_volume"
+                    SystemQuickControl.NavigationVolume -> "navigation_volume"
+                    SystemQuickControl.VoiceVolume -> "voice_volume"
+                }))
         }
-        val screenCleanAvailable = realVehicle && capabilities.screenClean
+        val screenCleanAvailable = configurationValid && realVehicle && capabilities.screenClean && state.enabledSystemIds.contains("screen_clean")
+        val configuredControlCenterItems = if (state.vehicleConfigValid)
+            state.controlCenterLayoutIds.filter { it in state.availableControlCenterIds }.distinct() else emptyList()
+        val configuredCards = if (state.vehicleConfigValid)
+            state.controlCardLayoutIds.filter { it in state.availableControlCardIds }.distinct() else emptyList()
+        val configuredDock = if (state.vehicleConfigValid) state.dockLayoutIds.filter { it in state.availableDockIds }.distinct() else emptyList()
         return ContentUiState(
             previewMode = false, dark = state.themeMode == ContentState.THEME_DARK,
-            page = if (ContentRegistry.visiblePageIds().getOrNull(state.pageIndex) == ContentRegistry.Pages.LYRICS) PanelPage.Lyrics else PanelPage.Shortcuts,
+            page = PanelPage.Lyrics,
             showWeekday = state.showWeekday, showSeconds = state.showSeconds,
             showCruiseSignals = state.showCruiseSignals,
             showIndoorTemperature = state.showIndoorTemperature, showBattery = state.showBattery,
@@ -246,14 +267,36 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
              features = featureStates,
              systemLevels = projectedSystemLevels,
              screenCleanAvailable = screenCleanAvailable,
-              controlCenterAvailable = capabilities.controlCenter,
+              controlCenterAvailable = configurationValid && capabilities.controlCenter && state.enabledSystemIds.contains("system_control_center"),
+              appControlCenterAvailable = configurationValid && state.enabledContentIds.contains("control_center_page"),
+             controlCenterItems = configuredControlCenterItems,
+                           controlCenterAvailableItems = state.availableControlCenterIds.toList(),
+              enabledControlIds = state.enabledControlIds.toSet(),
+               enabledFeatureIds = state.enabledFeatureIds.toSet(),
+               enabledSystemIds = state.enabledSystemIds.toSet(),
+              enabledContentIds = state.enabledContentIds.toSet(),
+             controlCardIds = configuredCards,
+              controlCardAvailableItems = state.availableControlCardIds.toList(),
+             controlCardIndex = state.controlCardLayoutIndex,
+             vehicleProfileId = state.vehicleProfileId,
+             vehicleConfigFileName = state.vehicleConfigFileName,
+              vehicleProfileDisplayName = state.vehicleProfileDisplayName,
+             vehicleConfigValid = state.vehicleConfigValid,
+             vehicleConfigSelfCheckRan = state.vehicleConfigSelfCheckRan,
+              vehicleConfigSelfCheckCacheHit = state.vehicleConfigSelfCheckCacheHit,
+             vehicleConfigMessage = state.vehicleConfigMessage,
+             dockItems = configuredDock,
+              dockAvailableItems = state.availableDockIds.toList(),
+              gestureAvailableItems = state.availableGestureIds.toList(),
+             layoutPreferencesLoaded = true,
+             dockShowNames = state.dockShowNames,
             media = MediaState(title = state.mediaTitle.takeIf { ready && it.isNotBlank() },
                 artist = state.mediaArtist.takeIf { ready && it.isNotBlank() },
                 isSong = song(state), playing = realMedia && state.mediaPlaying,
                 targetPlaying = when (state.mediaPlaybackTarget) { 0 -> false; 1 -> true; else -> null },
-                source = source, targetSource = MediaSource.entries.firstOrNull { it.label == state.pendingSource }, available = realMedia,
-                playbackAvailable = realMedia && state.mediaPlaybackAvailable,
-                nextAvailable = realMedia && state.mediaNextAvailable, sourceAvailable = capabilities.source),
+                source = source, targetSource = MediaSource.entries.firstOrNull { it.label == state.pendingSource }, available = realMedia && mediaEnabled && mediaSurfaceDeclared,
+                playbackAvailable = realMedia && mediaEnabled && mediaSurfaceDeclared && state.mediaPlaybackAvailable,
+                nextAvailable = realMedia && mediaEnabled && mediaSurfaceDeclared && state.mediaNextAvailable, sourceAvailable = mediaEnabled && mediaSurfaceDeclared && capabilities.source),
             message = state.commandMessage.takeIf { state.commandStatus == ContentState.COMMAND_FAILED && it.isNotBlank() },
         ).also { shell = it }
     }
@@ -316,6 +359,17 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
 
     private fun sameShellFacts(a: ContentState, b: ContentState): Boolean =
         a.themeMode == b.themeMode && a.pageIndex == b.pageIndex &&
+            a.vehicleProfileHash == b.vehicleProfileHash && a.vehicleConfigFileName == b.vehicleConfigFileName && a.vehicleConfigValid == b.vehicleConfigValid &&
+             a.enabledControlIds == b.enabledControlIds && a.enabledFeatureIds == b.enabledFeatureIds &&
+             a.enabledSystemIds == b.enabledSystemIds && a.enabledContentIds == b.enabledContentIds &&
+            a.availableControlCenterIds == b.availableControlCenterIds && a.availableControlCardIds == b.availableControlCardIds &&
+            a.availableDockIds == b.availableDockIds && a.availableGestureIds == b.availableGestureIds &&
+            a.vehicleConfigSelfCheckCacheHit == b.vehicleConfigSelfCheckCacheHit &&
+            a.configuredControlCenterIds == b.configuredControlCenterIds &&
+            a.configuredControlCardIds == b.configuredControlCardIds && a.configuredDockIds == b.configuredDockIds &&
+            a.controlCenterLayoutIds == b.controlCenterLayoutIds && a.controlCardLayoutIds == b.controlCardLayoutIds &&
+            a.dockLayoutIds == b.dockLayoutIds && a.controlCardLayoutIndex == b.controlCardLayoutIndex &&
+            a.dockShowNames == b.dockShowNames &&
             a.showWeekday == b.showWeekday && a.showSeconds == b.showSeconds &&
             a.showCruiseSignals == b.showCruiseSignals &&
             a.showIndoorTemperature == b.showIndoorTemperature && a.showBattery == b.showBattery &&
@@ -342,6 +396,7 @@ class ContentUiMapper(private val locale: Locale = Locale.SIMPLIFIED_CHINESE) {
             a.showActionFeedback == b.showActionFeedback && a.autoCloseSettingsOnDrive == b.autoCloseSettingsOnDrive &&
             a.gestureBarReminder == b.gestureBarReminder && a.gestureActions == b.gestureActions && a.uiOpacity.toBits() == b.uiOpacity.toBits() &&
             a.vehicleDataAvailable == b.vehicleDataAvailable && a.vehiclePreview == b.vehiclePreview &&
+             a.centerBrightnessWriteAvailable == b.centerBrightnessWriteAvailable &&
             a.temperatureC.toBits() == b.temperatureC.toBits() && a.batteryPercent == b.batteryPercent && a.rangeRaw == b.rangeRaw &&
             a.chargeState == b.chargeState && a.chargeConnectionRaw == b.chargeConnectionRaw &&
              a.chargeBmsRaw == b.chargeBmsRaw && a.chargeScheduleRaw == b.chargeScheduleRaw &&

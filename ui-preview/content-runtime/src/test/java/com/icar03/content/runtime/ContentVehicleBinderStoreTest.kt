@@ -558,15 +558,23 @@ class ContentVehicleBinderStoreTest {
         assertEquals(1, store.snapshot().wiperMaintenanceLevel)
         assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
 
+        val beforeGloveBox = service.writes.size
+        store.requestFeature("glove_box", 0)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(beforeGloveBox, service.writes.size)
         store.requestFeature("glove_box", 1)
         shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(beforeGloveBox + 1, service.writes.size)
+        assertEquals(VehiclePacket(5, 0x416, 0, 2), service.writes.last())
+        assertEquals(1, service.writes.count { it.functionId == 1046 })
         assertEquals(ContentState.COMMAND_NONE, store.snapshot().commandStatus)
         assertEquals("", store.snapshot().pendingVehicleCommand)
-        assertEquals(VehiclePacket(5, 1046, 0, 2), service.writes.last())
+        assertEquals(-1, store.snapshot().featureLevel("glove_box"))
     }
 
     private fun connectedStore(service: VehicleCommandBinder = VehicleCommandBinder()): Fixture {
         val app = RuntimeEnvironment.getApplication()
+        ensureVehicleServiceInstalled()
         val adapter = attachedVehicleCommandAdapter(service)
         val store = ContentStore(app, adapter, ContentPorts.PreviewMediaPort(), ContentPorts.AndroidSystemPort(app))
         stores += store

@@ -51,7 +51,10 @@ open class ContentComposeDefaultFactoryTest {
             assertEquals(640, host.width)
             val bitmap = Bitmap.createBitmap(640, 1080, Bitmap.Config.ARGB_8888)
             host.draw(Canvas(bitmap))
-            assertNotEquals("Real default factory must render controls, not a blank composition", bitmap.getPixel(0, 0), bitmap.getPixel(100, 100))
+            val mediaCard = checkNotNull(hostTag(host, "media-card")) { "Real default factory must compose the media control card" }
+            val cardCenter = mediaCard.boundsInRoot.center
+            assertNotEquals("Real default factory must draw visible media content", bitmap.getPixel(0, 0),
+                bitmap.getPixel(cardCenter.x.toInt(), cardCenter.y.toInt()))
             bitmap.recycle()
             projection.pause()
             frame(root)

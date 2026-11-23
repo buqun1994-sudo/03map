@@ -368,6 +368,7 @@ class RearWindowVehicleContractTest {
 
     private fun fixture(): Fixture {
         val binder = RearBinder()
+        ensureVehicleServiceInstalled()
         val adapter = ContentVehicleAdapter(RuntimeEnvironment.getApplication()).also(adapters::add)
         setVehicleAdapterField(adapter, "running", true)
         setVehicleAdapterField(adapter, "binder", binder)

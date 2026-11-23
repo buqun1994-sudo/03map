@@ -1,0 +1,1937 @@
+{
+  "schemaVersion": 2,
+  "profileId": "vehicle-template",
+  "profileRevision": 1,
+  "displayName": "车型配置模板",
+  "backend": {
+    "id": "chery_virtualcarservice_s56",
+    "contractRevision": 2
+  },
+  "compatibility": {
+    "modelHints": [],
+    "requiredServices": [
+      {
+        "package": "com.chery.virtualcarservice",
+        "descriptor": "com.chery.canmanager.interfaces.IVirturalCarProperty"
+      }
+    ]
+  },
+  "controls": {
+    "lock": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center",
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 1047,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 0
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 1045,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 1,
+            "functionId": 1045,
+            "area": 0,
+            "value": 1
+          }
+        ]
+      }
+    },
+    "steering_heating": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 540,
+            "area": 0
+          },
+          {
+            "functionId": 677,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2,
+              1
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              3,
+              1
+            ],
+            "mode": 2
+          },
+          {
+            "raw": [
+              1,
+              2
+            ],
+            "mode": 3
+          },
+          {
+            "raw": [
+              2,
+              2
+            ],
+            "mode": 3
+          },
+          {
+            "raw": [
+              3,
+              2
+            ],
+            "mode": 3
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 540,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 1,
+            "functionId": 540,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 2,
+            "functionId": 540,
+            "area": 0,
+            "value": 3
+          },
+          {
+            "mode": 3,
+            "functionId": 540,
+            "area": 0,
+            "value": 4
+          }
+        ]
+      }
+    },
+    "seat_ventilation": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center",
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 530,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              3
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              4
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              5
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              6
+            ],
+            "mode": 2
+          },
+          {
+            "raw": [
+              7
+            ],
+            "mode": 3
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 530,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 1,
+            "functionId": 530,
+            "area": 0,
+            "value": 5
+          },
+          {
+            "mode": 2,
+            "functionId": 530,
+            "area": 0,
+            "value": 6
+          },
+          {
+            "mode": 3,
+            "functionId": 530,
+            "area": 0,
+            "value": 7
+          }
+        ]
+      }
+    },
+    "seat_heating": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center",
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 530,
+            "area": 0
+          },
+          {
+            "functionId": 642,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2,
+              1
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              3,
+              1
+            ],
+            "mode": 2
+          },
+          {
+            "raw": [
+              4,
+              1
+            ],
+            "mode": 3
+          },
+          {
+            "raw": [
+              5,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              6,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              7,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              1,
+              2
+            ],
+            "mode": 4
+          },
+          {
+            "raw": [
+              2,
+              2
+            ],
+            "mode": 4
+          },
+          {
+            "raw": [
+              3,
+              2
+            ],
+            "mode": 4
+          },
+          {
+            "raw": [
+              4,
+              2
+            ],
+            "mode": 4
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 530,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 1,
+            "functionId": 530,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 2,
+            "functionId": 530,
+            "area": 0,
+            "value": 3
+          },
+          {
+            "mode": 3,
+            "functionId": 530,
+            "area": 0,
+            "value": 4
+          },
+          {
+            "mode": 4,
+            "functionId": 530,
+            "area": 0,
+            "value": 8
+          }
+        ]
+      }
+    },
+    "passenger_seat_heating": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 531,
+            "area": 0
+          },
+          {
+            "functionId": 842,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2,
+              1
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              3,
+              1
+            ],
+            "mode": 2
+          },
+          {
+            "raw": [
+              4,
+              1
+            ],
+            "mode": 3
+          },
+          {
+            "raw": [
+              5,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              6,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              7,
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              1,
+              2
+            ],
+            "mode": 4
+          },
+          {
+            "raw": [
+              2,
+              2
+            ],
+            "mode": 4
+          },
+          {
+            "raw": [
+              3,
+              2
+            ],
+            "mode": 4
+          },
+          {
+            "raw": [
+              4,
+              2
+            ],
+            "mode": 4
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 531,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 1,
+            "functionId": 531,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 2,
+            "functionId": 531,
+            "area": 0,
+            "value": 3
+          },
+          {
+            "mode": 3,
+            "functionId": 531,
+            "area": 0,
+            "value": 4
+          },
+          {
+            "mode": 4,
+            "functionId": 531,
+            "area": 0,
+            "value": 8
+          }
+        ]
+      }
+    },
+    "seat_massage": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center",
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "massage",
+        "reads": [
+          {
+            "functionId": 577,
+            "area": 0
+          },
+          {
+            "functionId": 579,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1,
+              null
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2,
+              1
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              2,
+              2
+            ],
+            "mode": 2
+          },
+          {
+            "raw": [
+              2,
+              3
+            ],
+            "mode": 3
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 577,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 1,
+            "functionId": 579,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 2,
+            "functionId": 579,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 3,
+            "functionId": 579,
+            "area": 0,
+            "value": 3
+          }
+        ],
+        "prepare": {
+          "switch": {
+            "functionId": 577,
+            "area": 0
+          },
+          "mode": {
+            "functionId": 581,
+            "area": 0
+          },
+          "strength": {
+            "functionId": 579,
+            "area": 0
+          },
+          "off": 1,
+          "on": 2,
+          "modeMin": 1,
+          "modeMax": 5,
+          "strengthMin": 1,
+          "strengthMax": 3
+        }
+      }
+    },
+    "front_wiper": {
+      "enabled": false,
+      "renderer": "stepped",
+      "surfaces": [
+        "control_center",
+        "dock",
+        "control_card"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 2
+      },
+      "allowedModes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 608,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              0
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              1
+            ],
+            "mode": 5
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              3
+            ],
+            "mode": 2
+          },
+          {
+            "raw": [
+              4
+            ],
+            "mode": 3
+          },
+          {
+            "raw": [
+              5
+            ],
+            "mode": 4
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 608,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 1,
+            "functionId": 608,
+            "area": 0,
+            "value": 3
+          },
+          {
+            "mode": 2,
+            "functionId": 608,
+            "area": 0,
+            "value": 4
+          },
+          {
+            "mode": 3,
+            "functionId": 608,
+            "area": 0,
+            "value": 5
+          },
+          {
+            "mode": 4,
+            "functionId": 608,
+            "area": 0,
+            "value": 6
+          },
+          {
+            "mode": 5,
+            "functionId": 608,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "auto_wiper": {
+      "enabled": true,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center",
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        5
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 608,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              0
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              1
+            ],
+            "mode": 5
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              3
+            ],
+            "mode": 2
+          },
+          {
+            "raw": [
+              4
+            ],
+            "mode": 3
+          },
+          {
+            "raw": [
+              5
+            ],
+            "mode": 4
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 608,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 5,
+            "functionId": 608,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "rear_wiper": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "rear_toggle",
+        "reads": [
+          {
+            "functionId": 609,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 609,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 1,
+            "functionId": 609,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "rear_wash": {
+      "enabled": false,
+      "renderer": "action",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "rear_pulse",
+        "reads": [
+          {
+            "functionId": 610,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          }
+        ],
+        "writes": [
+          {
+            "mode": 1,
+            "functionId": 610,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "climate": {
+      "enabled": false,
+      "renderer": "climate",
+      "surfaces": [
+        "control_card",
+        "gesture"
+      ],
+      "span": {
+        "columns": 2,
+        "rows": 1
+      },
+      "allowedModes": [],
+      "mapping": null
+    }
+  },
+  "features": {
+    "rear_fog": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "fresh_toggle",
+        "reads": [
+          {
+            "functionId": 542,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 542,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 1,
+            "functionId": 542,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "passenger_window_lock": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 1041,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 0
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 1041,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 1,
+            "functionId": 1041,
+            "area": 0,
+            "value": 1
+          }
+        ]
+      }
+    },
+    "wiper_maintenance": {
+      "enabled": false,
+      "renderer": "action",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "fresh_set",
+        "reads": [
+          {
+            "functionId": 671,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          }
+        ],
+        "writes": [
+          {
+            "mode": 1,
+            "functionId": 671,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "glove_box": {
+      "enabled": true,
+      "renderer": "action",
+      "surfaces": [
+        "control_center",
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "delivery",
+        "reads": [],
+        "readModes": [],
+        "writes": [
+          {
+            "mode": 1,
+            "functionId": 1046,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "left_child_lock": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 1048,
+            "area": 16
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 1042,
+            "area": 16,
+            "value": 2
+          },
+          {
+            "mode": 1,
+            "functionId": 1042,
+            "area": 16,
+            "value": 3
+          }
+        ]
+      }
+    },
+    "right_child_lock": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 1048,
+            "area": 64
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 1042,
+            "area": 64,
+            "value": 2
+          },
+          {
+            "mode": 1,
+            "functionId": 1042,
+            "area": 64,
+            "value": 3
+          }
+        ]
+      }
+    },
+    "wireless_charging": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 568,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 568,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 1,
+            "functionId": 568,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "window_vent": {
+      "enabled": true,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center",
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "window_group",
+        "reads": [
+          {
+            "functionId": 535,
+            "area": 16
+          },
+          {
+            "functionId": 535,
+            "area": 64
+          },
+          {
+            "functionId": 535,
+            "area": 256
+          },
+          {
+            "functionId": 535,
+            "area": 1024
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              5,
+              5,
+              5,
+              5
+            ],
+            "mode": 0
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 535,
+            "area": 1360,
+            "value": 5
+          },
+          {
+            "mode": 1,
+            "functionId": 535,
+            "area": 1360,
+            "value": 1
+          }
+        ]
+      }
+    },
+    "external_discharge": {
+      "enabled": false,
+      "renderer": "toggle",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [
+        0,
+        1
+      ],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "modes",
+        "reads": [
+          {
+            "functionId": 602,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              1
+            ],
+            "mode": 0
+          },
+          {
+            "raw": [
+              2
+            ],
+            "mode": 1
+          }
+        ],
+        "writes": [
+          {
+            "mode": 0,
+            "functionId": 602,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 1,
+            "functionId": 602,
+            "area": 0,
+            "value": 2
+          }
+        ]
+      }
+    },
+    "passenger_seat_adjust": {
+      "enabled": false,
+      "renderer": "action",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [],
+      "mapping": null
+    }
+  },
+  "system": {
+    "brightness": {
+      "enabled": false,
+      "renderer": "continuous",
+      "surfaces": [
+        "control_center",
+        "control_card"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 2
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "s56_binder",
+        "kind": "brightness_array",
+        "reads": [
+          {
+            "functionId": 794,
+            "area": 0
+          }
+        ],
+        "readModes": [
+          {
+            "raw": [
+              255,
+              1
+            ],
+            "mode": 1
+          },
+          {
+            "raw": [
+              255,
+              2
+            ],
+            "mode": 2
+          },
+          {
+            "raw": [
+              255,
+              3
+            ],
+            "mode": 3
+          },
+          {
+            "raw": [
+              255,
+              4
+            ],
+            "mode": 4
+          },
+          {
+            "raw": [
+              255,
+              5
+            ],
+            "mode": 5
+          },
+          {
+            "raw": [
+              255,
+              6
+            ],
+            "mode": 6
+          },
+          {
+            "raw": [
+              255,
+              7
+            ],
+            "mode": 7
+          },
+          {
+            "raw": [
+              255,
+              8
+            ],
+            "mode": 8
+          },
+          {
+            "raw": [
+              255,
+              9
+            ],
+            "mode": 9
+          },
+          {
+            "raw": [
+              255,
+              10
+            ],
+            "mode": 10
+          }
+        ],
+        "writes": [
+          {
+            "mode": 1,
+            "functionId": 794,
+            "area": 0,
+            "value": 1
+          },
+          {
+            "mode": 2,
+            "functionId": 794,
+            "area": 0,
+            "value": 2
+          },
+          {
+            "mode": 3,
+            "functionId": 794,
+            "area": 0,
+            "value": 3
+          },
+          {
+            "mode": 4,
+            "functionId": 794,
+            "area": 0,
+            "value": 4
+          },
+          {
+            "mode": 5,
+            "functionId": 794,
+            "area": 0,
+            "value": 5
+          },
+          {
+            "mode": 6,
+            "functionId": 794,
+            "area": 0,
+            "value": 6
+          },
+          {
+            "mode": 7,
+            "functionId": 794,
+            "area": 0,
+            "value": 7
+          },
+          {
+            "mode": 8,
+            "functionId": 794,
+            "area": 0,
+            "value": 8
+          },
+          {
+            "mode": 9,
+            "functionId": 794,
+            "area": 0,
+            "value": 9
+          },
+          {
+            "mode": 10,
+            "functionId": 794,
+            "area": 0,
+            "value": 10
+          }
+        ],
+        "arrayPrefix": 1
+      }
+    },
+    "volume": {
+      "enabled": true,
+      "renderer": "continuous",
+      "surfaces": [
+        "control_center",
+        "control_card"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 2
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "system_port",
+        "kind": "volume",
+        "channel": 1
+      }
+    },
+    "call_volume": {
+      "enabled": true,
+      "renderer": "continuous",
+      "surfaces": [
+        "control_center",
+        "control_card"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 2
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "system_port",
+        "kind": "volume",
+        "channel": 2
+      }
+    },
+    "navigation_volume": {
+      "enabled": true,
+      "renderer": "continuous",
+      "surfaces": [
+        "control_center",
+        "control_card"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 2
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "system_port",
+        "kind": "volume",
+        "channel": 3
+      }
+    },
+    "voice_volume": {
+      "enabled": true,
+      "renderer": "continuous",
+      "surfaces": [
+        "control_center",
+        "control_card"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 2
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "system_port",
+        "kind": "volume",
+        "channel": 4
+      }
+    },
+    "system_control_center": {
+      "enabled": true,
+      "renderer": "system_action",
+      "surfaces": [
+        "control_center",
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "system_port",
+        "kind": "control_center"
+      }
+    },
+    "screen_clean": {
+      "enabled": true,
+      "renderer": "system_action",
+      "surfaces": [
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "system_port",
+        "kind": "screen_clean"
+      }
+    }
+  },
+  "content": {
+    "media": {
+      "enabled": true,
+      "renderer": "media",
+      "surfaces": [
+        "control_card",
+        "control_center"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "content",
+        "kind": "media"
+      }
+    },
+    "settings": {
+      "enabled": true,
+      "renderer": "settings",
+      "surfaces": [
+        "dock"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "content",
+        "kind": "settings"
+      }
+    },
+    "control_center_page": {
+      "enabled": true,
+      "renderer": "system_action",
+      "surfaces": [
+        "gesture"
+      ],
+      "span": {
+        "columns": 1,
+        "rows": 1
+      },
+      "allowedModes": [],
+      "mapping": {
+        "adapter": "content",
+        "kind": "control_center_overlay"
+      }
+    }
+  },
+  "presentation": {
+    "controlCenter": [
+      "brightness",
+      "volume",
+      "call_volume",
+      "navigation_volume",
+      "voice_volume",
+      "lock",
+      "steering_heating",
+      "seat_ventilation",
+      "seat_heating",
+      "passenger_seat_heating",
+      "seat_massage",
+      "front_wiper",
+      "auto_wiper",
+      "rear_wiper",
+      "rear_wash",
+      "rear_fog",
+      "passenger_window_lock",
+      "wiper_maintenance",
+      "glove_box",
+      "left_child_lock",
+      "right_child_lock",
+      "wireless_charging",
+      "window_vent",
+      "external_discharge",
+      "screen_clean",
+      "system_control_center"
+    ],
+    "controlCards": [
+      "media"
+    ],
+    "dock": [
+      "lock",
+      "auto_wiper",
+      "window_vent",
+      "glove_box",
+      "system_control_center",
+      "settings"
+    ],
+    "gestures": [
+      "control_center_page"
+    ]
+  },
+  "selfCheck": {
+    "mode": "read_only",
+    "reuse": "config_adapter_hardware"
+  },
+  "signals": {
+    "cabin_temperature": {
+      "adapter": "s56_binder",
+      "kind": "float",
+      "functionId": 272,
+      "area": 1,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "battery_soc": {
+      "adapter": "s56_binder",
+      "kind": "float",
+      "functionId": 774,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "range_remaining": {
+      "adapter": "s56_binder",
+      "kind": "int",
+      "functionId": 771,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "charge_connection": {
+      "adapter": "s56_binder",
+      "kind": "int",
+      "functionId": 773,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "charge_bms": {
+      "adapter": "s56_binder",
+      "kind": "int",
+      "functionId": 669,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "charge_schedule": {
+      "adapter": "s56_binder",
+      "kind": "int",
+      "functionId": 776,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "charge_hv_voltage": {
+      "adapter": "s56_binder",
+      "kind": "int",
+      "functionId": 836,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "charge_hv_current": {
+      "adapter": "s56_binder",
+      "kind": "float",
+      "functionId": 837,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "charge_remaining_time": {
+      "adapter": "s56_binder",
+      "kind": "int",
+      "functionId": 1085,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    },
+    "wireless_charging_actual": {
+      "adapter": "s56_binder",
+      "kind": "int",
+      "functionId": 629,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {
+        "1": 0,
+        "2": 1
+      },
+      "length": 1
+    },
+    "external_discharge_status": {
+      "adapter": "s56_binder",
+      "kind": "float_array",
+      "functionId": 604,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 7
+    },
+    "screen_gear": {
+      "adapter": "s56_binder",
+      "kind": "int",
+      "functionId": 597,
+      "area": 0,
+      "scale": 1,
+      "offset": 0,
+      "values": {},
+      "length": 1
+    }
+  }
+}

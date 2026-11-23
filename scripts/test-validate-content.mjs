@@ -269,6 +269,46 @@ try {
     assert.equal(result.report.valid, true);
   });
 
+  await test('Every selected test task must execute or have reusable Gradle evidence', async () => {
+    for (const outcome of ['EXECUTED', 'UP-TO-DATE', 'FROM-CACHE', 'SKIPPED', 'NO-SOURCE', 'FAILED', 'UNREPORTED']) {
+      const { root } = fixture();
+      const fake = fakeRunner((command) => {
+        if (command.command !== 'fixture-gradle') return null;
+        if (!command.args.some((arg) => arg.endsWith(':testDebugUnitTest'))) {
+          return { exitCode: 0, output: '> Task :content-ui:compileDebugUnitTestKotlin\n' };
+        }
+        const task = outcome === 'UNREPORTED' ? '' : `> Task :content-ui:testDebugUnitTest${outcome === 'EXECUTED' ? '' : ` ${outcome}`}\n`;
+        return { exitCode: 0, output: `${task}BUILD SUCCESSFUL in 1s\n` };
+      });
+      const result = await executeValidation({ root, options: options(['--module', 'content-ui']), changedPaths: [], runner: fake.runner,
+        commandForGradle: fakeGradle, logger() {} });
+      const success = ['EXECUTED', 'UP-TO-DATE', 'FROM-CACHE'].includes(outcome);
+      assert.equal(result.report.valid, success, outcome);
+      assert.equal(result.exitCode, success ? 0 : 1, outcome);
+      assert.equal(result.report.testEvidence[0].outcome, outcome);
+      const persisted = JSON.parse(fs.readFileSync(path.join(result.evidence, 'report.json'), 'utf8'));
+      assert.equal(persisted.valid, success, outcome);
+      if (!success) {
+        assert.match(result.report.error, /Selected test tasks did not complete successfully/);
+        assert(result.report.error.includes(`:content-ui:testDebugUnitTest ${outcome}`));
+        assert.equal(result.report.phases.at(-1).exitCode, 0, 'command success does not establish test coverage');
+      }
+    }
+  });
+
+  await test('One skipped selected module invalidates an otherwise successful multi-module run', async () => {
+    const { root } = fixture();
+    const fake = fakeRunner((command) => command.command === 'fixture-gradle' ? { exitCode: 0,
+      output: '> Task :content-model:testDebugUnitTest UP-TO-DATE\n> Task :content-ui:testDebugUnitTest SKIPPED\nBUILD SUCCESSFUL in 1s\n' } : null);
+    const result = await executeValidation({ root, options: options(['--module', 'content-model', '--module', 'content-ui']),
+      changedPaths: [], runner: fake.runner, commandForGradle: fakeGradle, logger() {} });
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.report.valid, false);
+    assert.equal(result.report.testEvidence.length, 2);
+    assert.match(result.report.error, /:content-ui:testDebugUnitTest SKIPPED/);
+    assert(!result.report.error.includes(':content-model:testDebugUnitTest'));
+  });
+
   await test('External source change during compile invalidates evidence and skips tests', async () => {
     const { root, write } = fixture();
     const fake = fakeRunner((command) => {

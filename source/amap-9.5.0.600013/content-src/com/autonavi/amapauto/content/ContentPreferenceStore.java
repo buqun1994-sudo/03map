@@ -11,7 +11,7 @@ import android.content.SharedPreferences;
 
 public final class ContentPreferenceStore {
     private static final String PREFERENCES_NAME = "content_preferences_v1";
-    private static final int PREFERENCES_VERSION = 10;
+    private static final int PREFERENCES_VERSION = 11;
     private static final String KEY_PREFERENCES_VERSION = "preferences_version";
     private static final String KEY_SHOW_WEEKDAY = "top_bar_show_weekday";
     private static final String KEY_SHOW_SECONDS = "top_bar_show_seconds";
@@ -47,6 +47,7 @@ public final class ContentPreferenceStore {
     private static final String KEY_SHOW_AMBIENT_ARTWORK = "ambient_show_artwork";
     private static final String KEY_SHOW_MEDIA_SOURCE_SWITCHER = "media_show_source_switcher";
     private static final String KEY_DOCK_BUTTON_COUNT = "dock_button_count";
+    private static final String KEY_DOCK_SHOW_NAMES = "dock_show_names";
     private static final String KEY_SHOW_ACTION_FEEDBACK = "interaction_show_action_feedback";
     private static final String KEY_AUTO_CLOSE_SETTINGS_ON_DRIVE = "interaction_auto_close_settings_on_drive";
     private static final String KEY_GESTURE_BAR_REMINDER = "interaction_gesture_bar_reminder";
@@ -55,6 +56,12 @@ public final class ContentPreferenceStore {
     private static final String KEY_PAGE_ID = "current_page_id";
     private static final String KEY_CONTROL_ID = "current_control_id";
     private static final String KEY_DOCK_SLOT_PREFIX = "dock_slot_";
+    private static final String KEY_CONTROL_CENTER_ORDER = "control_center_order";
+    private static final String KEY_CONTROL_CARD_ORDER = "control_card_order";
+    private static final String KEY_CONTROL_CARD_INDEX = "control_card_index";
+    private static final String KEY_CONTROL_CARD_ID = "control_card_id";
+    private static final String KEY_DOCK_ORDER = "dock_order";
+    private static final String KEY_LAYOUT_SEPARATOR = "\u001f";
     private static final String KEY_MANUAL_LEVEL_PREFIX = "control_manual_level_";
 
     private final SharedPreferences preferences;
@@ -157,7 +164,8 @@ public final class ContentPreferenceStore {
         state.immersiveShowDock = readBoolean(KEY_IMMERSIVE_SHOW_DOCK, true);
         state.showAmbientArtwork = readBoolean(KEY_SHOW_AMBIENT_ARTWORK, true);
         state.showMediaSourceSwitcher = readBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, true);
-        state.dockButtonCount = clampDockButtonCount(readInt(KEY_DOCK_BUTTON_COUNT, 5));
+        if (!state.vehicleConfigValid) state.dockButtonCount = clampDockButtonCount(readInt(KEY_DOCK_BUTTON_COUNT, 5));
+        state.dockShowNames = readBoolean(KEY_DOCK_SHOW_NAMES, false);
         state.showActionFeedback = readBoolean(KEY_SHOW_ACTION_FEEDBACK, true);
         state.autoCloseSettingsOnDrive = readBoolean(KEY_AUTO_CLOSE_SETTINGS_ON_DRIVE, true);
         // Versions 1..4 predate this preference; migrate them to the default-on behavior without rewriting old entries.
@@ -177,15 +185,26 @@ public final class ContentPreferenceStore {
             state.dockButtonCount = 5;
             state.uiOpacity = 1.0f;
         }
-        String savedPageId = readString(KEY_PAGE_ID, ContentRegistry.Pages.LYRICS);
-        state.pageIndex = indexOf(ContentRegistry.visiblePageIds(), savedPageId, 1);
+        String savedPageId = readString(KEY_PAGE_ID, ContentRegistry.Pages.VEHICLE_INFO);
+        if (ContentRegistry.Pages.CONTROL_CENTER.equals(savedPageId)) savedPageId = ContentRegistry.Pages.VEHICLE_INFO;
+        state.pageIndex = indexOf(ContentRegistry.visiblePageIds(), savedPageId, 0);
         String savedControlId = readString(KEY_CONTROL_ID, ContentRegistry.Controls.MEDIA);
         state.controlIndex = indexOf(ContentRegistry.controlIds(), savedControlId, 0);
         state.setRememberedControlLevels(loadManualLevels());
-        for (int slot = 0; slot < state.dockItems.length; slot++) {
+        for (int slot = 0; !state.vehicleConfigValid && slot < state.dockItems.length; slot++) {
             String savedItem = readString(KEY_DOCK_SLOT_PREFIX + slot, state.dockItems[slot]);
             state.dockItems[slot] = isValidDockItem(savedItem) ? savedItem : state.dockItems[slot];
         }
+        state.controlCenterLayoutIds = loadOrdered(KEY_CONTROL_CENTER_ORDER,
+                state.availableControlCenterIds, state.configuredControlCenterIds);
+        state.controlCardLayoutIds = loadOrdered(KEY_CONTROL_CARD_ORDER,
+                state.availableControlCardIds, state.configuredControlCardIds);
+        state.dockLayoutIds = loadOrdered(KEY_DOCK_ORDER,
+                state.availableDockIds, state.configuredDockIds);
+        String savedCardId = readString(KEY_CONTROL_CARD_ID, "");
+        int selectedCard = state.controlCardLayoutIds.indexOf(savedCardId);
+        state.controlCardLayoutIndex = selectedCard >= 0 ? selectedCard
+                : clampIndex(readInt(KEY_CONTROL_CARD_INDEX, 0), state.controlCardLayoutIds.size());
     }
 
     public void save(ContentState state) {
@@ -233,7 +252,8 @@ public final class ContentPreferenceStore {
         editor.putBoolean(KEY_IMMERSIVE_SHOW_DOCK, state.immersiveShowDock);
         editor.putBoolean(KEY_SHOW_AMBIENT_ARTWORK, state.showAmbientArtwork);
         editor.putBoolean(KEY_SHOW_MEDIA_SOURCE_SWITCHER, state.showMediaSourceSwitcher);
-        editor.putInt(KEY_DOCK_BUTTON_COUNT, clampDockButtonCount(state.dockButtonCount));
+        if (!state.vehicleConfigValid) editor.putInt(KEY_DOCK_BUTTON_COUNT, clampDockButtonCount(state.dockButtonCount));
+        editor.putBoolean(KEY_DOCK_SHOW_NAMES, state.dockShowNames);
         editor.putBoolean(KEY_SHOW_ACTION_FEEDBACK, state.showActionFeedback);
         editor.putBoolean(KEY_AUTO_CLOSE_SETTINGS_ON_DRIVE, state.autoCloseSettingsOnDrive);
         editor.putBoolean(KEY_GESTURE_BAR_REMINDER, state.gestureBarReminder);
@@ -246,13 +266,51 @@ public final class ContentPreferenceStore {
             editor.putString(KEY_PAGE_ID, pageIds[state.pageIndex]);
         }
         String[] controlIds = ContentRegistry.controlIds();
-        if (state.controlIndex >= 0 && state.controlIndex < controlIds.length) {
+        if (!state.vehicleConfigValid && state.controlIndex >= 0 && state.controlIndex < controlIds.length) {
             editor.putString(KEY_CONTROL_ID, controlIds[state.controlIndex]);
         }
-        for (int slot = 0; slot < state.dockItems.length; slot++) {
+        for (int slot = 0; !state.vehicleConfigValid && slot < state.dockItems.length; slot++) {
             editor.putString(KEY_DOCK_SLOT_PREFIX + slot, state.dockItems[slot]);
         }
+        editor.putString(KEY_CONTROL_CENTER_ORDER, joinOrdered(state.controlCenterLayoutIds));
+        editor.putString(KEY_CONTROL_CARD_ORDER, joinOrdered(state.controlCardLayoutIds));
+        editor.putString(KEY_DOCK_ORDER, joinOrdered(state.dockLayoutIds));
+        int cardIndex = clampIndex(state.controlCardLayoutIndex, state.controlCardLayoutIds.size());
+        editor.putInt(KEY_CONTROL_CARD_INDEX, cardIndex);
+        editor.putString(KEY_CONTROL_CARD_ID, state.controlCardLayoutIds.isEmpty() ? "" : state.controlCardLayoutIds.get(cardIndex));
         editor.apply();
+    }
+
+    private java.util.List<String> loadOrdered(String key, java.util.Set<String> allowed,
+            java.util.List<String> fallback) {
+        boolean stored = preferences.contains(key);
+        String value = readString(key, "");
+        java.util.List<String> result = new java.util.ArrayList<>();
+        if (!stored) {
+            if (fallback != null) for (String id : fallback) if (allowed.contains(id) && !result.contains(id)) result.add(id);
+            return result;
+        }
+        if (value != null && !value.isEmpty()) {
+            for (String id : value.split(KEY_LAYOUT_SEPARATOR, -1)) {
+                if (id.length() > 0 && allowed.contains(id) && !result.contains(id)) result.add(id);
+            }
+        }
+        return result;
+    }
+
+    private String joinOrdered(java.util.List<String> values) {
+        if (values == null || values.isEmpty()) return "";
+        StringBuilder result = new StringBuilder();
+        for (String value : values) {
+            if (value == null || value.length() == 0 || value.indexOf(KEY_LAYOUT_SEPARATOR) >= 0) continue;
+            if (result.length() > 0) result.append(KEY_LAYOUT_SEPARATOR);
+            result.append(value);
+        }
+        return result.toString();
+    }
+
+    private int clampIndex(int value, int size) {
+        return size <= 0 ? 0 : Math.max(0, Math.min(size - 1, value));
     }
 
     private int readSchemaVersion() {

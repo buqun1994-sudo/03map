@@ -67,11 +67,22 @@ class ContentComposeHost @JvmOverloads constructor(
     private var destroyed = false
     private val gestureScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var gestureStateJob: Job? = null
+    private data class EditorPresentationLease(
+        val page: PanelPage,
+        val restoreCollapsed: Boolean,
+        var port: com.icar03.content.model.MapPresentationPort?,
+        var restoring: Boolean = false,
+    )
+    private var editorLease: EditorPresentationLease? = null
+    private var replacingMapPort = false
+    private var editorRequestSuppressed = false
     private val attachListener = object : android.view.View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(v: android.view.View) {
+            syncEditorPresentation()
             refreshGestureState()
         }
         override fun onViewDetachedFromWindow(v: android.view.View) {
+            restoreEditorPresentation(suppressRequest = true)
             mapPresentation?.updateGestureState(false, binding.state.value.dark, false, false)
         }
     }
@@ -98,7 +109,10 @@ class ContentComposeHost @JvmOverloads constructor(
         }
         view.addOnAttachStateChangeListener(attachListener)
         gestureStateJob = gestureScope.launch {
-            binding.state.collect { refreshGestureState() }
+            binding.state.collect {
+                syncEditorPresentation()
+                refreshGestureState()
+            }
         }
         host.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         host.addOnLayoutChangeListener(layoutListener)
@@ -111,34 +125,98 @@ class ContentComposeHost @JvmOverloads constructor(
         if (destroyed) return
         val previous = mapPresentation
         if (previous !== port) {
-            previous?.updateGestureState(false, binding.state.value.dark, false, false)
-            presentation.invalidateInput()
-            presentation.cancelEntry()
+            replacingMapPort = true
+            try {
+                previous?.updateGestureState(false, binding.state.value.dark, false, false)
+                restoreEditorPresentation(suppressRequest = true)
+                presentation.invalidateInput()
+                presentation.cancelEntry()
+                mapPresentation = port
+                editorLease?.let { lease ->
+                    lease.port = port
+                    if (port != null) settleEditorEndpoint(lease)
+                }
+            } finally { replacingMapPort = false }
         }
-        mapPresentation = port
         presentation.updateGestureWidth(port?.reservedGestureWidthPx() ?: 0)
         presentation.onEntryReady = {
-            if (canPresentPage()) {
+            if (canPresentPage() && binding.currentPresentationState()?.page?.supportsImmersive == true) {
                 refreshGestureState()
                 mapPresentation?.settleToCollapsed()
             } else presentation.cancelEntry()
         }
+        syncEditorPresentation()
         refreshGestureState()
     }
 
-    private fun canPresentPage(current: com.icar03.content.ui.ContentUiState? = binding.currentPresentationState()): Boolean {
-        if (current == null || destroyed || !view.isAttachedToWindow ||
-            !owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return false
-        return current.page.supportsImmersive && !current.sourcesOpen && !current.scenariosOpen &&
-            !current.settingsOpen && !current.lyricsProviderSettings.appleLoginOpen &&
-            !presentation.modalActive && !presentation.pagerMotion
-    }
+    private fun hostInputActive(): Boolean = !destroyed && view.isAttachedToWindow &&
+        owners.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+
+    private fun canRouteContentGestures(current: com.icar03.content.ui.ContentUiState? = binding.currentPresentationState()): Boolean =
+        current != null && hostInputActive() && !presentation.editorFullscreenActive &&
+            !current.sourcesOpen && !current.scenariosOpen && !current.settingsOpen && !current.settingsCollapsed &&
+            !current.lyricsProviderSettings.appleLoginOpen && !presentation.modalActive && !presentation.pagerMotion
+
+    private fun canPresentPage(current: com.icar03.content.ui.ContentUiState? = binding.currentPresentationState()): Boolean =
+        current?.page?.supportsImmersive == true && canRouteContentGestures(current)
 
     private fun isMapGestureAllowed(current: com.icar03.content.ui.ContentUiState?): Boolean = canPresentPage(current) &&
         !presentation.buttonTransitionActive && presentation.pendingEnter == 0L
 
     /** Called by the map controller on its UI-thread touch path. */
     fun isMapGestureAllowed(): Boolean = isMapGestureAllowed(binding.currentPresentationState())
+
+    private fun syncEditorPresentation() {
+        if (destroyed) return
+        val current = binding.state.value
+        if (!current.editorWantsFullscreen && hostInputActive()) editorRequestSuppressed = false
+        val lease = editorLease
+        if (lease != null) {
+            if (lease.restoring && current.editorWantsFullscreen && !editorRequestSuppressed &&
+                current.page == lease.page && hostInputActive()) {
+                lease.restoring = false
+                lease.port?.settleToCollapsed()
+            } else if (!lease.restoring && (!current.editorWantsFullscreen || current.page != lease.page || !hostInputActive())) {
+                restoreEditorPresentation(suppressRequest = current.editorWantsFullscreen)
+            }
+            finishEditorRestoration()
+            return
+        }
+        val port = mapPresentation ?: return
+        if (!current.editorWantsFullscreen || editorRequestSuppressed || !hostInputActive() ||
+            !presentation.geometryReady || presentation.moving ||
+            (!presentation.editorAtEndpoint(false) && !presentation.editorAtEndpoint(true))) return
+        val restoreCollapsed = presentation.collapsed
+        if (!presentation.beginEditorFullscreen()) return
+        editorLease = EditorPresentationLease(current.page, restoreCollapsed, port)
+        refreshGestureState()
+        if (!restoreCollapsed) port.settleToCollapsed()
+    }
+
+    private fun settleEditorEndpoint(lease: EditorPresentationLease) {
+        if (lease.restoreCollapsed) lease.port?.settleToCollapsed() else lease.port?.settleToExpanded()
+    }
+
+    private fun restoreEditorPresentation(suppressRequest: Boolean = false) {
+        if (suppressRequest && binding.state.value.editorWantsFullscreen) editorRequestSuppressed = true
+        val lease = editorLease ?: return
+        if (!lease.restoring) {
+            lease.restoring = true
+            presentation.invalidateInput()
+            // Retarget the existing map animator, including a close before its first frame.
+            settleEditorEndpoint(lease)
+        }
+        finishEditorRestoration()
+    }
+
+    private fun finishEditorRestoration() {
+        val lease = editorLease ?: return
+        if (replacingMapPort || !lease.restoring || lease.port == null || lease.port !== mapPresentation ||
+            !presentation.editorAtEndpoint(lease.restoreCollapsed)) return
+        editorLease = null
+        presentation.finishEditorFullscreen()
+        refreshGestureState()
+    }
 
     private fun refreshGestureState() {
         if (destroyed) return
@@ -151,21 +229,21 @@ class ContentComposeHost @JvmOverloads constructor(
     private fun dispatchPresentation(event: com.icar03.content.ui.ContentEvent) {
         if (destroyed) return
         when (event) {
-            is com.icar03.content.ui.ContentEvent.GesturePerformed -> {
-                val current = binding.currentPresentationState() ?: return
-                val intent = com.icar03.content.ui.MultiFingerGestureRouting.resolve(
-                    event.command, current, presentation, interactive = canPresentPage(current)) ?: return
-                dispatchPresentation(intent)
-            }
             com.icar03.content.ui.ContentEvent.EnterLyricsImmersive -> {
-                if (!canPresentPage() || !presentation.geometryReady || presentation.moving || mapPresentation == null) return
+                if (!canPresentPage() || binding.currentPresentationState()?.page?.supportsImmersive != true ||
+                    !presentation.geometryReady || presentation.moving || mapPresentation == null) return
                 binding.dispatch(com.icar03.content.ui.ContentEvent.DismissSheet)
                 presentation.requestEnter()
             }
             com.icar03.content.ui.ContentEvent.ExitLyricsImmersive -> {
+                if (presentation.editorFullscreenActive) return
                 presentation.invalidateInput()
                 presentation.cancelEntry()
                 mapPresentation?.settleToExpanded()
+            }
+            is com.icar03.content.ui.LayoutAction -> {
+                binding.dispatch(event)
+                syncEditorPresentation()
             }
             else -> Unit
         }
@@ -173,8 +251,10 @@ class ContentComposeHost @JvmOverloads constructor(
 
     fun updatePanelPhase(phase: Int) {
         if (destroyed) return
+        val editorWasActive = presentation.editorFullscreenActive
         presentation.updatePhase(phase)
-        if (phase == 1) {
+        syncEditorPresentation()
+        if (phase == 1 && !editorWasActive && !presentation.editorFullscreenActive) {
             val current = binding.currentPresentationState()
             if (current != null && !current.page.supportsImmersive) mapPresentation?.settleToExpanded()
         }
@@ -196,11 +276,26 @@ class ContentComposeHost @JvmOverloads constructor(
         if (params != null && params.width != width) { params.width = width; host.layoutParams = params }
         if (host.height > 0) host.clipBounds = Rect(0, 0, width, host.height)
         presentation.updateGeometry(divider, expandedDivider, mapWidth, (host.parent as? android.view.View)?.height ?: host.height)
+        syncEditorPresentation()
         mapPresentation?.ensureGestureOnTop()
+    }
+    fun onVehicleConfigResult(requestCode: Int, resultCode: Int, data: android.content.Intent?): Boolean {
+        if (destroyed || requestCode != 0x1CA03) return false
+        return binding.onVehicleConfigResult(resultCode, data)
     }
     fun handleBack(): Boolean {
         if (destroyed) return false
         val current = binding.state.value
+        if (current.controlCenterOpen || current.controlCenterEditing || current.controlCardListOpen || current.dockEditing) {
+            binding.dispatch(com.icar03.content.ui.LayoutAction(
+                com.icar03.content.ui.ControlCenterEditAction.Close))
+            syncEditorPresentation()
+            return true
+        }
+        if (presentation.editorFullscreenActive) {
+            restoreEditorPresentation(suppressRequest = true)
+            return true
+        }
         if (current.lyricsProviderSettings.appleLoginOpen) {
             binding.dispatch(com.icar03.content.ui.AppleMusicLoginDismissed)
             return true
@@ -223,19 +318,24 @@ class ContentComposeHost @JvmOverloads constructor(
         if (!destroyed) {
             presentation.invalidateInput()
             presentation.cancelEntry()
-            mapPresentation?.updateGestureState(false, binding.state.value.dark, false, false)
+            if (editorLease != null) editorRequestSuppressed = true
             owners.pause()
+            restoreEditorPresentation(suppressRequest = true)
+            mapPresentation?.updateGestureState(false, binding.state.value.dark, false, false)
         }
     }
     fun resume() {
         if (!destroyed) {
             owners.resume()
+            syncEditorPresentation()
             refreshGestureState()
         }
     }
     fun destroy() {
         if (destroyed) return
         destroyed = true
+        restoreEditorPresentation(suppressRequest = true)
+        editorLease = null
         presentation.stop()
         mapPresentation?.updateGestureState(false, binding.state.value.dark, false, false)
         mapPresentation = null

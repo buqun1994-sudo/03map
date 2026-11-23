@@ -32,6 +32,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     private final class RearRequest {
         final VehicleControl control;
         final ContentVehicleProtocol.Write write;
+        final ContentVehicleProtocol.Mapping mapping;
         final int expectedLevel;
         final int targetLevel;
         final long requestId;
@@ -52,7 +53,8 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         RearRequest(VehicleControl control, int expectedLevel, int targetLevel, long requestId,
                 long deadlineUptimeMs, IBinder sourceBinder, Handler worker) {
             this.control = control;
-            this.write = ContentVehicleProtocol.rearWindowWrite(control.getId());
+            this.mapping = mapping(control.getId());
+            this.write = this.mapping == null ? null : this.mapping.write(targetLevel);
             this.expectedLevel = expectedLevel;
             this.targetLevel = targetLevel;
             this.requestId = requestId;
@@ -184,6 +186,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         }
     };
 
+    private ContentVehicleConfig profile;
     private ContentPorts.VehicleSnapshotListener listener;
     private HandlerThread workerThread;
     private Handler workerHandler;
@@ -200,6 +203,79 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
 
     public ContentVehicleAdapter(Context context) {
         this.context = context.getApplicationContext();
+        this.profile = ContentVehicleConfig.mappingProfile(this.context);
+    }
+
+    @Override public synchronized void configure(ContentVehicleConfig config) {
+        if (config == null) throw new IllegalArgumentException("vehicle config required");
+        if (running && (profile == null || !profile.hash().equals(config.hash())))
+            throw new IllegalStateException("Vehicle mappings must be installed before start");
+        profile = config;
+    }
+
+    @Override public String capabilityContract() { return "s56_binder_v2"; }
+
+    @Override public ContentPorts.CapabilityCheck inspectCapability(String id, ContentVehicleProtocol.Mapping mapping) {
+        if (mapping == null || !mapping.isVehicle()) return new ContentPorts.CapabilityCheck(ContentPorts.Capability.MISSING, "车辆适配器未实现该映射");
+        try {
+            context.getPackageManager().getPackageInfo(VEHICLE_SERVICE_PACKAGE, 0);
+            return ContentPorts.CapabilityCheck.unknown("适配器合同有效，硬件属性支持待真实回读确认");
+        } catch (android.content.pm.PackageManager.NameNotFoundException missing) {
+            return new ContentPorts.CapabilityCheck(ContentPorts.Capability.MISSING, "设备未安装所需车辆服务");
+        } catch (RuntimeException unavailable) {
+            return ContentPorts.CapabilityCheck.unknown("车辆服务身份暂不可读");
+        }
+    }
+
+    private synchronized ContentVehicleProtocol.Mapping mapping(String id) {
+        return profile == null ? null : profile.mapping(id);
+    }
+    private ContentVehicleProtocol.Write writeFor(String id, int mode) {
+        ContentVehicleProtocol.Mapping mapped = mapping(id);
+        if ("front_wiper".equals(id) && (mode == 5 || mapped == null)) {
+            ContentVehicleProtocol.Mapping automatic = mapping("auto_wiper");
+            return automatic == null ? null : automatic.write(mode);
+        }
+        return mapped == null ? null : mapped.write(mode);
+    }
+    private ContentVehicleProtocol.Mapping readMapping(String id) {
+        ContentVehicleProtocol.Mapping result = mapping(id);
+        if (result == null && "front_wiper".equals(id)) result = mapping("auto_wiper");
+        return result;
+    }
+    private synchronized ContentVehicleProtocol.Signal signal(String id) { return profile == null ? null : profile.signal(id); }
+    private int readIntSignal(IBinder source, String id) {
+        ContentVehicleProtocol.Signal signal = signal(id);
+        return signal == null ? -1 : signal.normalize(readInt(source, signal.property.functionId, signal.property.area));
+    }
+    private float readFloatSignal(IBinder source, String id) {
+        ContentVehicleProtocol.Signal signal = signal(id);
+        return signal == null ? Float.NaN : signal.normalize(readFloat(source, signal.property.functionId, signal.property.area));
+    }
+    private List<Float> readFloatArraySignal(IBinder source, String id) {
+        ContentVehicleProtocol.Signal signal = signal(id);
+        List<Float> values = signal == null ? new ArrayList<Float>() : readFloatArray(source, signal.property.functionId, signal.property.area);
+        for (int i = 0; i < values.size(); i++) values.set(i, signal.normalize(values.get(i)));
+        return values;
+    }
+    private int[] readMappedRaw(IBinder source, ContentVehicleProtocol.Mapping mapping) {
+        if (mapping == null || !mapping.isVehicle()) return new int[0];
+        if ("brightness_array".equals(mapping.kind)) {
+            ContentVehicleProtocol.Property address = mapping.reads.get(0);
+            List<Integer> values = readIntArray(source, address.functionId, address.area);
+            if (values.size() != 2) return new int[0];
+            return new int[] { values.get(0), values.get(1) };
+        }
+        int[] values = new int[mapping.reads.size()];
+        for (int i = 0; i < values.length; i++) {
+            ContentVehicleProtocol.Property address = mapping.reads.get(i);
+            values[i] = readInt(source, address.functionId, address.area);
+        }
+        return values;
+    }
+    private int readSemantic(IBinder source, String id) { return readSemantic(source, readMapping(id)); }
+    private int readSemantic(IBinder source, ContentVehicleProtocol.Mapping mapping) {
+        return mapping == null ? -1 : mapping.normalize(readMappedRaw(source, mapping));
     }
 
     @Override
@@ -216,7 +292,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     @Override
     public synchronized boolean isFeatureAvailable(String featureId, int target) {
         if (!running || binder == null || workerHandler == null || featureId == null
-                || target < 0 || target > 1) return false;
+                || target < 0 || target > 1 || writeFor(featureId, target) == null) return false;
         ContentPorts.FeatureSnapshot features = latestSnapshot.featureSnapshot;
         if (features == null) return false;
         if ("glove_box".equals(featureId)) return target == 1;
@@ -240,7 +316,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     public boolean requestFeature(String featureId, int target, long requestId, long deadlineUptimeMs) {
         if (!isFeatureAvailable(featureId, target) || requestId <= 0L
                 || deadlineUptimeMs <= android.os.SystemClock.uptimeMillis()) return false;
-        ContentVehicleProtocol.Write write = ContentVehicleProtocol.featureWrite(featureId, target);
+        ContentVehicleProtocol.Write write = writeFor(featureId, target);
         if (write == null) return false;
         if ("rear_fog".equals(featureId) || "wiper_maintenance".equals(featureId)) {
             return queueFreshFeatureCommand(featureId, target, write, requestId, deadlineUptimeMs);
@@ -253,15 +329,17 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         return running && binder != null && workerHandler != null
                 && latestSnapshot.featureSnapshot != null
                 && latestSnapshot.featureSnapshot.centerBrightnessKnown
-                && level >= 1 && level <= 10;
+                && writeFor("brightness", level) != null;
     }
 
     @Override
     public boolean requestCenterBrightness(final int level, final long requestId, long deadlineUptimeMs) {
         if (!isCenterBrightnessAvailable(level) || requestId <= 0L
                 || deadlineUptimeMs <= android.os.SystemClock.uptimeMillis()) return false;
-        final int[] values = ContentVehicleProtocol.centerBrightnessWrite(level);
-        if (values == null) return false;
+        final ContentVehicleProtocol.Mapping mapped = mapping("brightness");
+        final ContentVehicleProtocol.Write write = writeFor("brightness", level);
+        if (mapped == null || write == null) return false;
+        final int[] values = new int[] { mapped.arrayPrefix, write.value };
         final IBinder currentBinder;
         final Handler worker;
         synchronized (this) {
@@ -277,7 +355,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                             return;
                         }
                     }
-                    sendDataArray(currentBinder, CENTER_BRIGHTNESS, AREA_DRIVER, values);
+                    sendDataArray(currentBinder, write.functionId, write.area, values);
                     reportCommandSent(requestId);
                 } catch (RemoteException | RuntimeException error) {
                     reportCommandFailure(requestId, "中控亮度请求失败，请查看车机状态");
@@ -293,7 +371,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         VehicleControl control = VehicleControl.fromId(controlId);
         if (control != null && control.isRearWindow()) return isRearWindowControlAvailable(controlId);
         return running && binder != null && workerHandler != null
-                && ContentVehicleProtocol.supportsLevelControl(controlId);
+                && readMapping(controlId) != null;
     }
 
     @Override
@@ -307,7 +385,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     @Override
     public synchronized boolean isControlLevelAvailable(String controlId, int level) {
         if (!isControlAvailable(controlId)
-                || ContentVehicleProtocol.controlLevelWrite(controlId, level) == null) return false;
+                || writeFor(controlId, level) == null) return false;
         VehicleControl control = VehicleControl.fromId(controlId);
         switch (control) {
             case Ventilation:
@@ -334,7 +412,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
 
     @Override
     public boolean requestLock(boolean locked, long requestId) {
-        return queueCommand(ContentVehicleProtocol.lockWrite(locked), requestId);
+        return isLockAvailable() && queueCommand(writeFor("lock", locked ? 1 : 0), requestId);
     }
 
     @Override
@@ -347,7 +425,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         VehicleControl control = VehicleControl.fromId(controlId);
         if (control != null && control.isRearWindow()) return false;
         if (!isControlLevelAvailable(controlId, level)) return false;
-        return queueCommand(ContentVehicleProtocol.controlLevelWrite(controlId, level), requestId);
+        return queueCommand(writeFor(controlId, level), requestId);
     }
 
     @Override
@@ -359,7 +437,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 || deadlineUptimeMs <= android.os.SystemClock.uptimeMillis()
                 || expectedLevel == targetLevel
                 || control == VehicleControl.RearWash && (expectedLevel != 0 || targetLevel != 1)
-                || !isRearWindowControlAvailable(controlId)) return false;
+                || writeFor(controlId, targetLevel) == null || !isRearWindowControlAvailable(controlId)) return false;
         RearRequest request = new RearRequest(control, expectedLevel, targetLevel, requestId,
                 deadlineUptimeMs, binder, workerHandler);
         rearRequest = request;
@@ -412,8 +490,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         try {
             // Re-read immediately before the non-idempotent write. A changed or already reached
             // target never causes a compensating toggle; the caller can inspect the new actual.
-            int level = ContentVehicleProtocol.normalizeRearWindowLevel(
-                    getData(request.sourceBinder, request.write.functionId, AREA_DRIVER));
+            int level = readSemantic(request.sourceBinder, request.mapping);
             if (!admitRearWork(request)) return;
             publishRearState(request, level, 0L);
             if (level != request.expectedLevel) {
@@ -429,7 +506,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 // it cannot retract a synchronous transaction once admitted here.
                 request.writeAttempted = true;
             }
-            sendData(request.sourceBinder, request.write.functionId, AREA_DRIVER, request.write.value);
+            sendData(request.sourceBinder, request.write.functionId, request.write.area, request.write.value);
             synchronized (this) { request.writeReturned = true; }
             if (admitRearWork(request)) request.worker.post(request.readback);
         } catch (RemoteException | RuntimeException error) {
@@ -444,8 +521,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         }
         if (!admitRearWork(request)) return;
         try {
-            int level = ContentVehicleProtocol.normalizeRearWindowLevel(
-                    getData(request.sourceBinder, request.write.functionId, AREA_DRIVER));
+            int level = readSemantic(request.sourceBinder, request.mapping);
             if (!admitRearWork(request)) return;
             if (level < 0) {
                 publishRearState(request, -1, 0L);
@@ -464,7 +540,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 } else request.worker.postDelayed(request.readback, Math.min(REAR_READBACK_INTERVAL_MS,
                         Math.max(1L, request.deadlineUptimeMs - android.os.SystemClock.uptimeMillis())));
             }
-        } catch (RemoteException | RuntimeException error) {
+        } catch (RuntimeException error) {
             Log.w(TAG, "rear-window readback failed", error);
             publishRearState(request, -1, 0L);
             failRearRequest(request, "后窗状态读取失败，请查看车机状态");
@@ -496,7 +572,9 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
     }
 
     @Override
-    public boolean isSeatControlAvailable(String seatId) {
+    public synchronized boolean isSeatControlAvailable(String seatId) {
+        VehicleControl control = VehicleControl.fromId(seatId);
+        if (control == null || control == VehicleControl.Lock || control.isRearWindow()) return false;
         return isControlAvailable(seatId);
     }
 
@@ -647,10 +725,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                         reportCommandFailure(requestId, "车控请求已超时，命令未发送");
                         return;
                     }
-                    int raw = getData(currentBinder, write.functionId, write.area);
-                    int actual = "rear_fog".equals(featureId)
-                            ? ContentVehicleProtocol.normalizeBinarySwitch(raw)
-                            : ContentVehicleProtocol.normalizeWiperMaintenance(raw);
+                    int actual = readSemantic(currentBinder, featureId);
                     if (actual < 0) {
                         reportCommandFailure(requestId, "车控状态未知，命令未发送");
                         return;
@@ -701,7 +776,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                         }
                     }
                     if (write.ensureMassageOn) {
-                        sendMassageStrength(currentBinder, write.value);
+                        sendMappedMassageStrength(currentBinder, write);
                     } else {
                         sendData(currentBinder, write.functionId, write.area, write.value);
                     }
@@ -716,6 +791,26 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 }
             }
         });
+    }
+
+    private void sendMappedMassageStrength(IBinder source, ContentVehicleProtocol.Write write) throws RemoteException {
+        ContentVehicleProtocol.Mapping mapping = mapping("seat_massage");
+        ContentVehicleProtocol.MassagePreparation p = mapping == null ? null : mapping.preparation;
+        if (p == null) throw new RemoteException("massage mapping unavailable");
+        int state = getData(source, p.switchProperty.functionId, p.switchProperty.area);
+        if (state == p.off) sendData(source, p.switchProperty.functionId, p.switchProperty.area, p.on);
+        else if (state != p.on) throw new RemoteException("massage switch unavailable");
+        long deadline = android.os.SystemClock.uptimeMillis() + MASSAGE_START_TIMEOUT_MS;
+        do {
+            state = getData(source, p.switchProperty.functionId, p.switchProperty.area);
+            int mode = getData(source, p.modeProperty.functionId, p.modeProperty.area);
+            int strength = getData(source, p.strengthProperty.functionId, p.strengthProperty.area);
+            if (state == p.on && mode >= p.modeMin && mode <= p.modeMax && strength >= p.strengthMin && strength <= p.strengthMax) break;
+            if (state != p.off && state != p.on || android.os.SystemClock.uptimeMillis() >= deadline)
+                throw new RemoteException("massage did not initialize");
+            android.os.SystemClock.sleep(100L);
+        } while (true);
+        sendData(source, write.functionId, write.area, write.value);
     }
 
     static void ensureMassageReady(IBinder currentBinder) throws RemoteException {
@@ -842,18 +937,18 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         final AutomotiveGearReader reader;
         synchronized (this) { readWorker = workerHandler; reader = gearReader; }
         VehicleGear gear = reader == null ? VehicleGear.Unknown : reader.readGear();
-        float temperature = readFloat(currentBinder, CABIN_TEMPERATURE, 1);
-        float soc = readFloat(currentBinder, BATTERY_SOC, AREA_DRIVER);
+        float temperature = readFloatSignal(currentBinder, "cabin_temperature");
+        float soc = readFloatSignal(currentBinder, "battery_soc");
         int battery = Float.isNaN(soc) || soc < 0.0f || soc > 100.0f ? -1 : Math.round(soc);
-        int range = readInt(currentBinder, RANGE_REMAINING, AREA_DRIVER);
-        int connection = readInt(currentBinder, CHARGE_CONNECTION, AREA_DRIVER);
-        int bms = readInt(currentBinder, CHARGE_BMS, AREA_DRIVER);
-        int schedule = readInt(currentBinder, CHARGE_SCHEDULE, AREA_DRIVER);
+        int range = readIntSignal(currentBinder, "range_remaining");
+        int connection = readIntSignal(currentBinder, "charge_connection");
+        int bms = readIntSignal(currentBinder, "charge_bms");
+        int schedule = readIntSignal(currentBinder, "charge_schedule");
         // S56 CSV: voltage 0x344 is INT32 (40); current 0x345 is FLOAT (60).
         // getDataFloat rejects INT32 properties with the OEM -1000 sentinel.
-        float hvVoltage = readInt(currentBinder, CHARGE_HV_VOLTAGE, AREA_DRIVER);
-        float hvCurrent = readFloat(currentBinder, CHARGE_HV_CURRENT, AREA_DRIVER);
-        int remainingRaw = readInt(currentBinder, CHARGE_REMAINING_TIME, AREA_DRIVER);
+        float hvVoltage = readIntSignal(currentBinder, "charge_hv_voltage");
+        float hvCurrent = readFloatSignal(currentBinder, "charge_hv_current");
+        int remainingRaw = readIntSignal(currentBinder, "charge_remaining_time");
         if (connection != lastChargeConnection || bms != lastChargeBms
                 || schedule != lastChargeSchedule) {
             Log.i(TAG, "charge raw connection=" + connection + " bms=" + bms
@@ -862,45 +957,42 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
             lastChargeBms = bms;
             lastChargeSchedule = schedule;
         }
-        int seatRaw = readInt(currentBinder, SEAT_HEAT_VENT, AREA_DRIVER);
-        int heatingAutoRaw = readInt(currentBinder, SEAT_DRIVER_AUTO_HEAT, AREA_DRIVER);
-        // Passenger is a dedicated function pair at area0, not the driver function at another seat area.
-        int passengerSeatRaw = readInt(currentBinder, SEAT_PASSENGER_HEAT_VENT, AREA_DRIVER);
-        int passengerHeatingAutoRaw = readInt(currentBinder, SEAT_PASSENGER_AUTO_HEAT, AREA_DRIVER);
-        int steeringRaw = readInt(currentBinder, STEERING_HEAT, AREA_DRIVER);
-        int steeringActiveRaw = readInt(currentBinder, STEERING_HEAT_ACTIVE, AREA_DRIVER);
-        int massageSwitchRaw = readInt(currentBinder, MASSAGE_SWITCH, AREA_DRIVER);
-        int massageStrengthRaw = readInt(currentBinder, MASSAGE_STRENGTH, AREA_DRIVER);
-        int massageModeRaw = readInt(currentBinder, MASSAGE_MODE, AREA_DRIVER);
-        int lockRaw = readInt(currentBinder, LOCK_STATE, AREA_DRIVER);
-        int wiperRaw = readInt(currentBinder, FRONT_WIPER, AREA_DRIVER);
-        int wiper = ContentVehicleProtocol.normalizeWiperLevel(wiperRaw);
+        int ventilation = readSemantic(currentBinder, "seat_ventilation");
+        ContentVehicleProtocol.Mapping heatingMapping = mapping("seat_heating"), passengerMapping = mapping("passenger_seat_heating");
+        int[] heatingRaw = readMappedRaw(currentBinder, heatingMapping), passengerRaw = readMappedRaw(currentBinder, passengerMapping);
+        int heating = heatingMapping == null ? -1 : heatingMapping.normalize(heatingRaw);
+        int passengerHeating = passengerMapping == null ? -1 : passengerMapping.normalize(passengerRaw);
+        int steering = readSemantic(currentBinder, "steering_heating");
+        int massage = readSemantic(currentBinder, "seat_massage");
+        ContentVehicleProtocol.Mapping massageMapping = mapping("seat_massage");
+        ContentVehicleProtocol.MassagePreparation massagePreparation = massageMapping == null ? null : massageMapping.preparation;
+        int massageSwitch = massagePreparation == null ? -1 : readInt(currentBinder,
+                massagePreparation.switchProperty.functionId, massagePreparation.switchProperty.area);
+        int massageModeRaw = massagePreparation == null ? -1 : readInt(currentBinder,
+                massagePreparation.modeProperty.functionId, massagePreparation.modeProperty.area);
+        boolean massageSwitchKnown = massagePreparation != null && (massageSwitch == massagePreparation.on || massageSwitch == massagePreparation.off);
+        boolean massageActive = massagePreparation != null && massageSwitch == massagePreparation.on;
+        int lock = readSemantic(currentBinder, "lock");
+        boolean lockKnown = lock >= 0;
+        int wiper = readSemantic(currentBinder, "front_wiper");
         boolean wiperKnown = wiper >= 0;
-        int rearWiper = ContentVehicleProtocol.normalizeRearWindowLevel(readInt(currentBinder, REAR_WIPER, AREA_DRIVER));
-        int rearWash = ContentVehicleProtocol.normalizeRearWindowLevel(readInt(currentBinder, REAR_WASH, AREA_DRIVER));
-        int rearFog = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, REAR_FOG, AREA_DRIVER));
-        int passengerWindowLock = normalizePassengerWindowLock(readInt(currentBinder, REAR_WINDOW_DISABLE, AREA_DRIVER));
-        int maintenance = ContentVehicleProtocol.normalizeWiperMaintenance(
-                readInt(currentBinder, FRONT_WIPER_MAINTENANCE, AREA_DRIVER));
-        int leftChild = ContentVehicleProtocol.normalizeChildLock(readInt(currentBinder, REAR_CHILD_LOCK_STATE, AREA_REAR_LEFT));
-        int rightChild = ContentVehicleProtocol.normalizeChildLock(readInt(currentBinder, REAR_CHILD_LOCK_STATE, AREA_REAR_RIGHT));
-        int wireless = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, WIRELESS_CHARGING_SWITCH, AREA_DRIVER));
-        int wirelessActual = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, WIRELESS_CHARGING_STATE, AREA_DRIVER));
-        int[] windowPositions = new int[] {
-                readInt(currentBinder, WINDOW_POSITION, WINDOW_POS_LEFT_FRONT),
-                readInt(currentBinder, WINDOW_POSITION, WINDOW_POS_RIGHT_FRONT),
-                readInt(currentBinder, WINDOW_POSITION, WINDOW_POS_LEFT_REAR),
-                readInt(currentBinder, WINDOW_POSITION, WINDOW_POS_RIGHT_REAR),
-        };
+        int rearWiper = readSemantic(currentBinder, "rear_wiper"), rearWash = readSemantic(currentBinder, "rear_wash");
+        int rearFog = readSemantic(currentBinder, "rear_fog");
+        int passengerWindowLock = readSemantic(currentBinder, "passenger_window_lock");
+        int maintenance = readSemantic(currentBinder, "wiper_maintenance");
+        int leftChild = readSemantic(currentBinder, "left_child_lock"), rightChild = readSemantic(currentBinder, "right_child_lock");
+        int wireless = readSemantic(currentBinder, "wireless_charging");
+        int wirelessActual = readIntSignal(currentBinder, "wireless_charging_actual");
+        int[] windowPositions = readMappedRaw(currentBinder, mapping("window_vent"));
         boolean windowPositionsKnown = allKnownWindowPositions(windowPositions);
-        int windowVent = windowPositionsKnown ? ContentVehicleProtocol.normalizeWindowMode(windowPositions) : -1;
-        int external = ContentVehicleProtocol.normalizeBinarySwitch(readInt(currentBinder, EXTERNAL_DISCHARGE_SWITCH, AREA_DRIVER));
-        List<Integer> brightnessValues = readIntArray(currentBinder, CENTER_BRIGHTNESS, AREA_DRIVER);
-        int centerBrightness = ContentVehicleProtocol.normalizeCenterBrightness(brightnessValues);
-        List<Float> externalStatus = readFloatArray(currentBinder, EXTERNAL_DISCHARGE_STATUS, AREA_DRIVER);
+        ContentVehicleProtocol.Mapping windowMapping = mapping("window_vent");
+        int windowVent = windowMapping == null ? -1 : windowMapping.normalize(windowPositions);
+        int external = readSemantic(currentBinder, "external_discharge");
+        int centerBrightness = readSemantic(currentBinder, "brightness");
+        List<Float> externalStatus = readFloatArraySignal(currentBinder, "external_discharge_status");
         boolean externalStatusKnown = ContentVehicleProtocol.isKnownExternalStatus(externalStatus);
         float[] externalStatusValues = toFloatArray(externalStatus);
-        int screenGear = readInt(currentBinder, SCREEN_CLEAN_GEAR, AREA_DRIVER);
+        int screenGear = readIntSignal(currentBinder, "screen_gear");
         ContentPorts.FeatureSnapshot featureSnapshot = new ContentPorts.FeatureSnapshot(
                 rearFog, passengerWindowLock, maintenance, -1, leftChild, rightChild, wireless,
                 windowVent, external, -1, centerBrightness, centerBrightness >= 0,
@@ -914,21 +1006,11 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         }
         int remainingMinutes = normalizeChargeRemainingMinutes(remainingRaw);
         float chargePowerKw = computeChargePowerKw(chargeState, hvVoltage, hvCurrent);
-        boolean heatingAutoKnown = ContentVehicleProtocol.isKnownHeatingAuto(heatingAutoRaw);
-        boolean heatingAutoActive = ContentVehicleProtocol.isHeatingAutoActive(heatingAutoRaw);
-        int ventilation = ContentVehicleProtocol.normalizeVentilationLevel(seatRaw);
-        int heating = ContentVehicleProtocol.normalizeHeatingLevel(seatRaw, heatingAutoRaw);
-        boolean passengerHeatingAutoKnown = ContentVehicleProtocol.isKnownHeatingAuto(passengerHeatingAutoRaw);
-        boolean passengerHeatingAutoActive = ContentVehicleProtocol.isHeatingAutoActive(passengerHeatingAutoRaw);
-        int passengerHeating = ContentVehicleProtocol.normalizeHeatingLevel(VehicleControl.PassengerHeating,
-                passengerSeatRaw, passengerHeatingAutoRaw);
-        int steering = ContentVehicleProtocol.normalizeSteeringLevel(steeringRaw, steeringActiveRaw);
-        boolean massageSwitchKnown = ContentVehicleProtocol.isKnownMassageSwitch(massageSwitchRaw);
-        boolean massageActive = ContentVehicleProtocol.isMassageActive(massageSwitchRaw);
-        int massage = ContentVehicleProtocol.normalizeMassageLevel(massageSwitchRaw, massageStrengthRaw);
-        boolean seatKnown = ventilation >= 0 || heating >= 0 || passengerHeating >= 0
-                || steering >= 0 || massageSwitchKnown;
-        boolean lockKnown = ContentVehicleProtocol.isKnownLockState(lockRaw);
+        int heatingAuto = heatingMapping == null ? -1 : heatingMapping.automaticCompanionState(heatingRaw, VehicleControl.Heating.getAutomaticLevel());
+        int passengerAuto = passengerMapping == null ? -1 : passengerMapping.automaticCompanionState(passengerRaw, VehicleControl.PassengerHeating.getAutomaticLevel());
+        boolean heatingAutoKnown = heatingAuto >= 0, heatingAutoActive = heatingAuto == 1;
+        boolean passengerHeatingAutoKnown = passengerAuto >= 0, passengerHeatingAutoActive = passengerAuto == 1;
+        boolean seatKnown = ventilation >= 0 || heating >= 0 || passengerHeating >= 0 || steering >= 0 || massageSwitchKnown;
         boolean available = !Float.isNaN(temperature) || battery >= 0 || range >= 0
                 || connection >= 0 || bms >= 0 || schedule >= 0
                 || !Float.isNaN(chargePowerKw) || remainingMinutes >= 0
@@ -941,7 +1023,7 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
                 remainingMinutes, ventilation, heating, heatingAutoKnown, heatingAutoActive,
                 passengerHeating, passengerHeatingAutoKnown, passengerHeatingAutoActive, steering,
                 massage, massageModeRaw, massageSwitchKnown,
-                massageActive, seatKnown, lockKnown, ContentVehicleProtocol.isLocked(lockRaw), wiper, wiperKnown,
+                massageActive, seatKnown, lockKnown, lock == 1, wiper, wiperKnown,
                 rearWiper, rearWiper >= 0, rearWash, rearWash >= 0, "", 0L, false)
                 .withFeatureSnapshot(featureSnapshot).withGear(gear);
         synchronized (this) {
@@ -1005,7 +1087,10 @@ public final class ContentVehicleAdapter implements ContentPorts.VehiclePort {
         try {
             List<?> values = getDataArray(currentBinder, functionId, area);
             List<Integer> result = new ArrayList<>();
-            for (Object value : values) if (value instanceof Number) result.add(((Number) value).intValue());
+            for (Object value : values) {
+                if (!(value instanceof Integer)) return new ArrayList<>();
+                result.add((Integer) value);
+            }
             return result;
         } catch (RemoteException | RuntimeException error) {
             return new ArrayList<>();

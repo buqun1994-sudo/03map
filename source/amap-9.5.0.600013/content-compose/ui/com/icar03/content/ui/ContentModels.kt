@@ -1,5 +1,6 @@
 package com.icar03.content.ui
 
+import com.icar03.content.model.ControlCatalog
 import com.icar03.content.model.LyricPreferenceRules
 import com.icar03.content.model.GestureAction
 import com.icar03.content.model.GestureCommand
@@ -33,12 +34,12 @@ enum class ShortcutId(
     LeftChildLock(feature = VehicleFeature.LeftChildLock),
     RightChildLock(feature = VehicleFeature.RightChildLock),
     WirelessCharging(feature = VehicleFeature.WirelessCharging),
-    WindowVent(feature = VehicleFeature.WindowVent),
+    WindowVent(feature = VehicleFeature.WindowVent, title = "车窗透气开关"),
     ExternalDischarge(feature = VehicleFeature.ExternalDischarge),
     PassengerSeatAdjust(feature = VehicleFeature.PassengerSeatAdjust),
     Wiper(ControlId.Wiper, QuickControlType.SteppedVertical, QuickControlPlacement.Vertical),
     ScreenClean(type = QuickControlType.OrdinaryToggle, title = "清洁屏幕"),
-    ControlCenter(title = "控制中心");
+    ControlCenter(title = "系统控制中心");
     val label: String get() = title ?: control?.label ?: feature?.label ?: name
 }
 enum class SystemQuickControl(val label: String) {
@@ -57,6 +58,52 @@ enum class SystemQuickControl(val label: String) {
     }
 }
 
+enum class ControlCenterEditAction {
+    Open,
+    Close,
+    BeginEdit,
+    EndEdit,
+    ToggleAddPanel,
+    MoveItem,
+    RemoveItem,
+    AddItem,
+    OpenCardList,
+    CloseCardList,
+    BeginCardEdit,
+    EndCardEdit,
+    ToggleCardAddPanel,
+    AddCard,
+    RemoveCard,
+    MoveCard,
+    SelectCard,
+    BeginDockEdit,
+    EndDockEdit,
+    MoveDockItem,
+    RemoveDockItem,
+    AddDockItem,
+    DockShowNamesChanged,
+    ImportVehicleConfig,
+}
+
+enum class LayoutInput {
+    /** A visible control or a blank-area dismissal accepted as a click. */
+    Tap,
+    /** A long press claimed the pointer and opened an editor. */
+    LongPress,
+    /** A pointer drag preview was committed. */
+    Drag,
+    /** A configured multi-finger command; it is intentionally silent. */
+    Gesture,
+}
+
+data class LayoutAction(
+    val action: ControlCenterEditAction,
+    val id: String = "",
+    val from: Int = -1,
+    val to: Int = -1,
+    val value: Boolean = false,
+    val input: LayoutInput = LayoutInput.Tap,
+) : ContentEvent
 /** Grid placement is metadata, independent of Dock membership. */
 object ShortcutGrid {
     // New feature descriptors keep their domain owner; grid registration requires a completed UI consumer.
@@ -76,8 +123,8 @@ object ShortcutGrid {
 object DockShortcuts {
     const val MAX_BUTTONS = 6
     val items: List<ShortcutId> = checkedItems(listOf(
-        ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation,
-        ShortcutId.Heating, ShortcutId.Massage, ShortcutId.Settings,
+        ShortcutId.Lock, ShortcutId.AutoWiper, ShortcutId.WindowVent,
+        ShortcutId.GloveBox, ShortcutId.ControlCenter, ShortcutId.Settings,
     ))
 
     internal fun checkedItems(items: List<ShortcutId>): List<ShortcutId> {
@@ -91,11 +138,12 @@ object DockShortcuts {
     }
 }
 
-enum class PanelPage { Shortcuts, Lyrics }
+enum class PanelPage { VehicleInfo, Lyrics, Projection, ControlCenter, Shortcuts }
 enum class SettingsSection(val label: String, val description: String) {
     Home("设置", "选择要调整的内容区域"),
     TopBar("状态栏", "时间、温度、电量和充电信息"),
     Layout("底栏", "底部快捷按钮的显示数量"),
+    VehicleConfig("配置文件", "车型车控语义和只读自检"),
     Lyrics("歌词", "字号、行距和声部呈现"),
     Artwork("背景", "歌曲封面背景的显示方式"),
     Media("媒体", "媒体卡的附加入口"),
@@ -166,7 +214,7 @@ data class LyricsState(
 /** Clock text is a separate presentation domain, not a media progress projection. */
 data class ClockText(val time: String = "--:--", val weekday: String = "")
 data class ContentUiState(
-    val dark: Boolean = false, val page: PanelPage = PanelPage.Shortcuts,
+    val dark: Boolean = false, val page: PanelPage = PanelPage.Lyrics,
     val scenario: PreviewScenario = PreviewScenario.Ready,
     val temperature: String = "25°", val time: String = "12:24", val range: String = "366",
     val controls: Map<ControlId, ControlState> = ControlId.entries.associateWith { ControlState(if (it == ControlId.Lock) 1 else 0) },
@@ -216,11 +264,42 @@ data class ContentUiState(
     val features: Map<VehicleFeature, FeatureState> = VehicleFeature.entries.associateWith { FeatureState() },
     val systemLevels: Map<SystemQuickControl, LevelState> = SystemQuickControl.entries.associateWith { LevelState(0f, available = false) },
     val screenCleanAvailable: Boolean = false,
+     val enabledControlIds: Set<String> = emptySet(),
+     val enabledFeatureIds: Set<String> = emptySet(),
+     val enabledSystemIds: Set<String> = emptySet(),
+     val enabledContentIds: Set<String> = emptySet(),
      val controlCenterAvailable: Boolean = true,
-) {
+      val appControlCenterAvailable: Boolean = true,
+     val controlCenterOpen: Boolean = false,
+     val controlCenterEditing: Boolean = false,
+     val controlCenterAddPanelOpen: Boolean = false,
+     val controlCenterItems: List<String> = emptyList(),
+     val controlCenterAvailableItems: List<String> = emptyList(),
+     val controlCardIds: List<String> = listOf("media"),
+     val controlCardAvailableItems: List<String> = emptyList(),
+     val gestureAvailableItems: List<String> = emptyList(),
+     val vehicleConfigSelfCheckCacheHit: Boolean = false,
+     val controlCardIndex: Int = 0,
+     val controlCardListOpen: Boolean = false,
+     val controlCardEditing: Boolean = false,
+     val controlCardAddPanelOpen: Boolean = false,
+     val dockEditing: Boolean = false,
+     val dockItems: List<String> = emptyList(),
+     val dockAvailableItems: List<String> = emptyList(),
+     val layoutPreferencesLoaded: Boolean = false,
+     val dockShowNames: Boolean = false,
+     val vehicleProfileId: String = "",
+     val vehicleConfigFileName: String = "",
+     val vehicleProfileDisplayName: String = "",
+     val vehicleConfigValid: Boolean = false,
+     val vehicleConfigSelfCheckRan: Boolean = false,
+     val vehicleConfigMessage: String = "车控配置未加载",
+ ) {
     /** Only interactive surfaces consume this preference; facts and the scene stay opaque. */
     val interfaceOpacity: Float get() = uiOpacity.takeIf { it.isFinite() }?.coerceIn(.20f, 1f) ?: 1f
     val canCollapseSettings: Boolean get() = settingsOpen && settingsSection == SettingsSection.Lyrics
+    val editorWantsFullscreen: Boolean get() = controlCenterOpen && controlCenterEditing && controlCenterAddPanelOpen ||
+        controlCardListOpen && controlCardAddPanelOpen
 }
 sealed interface ContentEvent {
     data class ControlTapped(val id: ControlId) : ContentEvent
@@ -248,6 +327,7 @@ sealed interface ContentEvent {
     data object SettingsBack : ContentEvent
     data object SettingsCollapseTapped : ContentEvent
     data object SettingsRestored : ContentEvent
+    data object OpenVehicleConfigSettings : ContentEvent
     data object OpenLyricsSettings : ContentEvent
     // The map host consumes these intents through its existing presentation port.
     data object EnterLyricsImmersive : ContentEvent
@@ -300,7 +380,7 @@ sealed interface ContentEvent {
 
 /** Settings remains modal until its content-layer exit finishes. */
 fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
-    ContentEvent.SettingsTapped, ContentEvent.SettingsBack, ContentEvent.OpenLyricsSettings,
+    ContentEvent.SettingsTapped, ContentEvent.SettingsBack, ContentEvent.OpenLyricsSettings, ContentEvent.OpenVehicleConfigSettings,
     ContentEvent.SettingsDismissed, ContentEvent.SettingsCollapseTapped, ContentEvent.SettingsRestored, ContentEvent.DismissSheet,
     is LyricsPlatformSelected, AppleMusicConnectRequested, AppleMusicLoginDismissed, AppleMusicDisconnectRequested,
     is ContentEvent.SettingsSectionSelected, is ContentEvent.ShowWeekdayChanged, is ContentEvent.ShowSecondsChanged,
@@ -327,9 +407,27 @@ fun ContentEvent.isSettingsInteraction(): Boolean = when (this) {
     else -> false
 }
 
-/** Fixtures are labeled preview data, never inferred vehicle state. */
+fun ContentEvent.isLayoutEditorInteraction(): Boolean = this is LayoutAction
+
+
 fun previewState(scenario: PreviewScenario = PreviewScenario.Ready): ContentUiState {
-    val base = ContentUiState(scenario = scenario)
+    val base = ContentUiState(
+        scenario = scenario,
+        page = PanelPage.VehicleInfo,
+        enabledControlIds = ControlCatalog.forSection(com.icar03.content.model.ControlSection.Control).map { it.id }.toSet(),
+        enabledFeatureIds = ControlCatalog.forSection(com.icar03.content.model.ControlSection.Feature).filter { it.implemented }.map { it.id }.toSet(),
+        enabledSystemIds = ControlCatalog.forSection(com.icar03.content.model.ControlSection.System).map { it.id }.toSet(),
+        enabledContentIds = ControlCatalog.forSection(com.icar03.content.model.ControlSection.Content).map { it.id }.toSet(),
+        controlCenterItems = ControlCatalog.forSurface(com.icar03.content.model.ControlSurface.ControlCenter)
+            .filter { it.implemented && it.id != ControlCatalog.CONTROL_CENTER_PAGE }.map { it.id },
+        controlCenterAvailableItems = ControlCatalog.forSurface(com.icar03.content.model.ControlSurface.ControlCenter).filter { it.implemented }.map { it.id },
+        controlCardIds = listOf(ControlCatalog.MEDIA),
+        controlCardAvailableItems = ControlCatalog.forSurface(com.icar03.content.model.ControlSurface.ControlCard).filter { it.implemented }.map { it.id },
+        gestureAvailableItems = ControlCatalog.forSurface(com.icar03.content.model.ControlSurface.Gesture).filter { it.implemented }.map { it.id },
+        dockItems = ControlCatalog.forSurface(com.icar03.content.model.ControlSurface.Dock).filter { it.implemented }.map { it.id },
+        dockAvailableItems = ControlCatalog.forSurface(com.icar03.content.model.ControlSurface.Dock).filter { it.implemented }.map { it.id },
+        layoutPreferencesLoaded = true,
+    )
     return when (scenario) {
         PreviewScenario.NoData -> base.copy(temperature = "--", range = "--", media = MediaState(title = null, artist = null, available = false), controls = base.controls.mapValues { it.value.copy(actual = -1, target = null, available = false, known = false) }, brightness = base.brightness.copy(available = false), volume = base.volume.copy(available = false))
         PreviewScenario.Unavailable -> base.copy(controls = base.controls.mapValues { it.value.copy(actual = -1, target = null, available = false, known = false) }, brightness = base.brightness.copy(available = false), volume = base.volume.copy(available = false), media = base.media.copy(available = false), message = "能力不可用 · 未连接任何车辆或媒体服务")

@@ -176,7 +176,10 @@ class ControlCenterSystemPortTest {
 
     @Test
     fun mapperCachesControlCenterCapabilityWithoutRepublishingLyrics() {
-        val state = ContentState()
+        val state = ContentState().apply {
+            vehicleConfigValid = true
+            enabledSystemIds = setOf("system_control_center")
+        }
         val mapper = ContentUiMapper()
         val lyrics = mapper.mapLyrics(state)
         val lyricsProjectionCount = mapper.lyricsProjectionCount

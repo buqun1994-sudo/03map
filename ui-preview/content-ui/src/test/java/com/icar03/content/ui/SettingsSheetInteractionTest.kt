@@ -43,8 +43,12 @@ open class SettingsSheetInteractionTest {
     protected open val dark = false
     protected open val systemDpi: Int? = null
     @get:Rule val compose = createComposeRule()
-    private val state = mutableStateOf(ContentUiState(previewMode = false,
-        lyricsProviderSettings = LyricsProviderUiState(available = true)))
+    private val state = mutableStateOf(ContentUiState(
+        previewMode = false,
+        page = PanelPage.Shortcuts,
+        layoutPreferencesLoaded = false,
+        lyricsProviderSettings = LyricsProviderUiState(available = true),
+    ))
     private val events = mutableListOf<ContentEvent>()
     private var density = 1f
     private var sounds = 0
@@ -542,56 +546,83 @@ open class SettingsSheetInteractionTest {
         baseline.recycle()
     }
 
-    @Test fun childPagesTravelLeftAndRightNonlinearlyInsideAStationaryShell() {
+    @Test fun childPagesFadeInPlaceInsideAStationaryShell() {
         mount(open = true)
         val shell = unclippedBounds("settings-sheet")
         val header = unclippedBounds("settings-header")
         val home = unclippedBounds("settings-home")
+        val origin = bounds("settings-native-root").topLeft
+        val textColor = settingsDesign(dark).text.toArgb()
+
+        fun colorDistance(first: Int, second: Int): Int = listOf(16, 8, 0).maxOf { shift ->
+            kotlin.math.abs(((first ushr shift) and 255) - ((second ushr shift) and 255))
+        }
+        fun assertNativeFade(label: String, from: Bitmap, to: Bitmap, start: Bitmap, first: Bitmap, second: Bitmap) {
+            val incomingInk = mutableListOf<Pair<Int, Int>>()
+            val outgoingInk = mutableListOf<Pair<Int, Int>>()
+            val left = kotlin.math.ceil(home.left - origin.x).toInt().coerceAtLeast(0)
+            val top = kotlin.math.ceil(home.top - origin.y).toInt().coerceAtLeast(0)
+            val right = kotlin.math.floor(home.right - origin.x).toInt().coerceAtMost(from.width)
+            val bottom = kotlin.math.floor(home.bottom - origin.y).toInt().coerceAtMost(from.height)
+            for (y in top until bottom) for (x in left until right) {
+                val fromInk = colorDistance(from.getPixel(x, y), textColor)
+                val toInk = colorDistance(to.getPixel(x, y), textColor)
+                if (toInk <= 24 && fromInk >= 96) incomingInk += x to y
+                if (fromInk <= 24 && toInk >= 96) outgoingInk += x to y
+            }
+            assertTrue("$label has distinct incoming text pixels", incomingInk.size >= 25)
+            assertTrue("$label has distinct outgoing text pixels", outgoingInk.size >= 25)
+            fun distanceToTarget(frame: Bitmap, pixels: List<Pair<Int, Int>>): Double = pixels.map { (x, y) ->
+                colorDistance(frame.getPixel(x, y), to.getPixel(x, y)).toDouble()
+            }.average()
+            val incomingStart = distanceToTarget(start, incomingInk)
+            val incomingFirst = distanceToTarget(first, incomingInk)
+            val incomingSecond = distanceToTarget(second, incomingInk)
+            assertTrue("$label incoming ink fades in across native frames: $incomingStart, $incomingFirst, $incomingSecond",
+                incomingStart > incomingFirst + 2 && incomingFirst > incomingSecond + 2 && incomingSecond > 2)
+            val outgoingStart = distanceToTarget(start, outgoingInk)
+            val outgoingFirst = distanceToTarget(first, outgoingInk)
+            val outgoingSecond = distanceToTarget(second, outgoingInk)
+            assertTrue("$label outgoing ink fades out across native frames: $outgoingStart, $outgoingFirst, $outgoingSecond",
+                outgoingStart > outgoingFirst + 2 && outgoingFirst > outgoingSecond + 2)
+        }
+        fun assertStationaryPages() {
+            assertRectNear(home, unclippedBounds("settings-home"))
+            assertRectNear(home, unclippedBounds("settings-detail-scroll"))
+            assertRectNear(shell, unclippedBounds("settings-sheet"))
+            assertRectNear(header, unclippedBounds("settings-header"))
+        }
+
+        val homeFrame = capture("settings-child-home-settled")
         compose.mainClock.autoAdvance = false
         compose.onNodeWithTag("settings-menu-TopBar").performClick()
         compose.mainClock.advanceTimeByFrame()
-        val incomingChild = unclippedBounds("settings-detail-scroll")
-        assertTrue("A child enters from the right", incomingChild.left > home.left + shell.width * .9f)
+        assertStationaryPages()
+        val enterStart = capture("settings-child-fade-start")
         compose.mainClock.advanceTimeBy(80)
-        val childFirst = unclippedBounds("settings-detail-scroll")
-        val leavingHome = unclippedBounds("settings-home")
-        assertTrue(childFirst.left > home.left + 1f && childFirst.left < incomingChild.left)
-        assertTrue("The home page leaves toward the left", leavingHome.left < home.left - 1f)
+        assertStationaryPages()
+        val enterFirst = capture("settings-child-fade-80ms")
+        compose.mainClock.advanceTimeBy(80)
+        assertStationaryPages()
+        val enterSecond = capture("settings-child-fade-160ms")
+        compose.mainClock.advanceTimeBy(500)
+        assertRectNear(home, unclippedBounds("settings-detail-scroll"))
         assertRectNear(shell, unclippedBounds("settings-sheet"))
         assertRectNear(header, unclippedBounds("settings-header"))
-        capture("settings-child-enter-right-80ms")
-        compose.mainClock.advanceTimeBy(80)
-        val childSecond = unclippedBounds("settings-detail-scroll")
-        assertTrue(childSecond.left < childFirst.left)
-        assertTrue("Child entrance is nonlinear",
-            incomingChild.left - childFirst.left > (childFirst.left - childSecond.left) * 1.2f)
-        assertEquals(home.top, childSecond.top, 1f)
-        assertRectNear(shell, unclippedBounds("settings-sheet"))
-        capture("settings-child-enter-right-160ms")
-        compose.mainClock.advanceTimeBy(500)
-        assertEquals(home.left, unclippedBounds("settings-detail-scroll").left, 1f)
-        assertEquals(home.top, unclippedBounds("settings-detail-scroll").top, 1f)
-        assertEquals(home.width, unclippedBounds("settings-detail-scroll").width, 1f)
         compose.onNodeWithTag("settings-home").assertDoesNotExist()
+        val childFrame = capture("settings-child-fade-settled")
+        assertNativeFade("Open child", homeFrame, childFrame, enterStart, enterFirst, enterSecond)
 
         compose.onNodeWithTag("settings-back").performClick()
         compose.mainClock.advanceTimeByFrame()
-        val incomingHome = unclippedBounds("settings-home")
-        assertTrue("Home enters from the left", incomingHome.left < home.left - shell.width * .9f)
+        assertStationaryPages()
+        val returnStart = capture("settings-home-fade-start")
         compose.mainClock.advanceTimeBy(80)
-        val homeFirst = unclippedBounds("settings-home")
-        val leavingChild = unclippedBounds("settings-detail-scroll")
-        assertTrue(homeFirst.left < home.left - 1f && homeFirst.left > incomingHome.left)
-        assertTrue("The child leaves toward the right", leavingChild.left > home.left + 1f)
-        assertRectNear(shell, unclippedBounds("settings-sheet"))
-        assertRectNear(header, unclippedBounds("settings-header"))
-        capture("settings-home-enter-left-80ms")
+        assertStationaryPages()
+        val returnFirst = capture("settings-home-fade-80ms")
         compose.mainClock.advanceTimeBy(80)
-        val homeSecond = unclippedBounds("settings-home")
-        assertTrue(homeSecond.left > homeFirst.left)
-        assertTrue("Returning home is nonlinear",
-            homeFirst.left - incomingHome.left > (homeSecond.left - homeFirst.left) * 1.2f)
-        assertEquals(home.top, homeSecond.top, 1f)
+        assertStationaryPages()
+        val returnSecond = capture("settings-home-fade-160ms")
         compose.mainClock.advanceTimeBy(500)
         compose.mainClock.autoAdvance = true
         assertRectNear(home, unclippedBounds("settings-home"))
@@ -599,7 +630,10 @@ open class SettingsSheetInteractionTest {
         assertRectNear(header, unclippedBounds("settings-header"))
         compose.onNodeWithTag("settings-detail-scroll").assertDoesNotExist()
         assertEquals(SettingsSection.Home, state.value.settingsSection)
-        capture("settings-child-return-settled")
+        val returnedHome = capture("settings-child-return-settled")
+        assertNativeFade("Return home", childFrame, returnedHome, returnStart, returnFirst, returnSecond)
+        listOf(homeFrame, enterStart, enterFirst, enterSecond, childFrame,
+            returnStart, returnFirst, returnSecond, returnedHome).forEach { it.recycle() }
     }
 
     @Test fun collapseFlipsTheSuppliedArrowAroundTheSameVisibleCenterAndKeepsPreferences() {

@@ -44,7 +44,7 @@ class ContentPreferenceContractTest {
             val expected = valuesOf(original)
             ContentPreferenceStore(app).save(original)
             assertStoredValues(expected, "round trip $index")
-            assertEquals(10, preferences.getInt(VERSION, -1))
+            assertEquals(11, preferences.getInt(VERSION, -1))
             val loaded = freshLoad()
             assertValues(expected, loaded, "round trip $index")
             assertLegacyValues(original, loaded, "round trip $index")
@@ -65,7 +65,7 @@ class ContentPreferenceContractTest {
 
     @Test fun unversionedAndV1PreferencesMigrateLazilyWithoutLosingLegacyChoicesOrManualMemory() {
         for (hasExplicitVersion in listOf(false, true)) {
-            val legacy = customizedState()
+            val legacy = customizedState().apply { pageIndex = 0; controlIndex = 0 }
             val editor = preferences.edit().clear()
                 .putBoolean("top_bar_show_weekday", false)
                 .putBoolean("top_bar_show_seconds", true)
@@ -85,8 +85,8 @@ class ContentPreferenceContractTest {
             assertEquals("load must not eagerly rewrite v1", before, preferences.all)
 
             ContentPreferenceStore(app).save(migrated)
-            assertEquals(10, preferences.getInt(VERSION, -1))
-            assertStoredValues(expected, "v1 saved as v10")
+            assertEquals(11, preferences.getInt(VERSION, -1))
+            assertStoredValues(expected, "v1 saved as v11")
             val reloaded = freshLoad()
             assertValues(expected, reloaded, "v1 after migration save")
             assertLegacyValues(legacy, reloaded, "v1 after migration save")
@@ -109,12 +109,12 @@ class ContentPreferenceContractTest {
             assertTrue(loaded.gestureBarReminder)
             assertFalse(loaded.showWeekday)
             assertEquals(.6f, loaded.uiOpacity, 0f)
-            assertEquals(0, loaded.pageIndex)
+            assertEquals("removed shortcuts page falls back to vehicle info", 0, loaded.pageIndex)
             assertEquals(4, loaded.rememberedLevel(VehicleControl.Wiper))
             assertEquals(before, preferences.all)
             loaded.immersiveShowTopBar = false
             ContentPreferenceStore(app).save(loaded)
-            assertEquals(10, preferences.getInt(VERSION, -1))
+            assertEquals(11, preferences.getInt(VERSION, -1))
             val reloaded = freshLoad()
             assertFalse(reloaded.immersiveShowTopBar)
             assertTrue(reloaded.immersiveShowDock)
@@ -140,7 +140,7 @@ class ContentPreferenceContractTest {
         assertEquals("theme", loaded.lyricsColorMode)
         assertEquals(0xFF5C66BF.toInt(), loaded.lyricsCustomColor)
         ContentPreferenceStore(app).save(loaded)
-        assertEquals(10, preferences.getInt(VERSION, -1))
+        assertEquals(11, preferences.getInt(VERSION, -1))
         assertValues(valuesOf(loaded), freshLoad(), "v5 migration after save")
     }
     @Test fun v6MigratesImmersiveCurrentFromTheExistingOrdinaryCurrentRatio() {
@@ -246,7 +246,7 @@ class ContentPreferenceContractTest {
                 assertTrue(preferences.edit().putValue(key, invalidValue).commit())
                 val loaded = freshLoad()
                 assertValues(valuesOf(original), loaded, "invalid legacy $key=$invalidValue")
-                assertEquals("page for $key", if (key == PAGE) 1 else original.pageIndex, loaded.pageIndex)
+                assertEquals("page for $key", if (key == PAGE) 0 else original.pageIndex, loaded.pageIndex)
                 assertEquals("control for $key", if (key == CONTROL) 0 else original.controlIndex, loaded.controlIndex)
                 val expectedDock = original.dockItems.clone()
                 if (key.startsWith(DOCK_SLOT_PREFIX)) {

@@ -16,7 +16,7 @@ internal data class OemGlyphViewport(
  * Native calibration: OemGlyphCalibrationNativeTest, 960px transparent tails, alpha >= 8.
  * Each resource/asset/segment is measured separately, including OFF path-opacity recipes.
  * Reproduce the full bounds and canonical source hashes in build/reports/glyph-calibration.json.
- * Calibration report SHA-256: 797f66a7d65006b0038e839e49bf72185e246d9bfec0972929f0e1c942e5ebf3
+ * Calibration report SHA-256 (Dock OEM vectors/Lottie segments 0..29): 05d00e5d894110908df8756bc54e525b282af1a29110d71ce2c7ea0f89b8ef39
  * Lookup and rendering never rasterize, scan pixels or construct per-frame registry keys.
  */
 internal fun oemGlyphViewport(resource: Int, asset: String?, frames: IntRange?): OemGlyphViewport? {
@@ -90,6 +90,10 @@ private val vectorViewports = mapOf(
     R.drawable.content_oem_ico_media_neteasy to v(139, 100, 820, 840),
     R.drawable.content_oem_ico_devices_usb to v(140, 140, 820, 820),
     R.drawable.content_oem_ico_media_local to v(139, 108, 820, 820),
+    R.drawable.content_oem_ico_home_applist to v(120, 120, 840, 840),
+    R.drawable.content_oem_ico_glove_box to v(92, 150, 867, 800),
+    R.drawable.content_oem_ico_window_close to v(110, 130, 850, 810),
+    R.drawable.content_oem_ico_window_half to v(110, 130, 850, 810),
 )
 
 private val lottieViewports = mapOf(
@@ -185,4 +189,12 @@ private val lottieViewports = mapOf(
         "ico_devices_usb.json", null, null, v(140, 142, 820, 821)),
     R.drawable.content_oem_ico_media_local to AnimatedViewport(
         "ico_media_local.json", null, null, v(139, 108, 821, 821)),
+    R.drawable.content_oem_ico_home_applist to AnimatedViewport(
+        "ico_home_applist.json", null, null, v(120, 118, 838, 841)),
+    R.drawable.content_oem_ico_glove_box to AnimatedViewport(
+        "ico_glove_box.json", 0, 29, v(93, 150, 867, 800)),
+    R.drawable.content_oem_ico_window_close to AnimatedViewport(
+        "ico_window_close.json", 0, 29, v(110, 130, 850, 810)),
+    R.drawable.content_oem_ico_window_half to AnimatedViewport(
+        "ico_window_half.json", 0, 29, v(110, 130, 850, 810)),
 )

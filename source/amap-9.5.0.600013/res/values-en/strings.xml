@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Amap Auto</string>
+    <string name="app_name">03地图</string>
     <string name="ca_hour">Hr</string>
     <string name="ca_minute">Min</string>
     <string name="child_process_name_location">:locationservice</string>

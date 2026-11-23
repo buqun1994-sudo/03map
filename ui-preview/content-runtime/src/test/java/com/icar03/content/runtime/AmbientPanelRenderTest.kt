@@ -63,6 +63,7 @@ open class AmbientPanelLightRenderTest {
         val cover = ambientFixtureCover()
         val scene = createAmbientField(cover)!!
         val state = mutableStateOf(previewState().copy(dark = dark, previewMode = false, page = PanelPage.Lyrics,
+            controlCardIds = listOf("media", "climate"), controlCardIndex = 0,
             media = MediaState(title = "封面色场 · 合成验证", artist = "本机测试数据", playing = true, source = MediaSource.CloudMusic, isSong = true),
             lyrics = LyricsState(recordingKey = "test", lines = listOf(
                 LyricLine(0, "让色彩慢慢流动"), LyricLine(1000, "新封面到达，再柔和过渡"), LyricLine(2000, "暂停时保留这一帧")), activeIndex = 0, timelineReady = true)))

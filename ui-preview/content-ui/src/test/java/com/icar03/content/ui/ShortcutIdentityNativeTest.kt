@@ -58,8 +58,13 @@ open class ShortcutIdentityNativeTest {
         CompositionLocalProvider(LocalLifecycleOwner provides owner) { ContentTheme(dark, content) }
     }
 
-    private fun state() = ContentUiState(previewMode = false, dark = dark,
-        shortcutButtons = ShortcutGrid.productionButtons, systemControls = SystemQuickControl.entries,
+    private fun state() = ContentUiState(
+        previewMode = false,
+        dark = dark,
+        page = PanelPage.Shortcuts,
+        layoutPreferencesLoaded = false,
+        shortcutButtons = ShortcutGrid.productionButtons,
+        systemControls = SystemQuickControl.entries,
         features = VehicleFeature.entries.associateWith {
             FeatureState(actual = if (it.action) -1 else 0, known = !it.action, available = true)
         }, systemLevels = SystemQuickControl.entries.associateWith { LevelState(.4f) })

@@ -44,6 +44,13 @@ open class ContentPanelLightPrototypeRenderTest {
     private val hostTag = "prototype-render-host"
     private val events = mutableListOf<ContentEvent>()
 
+    /** Legacy grid/fixed-Dock renderer coverage; Shortcuts is not an ordinary runtime page. */
+    private fun controlsFixture(scenario: PreviewScenario = PreviewScenario.Ready) = previewState(scenario).copy(
+        page = PanelPage.Shortcuts,
+        layoutPreferencesLoaded = false,
+        controlCardIds = listOf("media", "climate"),
+    )
+
     @Test
     fun light_default_matches_required_structure_and_captures_640x1080() {
         compose.setContent {
@@ -58,7 +65,7 @@ open class ContentPanelLightPrototypeRenderTest {
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
             ContentTheme(dark) {
-                ContentPanel(previewState().copy(dark = dark), onEvent = { events += it }, modifier = Modifier.testTag(hostTag))
+                ContentPanel(controlsFixture().copy(dark = dark), onEvent = { events += it }, modifier = Modifier.testTag(hostTag))
             }
         }
         compose.waitForIdle()
@@ -70,8 +77,8 @@ open class ContentPanelLightPrototypeRenderTest {
         val dock = compose.onNodeWithTag("floating-dock").getUnclippedBoundsInRoot()
         assertTrue("dock must float inside 12dp outer gap: $dock", kotlin.math.abs(dock.left.value - 12f) <= 1f && kotlin.math.abs(dock.top.value - 948f) <= 1f && kotlin.math.abs(dock.right.value - 628f) <= 1f && kotlin.math.abs(dock.bottom.value - 1068f) <= 1f)
         val lock = compose.onNodeWithTag("dock-Lock").getUnclippedBoundsInRoot()
-        val ventilation = compose.onNodeWithTag("dock-Ventilation").getUnclippedBoundsInRoot()
-        assertTrue("lock touch area must be larger than each dock slot", lock.right - lock.left > ventilation.right - ventilation.left && lock.bottom - lock.top >= 80.dp)
+        val autoWiper = compose.onNodeWithTag("dock-AutoWiper").getUnclippedBoundsInRoot()
+        assertTrue("fixed Dock slots share stable touch geometry", kotlin.math.abs((lock.right - lock.left).value - (autoWiper.right - autoWiper.left).value) <= 1f)
         compose.onNodeWithText("25°C").assertIsDisplayed()
         compose.onNodeWithText("12:24 星期三").assertIsDisplayed()
         compose.onNodeWithText("366km").assertIsDisplayed()
@@ -148,7 +155,7 @@ open class ContentPanelLightPrototypeRenderTest {
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
             ContentTheme(dark) {
-                ContentPanel(previewState(PreviewScenario.NoData).copy(dark = dark), onEvent = { events += it }, modifier = Modifier.testTag(hostTag))
+                ContentPanel(controlsFixture(PreviewScenario.NoData).copy(dark = dark), onEvent = { events += it }, modifier = Modifier.testTag(hostTag))
             }
         }
         compose.waitForIdle()
@@ -208,7 +215,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test
     fun sources_open_select_and_dismiss_in_both_themes() {
-        val state = androidx.compose.runtime.mutableStateOf(previewState().copy(dark = dark))
+        val state = androidx.compose.runtime.mutableStateOf(controlsFixture().copy(dark = dark))
         compose.setContent {
             val view = LocalView.current
             @Suppress("DEPRECATION")
@@ -271,13 +278,22 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test
     fun runtime_panel_has_only_declared_controls_and_independent_media_capabilities() {
-        val state = ContentUiState(
-            previewMode = false, dark = dark, weekday = "", rangeUnit = "", time = "08:15",
+        val declaredControls = ControlId.entries.map { it.id }.toSet()
+        val state = androidx.compose.runtime.mutableStateOf(previewState().copy(
+            page = PanelPage.VehicleInfo, controlCenterOpen = true, previewMode = false, layoutPreferencesLoaded = true,
+            vehicleConfigValid = true,
+            enabledControlIds = declaredControls,
+            enabledFeatureIds = emptySet(),
+            enabledSystemIds = setOf("brightness", "volume"),
+            enabledContentIds = setOf("media", "settings", "control_center_page"),
+            controlCenterItems = listOf("brightness", "volume") + declaredControls,
+            dockItems = listOf("lock", "front_wiper", "seat_ventilation", "seat_heating", "seat_massage", "settings"),
+            dark = dark, weekday = "", rangeUnit = "", time = "08:15",
             temperature = "--", range = "--", batteryDescription = "电量未知",
             controls = ControlId.entries.associateWith { ControlState(actual = -1, available = false, known = false) },
             brightness = LevelState(0f, available = false), volume = LevelState(.4f),
             media = MediaState(title = null, artist = null, available = false, playbackAvailable = false, nextAvailable = false, sourceAvailable = true),
-        )
+        ))
         compose.setContent {
             val view = LocalView.current
             @Suppress("DEPRECATION")
@@ -288,16 +304,26 @@ open class ContentPanelLightPrototypeRenderTest {
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
-            ContentTheme(dark) { ContentPanel(state, { events += it }, Modifier.testTag(hostTag)) }
+            ContentTheme(dark) {
+                ContentPanel(state.value, { event ->
+                    events += event
+                    when (event) {
+                        is ContentEvent.PageSelected -> state.value = state.value.copy(page = event.page)
+                        is LayoutAction -> state.value = LayoutEditor.reduce(state.value, event)
+                        else -> Unit
+                    }
+                }, Modifier.testTag(hostTag))
+            }
         }
-        ControlId.entries.forEach { compose.onNodeWithTag("control-${it.name}").assertIsDisplayed().assertIsNotEnabled() }
+        ControlId.entries.forEach { id ->
+            compose.onNodeWithTag("control-${id.name}").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        }
         compose.onAllNodesWithText("状态未知").assertCountEquals(0)
         ControlId.entries.forEach { id ->
             compose.onNodeWithTag("control-${id.name}").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "状态未知"))
         }
 
-        compose.onNodeWithTag("shortcut-Settings").performClick()
-        assertTrue(events.last() == ContentEvent.SettingsTapped)
+        compose.onNodeWithTag("shortcut-Settings").assertDoesNotExist()
         compose.onNodeWithTag("shortcut-label-Ventilation", useUnmergedTree = true).assertTextEquals("座椅通风")
         compose.onNodeWithText("08:15").assertIsDisplayed()
         compose.onNodeWithText("08:15星期三").assertDoesNotExist()
@@ -305,58 +331,57 @@ open class ContentPanelLightPrototypeRenderTest {
         compose.onNodeWithText("暂无媒体").assertIsDisplayed()
         compose.onNodeWithContentDescription("播放").assertIsNotEnabled()
         compose.onNodeWithContentDescription("下一首").assertIsNotEnabled()
-        compose.onNodeWithTag("dock-Settings").performClick()
-        assertTrue(events.last() == ContentEvent.SettingsTapped)
-        compose.onNodeWithTag("source-button").performClick()
-        assertTrue(events.last() == ContentEvent.OpenSources)
-        compose.onNodeWithTag("volume-card").performTouchInput { click(androidx.compose.ui.geometry.Offset(width / 2f, height * .1f)) }
+        compose.onNodeWithTag("dock-Settings").assertIsNotEnabled()
+        compose.onNodeWithTag("source-button").assertIsNotEnabled()
+        compose.onNodeWithTag("volume-card").performScrollTo()
+            .performTouchInput { click(androidx.compose.ui.geometry.Offset(width / 2f, height * .1f)) }
         assertTrue(events.last() is ContentEvent.VolumeChanged)
         compose.onNodeWithTag("volume-card").assert(SemanticsMatcher.expectValue(
             androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo,
             androidx.compose.ui.semantics.ProgressBarRangeInfo(.4f, 0f..1f)))
-        captureHost("runtime-unavailable")
-        compose.onNodeWithTag("runtime-pages").performTouchInput { swipeLeft() }
+        captureHost("runtime-unavailable", checkShortcutShadows = false, checkSurfaceShadows = false)
+        compose.onNodeWithContentDescription("关闭控制中心").performClick()
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithTag("dock-Settings").performClick()
+        assertTrue(events.last() == ContentEvent.SettingsTapped)
+        compose.onNodeWithTag("source-button").performClick()
+        assertTrue(events.last() == ContentEvent.OpenSources)
+        compose.runOnIdle { state.value = state.value.copy(page = PanelPage.VehicleInfo, layoutPreferencesLoaded = true) }
         compose.waitForIdle()
-        assertTrue(events.contains(ContentEvent.PageSelected(PanelPage.Lyrics)))
+        compose.onNodeWithTag("runtime-pages").assertDoesNotExist()
         compose.onNodeWithText("暂无歌词").assertIsDisplayed()
+        assertTrue(events.none { it is ContentEvent.PageSelected })
         compose.onNodeWithText("此处仅预览歌词空态。").assertDoesNotExist()
     }
 
     @Test
-    fun dockCountPreferenceKeepsBothFixedEndsAndCompleteTouchAreas() {
-        val state = androidx.compose.runtime.mutableStateOf(previewState().copy(previewMode = false))
+    fun dockContentsRemainFixedAcrossLegacyPreferenceValuesAndUseNativeGloveBoxAction() {
+        val state = androidx.compose.runtime.mutableStateOf(controlsFixture().copy(
+            page = PanelPage.Lyrics, layoutPreferencesLoaded = true, previewMode = false,
+            features = com.icar03.content.model.VehicleFeature.entries.associateWith {
+                if (it == com.icar03.content.model.VehicleFeature.GloveBox) FeatureState(available = true)
+                else FeatureState(actual = 0, known = true, available = true)
+            }))
         mountInteractionState(state)
-        val expected = mapOf(
-            3 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Settings),
-            4 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Settings),
-            5 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Heating, ShortcutId.Settings),
-            6 to listOf(ShortcutId.Lock, ShortcutId.Wiper, ShortcutId.Ventilation, ShortcutId.Heating, ShortcutId.Massage, ShortcutId.Settings),
-        )
         val originalDock = compose.onNodeWithTag("floating-dock").getUnclippedBoundsInRoot()
-        for (count in listOf(3, 4, 5, 6, 3)) {
-            compose.runOnIdle { state.value = state.value.copy(dockButtonCount = count) }
+        for (legacyCount in listOf(3, 4, 5, 6)) {
+            compose.runOnIdle { state.value = state.value.copy(dockButtonCount = legacyCount) }
             compose.waitForIdle()
-            val items = expected.getValue(count)
-            compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(count)
+            compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(6)
             DockShortcuts.items.forEach { id ->
-                val node = compose.onNodeWithTag("dock-${id.name}")
-                if (id in items) {
-                    val bounds = node.assertIsDisplayed().assertHasClickAction().getUnclippedBoundsInRoot()
-                    assertTrue("Dock $count/$id retains a complete 48dp target", bounds.right - bounds.left >= 48.dp && bounds.bottom - bounds.top >= 48.dp)
-                } else node.assertDoesNotExist()
+                val node = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed().assertHasClickAction()
+                val bounds = node.getUnclippedBoundsInRoot()
+                assertTrue("Dock $id retains a 48dp target", bounds.right - bounds.left >= 48.dp && bounds.bottom - bounds.top >= 48.dp)
             }
-            val dock = compose.onNodeWithTag("floating-dock").getUnclippedBoundsInRoot()
-            val lock = compose.onNodeWithTag("dock-Lock").getUnclippedBoundsInRoot()
-            val settings = compose.onNodeWithTag("dock-Settings").getUnclippedBoundsInRoot()
-            assertEquals("count changes retain the Dock surface", originalDock, dock)
-            assertEquals("lock remains at the left edge", dock.left, lock.left)
-            assertEquals("settings remains at the right edge", dock.right, settings.right)
-            assertTrue(lock.right < settings.left)
-            compose.onNodeWithTag("dock-Settings").performClick()
-            assertTrue(events.last() == ContentEvent.SettingsTapped)
+            assertEquals(originalDock, compose.onNodeWithTag("floating-dock").getUnclippedBoundsInRoot())
         }
-        compose.onNodeWithTag("control-Heating").assertIsDisplayed()
-        compose.onNodeWithTag("shortcut-Settings").assertIsDisplayed()
+        val gloveBox = compose.onNodeWithTag("dock-GloveBox")
+        gloveBox.assertIsNotSelected()
+        val gloveEventCount = events.count { it == ContentEvent.FeatureTapped(ShortcutId.GloveBox) }
+        gloveBox.performClick()
+        assertEquals(gloveEventCount + 1, events.count { it == ContentEvent.FeatureTapped(ShortcutId.GloveBox) })
+        compose.onNodeWithTag("dock-SystemControlCenter").assertIsDisplayed()
+        compose.onNodeWithTag("dock-GloveBox").assertIsDisplayed()
     }
 
     @Test
@@ -366,13 +391,13 @@ open class ContentPanelLightPrototypeRenderTest {
             lyrics = LyricsState(emptyState = LyricsEmptyState.NetworkError)))
         mountInteractionState(state)
         compose.onNodeWithTag("source-button").assertIsDisplayed().assertIsEnabled()
-        compose.onNodeWithTag("lyrics-source-action").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
         val copyBounds = compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot()
         val mediaBounds = compose.onNodeWithTag("media-card").getUnclippedBoundsInRoot()
         compose.runOnIdle { state.value = state.value.copy(showMediaSourceSwitcher = false) }
         compose.waitForIdle()
         compose.onNodeWithTag("source-button").assertIsDisplayed().assertIsEnabled()
-        compose.onNodeWithTag("lyrics-source-action").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
         compose.onNodeWithContentDescription("选择来源").assertIsDisplayed()
         compose.onNodeWithTag("lyrics-empty-copy").assertTextEquals("网络错误")
         assertEquals("the optional action cannot shift the centered text", copyBounds,
@@ -385,10 +410,9 @@ open class ContentPanelLightPrototypeRenderTest {
 
         compose.runOnIdle { state.value = state.value.copy(showMediaSourceSwitcher = true) }
         compose.waitForIdle()
-        for (tag in listOf("source-button", "lyrics-source-action")) {
-            compose.onNodeWithTag(tag).assertIsDisplayed().assertIsEnabled().performClick()
-            assertTrue("restored $tag uses the shared source event", events.last() == ContentEvent.OpenSources)
-        }
+        compose.onNodeWithTag("source-button").assertIsDisplayed().assertIsEnabled().performClick()
+        assertEquals(ContentEvent.OpenSources, events.last())
+        compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
         assertEquals(copyBounds, compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot())
     }
 
@@ -537,7 +561,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun roundedPressFeedbackIsLocalAnimatedAndDisabledDoesNotFire() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, controls = previewState().controls + (ControlId.Lock to ControlState(actual = 0))))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false, controls = previewState().controls + (ControlId.Lock to ControlState(actual = 0))))
         mountInteractionState(state)
         val transparent = androidx.compose.ui.graphics.Color.Transparent.value.toLong()
         val selected = compose.onNodeWithTag("dock-Lock").fetchSemanticsNode().boundsInRoot
@@ -596,7 +620,7 @@ open class ContentPanelLightPrototypeRenderTest {
     @Test fun seatLevelsKeepOriginalColorsAndResourcesInGridAndDock() {
         val seatIds = listOf(ControlId.Ventilation, ControlId.Heating, ControlId.PassengerHeating, ControlId.Massage)
         preloadOemAnimations(seatIds.flatMap { id -> (0..id.maxLevel).map { vehicleControlIconRecipe(id, it, dark).asset } }.distinct())
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state, fullDock = true)
         val resources = seatIds.associateWith { mutableSetOf<Int>() }
         for (level in 0..3) {
@@ -684,7 +708,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun steeringHeatUsesDistinctOEMColorAssetsForItsFourStates() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state)
         val resources = mutableSetOf<Int>()
         val expected = (0..3).associateWith { vehicleControlIconRecipe(ControlId.SteeringHeat, it, dark).resource }
@@ -711,7 +735,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun batteryLayersLockColorAndMediaOpacityFollowTruth() {
-         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, batteryPercent = 80))
+         val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false, batteryPercent = 80))
         mountInteractionState(state)
         fun assertBattery(charging: Boolean) {
             compose.runOnIdle { state.value = state.value.copy(charging = charging) }
@@ -764,7 +788,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
 
     @Test fun selectionContrastAndDockGeometryFollowDisplayedTruth() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(controls = previewState().controls +
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, controls = previewState().controls +
             (ControlId.Lock to ControlState(actual = 0)) + (ControlId.Ventilation to ControlState(actual = 2))))
         mountInteractionState(state)
         compose.onNodeWithTag("control-Lock").assertIsSelected()
@@ -831,7 +855,7 @@ open class ContentPanelLightPrototypeRenderTest {
             sheetBase = androidx.compose.ui.graphics.Color(0xFF99AACC),
             selectedSurface = androidx.compose.ui.graphics.Color(0xFFAABBCC),
         )
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false,
             previewMode = false,
             sourcesOpen = true,
             controls = previewState().controls +
@@ -890,7 +914,9 @@ open class ContentPanelLightPrototypeRenderTest {
         val steppedCard = compose.onNodeWithTag("control-Wiper").fetchSemanticsNode().boundsInRoot
         assertEquals("manual OFF consumes the same independent unfilled slider role", roles.sliderBase.toArgb(),
             sliderFrame.getPixel(steppedCard.center.x.toInt(), steppedCard.top.toInt() + 16))
-        val dividerY = steppedCard.top + steppedCard.height * .25f
+        // Native legacy fixtures can extend under the media slot; divider geometry uses the measured height.
+        val steppedMeasured = compose.onNodeWithTag("control-Wiper").getUnclippedBoundsInRoot()
+        val dividerY = steppedMeasured.top.value + (steppedMeasured.bottom - steppedMeasured.top).value * .25f
         val dividerX = steppedCard.center.x.toInt()
         val dividerArgb = roles.sliderDivider.toArgb()
         val background = roles.sliderBase.toArgb()
@@ -921,7 +947,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun touchOriginRippleAndIconMotionAreSharedWithoutDoubleSound() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState())
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false))
         mountInteractionState(state)
         com.autonavi.amapauto.jni.GAdaAndroid.clicks = 0
         compose.mainClock.autoAdvance = false
@@ -948,7 +974,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun completeGearCyclesLatchBoundaryRippleAcrossPendingRecomposition() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state, fullDock = true)
         compose.mainClock.autoAdvance = false
         val cycles = mapOf(ControlId.Ventilation to listOf(0, 3, 2, 1, 0),
@@ -993,7 +1019,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun dockRippleTranslatesOuterTouchAndFadesUniformlyWithinFourRoundedCorners() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state)
         compose.mainClock.autoAdvance = false
         val node = compose.onNodeWithTag("dock-Lock")
@@ -1040,7 +1066,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun rippleEligibilityIsCapturedAtPhysicalDownBeforeStateRecomposition() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false,
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false,
             controls = previewState().controls + (ControlId.SteeringHeat to ControlState(actual = 3))))
         mountInteractionState(state)
         compose.mainClock.autoAdvance = false
@@ -1073,7 +1099,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun overlappingBoundaryPulsesKeepTheEarliestWashBase() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false,
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false,
             controls = previewState().controls + (ControlId.SteeringHeat to ControlState(actual = 3))))
         mountInteractionState(state)
         compose.mainClock.autoAdvance = false
@@ -1106,7 +1132,7 @@ open class ContentPanelLightPrototypeRenderTest {
     @Test fun quickTapKeepsDownQualifiedRippleWhenBindingDisablesOnTheSameUpDock() = assertQuickPendingTap("dock")
 
     private fun assertQuickPendingTap(prefix: String) {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state) { event ->
             if (event == ContentEvent.ControlTapped(ControlId.Heating)) state.value = state.value.copy(controls =
                 state.value.controls + (ControlId.Heating to ControlState(actual = 0, target = 3, available = false)))
@@ -1129,7 +1155,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Test fun pauseAndWindowFocusLossClearRippleWithoutReplayOnResume() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         val owner = object : androidx.lifecycle.LifecycleOwner {
             override val lifecycle = androidx.lifecycle.LifecycleRegistry.createUnsafe(this).apply {
                 currentState = androidx.lifecycle.Lifecycle.State.RESUMED
@@ -1180,7 +1206,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun unknownControlsNeverAdvertiseOrEmitStateFeedback() {
-        val state = androidx.compose.runtime.mutableStateOf(previewState(PreviewScenario.NoData).copy(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(controlsFixture(PreviewScenario.NoData).copy(previewMode = false))
         mountInteractionState(state, fullDock = true)
         ControlId.entries.forEach { id ->
             (listOf("control-${id.name}") + if (DockShortcuts.items.any { it.control == id }) listOf("dock-${id.name}") else emptyList()).forEach { tag ->
@@ -1195,7 +1221,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun multistateRippleOnlyAppearsAtOffAndTerminalEdges() {
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, controls = ContentUiState().controls.mapValues { (id, control) ->
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false, controls = ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false).controls.mapValues { (id, control) ->
             control.copy(actual = when (id) {
                 ControlId.Ventilation -> 2
                 ControlId.Heating, ControlId.PassengerHeating -> 1
@@ -1220,7 +1246,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun dividerTracksActualContentWidth() {
          val width = androidx.compose.runtime.mutableStateOf(640.dp)
-        compose.setContent { ContentTheme(dark) { ContentPanel(ContentUiState(), {}, Modifier.width(width.value).testTag(hostTag)) } }
+        compose.setContent { ContentTheme(dark) { ContentPanel(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false), {}, Modifier.width(width.value).testTag(hostTag)) } }
         for (value in listOf(640, 520, 400, 640)) {
             compose.runOnIdle { width.value = value.dp }
             val host = compose.onNodeWithTag(hostTag).fetchSemanticsNode().boundsInRoot
@@ -1249,7 +1275,7 @@ open class ContentPanelLightPrototypeRenderTest {
             ControlId.SteeringHeat -> steering
             ControlId.Massage, ControlId.Wiper, ControlId.RearWiper, ControlId.RearWash -> ControlState(actual = -1, available = false, known = false)
         } }
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false,
             previewMode = false,
             dark = false,
             controls = controls(heating = 4, ventilation = ControlState(actual = -1, available = false, known = false)),
@@ -1416,7 +1442,7 @@ open class ContentPanelLightPrototypeRenderTest {
             val loaded = com.airbnb.lottie.LottieCompositionFactory.fromAssetSync(context, "content-oem/$asset")
             assertTrue("registered animation must be loadable: $asset / ${loaded.exception}", loaded.value != null)
         }
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState())
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false))
         mountInteractionState(state)
         compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(OemResource, R.drawable.content_oem_ico_lock_close))
         compose.onNodeWithTag("dock-icon-Lock", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(IconAnimationVisible, true))
@@ -1586,7 +1612,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val suffix = if (dark) "wh" else "bk"
         val families = mapOf(ControlId.Ventilation to "ventilate", ControlId.Heating to "heat", ControlId.Massage to "massage")
         preloadOemAnimations(families.values.map { "ico_skin_seat_${it}_l_$suffix.json" })
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state, fullDock = true)
         compose.mainClock.autoAdvance = false
         sampleOemFrames()
@@ -1648,7 +1674,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val assets = linkedMapOf(MediaSource.AiMusic to "ico_media_aiquting.json", MediaSource.CloudMusic to "ico_media_neteasy.json",
             MediaSource.Usb to "ico_devices_usb.json", MediaSource.Local to "ico_media_local.json", MediaSource.Bluetooth to "ico_bluetooth_1.json")
         preloadOemAnimations(assets.values.toList())
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(sourcesOpen = true, previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, sourcesOpen = true, previewMode = false))
         mountInteractionState(state)
         compose.mainClock.autoAdvance = false
         for ((source, asset) in assets) {
@@ -1685,7 +1711,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun mediaTransitionEndsOnTheCorrectFilledTargetAndNeverRewinds() {
         preloadOemAnimations(listOf("ico_media_play_02_f.json", "ico_media_pause_02_f.json"))
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state)
         compose.mainClock.autoAdvance = false
         for (playing in listOf(true, false)) {
@@ -1724,7 +1750,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val queued = java.util.ArrayDeque<Runnable>()
         com.airbnb.lottie.LottieTask.EXECUTOR = java.util.concurrent.Executor { queued.add(it) }
         try {
-            val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+            val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
             mountInteractionState(state)
             compose.mainClock.autoAdvance = false
             val icon = compose.onNodeWithTag("media-play-icon", useUnmergedTree = true)
@@ -1794,7 +1820,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @Test fun expandedEntrancesKeepMetadataRowsVerticalGeometryAndFullCenteredNames() {
-        val ready = ContentUiState(previewMode = false, screenCleanAvailable = true,
+        val ready = ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false, screenCleanAvailable = true,
             shortcutButtons = ShortcutGrid.productionButtons,
             features = com.icar03.content.model.VehicleFeature.entries.associateWith {
                 FeatureState(actual = 0, known = true, available = true)
@@ -1835,7 +1861,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun compactSixSlotsScrollWithoutShrinkingHitRegionsOrTruncatingNames() {
         val width = androidx.compose.runtime.mutableStateOf(400.dp)
-        val ready = ContentUiState(previewMode = false, dark = dark, dockButtonCount = 6, screenCleanAvailable = true,
+        val ready = ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false, dark = dark, dockButtonCount = 6, screenCleanAvailable = true,
             shortcutButtons = ShortcutGrid.productionButtons,
             features = com.icar03.content.model.VehicleFeature.entries.associateWith {
                 FeatureState(actual = 0, known = true, available = true)
@@ -1857,7 +1883,7 @@ open class ContentPanelLightPrototypeRenderTest {
                 assertTrue("narrow full name is fully visible: ${id.label} at $value / tile=$region / text=${layouts.single().size} / lines=${layouts.single().lineCount} / widthOverflow=${layouts.single().didOverflowWidth} / heightOverflow=${layouts.single().didOverflowHeight}", layouts.single().lineCount <= 2 && !layouts.single().hasVisualOverflow)
             }
             compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("floating-dock"))).assertCountEquals(6)
-            dockItemsForCount(6).forEach { id ->
+            DockShortcuts.items.forEach { id ->
                 val dock = compose.onNodeWithTag("dock-${id.name}").assertIsDisplayed().getUnclippedBoundsInRoot()
                 assertTrue("six-slot minimum width is scrollable, not squeezed below 48dp", dock.right - dock.left >= 48.dp && dock.bottom - dock.top >= 48.dp)
             }
@@ -1868,7 +1894,7 @@ open class ContentPanelLightPrototypeRenderTest {
         val ids = listOf(ControlId.Heating, ControlId.PassengerHeating, ControlId.SteeringHeat, ControlId.Wiper)
         preloadOemAnimations(ids.flatMap { id -> (0..id.maxLevel).map { vehicleControlIconRecipe(id, it, dark).asset } }
             .filter { it.isNotEmpty() }.distinct())
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state)
         compose.mainClock.autoAdvance = false
         sampleOemFrames()
@@ -1931,7 +1957,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun lockPendingPaletteAndConfirmationKeepTheClickedEntrancesOneShotTimeline() {
         preloadOemAnimations(listOf("ico_lock_close_f.json", "ico_lock_open_f.json"))
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false, dark = dark))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false, dark = dark))
         var requested: Int? = null
         mountInteractionState(state, useStateTheme = true) { event ->
             if (event == ContentEvent.ControlTapped(ControlId.Lock)) {
@@ -2036,7 +2062,7 @@ open class ContentPanelLightPrototypeRenderTest {
 
     @Test fun knownLockClicksPublishTargetsImmediatelyAndOnlyTheClickedEntranceKeepsPlaying() {
         preloadOemAnimations(listOf("ico_lock_close_f.json", "ico_lock_open_f.json"))
-        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(previewMode = false))
+        val state = androidx.compose.runtime.mutableStateOf(ContentUiState(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false, previewMode = false))
         mountInteractionState(state) { event ->
             if (event == ContentEvent.ControlTapped(ControlId.Lock)) {
                 val actual = state.value.controls.getValue(ControlId.Lock)
@@ -2123,7 +2149,7 @@ open class ContentPanelLightPrototypeRenderTest {
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
-    private fun captureHost(name: String, checkShortcutShadows: Boolean = true): Bitmap {
+    private fun captureHost(name: String, checkShortcutShadows: Boolean = true, checkSurfaceShadows: Boolean = true): Bitmap {
         val semantics = compose.onNodeWithTag(hostTag).fetchSemanticsNode()
         val root = semantics.root as? ViewRootForTest ?: error("Compose host is not an Android view")
         val bounds = semantics.boundsInRoot
@@ -2147,7 +2173,7 @@ open class ContentPanelLightPrototypeRenderTest {
         }
         // The exterior corner stays clear when a newly registered shortcut grows the grid.
         val background = brightness(0, bitmap.height - 1)
-        val surfaces = if (dark) emptyList() else {
+        val surfaces = if (dark || !checkSurfaceShadows) emptyList() else {
             val tags = (if (checkShortcutShadows) listOf("control-Lock") else emptyList()) +
                 listOf("media-card", "floating-dock")
             tags.map { tag ->

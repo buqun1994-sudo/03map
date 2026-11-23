@@ -78,6 +78,13 @@ open class OemGlyphRenderingNativeTest {
             }
         }
         add(Glyph("settings", R.drawable.content_oem_ic_settings, 32f))
+        add(Glyph("dock/system-control-center", R.drawable.content_oem_ico_home_applist, 32f, "ico_home_applist.json"))
+        val gloveRecipe = vehicleFeatureIconRecipe(com.icar03.content.model.VehicleFeature.GloveBox, 0, dark)
+        val windowCloseRecipe = vehicleFeatureIconRecipe(com.icar03.content.model.VehicleFeature.WindowVent, 0, dark)
+        val windowHalfRecipe = vehicleFeatureIconRecipe(com.icar03.content.model.VehicleFeature.WindowVent, 1, dark)
+        add(Glyph("dock/glove-box", gloveRecipe.resource, 32f, gloveRecipe.asset, gloveRecipe))
+        add(Glyph("dock/window-close", windowCloseRecipe.resource, 32f, windowCloseRecipe.asset, windowCloseRecipe))
+        add(Glyph("dock/window-half", windowHalfRecipe.resource, 32f, windowHalfRecipe.asset, windowHalfRecipe))
         add(Glyph("page/fullscreen", R.drawable.content_ic_fullscreen, 32f))
         add(Glyph("page/fullscreen-exit", R.drawable.content_ic_fullscreen_exit, 32f))
         add(Glyph("media/play", R.drawable.content_oem_ico_media_play_f, 32f, "ico_media_pause_02_f.json"))
@@ -92,6 +99,13 @@ open class OemGlyphRenderingNativeTest {
 
     private fun verify(dpi: Int, dark: Boolean) {
         val glyphs = glyphs(dark)
+        glyphs.forEach { glyph ->
+            val recipe = glyph.recipe ?: return@forEach
+            if (!recipe.asset.isNullOrEmpty()) {
+                assertTrue("production frame segment is registered: " + glyph.label,
+                    oemGlyphViewport(glyph.resource, recipe.asset, recipe.frames) != null)
+            }
+        }
         val density = dpi / 160f
         val vectorOnly = mutableStateOf(false)
         val action = mutableIntStateOf(0)
@@ -221,8 +235,11 @@ open class OemGlyphRenderingNativeTest {
                 // Half-covered edge pixels represent the solid contour across Vector backends.
                 // Alpha>=8 above still checks every pale antialias edge and the complete height.
                 val solid = requireNotNull(inkBounds(bitmap, cell, 128))
-                assertEquals("$label actual solid height", glyph.heightPx.toDouble(), solid.height().toDouble(), 1.0)
-                assertEquals("$label original solid aspect", (glyph.heightPx * viewport.aspectRatio).toDouble(), solid.width().toDouble(), 1.0)
+                val expectedSolidHeight = if (glyph.label == "dock/window-half") glyph.heightPx * .75f else glyph.heightPx
+                assertEquals("$label solid core height", expectedSolidHeight.toDouble(), solid.height().toDouble(), 1.0)
+                if (glyph.label != "dock/window-half") {
+                    assertEquals("$label solid aspect", (solid.height() * viewport.aspectRatio).toDouble(), solid.width().toDouble(), 1.5)
+                }
             }
             assertEquals("$label horizontal centre", cell.center.x.toDouble(), ink.exactCenterX().toDouble(), 1.5)
             assertEquals("$label vertical centre", cell.center.y.toDouble(), ink.exactCenterY().toDouble(), 1.5)

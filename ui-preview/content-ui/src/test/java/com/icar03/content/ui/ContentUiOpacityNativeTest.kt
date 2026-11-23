@@ -115,7 +115,7 @@ open class ContentUiOpacityNativeTest {
     }
 
     @Test fun shortcutControlCardAndSourceBackgroundsConsumeOpacityWithoutFadingContent() {
-        state.value = state.value.copy(page = PanelPage.Shortcuts)
+        state.value = state.value.copy(page = PanelPage.Shortcuts, layoutPreferencesLoaded = false)
         mount()
         val full = capture("grid-full")
         val shortcut = bounds("control-Heating")
@@ -158,6 +158,7 @@ open class ContentUiOpacityNativeTest {
                 SettingsSection.Media -> "媒体"
                 SettingsSection.Interaction -> "界面"
                 SettingsSection.Gestures -> "二指"
+                SettingsSection.VehicleConfig -> "车型配置"
             }
             val card = bounds("settings-card-$contentTitle")
             compose.runOnIdle { state.value = state.value.copy(uiOpacity = .2f) }
@@ -175,6 +176,7 @@ open class ContentUiOpacityNativeTest {
                 SettingsSection.Media -> listOf("settings-switch-来源切换入口-label")
                 SettingsSection.Interaction -> emptyList()
                 SettingsSection.Gestures -> listOf("settings-gesture-label-two_up", "settings-gesture-two_right-value")
+                SettingsSection.VehicleConfig -> listOf("settings-import-vehicle-config")
             }
             contentTags.forEach { tag -> assertInkStable("$section $tag", bounds(tag), sheet, faded) }
             assertRegionIdentical("clock above settings", bounds("top-time"), sheet, faded)

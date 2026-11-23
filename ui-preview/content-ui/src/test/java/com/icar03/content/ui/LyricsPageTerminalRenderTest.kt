@@ -31,13 +31,13 @@ open class LyricsPageTerminalLightRenderTest {
         assertEquals(ContentEvent.OpenSources, events.last())
     }
 
-    @Test fun networkErrorHasExactCenteredCopyAndKeepsTheSourceAffordance() {
+    @Test fun networkErrorUsesTheSameCenteredCopyWithoutASourceAction() {
         mount(terminalState(LyricsEmptyState.NetworkError))
-        assertCentered("网络错误", hasSourceAction = true)
+        assertCentered("网络错误", hasSourceAction = false)
         compose.onNodeWithText("暂无歌词").assertDoesNotExist()
         compose.onNodeWithText("纯音乐，请您欣赏").assertDoesNotExist()
-        compose.onNodeWithTag("lyrics-source-action").performClick()
-        assertEquals(ContentEvent.OpenSources, events.last())
+        compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
+        assertTrue(events.isEmpty())
     }
 
     @Test fun pureMusicIsCenteredWithoutAViewportSourceButtonButMediaSourceBehaviorIsUnchanged() {
@@ -78,7 +78,7 @@ open class LyricsPageTerminalLightRenderTest {
         }
     }
 
-    @Test fun togglingOptionalSourceActionDoesNotMoveTheSameCopyBoundsOrBaselineCenter() {
+    @Test fun changingMediaSourceAvailabilityNeverAddsAnActionToTheLyricsPage() {
         val initial = terminalState(LyricsEmptyState.NoLyrics)
         val state = mutableStateOf(initial.copy(media = initial.media.copy(sourceAvailable = false)))
         compose.setContent { ContentTheme(dark) { ContentPanel(state.value, { events += it }) } }
@@ -90,12 +90,13 @@ open class LyricsPageTerminalLightRenderTest {
             assertCentered(text, hasSourceAction = false)
             val withoutAction = compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot()
             compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(sourceAvailable = true)) }
-            assertCentered(text, hasSourceAction = reason == LyricsEmptyState.NetworkError)
-            val withAction = compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot()
-            assertEquals("source availability cannot change the terminal copy geometry", withoutAction, withAction)
+            assertCentered(text, hasSourceAction = false)
+            val withSourceAvailable = compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot()
+            compose.onNodeWithTag("lyrics-source-action").assertDoesNotExist()
+            assertEquals("source availability cannot change the terminal copy geometry", withoutAction, withSourceAvailable)
             compose.runOnIdle { state.value = state.value.copy(media = state.value.media.copy(sourceAvailable = false)) }
             assertCentered(text, hasSourceAction = false)
-            assertEquals("removing source action must retain identical copy geometry", withoutAction,
+            assertEquals("lyrics source availability keeps copy geometry", withoutAction,
                 compose.onNodeWithTag("lyrics-empty-copy").getUnclippedBoundsInRoot())
         }
     }
